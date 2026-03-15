@@ -1,0 +1,7 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="48" fill="#FFF1E7"/>
+  <circle cx="128" cy="94" r="44" fill="#126A4A"/>
+  <path d="M52 222C59 179 88 150 128 150C168 150 197 179 204 222" fill="#C96D42"/>
+  <text x="128" y="232" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#FFF9F1">EK</text>
+</svg>
+

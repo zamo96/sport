@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tennis-search-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tennis_search
+      POSTGRES_USER: tennis
+      POSTGRES_PASSWORD: tennis
+    ports:
+      - "5432:5432"
+    volumes:
+      - tennis_search_data:/var/lib/postgresql/data
+
+volumes:
+  tennis_search_data:
+

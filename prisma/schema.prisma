@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+enum Sport {
+  tennis
+  padel
+  badminton
+  squash
+  pickleball
+}
+
+enum PlayFormat {
+  singles
+  doubles
+  both
+}
+
+enum Surface {
+  hard
+  clay
+  grass
+  any
+}
+
+enum CourtSetting {
+  indoor
+  outdoor
+}
+
+enum SwipeAction {
+  like
+  dislike
+  superlike
+}
+
+enum MatchStatus {
+  active
+  archived
+}
+
+enum GameRequestStatus {
+  pending
+  accepted
+  declined
+  canceled
+}
+
+enum GameSearchStatus {
+  active
+  in_review
+  matched
+  closed
+}
+
+enum GameSearchType {
+  regular
+  hot
+}
+
+enum HotSearchWindow {
+  today
+  tomorrow
+}
+
+enum GameSearchResponseStatus {
+  pending
+  approved
+  rejected
+  withdrawn
+}
+
+model User {
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  name                 String?
+  age                  Int?
+  gender               Gender?
+  city                 String?
+  homeLat              Float?
+  homeLng              Float?
+  tennisLevel          Int?
+  preferredSports      Json?
+  sportLevels          Json?
+  preferredPlayFormat  PlayFormat    @default(both)
+  preferredSurface     Surface       @default(any)
+  bio                  String?
+  avatarUrl            String?
+  searchRadiusKm       Int           @default(20)
+  availableDays        Json?
+  availableTimeRanges  Json?
+  availableTimeSlots   Json?
+  isLookingForGame     Boolean       @default(true)
+  isVerified           Boolean       @default(false)
+  onboardingCompleted  Boolean       @default(false)
+  notificationMatches  Boolean       @default(true)
+  notificationMessages Boolean       @default(true)
+  notificationGames    Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  swipesSent           Swipe[]       @relation("SwipeFromUser")
+  swipesReceived       Swipe[]       @relation("SwipeToUser")
+  matchesAsUser1       Match[]       @relation("MatchUser1")
+  matchesAsUser2       Match[]       @relation("MatchUser2")
+  sessions             Session[]
+  authCodes            AuthCode[]
+  sentMessages         ChatMessage[]
+  gameRequestsCreated  GameRequest[] @relation("GameRequestCreator")
+  gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
+  gameSearches         GameSearch[]
+  gameSearchResponses  GameSearchResponse[]
+}
+
+model Court {
+  id           String        @id @default(cuid())
+  name         String
+  address      String
+  city         String
+  locationLat  Float
+  locationLng  Float
+  surface      Surface
+  setting      CourtSetting
+  priceRange   String
+  rating       Float?
+  sourceType   String
+  bookingUrl   String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  gameRequests GameRequest[]
+  gameSearches GameSearch[]
+}
+
+model Swipe {
+  id         String      @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  action     SwipeAction
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  fromUser   User        @relation("SwipeFromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User        @relation("SwipeToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, action])
+}
+
+model Match {
+  id           String        @id @default(cuid())
+  user1Id      String
+  user2Id      String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  status       MatchStatus   @default(active)
+  user1        User          @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2        User          @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages     ChatMessage[]
+  gameRequests GameRequest[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id, updatedAt])
+  @@index([user2Id, updatedAt])
+}
+
+model GameRequest {
+  id               String            @id @default(cuid())
+  matchId          String
+  createdByUserId  String
+  matchedUserId    String
+  proposedCourtId  String
+  proposedDatetime DateTime
+  levelRangeMin    Int?
+  levelRangeMax    Int?
+  sport            Sport             @default(tennis)
+  format           PlayFormat
+  comment          String?
+  status           GameRequestStatus @default(pending)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  match            Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdByUser    User              @relation("GameRequestCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  matchedUser      User              @relation("GameRequestRecipient", fields: [matchedUserId], references: [id], onDelete: Cascade)
+  proposedCourt    Court             @relation(fields: [proposedCourtId], references: [id], onDelete: Restrict)
+
+  @@index([matchedUserId, status])
+  @@index([createdByUserId, status])
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  matchId      String
+  senderUserId String
+  text         String
+  createdAt    DateTime @default(now())
+  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  senderUser   User     @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+}
+
+model GameSearch {
+  id                  String               @id @default(cuid())
+  createdByUserId     String
+  preferredCourtId    String?
+  preferredDays       Json
+  preferredTimeRanges Json
+  searchType          GameSearchType       @default(regular)
+  hotWindow           HotSearchWindow?
+  hasCourtBooked      Boolean              @default(false)
+  sport               Sport                @default(tennis)
+  format              PlayFormat
+  comment             String?
+  status              GameSearchStatus     @default(active)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  createdByUser       User                 @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  preferredCourt      Court?               @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
+  responses           GameSearchResponse[]
+
+  @@index([createdByUserId, isActive])
+  @@index([isActive, searchType, status])
+}
+
+model GameSearchResponse {
+  id              String                   @id @default(cuid())
+  gameSearchId    String
+  responderUserId String
+  message         String?
+  status          GameSearchResponseStatus @default(pending)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  gameSearch      GameSearch               @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
+  responderUser   User                     @relation(fields: [responderUserId], references: [id], onDelete: Cascade)
+
+  @@unique([gameSearchId, responderUserId])
+  @@index([gameSearchId, status])
+  @@index([responderUserId, status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model AuthCode {
+  id         String    @id @default(cuid())
+  email      String
+  code       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+}
