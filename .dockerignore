@@ -1,0 +1,10 @@
+.git
+.gitignore
+.next
+node_modules
+.env
+.env.local
+coverage
+README.md
+docker-compose.yml
+tsconfig.tsbuildinfo
