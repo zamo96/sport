@@ -31,7 +31,7 @@ export default async function CourtsPage({
       <SectionTitle
         eyebrow="Корты"
         title="Выбери место до начала переписки."
-        subtitle="Список и карта работают через нейтральную geo-абстракцию и готовы к подключению реального провайдера."
+        subtitle="Список и карта работают через geo-абстракцию. Для MVP подключены Яндекс Карты через отдельный провайдер."
       />
       <CourtsBrowser courts={courts.map(serializeCourt)} />
     </PageShell>

@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MapPinned } from "lucide-react";
 
 import { COURT_SETTING_LABELS, SURFACE_LABELS } from "@/lib/constants";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
+import { CourtsMap } from "@/components/maps/courts-map";
 
 type Court = {
   id: string;
@@ -35,22 +35,6 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
     else params.set(key, value);
     router.replace(`${pathname}?${params.toString()}`);
   }
-
-  const mapPoints = useMemo(() => {
-    if (courts.length === 0) return [];
-    const lats = courts.map((court) => court.locationLat);
-    const lngs = courts.map((court) => court.locationLng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-
-    return courts.map((court) => ({
-      ...court,
-      top: `${20 + ((maxLat - court.locationLat) / Math.max(maxLat - minLat, 0.01)) * 60}%`,
-      left: `${12 + ((court.locationLng - minLng) / Math.max(maxLng - minLng, 0.01)) * 76}%`
-    }));
-  }, [courts]);
 
   return (
     <div className="space-y-4">
@@ -96,27 +80,7 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
       </Panel>
 
       {mode === "map" ? (
-        <Panel className="relative h-[420px] overflow-hidden bg-[linear-gradient(180deg,#D8F0E3_0%,#C2E7D4_38%,#FFF4E6_100%)]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(201,109,66,0.18),transparent_40%)]" />
-          <div className="absolute inset-x-6 top-6 rounded-2xl bg-white/80 px-4 py-3 text-sm text-ink/70 backdrop-blur">
-            Временная карта для MVP без привязки к провайдеру. Позже можно подключить Mapbox, Google или Яндекс.
-          </div>
-          {mapPoints.map((court) => (
-            <Link
-              href={`/play/proposals/new?courtId=${court.id}`}
-              key={court.id}
-              className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-              style={{ top: court.top, left: court.left }}
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-clay text-white shadow-glow">
-                <MapPinned className="h-5 w-5" />
-              </div>
-              <div className="mt-2 rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-ink shadow-card">
-                {court.name}
-              </div>
-            </Link>
-          ))}
-        </Panel>
+        <CourtsMap courts={courts} />
       ) : (
         <div className="space-y-3">
           {courts.map((court) => (
