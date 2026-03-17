@@ -224,6 +224,7 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
 
 export type CourtsFilters = {
   sport?: import("@prisma/client").Sport;
+  q?: string;
   surface?: "hard" | "clay" | "grass" | "any";
   setting?: "indoor" | "outdoor";
   maxDistanceKm?: number;
@@ -246,14 +247,32 @@ export async function getCourtsForUser(
     where: {
       city: filters.city,
       surface: filters.surface,
-      setting: filters.setting
+      setting: filters.setting,
+      ...(filters.q
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: filters.q,
+                  mode: "insensitive"
+                }
+              },
+              {
+                address: {
+                  contains: filters.q,
+                  mode: "insensitive"
+                }
+              }
+            ]
+          }
+        : {})
     },
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
 
-  const includeYandexOrganizations = Boolean(filters.city && filters.sport && !filters.surface && !filters.setting);
+  const includeYandexOrganizations = Boolean(filters.city && (filters.sport || filters.q) && !filters.surface && !filters.setting);
   const externalCourts = includeYandexOrganizations
-    ? await fetchYandexOrganizations(filters.city ?? user.city ?? "", filters.sport!)
+    ? await fetchYandexOrganizations(filters.city ?? user.city ?? "", filters.sport, filters.q)
     : [];
 
   return [...courts, ...externalCourts]

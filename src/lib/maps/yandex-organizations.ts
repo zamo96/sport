@@ -1,6 +1,6 @@
 import type { CourtSetting, Sport, Surface } from "@prisma/client";
 
-import { DEFAULT_CITY } from "@/lib/constants";
+import { DEFAULT_CITY, SPORT_LABELS } from "@/lib/constants";
 
 const YANDEX_ORG_SEARCH_URL = "https://search-maps.yandex.ru/v1/";
 const YANDEX_PAGE_SIZE = 50;
@@ -57,15 +57,41 @@ export type ExternalCourt = {
   updatedAt: Date;
 };
 
+export const SPORT_SEARCH_QUERIES_LABELS = SPORT_SEARCH_QUERIES;
+
 export function getYandexOrgSearchApiKey() {
   return process.env.YANDEX_MAPS_SEARCH_API_KEY?.trim() || "";
 }
 
-export function buildYandexOrganizationQuery(city: string, sport: Sport) {
-  return `${city || DEFAULT_CITY} ${SPORT_SEARCH_QUERIES[sport]}`.trim();
+export function buildYandexOrganizationQuery(city: string, sport?: Sport, query?: string) {
+  const cityPrefix = city || DEFAULT_CITY;
+  const normalizedQuery = query?.trim() ?? "";
+
+  if (normalizedQuery) {
+    if (!sport) {
+      return `${cityPrefix} ${normalizedQuery}`.trim();
+    }
+
+    const sportContext = SPORT_SEARCH_QUERIES[sport];
+    const normalizedLower = normalizedQuery.toLowerCase();
+    const sportLabelLower = SPORT_LABELS[sport].toLowerCase();
+    const sportContextLower = sportContext.toLowerCase();
+
+    if (normalizedLower.includes(sportLabelLower) || normalizedLower.includes(sportContextLower)) {
+      return `${cityPrefix} ${normalizedQuery}`.trim();
+    }
+
+    return `${cityPrefix} ${sportContext} ${normalizedQuery}`.trim();
+  }
+
+  if (sport) {
+    return `${cityPrefix} ${SPORT_SEARCH_QUERIES[sport]}`.trim();
+  }
+
+  return cityPrefix;
 }
 
-export async function fetchYandexOrganizations(city: string, sport: Sport) {
+export async function fetchYandexOrganizations(city: string, sport?: Sport, query?: string) {
   const apiKey = getYandexOrgSearchApiKey();
 
   if (!apiKey) {
@@ -73,14 +99,14 @@ export async function fetchYandexOrganizations(city: string, sport: Sport) {
   }
 
   try {
-    const query = buildYandexOrganizationQuery(city, sport);
+    const searchQuery = buildYandexOrganizationQuery(city, sport, query);
     const now = new Date();
     const features: YandexFeature[] = [];
 
     for (let page = 0; page < YANDEX_MAX_PAGES; page += 1) {
       const url = new URL(YANDEX_ORG_SEARCH_URL);
       url.searchParams.set("apikey", apiKey);
-      url.searchParams.set("text", query);
+      url.searchParams.set("text", searchQuery);
       url.searchParams.set("lang", "ru_RU");
       url.searchParams.set("type", "biz");
       url.searchParams.set("results", String(YANDEX_PAGE_SIZE));
@@ -116,7 +142,7 @@ export async function fetchYandexOrganizations(city: string, sport: Sport) {
   }
 }
 
-function mapFeatureToExternalCourt(feature: YandexFeature, city: string, sport: Sport, now: Date): ExternalCourt | null {
+function mapFeatureToExternalCourt(feature: YandexFeature, city: string, sport: Sport | undefined, now: Date): ExternalCourt | null {
   const coordinates = feature.geometry?.coordinates;
 
   if (!coordinates || coordinates.length < 2) {
@@ -132,16 +158,18 @@ function mapFeatureToExternalCourt(feature: YandexFeature, city: string, sport: 
     return null;
   }
 
+  const resolvedSport = sport ?? "tennis";
+
   return {
-    id: `yandex-${sport}-${company?.id ?? `${lat.toFixed(5)}-${lng.toFixed(5)}`}`,
+    id: `yandex-${resolvedSport}-${company?.id ?? `${lat.toFixed(5)}-${lng.toFixed(5)}`}`,
     name,
     address,
     city,
     locationLat: lat,
     locationLng: lng,
     surface: "any" as Surface,
-    setting: getFallbackSettingBySport(sport),
-    supportedSports: [sport],
+    setting: getFallbackSettingBySport(resolvedSport),
+    supportedSports: [resolvedSport],
     priceRange: "Источник: Яндекс Карты",
     rating: null,
     sourceType: "yandex_org_search",

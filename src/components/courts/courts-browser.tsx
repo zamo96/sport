@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Search, Sparkles, X } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
-import { COURT_SETTING_LABELS, DEFAULT_CITY, SPORT_OPTIONS, SURFACE_LABELS } from "@/lib/constants";
+import { COURT_SETTING_LABELS, DEFAULT_CITY, SPORT_LABELS, SPORT_OPTIONS, SURFACE_LABELS } from "@/lib/constants";
 import { normalizeCourtSports } from "@/lib/courts";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
@@ -33,6 +34,12 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<"list" | "map">("list");
+  const [searchInput, setSearchInput] = useState(searchParams.get("q") || "");
+  const selectedSport = searchParams.get("sport");
+
+  useEffect(() => {
+    setSearchInput(searchParams.get("q") || "");
+  }, [searchParams]);
 
   function update(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -40,6 +47,24 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
     else params.set(key, value);
     router.replace(`${pathname}?${params.toString()}`);
   }
+
+  function handleSearchSubmit(event: FormEvent) {
+    event.preventDefault();
+    update("q", searchInput.trim());
+  }
+
+  function applySmartSuggestion(value: string) {
+    setSearchInput(value);
+    update("q", value);
+  }
+
+  const smartSuggestions = selectedSport
+    ? [
+        SPORT_LABELS[selectedSport as Sport],
+        `${SPORT_LABELS[selectedSport as Sport]} рядом`,
+        `${SPORT_LABELS[selectedSport as Sport]} у метро`
+      ]
+    : ["Теннисный клуб", "Падел-клуб", "Футбольный клуб"];
 
   return (
     <div className="space-y-4">
@@ -62,6 +87,51 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
             ))}
           </div>
         </div>
+        <form onSubmit={handleSearchSubmit} className="space-y-3">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-court">Умный поиск</div>
+            <div className="text-sm text-ink/70">Введи название клуба, район, метро или просто вид спорта. Поиск учитывает выбранный спорт и ищет и по базе, и по Яндекс Картам.</div>
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40" />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="input pl-11 pr-11"
+                placeholder={selectedSport ? `${SPORT_LABELS[selectedSport as Sport]} в центре или рядом с тобой` : "Например: Теннисный клуб, Петроградка, Крестовский"}
+              />
+              {searchInput ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput("");
+                    update("q", "");
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink/45 transition hover:bg-cream"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <button type="submit" className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white">
+              Найти
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {smartSuggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => applySmartSuggestion(suggestion)}
+                className="inline-flex items-center gap-2 rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-court" />
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </form>
         <div className="flex flex-wrap gap-2">
           {SPORT_OPTIONS.map((sport) => (
             <button
@@ -104,6 +174,14 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
         <CourtsMap courts={courts} />
       ) : (
         <div className="space-y-3">
+          {courts.length === 0 ? (
+            <Panel className="text-center">
+              <div className="text-xl font-bold text-ink">Ничего не найдено</div>
+              <div className="mt-2 text-sm leading-6 text-ink/65">
+                Попробуй изменить спортивный фильтр, район или текст запроса.
+              </div>
+            </Panel>
+          ) : null}
           {courts.map((court) => (
             <Panel key={court.id} className="space-y-3">
               <div className="flex items-start justify-between gap-3">

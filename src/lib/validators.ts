@@ -115,6 +115,7 @@ export const messageSchema = z.object({
 
 export const courtsQuerySchema = z.object({
   sport: z.nativeEnum(Sport).optional(),
+  q: z.string().trim().max(120).optional(),
   surface: z.nativeEnum(Surface).optional(),
   setting: z.enum(["indoor", "outdoor"]).optional(),
   maxDistanceKm: z.coerce.number().int().min(1).max(100).optional(),
