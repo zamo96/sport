@@ -1,6 +1,7 @@
 "use client";
 
 import { Flame, MapPin } from "lucide-react";
+import type { Sport } from "@prisma/client";
 
 import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import { getSportLevel, getSportLevelEntries } from "@/lib/sport-levels";
@@ -32,7 +33,7 @@ type SeekingUser = {
     searchType: "regular" | "hot";
     hotWindow: "today" | "tomorrow" | null;
     hasCourtBooked: boolean;
-    sport: "tennis" | "padel" | "badminton" | "squash" | "pickleball";
+    sport: Sport;
     format: "singles" | "doubles" | "both";
     comment: string | null;
     responses?: Array<{

@@ -20,6 +20,7 @@ export function Avatar({
     lg: { className: "h-20 w-20", pixels: 80 },
     xl: { className: "h-28 w-28", pixels: 112 }
   };
+  const fallbackLetter = alt.trim().charAt(0).toUpperCase();
 
   if (src) {
     return (
@@ -41,7 +42,11 @@ export function Avatar({
         className
       )}
     >
-      <User2 className="h-7 w-7" />
+      {fallbackLetter ? (
+        <span className="text-lg font-bold uppercase tracking-[0.08em]">{fallbackLetter}</span>
+      ) : (
+        <User2 className="h-7 w-7" />
+      )}
     </div>
   );
 }

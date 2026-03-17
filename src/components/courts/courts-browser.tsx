@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { Sport } from "@prisma/client";
 
-import { COURT_SETTING_LABELS, SURFACE_LABELS } from "@/lib/constants";
+import { COURT_SETTING_LABELS, DEFAULT_CITY, SPORT_OPTIONS, SURFACE_LABELS } from "@/lib/constants";
+import { normalizeCourtSports } from "@/lib/courts";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { CourtsMap } from "@/components/maps/courts-map";
+import { SportBadge } from "@/components/ui/sport-badge";
 
 type Court = {
   id: string;
@@ -21,6 +24,7 @@ type Court = {
   distanceKm: number | null;
   locationLat: number;
   locationLng: number;
+  supportedSports?: unknown;
 };
 
 export function CourtsBrowser({ courts }: { courts: Court[] }) {
@@ -42,7 +46,7 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Фильтры кортов</div>
-            <div className="mt-1 text-sm text-ink/70">Выбери место до отправки предложения.</div>
+            <div className="mt-1 text-sm text-ink/70">Площадки в {DEFAULT_CITY}. Отфильтруй по виду спорта и формату площадки.</div>
           </div>
           <div className="flex rounded-full bg-cream p-1">
             {(["list", "map"] as const).map((value) => (
@@ -56,6 +60,22 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SPORT_OPTIONS.map((sport) => (
+            <button
+              key={sport}
+              type="button"
+              onClick={() => update("sport", searchParams.get("sport") === sport ? "" : sport)}
+              className={`rounded-full border px-1.5 py-1 transition ${searchParams.get("sport") === sport ? "border-ink bg-ink" : "border-white/60 bg-white/80"}`}
+            >
+              <SportBadge
+                sport={sport}
+                className={searchParams.get("sport") === sport ? "bg-transparent px-2 py-1 text-white" : "bg-transparent px-2 py-1 text-ink"}
+                iconClassName={searchParams.get("sport") === sport ? "h-3.5 w-3.5 text-white" : "h-3.5 w-3.5 text-ink"}
+              />
+            </button>
+          ))}
         </div>
         <div className="flex flex-wrap gap-2">
           {(["hard", "clay", "grass", "any"] as const).map((surface) => (
@@ -97,6 +117,9 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {normalizeCourtSports(court.supportedSports).map((sport) => (
+                  <SportBadge key={sport} sport={sport as Sport} className="bg-cream text-ink" />
+                ))}
                 <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{SURFACE_LABELS[court.surface]}</span>
                 <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{court.priceRange}</span>
                 {court.rating ? (

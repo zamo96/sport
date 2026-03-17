@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Flame } from "lucide-react";
 import { useRouter } from "next/navigation";
+import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
@@ -31,7 +32,7 @@ type SearchItem = {
   searchType: "regular" | "hot";
   hotWindow: "today" | "tomorrow" | null;
   hasCourtBooked: boolean;
-  sport: "tennis" | "padel" | "badminton" | "squash" | "pickleball";
+  sport: Sport;
   preferredDays: unknown;
   preferredTimeRanges: unknown;
   format: "singles" | "doubles" | "both";

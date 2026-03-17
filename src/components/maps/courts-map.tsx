@@ -1,5 +1,7 @@
 "use client";
 
+"use client";
+
 import { getMapProvider } from "@/lib/maps/config";
 import { Panel } from "@/components/ui/panel";
 import { YandexCourtsMap } from "@/components/maps/yandex-courts-map";
@@ -10,6 +12,7 @@ type CourtMapPoint = {
   address: string;
   locationLat: number;
   locationLng: number;
+  supportedSports?: unknown;
 };
 
 export function CourtsMap({ courts }: { courts: CourtMapPoint[] }) {

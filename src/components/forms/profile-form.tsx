@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { PlayFormat, Surface, type Gender, type Sport, type User } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
-import { DAY_LABELS, PLAY_FORMAT_LABELS, SPORT_OPTIONS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import {
+  AVAILABLE_CITIES,
+  DAY_LABELS,
+  DEFAULT_CITY,
+  PLAY_FORMAT_LABELS,
+  SPORT_OPTIONS,
+  SURFACE_LABELS,
+  TIME_RANGE_LABELS
+} from "@/lib/constants";
 import { getPrimarySportLevel, normalizeSportLevels, normalizeSports, syncSportLevels } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
@@ -62,7 +70,7 @@ export function ProfileForm({
     name: user.name ?? "",
     age: user.age ?? 28,
     gender: (user.gender as Gender | null | undefined) ?? null,
-    city: user.city ?? "Москва",
+    city: DEFAULT_CITY,
     tennisLevel: getPrimarySportLevel(initialPreferredSports, initialSportLevels, user.tennisLevel ?? 5),
     preferredSports: initialPreferredSports,
     sportLevels: initialSportLevels,
@@ -273,13 +281,20 @@ export function ProfileForm({
                   />
                 </Field>
                 <Field label="Город" className="col-span-2">
-                  <input
+                  <select
                     required
-                    value={form.city ?? ""}
+                    value={form.city ?? DEFAULT_CITY}
                     onChange={(event) => setField("city", event.target.value)}
-                    className="input"
-                    placeholder="Москва"
-                  />
+                    className="input cursor-not-allowed bg-line/50 text-ink/70"
+                    disabled
+                  >
+                    {AVAILABLE_CITIES.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">Пока запускаемся только в Санкт-Петербурге.</div>
                 </Field>
               </div>
             ) : null}
@@ -489,13 +504,20 @@ export function ProfileForm({
 
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Field label="Город">
-                <input
+                <select
                   required
-                  value={form.city ?? ""}
+                  value={form.city ?? DEFAULT_CITY}
                   onChange={(event) => setField("city", event.target.value)}
-                  className="input"
-                  placeholder="Москва"
-                />
+                  className="input cursor-not-allowed bg-line/50 text-ink/70"
+                  disabled
+                >
+                  {AVAILABLE_CITIES.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 text-xs leading-5 text-ink/55">Пока только Санкт-Петербург.</div>
               </Field>
               <Field label="Пол">
                 <select

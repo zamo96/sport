@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SendHorizonal } from "lucide-react";
+import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import { getPrimarySport, getSportLevel } from "@/lib/sport-levels";
@@ -42,7 +43,7 @@ type ChatRoomProps = {
     outcomeUpdatedAt?: string | null;
     proposedDatetime: string;
     comment: string | null;
-    sport: "tennis" | "padel" | "badminton" | "squash" | "pickleball";
+    sport: Sport;
     format: string;
     createdByUserId: string;
     matchedUserId: string;

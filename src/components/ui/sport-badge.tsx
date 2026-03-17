@@ -1,8 +1,8 @@
+import type { Sport } from "@prisma/client";
+
 import { SPORT_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SportIcon } from "@/components/ui/sport-icon";
-
-type Sport = keyof typeof SPORT_LABELS;
 
 export function SportBadge({
   sport,

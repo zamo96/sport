@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { CourtsBrowser } from "@/components/courts/courts-browser";
+import { DEFAULT_CITY } from "@/lib/constants";
 import { courtsQuerySchema } from "@/lib/validators";
 import { getCourtsForUser } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
@@ -24,14 +25,17 @@ export default async function CourtsPage({
       Object.entries(searchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value ?? ""])
     )
   );
-  const courts = await getCourtsForUser(user.id, query);
+  const courts = await getCourtsForUser(user.id, {
+    ...query,
+    city: DEFAULT_CITY
+  });
 
   return (
     <PageShell>
       <SectionTitle
         eyebrow="Корты"
         title="Выбери место до начала переписки."
-        subtitle="Список и карта работают через geo-абстракцию. Для MVP подключены Яндекс Карты через отдельный провайдер."
+        subtitle="Пока показываем только площадки Санкт-Петербурга. Карта и список фильтруются по видам спорта."
       />
       <CourtsBrowser courts={courts.map(serializeCourt)} />
     </PageShell>

@@ -1,15 +1,18 @@
+import type { Sport } from "@prisma/client";
+
 export const SESSION_COOKIE = "tennis_session";
 export const SESSION_TTL_DAYS = 14;
 export const AUTH_CODE_TTL_MINUTES = 10;
 
+export const DEFAULT_CITY = "Санкт-Петербург";
+export const DEFAULT_CITY_COORDINATES = { lat: 59.9386, lng: 30.3141 } as const;
+export const AVAILABLE_CITIES = [DEFAULT_CITY] as const;
+
 export const CITY_PRESETS = {
-  "Москва": { lat: 55.7558, lng: 37.6173 },
-  Moscow: { lat: 55.7558, lng: 37.6173 },
-  London: { lat: 51.5072, lng: -0.1276 },
-  Berlin: { lat: 52.52, lng: 13.405 },
-  Dubai: { lat: 25.2048, lng: 55.2708 },
-  Barcelona: { lat: 41.3874, lng: 2.1686 },
-  Tbilisi: { lat: 41.7151, lng: 44.8271 }
+  "Санкт-Петербург": DEFAULT_CITY_COORDINATES,
+  "Санкт Петербург": DEFAULT_CITY_COORDINATES,
+  "Saint Petersburg": DEFAULT_CITY_COORDINATES,
+  "St. Petersburg": DEFAULT_CITY_COORDINATES
 } as const;
 
 export const DAY_OPTIONS = [
@@ -64,15 +67,44 @@ export const COURT_SETTING_LABELS = {
   outdoor: "Открытый"
 } as const;
 
-export const SPORT_OPTIONS = ["tennis", "padel", "badminton", "squash", "pickleball"] as const;
+export const SPORT_OPTIONS = [
+  "table_tennis",
+  "tennis",
+  "padel",
+  "squash",
+  "badminton",
+  "volleyball",
+  "fitness",
+  "boxing",
+  "yoga",
+  "football"
+] as const satisfies readonly Sport[];
 
 export const SPORT_LABELS = {
-  tennis: "Теннис",
+  table_tennis: "Настольный теннис",
+  tennis: "Большой теннис",
   padel: "Падел",
-  badminton: "Бадминтон",
   squash: "Сквош",
-  pickleball: "Пиклбол"
+  badminton: "Бадминтон",
+  volleyball: "Волейбол",
+  fitness: "Фитнесс (Спортзал)",
+  boxing: "Бокс",
+  yoga: "Йога",
+  football: "Футбол"
 } as const;
+
+export const SPORT_EMOJIS: Record<Sport, string> = {
+  table_tennis: "🏓",
+  tennis: "🎾",
+  padel: "🥎",
+  squash: "🟠",
+  badminton: "🏸",
+  volleyball: "🏐",
+  fitness: "🏋️",
+  boxing: "🥊",
+  yoga: "🧘",
+  football: "⚽"
+};
 
 export const GAME_SEARCH_TYPE_LABELS = {
   regular: "Обычный поиск",

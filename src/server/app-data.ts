@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
 import { type DiscoverFilters } from "@/lib/scoring";
+import { courtSupportsSport } from "@/lib/courts";
 import { getDiscoverCandidates } from "@/server/discover";
 
 export async function getViewerWithGuard(userId: string) {
@@ -163,9 +164,11 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
 }
 
 export type CourtsFilters = {
+  sport?: import("@prisma/client").Sport;
   surface?: "hard" | "clay" | "grass" | "any";
   setting?: "indoor" | "outdoor";
   maxDistanceKm?: number;
+  city?: string;
 };
 
 export async function getCourtsForUser(
@@ -182,6 +185,7 @@ export async function getCourtsForUser(
 
   const courts = await prisma.court.findMany({
     where: {
+      city: filters.city,
       surface: filters.surface,
       setting: filters.setting
     },
@@ -197,8 +201,11 @@ export async function getCourtsForUser(
       )
     }))
     .filter((court) =>
+      courtSupportsSport(court.supportedSports, filters.sport) &&
+      (
       filters.maxDistanceKm && court.distanceKm != null
         ? court.distanceKm <= filters.maxDistanceKm
         : true
+      )
     );
 }

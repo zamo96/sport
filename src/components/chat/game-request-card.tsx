@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import {
@@ -22,7 +23,7 @@ type GameRequestCardProps = {
     outcomeUpdatedAt?: string | null;
     proposedDatetime: string;
     comment: string | null;
-    sport: "tennis" | "padel" | "badminton" | "squash" | "pickleball";
+    sport: Sport;
     format: string;
     createdByUserId: string;
     matchedUserId: string;

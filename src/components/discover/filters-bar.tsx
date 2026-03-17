@@ -3,7 +3,18 @@
 import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { DAY_LABELS, DAY_OPTIONS, GENDER_LABELS, PLAY_FORMAT_LABELS, SPORT_OPTIONS, SURFACE_LABELS, TIME_RANGE_LABELS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import {
+  AVAILABLE_CITIES,
+  DAY_LABELS,
+  DAY_OPTIONS,
+  DEFAULT_CITY,
+  GENDER_LABELS,
+  PLAY_FORMAT_LABELS,
+  SPORT_OPTIONS,
+  SURFACE_LABELS,
+  TIME_RANGE_LABELS,
+  TIME_RANGE_OPTIONS
+} from "@/lib/constants";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
@@ -51,7 +62,7 @@ export function FiltersBar() {
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-ink/55">Фильтры</div>
-          <div className="mt-1 text-sm text-ink/70">Настрой выдачу по городу, полу, уровню, расстоянию и времени игры.</div>
+          <div className="mt-1 text-sm text-ink/70">Настрой выдачу по полу, видам спорта, уровню, расстоянию и времени игры.</div>
         </div>
         <button
           type="button"
@@ -77,13 +88,14 @@ export function FiltersBar() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label>
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink/55">Город</div>
-          <input
-            className="input"
-            type="text"
-            placeholder="Москва"
-            value={filters.city}
-            onChange={(event) => update("city", event.target.value)}
-          />
+          <select className="input cursor-not-allowed bg-line/50 text-ink/70" value={DEFAULT_CITY} disabled>
+            {AVAILABLE_CITIES.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </select>
+          <div className="mt-2 text-xs leading-5 text-ink/55">Пока приложение работает только в Санкт-Петербурге.</div>
         </label>
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink/55">Пол</div>

@@ -12,7 +12,7 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 
-import { DAY_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { DAY_OPTIONS, DEFAULT_CITY, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 
 const dayEnum = z.enum(DAY_OPTIONS);
 const timeRangeEnum = z.enum(TIME_RANGE_OPTIONS);
@@ -65,7 +65,7 @@ export const updateMeSchema = z.object({
   name: z.string().min(2).max(40),
   age: z.number().int().min(18).max(70),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  city: z.string().min(2).max(60),
+  city: z.literal(DEFAULT_CITY),
   tennisLevel: z.number().int().min(1).max(10),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
   sportLevels: z
@@ -94,7 +94,7 @@ export const discoverFiltersSchema = z.object({
   levelMin: z.coerce.number().int().min(1).max(10).optional(),
   levelMax: z.coerce.number().int().min(1).max(10).optional(),
   distanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: z.preprocess((value) => parseOptionalText(value), z.string().min(2).max(60).optional()),
+  city: z.preprocess((value) => parseOptionalText(value), z.literal(DEFAULT_CITY).optional()),
   gender: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Gender)).default([])),
   sport: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Sport)).default([])),
   format: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(PlayFormat)).default([])),
@@ -114,10 +114,11 @@ export const messageSchema = z.object({
 });
 
 export const courtsQuerySchema = z.object({
+  sport: z.nativeEnum(Sport).optional(),
   surface: z.nativeEnum(Surface).optional(),
   setting: z.enum(["indoor", "outdoor"]).optional(),
   maxDistanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: z.string().optional()
+  city: z.literal(DEFAULT_CITY).optional()
 });
 
 export const createGameRequestSchema = z.object({

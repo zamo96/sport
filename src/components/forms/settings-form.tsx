@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { User } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
-import { DAY_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { DAY_OPTIONS, DEFAULT_CITY, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -29,7 +29,7 @@ export function SettingsForm({ user }: { user: User }) {
         name: user.name,
         age: user.age,
         gender: user.gender,
-        city: user.city,
+        city: DEFAULT_CITY,
         tennisLevel: user.tennisLevel,
         preferredSports,
         sportLevels,

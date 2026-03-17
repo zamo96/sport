@@ -1,7 +1,10 @@
 "use client";
 
+import type { Sport } from "@prisma/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { DEFAULT_CITY_COORDINATES, SPORT_EMOJIS, SPORT_LABELS } from "@/lib/constants";
+import { getPrimaryCourtSport, normalizeCourtSports } from "@/lib/courts";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { loadYandexMaps } from "@/lib/maps/yandex";
 import { Panel } from "@/components/ui/panel";
@@ -12,6 +15,7 @@ type CourtMapPoint = {
   address: string;
   locationLat: number;
   locationLng: number;
+  supportedSports?: unknown;
 };
 
 export function YandexCourtsMap({ courts }: { courts: CourtMapPoint[] }) {
@@ -21,8 +25,8 @@ export function YandexCourtsMap({ courts }: { courts: CourtMapPoint[] }) {
   const initialLocation = useMemo(() => {
     if (courts.length === 0) {
       return {
-        center: [37.6173, 55.7558] as [number, number],
-        zoom: 10
+        center: [DEFAULT_CITY_COORDINATES.lng, DEFAULT_CITY_COORDINATES.lat] as [number, number],
+        zoom: 11
       };
     }
 
@@ -65,18 +69,23 @@ export function YandexCourtsMap({ courts }: { courts: CourtMapPoint[] }) {
         map.addChild(new YMapDefaultFeaturesLayer());
 
         for (const court of courts) {
+          const primarySport = getPrimaryCourtSport(court.supportedSports) ?? "tennis";
+          const sportEmoji = SPORT_EMOJIS[primarySport];
+          const sportLabels = normalizeCourtSports(court.supportedSports)
+            .map((sport) => SPORT_LABELS[sport as Sport])
+            .join(" · ");
           const markerElement = document.createElement("a");
           markerElement.href = `/play/proposals/new?courtId=${court.id}`;
           markerElement.className = "group flex -translate-y-full flex-col items-center text-center no-underline";
           markerElement.innerHTML = `
             <span class="flex h-11 w-11 items-center justify-center rounded-full bg-[#C96D42] text-white shadow-lg ring-4 ring-white/90 transition group-hover:scale-105">
-              <span style="font-size:18px;line-height:1">🎾</span>
+              <span style="font-size:18px;line-height:1">${sportEmoji}</span>
             </span>
             <span class="mt-2 max-w-[170px] rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-[#142F26] shadow-md">
               ${escapeHtml(court.name)}
             </span>
           `;
-          markerElement.title = `${court.name} — ${court.address}`;
+          markerElement.title = `${court.name} — ${court.address}${sportLabels ? ` — ${sportLabels}` : ""}`;
 
           map.addChild(
             new YMapMarker(

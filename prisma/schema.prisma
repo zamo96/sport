@@ -15,11 +15,16 @@ enum Gender {
 }
 
 enum Sport {
+  table_tennis
   tennis
   padel
-  badminton
   squash
-  pickleball
+  badminton
+  volleyball
+  fitness
+  boxing
+  yoga
+  football
 }
 
 enum PlayFormat {
@@ -137,6 +142,7 @@ model Court {
   locationLng  Float
   surface      Surface
   setting      CourtSetting
+  supportedSports Json?
   priceRange   String
   rating       Float?
   sourceType   String

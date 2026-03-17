@@ -1,8 +1,6 @@
+import type { Sport } from "@prisma/client";
+
 import { cn } from "@/lib/utils";
-
-import { SPORT_LABELS } from "@/lib/constants";
-
-type Sport = keyof typeof SPORT_LABELS;
 
 export function SportIcon({
   sport,
@@ -14,6 +12,15 @@ export function SportIcon({
   const common = cn("h-4 w-4", className);
 
   switch (sport) {
+    case "table_tennis":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <circle cx="8" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 8h4.5a3.5 3.5 0 0 1 0 7H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M8 12v7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M15 15v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
     case "tennis":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
@@ -47,18 +54,48 @@ export function SportIcon({
           <circle cx="6.2" cy="6.2" r="1.4" fill="currentColor" />
         </svg>
       );
-    case "pickleball":
+    case "volleyball":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
-          <circle cx="15.5" cy="8.5" r="4.5" stroke="currentColor" strokeWidth="1.8" />
-          <circle cx="14.2" cy="7.2" r="0.8" fill="currentColor" />
-          <circle cx="16.8" cy="7.2" r="0.8" fill="currentColor" />
-          <circle cx="14.2" cy="9.8" r="0.8" fill="currentColor" />
-          <circle cx="16.8" cy="9.8" r="0.8" fill="currentColor" />
-          <path d="M11.5 12.5 6 18m0 0-1 3 3-1 5.5-5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 4a11 11 0 0 1 4.5 8A11 11 0 0 1 12 20" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M4.8 8.5c2 .2 4.2 1.2 6 3.2 1.8 2 2.5 4.1 2.7 6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M7 17c1.9-1 4.2-1.4 6.8-1.1 2.1.2 4 .9 5.2 1.8" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    case "fitness":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <path d="M3 10h3v4H3v-4Zm15 0h3v4h-3v-4ZM8 8h2v8H8V8Zm6 0h2v8h-2V8Zm-4 3h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "boxing":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <path d="M8 11c0-2.8 1.8-5 4-5s4 2.2 4 5v2.5A3.5 3.5 0 0 1 12.5 17H11a3 3 0 0 1-3-3V11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M9 9V6.5A2.5 2.5 0 0 1 11.5 4H13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case "yoga":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <circle cx="12" cy="6" r="2" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 8v4m0 0-4 3m4-3 4 3m-4 0v5m-5-3h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "football":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+          <path d="m12 8 2.2 1.6-.8 2.6h-2.8l-.8-2.6L12 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="m9.5 12.2-2.2 1.4m9.4-1.4 2.1 1.4M10.6 15.2 10 18m4-2.8.6 2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       );
     default:
-      return null;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      );
   }
 }
