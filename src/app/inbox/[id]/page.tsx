@@ -45,6 +45,8 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
         gameRequests={match.gameRequests.map((request) => ({
           id: request.id,
           status: request.status,
+          outcome: request.outcome,
+          outcomeUpdatedAt: request.outcomeUpdatedAt?.toISOString() ?? null,
           proposedDatetime: request.proposedDatetime.toISOString(),
           comment: request.comment,
           sport: request.sport,

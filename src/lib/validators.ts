@@ -1,4 +1,5 @@
 import {
+  GameRequestOutcome,
   Gender,
   GameRequestStatus,
   GameSearchResponseStatus,
@@ -130,9 +131,14 @@ export const createGameRequestSchema = z.object({
   comment: z.string().max(240).optional().default("")
 });
 
-export const updateGameRequestSchema = z.object({
-  status: z.nativeEnum(GameRequestStatus)
-});
+export const updateGameRequestSchema = z
+  .object({
+    status: z.nativeEnum(GameRequestStatus).optional(),
+    outcome: z.nativeEnum(GameRequestOutcome).nullable().optional()
+  })
+  .refine((value) => value.status !== undefined || value.outcome !== undefined, {
+    message: "Нужно передать статус или результат игры"
+  });
 
 export const createGameSearchSchema = z
   .object({

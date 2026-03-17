@@ -105,6 +105,10 @@ export function canTransitionGameRequest(currentStatus: GameRequestStatus, nextS
   }
 }
 
+export function canUpdateGameRequestOutcome(currentStatus: GameRequestStatus) {
+  return currentStatus === GameRequestStatus.accepted;
+}
+
 export type SwipeWithMatch = {
   swipe: Swipe;
   match: Match | null;

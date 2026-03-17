@@ -341,6 +341,47 @@ async function main() {
     }
   });
 
+  const archivedMatch = await prisma.match.create({
+    data: {
+      user1Id: anna.id < sofia.id ? anna.id : sofia.id,
+      user2Id: anna.id < sofia.id ? sofia.id : anna.id,
+      status: MatchStatus.active
+    }
+  });
+
+  await prisma.chatMessage.createMany({
+    data: [
+      {
+        matchId: archivedMatch.id,
+        senderUserId: sofia.id,
+        text: "На прошлой неделе можем сыграть в Лужниках вечером?"
+      },
+      {
+        matchId: archivedMatch.id,
+        senderUserId: anna.id,
+        text: "Да, подтверждаю. После игры отмечу, как прошло."
+      }
+    ]
+  });
+
+  await prisma.gameRequest.create({
+    data: {
+      matchId: archivedMatch.id,
+      createdByUserId: sofia.id,
+      matchedUserId: anna.id,
+      proposedCourtId: courts[0].id,
+      proposedDatetime: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
+      levelRangeMin: 4,
+      levelRangeMax: 6,
+      sport: Sport.tennis,
+      format: PlayFormat.singles,
+      comment: "Старая подтвержденная игра для проверки истории и опроса.",
+      status: GameRequestStatus.accepted,
+      outcome: null,
+      outcomeUpdatedAt: null
+    }
+  });
+
   console.log("Сиды загружены");
   console.log("Демо-пользователи:", users.map((user) => user.email).join(", "));
 }

@@ -23,6 +23,7 @@ export async function GET() {
       gameRequests: gameRequests.map((gameRequest) => ({
         ...gameRequest,
         proposedDatetime: gameRequest.proposedDatetime.toISOString(),
+        outcomeUpdatedAt: gameRequest.outcomeUpdatedAt?.toISOString() ?? null,
         createdAt: gameRequest.createdAt.toISOString(),
         updatedAt: gameRequest.updatedAt.toISOString()
       }))

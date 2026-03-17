@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GameRequestStatus } from "@prisma/client";
 
-import { canTransitionGameRequest, normalizeMatchPair } from "@/server/matching";
+import { canTransitionGameRequest, canUpdateGameRequestOutcome, normalizeMatchPair } from "@/server/matching";
 
 describe("matching helpers", () => {
   it("normalizes match pair ordering", () => {
@@ -12,5 +12,9 @@ describe("matching helpers", () => {
     expect(canTransitionGameRequest(GameRequestStatus.pending, GameRequestStatus.accepted)).toBe(true);
     expect(canTransitionGameRequest(GameRequestStatus.accepted, GameRequestStatus.declined)).toBe(false);
   });
-});
 
+  it("allows game outcome updates only for accepted games", () => {
+    expect(canUpdateGameRequestOutcome(GameRequestStatus.accepted)).toBe(true);
+    expect(canUpdateGameRequestOutcome(GameRequestStatus.pending)).toBe(false);
+  });
+});

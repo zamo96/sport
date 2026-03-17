@@ -38,6 +38,8 @@ type ChatRoomProps = {
   gameRequests: Array<{
     id: string;
     status: "pending" | "accepted" | "declined" | "canceled";
+    outcome?: "played" | "not_played" | null;
+    outcomeUpdatedAt?: string | null;
     proposedDatetime: string;
     comment: string | null;
     sport: "tennis" | "padel" | "badminton" | "squash" | "pickleball";
@@ -49,6 +51,7 @@ type ChatRoomProps = {
       address: string;
     };
   }>;
+  showLatestRequest?: boolean;
 };
 
 export function ChatRoom({
@@ -56,7 +59,8 @@ export function ChatRoom({
   currentUserId,
   otherUser,
   initialMessages,
-    gameRequests
+  gameRequests,
+  showLatestRequest = true
 }: ChatRoomProps) {
   const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
@@ -105,7 +109,13 @@ export function ChatRoom({
         </Link>
       </Panel>
 
-      {latestRequest ? <GameRequestCard gameRequest={latestRequest} currentUserId={currentUserId} /> : null}
+      {showLatestRequest && latestRequest ? (
+        <GameRequestCard
+          gameRequest={latestRequest}
+          currentUserId={currentUserId}
+          detailsHref={`/play/games/${latestRequest.id}`}
+        />
+      ) : null}
 
       <Panel className="space-y-3">
         <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Чат</div>

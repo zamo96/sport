@@ -58,6 +58,11 @@ enum GameRequestStatus {
   canceled
 }
 
+enum GameRequestOutcome {
+  played
+  not_played
+}
+
 enum GameSearchStatus {
   active
   in_review
@@ -186,6 +191,8 @@ model GameRequest {
   format           PlayFormat
   comment          String?
   status           GameRequestStatus @default(pending)
+  outcome          GameRequestOutcome?
+  outcomeUpdatedAt DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   match            Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)

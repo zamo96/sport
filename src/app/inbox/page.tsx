@@ -79,9 +79,12 @@ export default async function InboxPage() {
                 <GameRequestCard
                   gameRequest={{
                     ...latestRequest,
-                    proposedDatetime: latestRequest.proposedDatetime.toISOString()
+                    proposedDatetime: latestRequest.proposedDatetime.toISOString(),
+                    outcome: latestRequest.outcome,
+                    outcomeUpdatedAt: latestRequest.outcomeUpdatedAt?.toISOString() ?? null
                   }}
                   currentUserId={user.id}
+                  detailsHref={`/play/games/${latestRequest.id}`}
                 />
               ) : null}
             </div>

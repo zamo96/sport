@@ -124,6 +124,44 @@ export async function getMatchDetail(matchId: string, userId: string) {
   });
 }
 
+export async function getGameRequestDetail(gameRequestId: string, userId: string) {
+  return prisma.gameRequest.findFirst({
+    where: {
+      id: gameRequestId,
+      OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+    },
+    include: {
+      proposedCourt: true,
+      createdByUser: true,
+      matchedUser: true,
+      match: {
+        include: {
+          user1: true,
+          user2: true,
+          messages: {
+            include: {
+              senderUser: true
+            },
+            orderBy: {
+              createdAt: "asc"
+            }
+          },
+          gameRequests: {
+            include: {
+              proposedCourt: true,
+              createdByUser: true,
+              matchedUser: true
+            },
+            orderBy: {
+              createdAt: "desc"
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
 export type CourtsFilters = {
   surface?: "hard" | "clay" | "grass" | "any";
   setting?: "indoor" | "outdoor";

@@ -37,7 +37,8 @@ export function serializeCourt(court: Court & { distanceKm?: number | null }) {
 export function serializeGameRequest(gameRequest: GameRequest & { proposedCourt?: Court | null }) {
   return {
     ...gameRequest,
-    proposedDatetime: gameRequest.proposedDatetime.toISOString()
+    proposedDatetime: gameRequest.proposedDatetime.toISOString(),
+    outcomeUpdatedAt: gameRequest.outcomeUpdatedAt?.toISOString() ?? null
   };
 }
 
