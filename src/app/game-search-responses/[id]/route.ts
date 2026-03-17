@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           data: {
             matchId: match.id,
             senderUserId: response.gameSearch.createdByUserId,
-            text: `Я подтвердил(а) твой отклик на поиск игры. Давай согласуем корт и время.`
+            text: `Я подтвердил(а) твой отклик на поиск игры. Давай согласуем площадку и время.`
           }
         });
       } else {

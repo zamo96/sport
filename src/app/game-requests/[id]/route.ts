@@ -68,6 +68,44 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
       });
 
+      if (body.status !== undefined) {
+        const statusMessage = getStatusChangeMessage(body.status);
+
+        if (statusMessage) {
+          await tx.chatMessage.createMany({
+            data: [
+              {
+                matchId: gameRequest.matchId,
+                gameRequestId: null,
+                senderUserId: user.id,
+                text: statusMessage
+              },
+              {
+                matchId: gameRequest.matchId,
+                gameRequestId: gameRequest.id,
+                senderUserId: user.id,
+                text: statusMessage
+              }
+            ]
+          });
+        }
+      }
+
+      if (body.outcome !== undefined) {
+        const outcomeMessage = getOutcomeChangeMessage(body.outcome);
+
+        if (outcomeMessage) {
+          await tx.chatMessage.create({
+            data: {
+              matchId: gameRequest.matchId,
+              gameRequestId: gameRequest.id,
+              senderUserId: user.id,
+              text: outcomeMessage
+            }
+          });
+        }
+      }
+
       await tx.match.update({
         where: { id: gameRequest.matchId },
         data: { updatedAt: new Date() }
@@ -85,5 +123,29 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     return fail(getErrorMessage(error));
+  }
+}
+
+function getStatusChangeMessage(status: GameRequestStatus) {
+  switch (status) {
+    case GameRequestStatus.accepted:
+      return "Игра подтверждена. Дальше обсуждаем только эту договоренность в отдельном чате игры.";
+    case GameRequestStatus.declined:
+      return "Предложение игры отклонено.";
+    case GameRequestStatus.canceled:
+      return "Игра отменена. Оба участника видят обновление статуса.";
+    default:
+      return null;
+  }
+}
+
+function getOutcomeChangeMessage(outcome: GameRequestOutcome | null) {
+  switch (outcome) {
+    case GameRequestOutcome.played:
+      return "Отметили, что игра состоялась.";
+    case GameRequestOutcome.not_played:
+      return "Отметили, что сыграть не удалось.";
+    default:
+      return null;
   }
 }

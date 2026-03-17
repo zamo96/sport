@@ -18,6 +18,7 @@ import { getPrimarySportLevel, normalizeSportLevels, normalizeSports, syncSportL
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
 import { SportLevelsEditor } from "@/components/forms/sport-levels-editor";
+import { SearchAreaMap } from "@/components/maps/search-area-map";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -94,6 +95,9 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchCenterLat = user.homeLat ?? null;
+  const searchCenterLng = user.homeLng ?? null;
+  const isApproximateSearchArea = searchCenterLat == null || searchCenterLng == null;
 
   function setField<Key extends keyof ProfilePayload>(key: Key, value: ProfilePayload[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -332,6 +336,21 @@ export function ProfileForm({
                   </Field>
                 </div>
 
+                <Field label="Район и радиус поиска">
+                  <SearchAreaMap
+                    centerLat={searchCenterLat}
+                    centerLng={searchCenterLng}
+                    radiusKm={form.searchRadiusKm}
+                    city={form.city ?? DEFAULT_CITY}
+                    isApproximate={isApproximateSearchArea}
+                  />
+                  <div className="mt-2 text-xs leading-5 text-ink/55">
+                    {isApproximateSearchArea
+                      ? "Пока показываем примерный район поиска от центра Санкт-Петербурга. Точный выбор района подключим позже."
+                      : `Текущий круг поиска: ${form.searchRadiusKm} км вокруг твоего района.`}
+                  </div>
+                </Field>
+
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Формат игры">
                     <select
@@ -554,6 +573,21 @@ export function ProfileForm({
                 />
               </Field>
             </div>
+
+            <Field label="Район и радиус поиска" className="mt-3">
+              <SearchAreaMap
+                centerLat={searchCenterLat}
+                centerLng={searchCenterLng}
+                radiusKm={form.searchRadiusKm}
+                city={form.city ?? DEFAULT_CITY}
+                isApproximate={isApproximateSearchArea}
+              />
+              <div className="mt-2 text-xs leading-5 text-ink/55">
+                {isApproximateSearchArea
+                  ? "Пока карта строится от центра Санкт-Петербурга. Когда подключим точный выбор района, круг будет считаться от домашней точки."
+                  : `Сейчас показываем радиус ${form.searchRadiusKm} км вокруг твоего района.`}
+              </div>
+            </Field>
 
             <Field label="Уровни по видам спорта" className="mt-3">
               <SportLevelsEditor

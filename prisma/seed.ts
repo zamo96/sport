@@ -24,6 +24,10 @@ async function main() {
   await prisma.court.deleteMany();
   await prisma.user.deleteMany();
 
+  const tomorrowAt1930 = new Date();
+  tomorrowAt1930.setDate(tomorrowAt1930.getDate() + 1);
+  tomorrowAt1930.setHours(19, 30, 0, 0);
+
   const users = await Promise.all(
     [
       {
@@ -263,11 +267,13 @@ async function main() {
         preferredDays: ["monday"],
         preferredTimeRanges: ["evening"],
         searchType: GameSearchType.hot,
-        hotWindow: HotSearchWindow.today,
+        hotWindow: HotSearchWindow.tomorrow,
+        hotStartsAt: tomorrowAt1930,
+        durationMinutes: 90,
         hasCourtBooked: true,
         sport: Sport.table_tennis,
         format: PlayFormat.singles,
-        comment: "Игрок сорвался сегодня вечером. Стол уже забронирован, нужен партнер срочно.",
+        comment: "Игрок сорвался на завтра вечером. Стол уже забронирован, нужен партнер срочно.",
         status: GameSearchStatus.in_review,
         isActive: true
       }
@@ -291,7 +297,7 @@ async function main() {
       {
         gameSearchId: gameSearches[2].id,
         responderUserId: anna.id,
-        message: "Могу подстроиться сегодня вечером и быстро подтвердить.",
+        message: "Могу подстроиться завтра вечером и быстро подтвердить.",
         status: GameSearchResponseStatus.pending
       }
     ]

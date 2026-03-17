@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PlayFormat, type Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
-import { PLAY_FORMAT_LABELS } from "@/lib/constants";
+import { PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
 import { SportPicker } from "@/components/forms/sport-picker";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -19,6 +19,7 @@ type CourtOption = {
   id: string;
   name: string;
   address: string;
+  supportedSports?: Sport[];
 };
 
 export function GameRequestForm({
@@ -36,8 +37,8 @@ export function GameRequestForm({
 }) {
   const router = useRouter();
   const [matchId, setMatchId] = useState(defaultMatchId ?? matches[0]?.id ?? "");
-  const [proposedCourtId, setProposedCourtId] = useState(defaultCourtId ?? courts[0]?.id ?? "");
   const [sport, setSport] = useState<Sport>(availableSports[0] ?? "tennis");
+  const [proposedCourtId, setProposedCourtId] = useState(defaultCourtId ?? courts[0]?.id ?? "");
   const [proposedDatetime, setProposedDatetime] = useState(() => {
     const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
     date.setHours(19, 0, 0, 0);
@@ -49,6 +50,11 @@ export function GameRequestForm({
   const [levelRangeMax, setLevelRangeMax] = useState("6");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchLabels = SPORT_SEARCH_LABELS[sport];
+  const visibleCourts = useMemo(
+    () => courts.filter((court) => !court.supportedSports || court.supportedSports.length === 0 || court.supportedSports.includes(sport)),
+    [courts, sport]
+  );
 
   const disabled = useMemo(() => !matchId || !proposedCourtId || !proposedDatetime, [matchId, proposedCourtId, proposedDatetime]);
 
@@ -86,7 +92,11 @@ export function GameRequestForm({
           <SportPicker
             value={[sport]}
             options={availableSports}
-            onChange={(value) => setSport((value[0] as Sport | undefined) ?? "tennis")}
+            onChange={(value) => {
+              const nextSport = (value[0] as Sport | undefined) ?? "tennis";
+              setSport(nextSport);
+              setProposedCourtId("");
+            }}
           />
         </Field>
 
@@ -100,9 +110,10 @@ export function GameRequestForm({
           </select>
         </Field>
 
-        <Field label="Корт">
+        <Field label={searchLabels.centerLabel}>
           <select className="input" value={proposedCourtId} onChange={(event) => setProposedCourtId(event.target.value)}>
-            {courts.map((court) => (
+            <option value="">Выбери площадку</option>
+            {visibleCourts.map((court) => (
               <option key={court.id} value={court.id}>
                 {court.name} · {court.address}
               </option>
@@ -144,7 +155,7 @@ export function GameRequestForm({
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             className="input min-h-[100px] resize-none py-3"
-            placeholder="Могу сразу забронировать этот корт."
+            placeholder={`Могу сразу согласовать ${searchLabels.centerLabel.toLowerCase()}.`}
           />
         </Field>
       </Panel>

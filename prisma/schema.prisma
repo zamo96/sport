@@ -205,21 +205,25 @@ model GameRequest {
   createdByUser    User              @relation("GameRequestCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   matchedUser      User              @relation("GameRequestRecipient", fields: [matchedUserId], references: [id], onDelete: Cascade)
   proposedCourt    Court             @relation(fields: [proposedCourtId], references: [id], onDelete: Restrict)
+  messages         ChatMessage[]
 
   @@index([matchedUserId, status])
   @@index([createdByUserId, status])
 }
 
 model ChatMessage {
-  id           String   @id @default(cuid())
-  matchId      String
-  senderUserId String
-  text         String
-  createdAt    DateTime @default(now())
-  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  senderUser   User     @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+  id            String       @id @default(cuid())
+  matchId       String
+  gameRequestId String?
+  senderUserId  String
+  text          String
+  createdAt     DateTime     @default(now())
+  match         Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  gameRequest   GameRequest? @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
+  senderUser    User         @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
 
   @@index([matchId, createdAt])
+  @@index([gameRequestId, createdAt])
 }
 
 model GameSearch {
@@ -230,6 +234,8 @@ model GameSearch {
   preferredTimeRanges Json
   searchType          GameSearchType       @default(regular)
   hotWindow           HotSearchWindow?
+  hotStartsAt         DateTime?
+  durationMinutes     Int?
   hasCourtBooked      Boolean              @default(false)
   sport               Sport                @default(tennis)
   format              PlayFormat

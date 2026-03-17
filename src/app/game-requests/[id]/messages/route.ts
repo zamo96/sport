@@ -5,11 +5,11 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
 
-async function getMatchForUser(matchId: string, userId: string) {
-  return prisma.match.findFirst({
+async function getGameRequestForUser(gameRequestId: string, userId: string) {
+  return prisma.gameRequest.findFirst({
     where: {
-      id: matchId,
-      OR: [{ user1Id: userId }, { user2Id: userId }]
+      id: gameRequestId,
+      OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
     }
   });
 }
@@ -17,16 +17,16 @@ async function getMatchForUser(matchId: string, userId: string) {
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await requireSessionUser();
-    const match = await getMatchForUser(params.id, user.id);
+    const gameRequest = await getGameRequestForUser(params.id, user.id);
 
-    if (!match) {
-      return fail("Мэтч не найден", 404);
+    if (!gameRequest) {
+      return fail("Игра не найдена", 404);
     }
 
     const messages = await prisma.chatMessage.findMany({
       where: {
-        matchId: match.id,
-        gameRequestId: null
+        matchId: gameRequest.matchId,
+        gameRequestId: gameRequest.id
       },
       include: {
         senderUser: true
@@ -55,17 +55,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   try {
     const user = await requireSessionUser();
     const body = messageSchema.parse(await request.json());
-    const match = await getMatchForUser(params.id, user.id);
+    const gameRequest = await getGameRequestForUser(params.id, user.id);
 
-    if (!match) {
-      return fail("Мэтч не найден", 404);
+    if (!gameRequest) {
+      return fail("Игра не найдена", 404);
     }
 
     const message = await prisma.$transaction(async (tx) => {
       const created = await tx.chatMessage.create({
         data: {
-          matchId: match.id,
-          gameRequestId: null,
+          matchId: gameRequest.matchId,
+          gameRequestId: gameRequest.id,
           senderUserId: user.id,
           text: body.text
         },
@@ -74,8 +74,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         }
       });
 
+      await tx.gameRequest.update({
+        where: { id: gameRequest.id },
+        data: { updatedAt: new Date() }
+      });
+
       await tx.match.update({
-        where: { id: match.id },
+        where: { id: gameRequest.matchId },
         data: { updatedAt: new Date() }
       });
 

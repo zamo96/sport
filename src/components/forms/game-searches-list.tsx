@@ -31,6 +31,8 @@ type SearchItem = {
   status: "active" | "in_review" | "matched" | "closed";
   searchType: "regular" | "hot";
   hotWindow: "today" | "tomorrow" | null;
+  hotStartsAt?: string | null;
+  durationMinutes?: number | null;
   hasCourtBooked: boolean;
   sport: Sport;
   preferredDays: unknown;
@@ -71,6 +73,15 @@ function GameSearchCard({ search }: { search: SearchItem }) {
   const timeRanges = Array.isArray(search.preferredTimeRanges) ? search.preferredTimeRanges : [];
   const pendingResponses = search.responses.filter((response) => response.status === "pending");
   const approvedResponse = search.responses.find((response) => response.status === "approved");
+  const hotScheduleLabel =
+    search.searchType === "hot" && search.hotStartsAt
+      ? `${new Date(search.hotStartsAt).toLocaleString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        })}${search.durationMinutes ? ` · ${search.durationMinutes} мин` : ""}`
+      : null;
 
   return (
     <Panel className="space-y-4">
@@ -102,6 +113,9 @@ function GameSearchCard({ search }: { search: SearchItem }) {
           <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
             {HOT_SEARCH_WINDOW_LABELS[search.hotWindow]}
           </span>
+        ) : null}
+        {hotScheduleLabel ? (
+          <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{hotScheduleLabel}</span>
         ) : null}
         {search.hasCourtBooked ? (
           <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Корт уже есть</span>

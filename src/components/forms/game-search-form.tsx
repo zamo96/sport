@@ -6,7 +6,7 @@ import { HotSearchWindow, PlayFormat, type GameSearchType, type Sport } from "@p
 import { Flame } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
-import { HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS } from "@/lib/constants";
+import { HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ type CourtOption = {
   id: string;
   name: string;
   address: string;
+  supportedSports?: Sport[];
 };
 
 export function GameSearchForm({
@@ -30,6 +31,8 @@ export function GameSearchForm({
   const router = useRouter();
   const [searchType, setSearchType] = useState<GameSearchType>(initialMode);
   const [hotWindow, setHotWindow] = useState<HotSearchWindow>(HotSearchWindow.today);
+  const [hotStartTime, setHotStartTime] = useState("19:00");
+  const [durationMinutes, setDurationMinutes] = useState(90);
   const [hasCourtBooked, setHasCourtBooked] = useState(false);
   const [sport, setSport] = useState<Sport>(availableSports[0] ?? "tennis");
   const [preferredCourtId, setPreferredCourtId] = useState("");
@@ -39,6 +42,11 @@ export function GameSearchForm({
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchLabels = SPORT_SEARCH_LABELS[sport];
+  const visibleCourts = useMemo(
+    () => courts.filter((court) => !court.supportedSports || court.supportedSports.length === 0 || court.supportedSports.includes(sport)),
+    [courts, sport]
+  );
 
   const disabled = useMemo(() => {
     if (preferredTimeRanges.length === 0) {
@@ -49,8 +57,8 @@ export function GameSearchForm({
       return preferredDays.length === 0;
     }
 
-    return false;
-  }, [preferredDays, preferredTimeRanges, searchType]);
+    return !hotStartTime || !durationMinutes;
+  }, [durationMinutes, hotStartTime, preferredDays, preferredTimeRanges, searchType]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -63,9 +71,11 @@ export function GameSearchForm({
         body: JSON.stringify({
           preferredCourtId: preferredCourtId || null,
           preferredDays,
-          preferredTimeRanges,
+          preferredTimeRanges: searchType === "hot" ? [getTimeRangeFromTime(hotStartTime)] : preferredTimeRanges,
           searchType,
           hotWindow: searchType === "hot" ? hotWindow : null,
+          hotStartTime: searchType === "hot" ? hotStartTime : null,
+          durationMinutes: searchType === "hot" ? durationMinutes : null,
           hasCourtBooked,
           sport,
           format,
@@ -88,9 +98,17 @@ export function GameSearchForm({
           <SportPicker
             value={[sport]}
             options={availableSports}
-            onChange={(value) => setSport((value[0] as Sport | undefined) ?? "tennis")}
+            onChange={(value) => {
+              const nextSport = (value[0] as Sport | undefined) ?? "tennis";
+              setSport(nextSport);
+              setPreferredCourtId("");
+            }}
           />
         </Field>
+
+        <Panel className="bg-cream text-sm leading-6 text-ink/72">
+          Форма подстраивается под выбранный вид спорта. Сейчас поиск будет создан для: <span className="font-semibold text-ink">{searchLabels.centerLabel.toLowerCase()}</span>.
+        </Panel>
 
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -144,22 +162,40 @@ export function GameSearchForm({
               </div>
             </Field>
 
-            <Field label="Интервал времени">
-              <AvailabilityPicker
-                days={[]}
-                timeRanges={preferredTimeRanges}
-                onDaysChange={() => undefined}
-                onTimeRangesChange={setPreferredTimeRanges}
-                hideDays
-              />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Начало игры">
+                <input
+                  type="time"
+                  value={hotStartTime}
+                  onChange={(event) => setHotStartTime(event.target.value)}
+                  className="input"
+                />
+              </Field>
+              <Field label="Длительность">
+                <select
+                  className="input"
+                  value={durationMinutes}
+                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                >
+                  {[60, 90, 120, 150, 180].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes} минут
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Panel className="bg-cream text-sm leading-6 text-ink/70">
+              В горячем поиске показывается точное время начала и длительность. После времени старта объявление автоматически исчезает из списка срочных.
+            </Panel>
 
             <div className="rounded-[24px] bg-red-50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-ink">Корт уже есть</div>
+                  <div className="text-sm font-semibold text-ink">{searchLabels.bookedTitle}</div>
                   <div className="mt-1 text-xs leading-5 text-ink/60">
-                    Включи, если площадка уже найдена или забронирована и нужен только игрок.
+                    {searchLabels.bookedHint}
                   </div>
                 </div>
                 <button
@@ -186,10 +222,10 @@ export function GameSearchForm({
           </select>
         </Field>
 
-        <Field label="Предпочтительный корт">
+        <Field label={searchType === "hot" ? searchLabels.centerLabel : `Предпочтительный ${searchLabels.centerLabel.toLowerCase()}`}>
           <select className="input" value={preferredCourtId} onChange={(event) => setPreferredCourtId(event.target.value)}>
-            <option value="">Любой корт</option>
-            {courts.map((court) => (
+            <option value="">{searchLabels.anyCenterLabel}</option>
+            {visibleCourts.map((court) => (
               <option key={court.id} value={court.id}>
                 {court.name} · {court.address}
               </option>
@@ -205,8 +241,8 @@ export function GameSearchForm({
             className="input min-h-[100px] resize-none py-3"
             placeholder={
               searchType === "hot"
-                ? "Игрок сорвался, корт забронирован на вечер, нужен партнер примерно моего уровня."
-                : "Ищу быструю игру после работы."
+                ? searchLabels.hotPlaceholder
+                : searchLabels.regularPlaceholder
             }
           />
         </Field>
@@ -228,6 +264,20 @@ export function GameSearchForm({
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </form>
   );
+}
+
+function getTimeRangeFromTime(value: string) {
+  const hours = Number(value.split(":")[0] ?? "0");
+
+  if (hours < 12) {
+    return "morning";
+  }
+
+  if (hours < 18) {
+    return "day";
+  }
+
+  return "evening";
 }
 
 function Field({

@@ -14,6 +14,9 @@ export async function GET() {
         user1: true,
         user2: true,
         messages: {
+          where: {
+            gameRequestId: null
+          },
           orderBy: { createdAt: "desc" },
           take: 1
         },

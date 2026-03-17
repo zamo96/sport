@@ -7,6 +7,7 @@ import type { Sport } from "@prisma/client";
 import { apiFetch } from "@/lib/client-api";
 import {
   getGameRequestTone,
+  isPastGameRequest,
   needsGameRequestOutcome,
   translateGameRequestOutcome,
   translateGameRequestStatus
@@ -40,6 +41,7 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
   const router = useRouter();
   const isRecipient = gameRequest.matchedUserId === currentUserId;
   const isPending = gameRequest.status === "pending";
+  const isAcceptedUpcoming = gameRequest.status === "accepted" && !isPastGameRequest(gameRequest.proposedDatetime);
   const tone = getGameRequestTone({
     status: gameRequest.status,
     proposedDatetime: gameRequest.proposedDatetime,
@@ -110,6 +112,11 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
       {isPending && !isRecipient ? (
         <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
           Отменить предложение
+        </Button>
+      ) : null}
+      {isAcceptedUpcoming ? (
+        <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
+          Отменить подтвержденную игру
         </Button>
       ) : null}
       {isAwaitingOutcome ? (

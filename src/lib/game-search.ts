@@ -22,3 +22,29 @@ export function resolveSearchDays(
 
   return DAY_OPTIONS.includes(resolvedDay) ? [resolvedDay] : [];
 }
+
+export function resolveHotSearchStartAt(hotWindow: HotSearchWindow, time: string) {
+  const [hoursString, minutesString] = time.split(":");
+  const hours = Number(hoursString);
+  const minutes = Number(minutesString);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
+    return null;
+  }
+
+  const targetDate = new Date();
+  if (hotWindow === "tomorrow") {
+    targetDate.setDate(targetDate.getDate() + 1);
+  }
+
+  targetDate.setHours(hours, minutes, 0, 0);
+  return targetDate;
+}
+
+export function isExpiredHotSearch(startsAt: string | Date | null | undefined) {
+  if (!startsAt) {
+    return false;
+  }
+
+  return new Date(startsAt).getTime() <= Date.now();
+}

@@ -1,4 +1,5 @@
 import { requireSessionUser } from "@/lib/auth";
+import { isExpiredHotSearch } from "@/lib/game-search";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
@@ -30,7 +31,9 @@ export async function GET() {
       gameSearches: gameSearches.map((gameSearch) => ({
         ...gameSearch,
         createdAt: gameSearch.createdAt.toISOString(),
-        updatedAt: gameSearch.updatedAt.toISOString()
+        updatedAt: gameSearch.updatedAt.toISOString(),
+        hotStartsAt: gameSearch.hotStartsAt?.toISOString() ?? null,
+        isExpired: isExpiredHotSearch(gameSearch.hotStartsAt)
       }))
     });
   } catch (error) {

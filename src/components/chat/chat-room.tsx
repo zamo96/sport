@@ -7,6 +7,7 @@ import { SendHorizonal } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
+import { isPastGameRequest } from "@/lib/game-requests";
 import { getPrimarySport, getSportLevel } from "@/lib/sport-levels";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,10 @@ export function ChatRoom({
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const latestRequest = gameRequests[0];
+  const upcomingBookedGames = gameRequests.filter(
+    (request) => request.status === "accepted" && !isPastGameRequest(request.proposedDatetime)
+  );
+  const shouldShowLatestRequest = showLatestRequest && latestRequest && !upcomingBookedGames.some((request) => request.id === latestRequest.id);
   const primarySport = getPrimarySport(otherUser.preferredSports);
   const primarySportLevel = getSportLevel(otherUser.sportLevels, primarySport, otherUser.tennisLevel ?? 5);
 
@@ -110,7 +115,21 @@ export function ChatRoom({
         </Link>
       </Panel>
 
-      {showLatestRequest && latestRequest ? (
+      {upcomingBookedGames.length > 0 ? (
+        <div className="space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уже забронировано</div>
+          {upcomingBookedGames.map((request) => (
+            <GameRequestCard
+              key={request.id}
+              gameRequest={request}
+              currentUserId={currentUserId}
+              detailsHref={`/play/games/${request.id}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {shouldShowLatestRequest && latestRequest ? (
         <GameRequestCard
           gameRequest={latestRequest}
           currentUserId={currentUserId}

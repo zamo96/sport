@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Теннисный партнер",
     short_name: "Теннис",
-    description: "Поиск партнера по ракетным видам спорта со свайпами, быстрым мэтчингом и выбором корта.",
+    description: "Поиск партнера по спорту со свайпами, быстрым мэтчингом и выбором площадки.",
     start_url: "/",
     display: "standalone",
     background_color: "#F4EFE6",

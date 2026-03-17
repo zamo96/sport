@@ -28,7 +28,7 @@ export default async function NewProposalPage({
       <SectionTitle
         eyebrow="Предложение"
         title="Отправь готовое предложение на игру."
-        subtitle="Один экран: вид спорта, игрок, корт, время и формат. Комментарий оставляй коротким."
+        subtitle="Один экран: вид спорта, игрок, площадка, время и формат. Комментарий оставляй коротким."
       />
       <GameRequestForm
         availableSports={availableSports as Sport[]}
@@ -39,7 +39,10 @@ export default async function NewProposalPage({
         courts={courts.map((court) => ({
           id: court.id,
           name: court.name,
-          address: court.address
+          address: court.address,
+          supportedSports: Array.isArray(court.supportedSports)
+            ? court.supportedSports.filter((sport): sport is Sport => typeof sport === "string")
+            : []
         }))}
         defaultMatchId={searchParams.matchId}
         defaultCourtId={searchParams.courtId}

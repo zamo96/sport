@@ -10,6 +10,7 @@ describe("matching helpers", () => {
 
   it("allows only valid game request transitions", () => {
     expect(canTransitionGameRequest(GameRequestStatus.pending, GameRequestStatus.accepted)).toBe(true);
+    expect(canTransitionGameRequest(GameRequestStatus.accepted, GameRequestStatus.canceled)).toBe(true);
     expect(canTransitionGameRequest(GameRequestStatus.accepted, GameRequestStatus.declined)).toBe(false);
   });
 

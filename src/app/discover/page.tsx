@@ -7,6 +7,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { FiltersBar } from "@/components/discover/filters-bar";
 import { DiscoverTabs } from "@/components/discover/discover-tabs";
 import { SeekingPlayersList } from "@/components/discover/seeking-players-list";
+import { UpcomingGames } from "@/components/discover/upcoming-games";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -14,7 +15,7 @@ import { SectionTitle } from "@/components/ui/section-title";
 import { PLAY_FORMAT_LABELS } from "@/lib/constants";
 import { getSportLevelEntries } from "@/lib/sport-levels";
 import { SportBadge } from "@/components/ui/sport-badge";
-import { getDiscoverPageData, getHotPlayers, getSeekingPlayers } from "@/server/app-data";
+import { getDiscoverPageData, getHotPlayers, getSeekingPlayers, getUpcomingGamesForUser } from "@/server/app-data";
 import { serializeUserPreview } from "@/server/serializers";
 
 export default async function DiscoverPage({
@@ -53,10 +54,11 @@ export default async function DiscoverPage({
   const isSeekingView = parsedFilters.view === "seeking";
   const isHotView = parsedFilters.view === "hot";
   const userSportLevels = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
-  const [{ candidates }, seekingPlayers, hotPlayers] = await Promise.all([
+  const [{ candidates }, seekingPlayers, hotPlayers, upcomingGames] = await Promise.all([
     getDiscoverPageData(user.id, parsedFilters),
     getSeekingPlayers(user.id, parsedFilters),
-    getHotPlayers(user.id, parsedFilters)
+    getHotPlayers(user.id, parsedFilters),
+    getUpcomingGamesForUser(user.id)
   ]);
 
   return (
@@ -106,6 +108,27 @@ export default async function DiscoverPage({
             <Button fullWidth variant="ghost">Мои поиски</Button>
           </a>
         </div>
+        <UpcomingGames
+          currentUserId={user.id}
+          games={upcomingGames.map((game) => ({
+            id: game.id,
+            opponentName: game.createdByUserId === user.id ? game.matchedUser.name : game.createdByUser.name,
+            matchId: game.matchId,
+            status: game.status,
+            outcome: game.outcome,
+            outcomeUpdatedAt: game.outcomeUpdatedAt?.toISOString() ?? null,
+            proposedDatetime: game.proposedDatetime.toISOString(),
+            comment: game.comment,
+            sport: game.sport,
+            format: game.format,
+            createdByUserId: game.createdByUserId,
+            matchedUserId: game.matchedUserId,
+            proposedCourt: {
+              name: game.proposedCourt.name,
+              address: game.proposedCourt.address
+            }
+          }))}
+        />
         <DiscoverTabs />
         <FiltersBar />
         {isSeekingView || isHotView ? (
@@ -133,6 +156,8 @@ export default async function DiscoverPage({
                     preferredTimeRanges: gameSearch.preferredTimeRanges,
                     searchType: gameSearch.searchType,
                     hotWindow: gameSearch.hotWindow,
+                    hotStartsAt: gameSearch.hotStartsAt?.toISOString() ?? null,
+                    durationMinutes: gameSearch.durationMinutes ?? null,
                     hasCourtBooked: gameSearch.hasCourtBooked,
                     sport: gameSearch.sport,
                     format: gameSearch.format,

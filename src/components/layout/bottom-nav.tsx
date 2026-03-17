@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const items = [
   { href: "/discover", label: "Поиск", icon: Compass },
   { href: "/inbox", label: "Мэтчи", icon: MessageCircle },
-  { href: "/play/courts", label: "Корты", icon: Trophy },
+  { href: "/play/courts", label: "Центры", icon: Trophy },
   { href: "/profile", label: "Профиль", icon: User2 },
   { href: "/settings", label: "Ещё", icon: Settings2 }
 ];

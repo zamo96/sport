@@ -32,6 +32,8 @@ type SeekingUser = {
     preferredTimeRanges: unknown;
     searchType: "regular" | "hot";
     hotWindow: "today" | "tomorrow" | null;
+    hotStartsAt?: string | null;
+    durationMinutes?: number | null;
     hasCourtBooked: boolean;
     sport: Sport;
     format: "singles" | "doubles" | "both";
@@ -77,6 +79,15 @@ export function SeekingPlayersList({
         const searchDays = latestSearch && Array.isArray(latestSearch.preferredDays) ? latestSearch.preferredDays : [];
         const searchTimeRanges =
           latestSearch && Array.isArray(latestSearch.preferredTimeRanges) ? latestSearch.preferredTimeRanges : [];
+        const hotScheduleLabel =
+          latestSearch?.searchType === "hot" && latestSearch.hotStartsAt
+            ? `${new Date(latestSearch.hotStartsAt).toLocaleString("ru-RU", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit"
+              })}${latestSearch.durationMinutes ? ` · ${latestSearch.durationMinutes} мин` : ""}`
+            : null;
         const myResponseStatus = latestSearch?.responses?.[0]?.status;
         const sports = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
 
@@ -163,6 +174,11 @@ export function SeekingPlayersList({
                   {latestSearch.hotWindow ? (
                     <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-red-700">
                       {HOT_SEARCH_WINDOW_LABELS[latestSearch.hotWindow]}
+                    </span>
+                  ) : null}
+                  {hotScheduleLabel ? (
+                    <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-red-700">
+                      {hotScheduleLabel}
                     </span>
                   ) : null}
                   {latestSearch.hasCourtBooked ? (

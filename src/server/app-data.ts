@@ -4,6 +4,22 @@ import { type DiscoverFilters } from "@/lib/scoring";
 import { courtSupportsSport } from "@/lib/courts";
 import { getDiscoverCandidates } from "@/server/discover";
 
+async function closeExpiredHotSearches() {
+  await prisma.gameSearch.updateMany({
+    where: {
+      searchType: "hot",
+      isActive: true,
+      hotStartsAt: {
+        lte: new Date()
+      }
+    },
+    data: {
+      isActive: false,
+      status: "closed"
+    }
+  });
+}
+
 export async function getViewerWithGuard(userId: string) {
   return prisma.user.findUnique({
     where: { id: userId }
@@ -23,6 +39,7 @@ export async function getDiscoverPageData(userId: string, filters: DiscoverFilte
 }
 
 export async function getSeekingPlayers(userId: string, filters: DiscoverFilters = {}) {
+  await closeExpiredHotSearches();
   return getDiscoverCandidates(userId, {
     ...filters,
     view: "seeking"
@@ -30,6 +47,7 @@ export async function getSeekingPlayers(userId: string, filters: DiscoverFilters
 }
 
 export async function getHotPlayers(userId: string, filters: DiscoverFilters = {}) {
+  await closeExpiredHotSearches();
   return getDiscoverCandidates(userId, {
     ...filters,
     view: "hot"
@@ -37,6 +55,7 @@ export async function getHotPlayers(userId: string, filters: DiscoverFilters = {
 }
 
 export async function getGameSearchesForUser(userId: string) {
+  await closeExpiredHotSearches();
   return prisma.gameSearch.findMany({
     where: {
       createdByUserId: userId
@@ -59,6 +78,28 @@ export async function getGameSearchesForUser(userId: string) {
   });
 }
 
+export async function getUpcomingGamesForUser(userId: string) {
+  return prisma.gameRequest.findMany({
+    where: {
+      status: "accepted",
+      proposedDatetime: {
+        gte: new Date()
+      },
+      OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+    },
+    include: {
+      proposedCourt: true,
+      createdByUser: true,
+      matchedUser: true,
+      match: true
+    },
+    orderBy: {
+      proposedDatetime: "asc"
+    },
+    take: 5
+  });
+}
+
 export async function getMatchesForUser(userId: string) {
   return prisma.match.findMany({
     where: {
@@ -70,6 +111,9 @@ export async function getMatchesForUser(userId: string) {
       messages: {
         include: {
           senderUser: true
+        },
+        where: {
+          gameRequestId: null
         },
         orderBy: {
           createdAt: "desc"
@@ -107,6 +151,9 @@ export async function getMatchDetail(matchId: string, userId: string) {
         include: {
           senderUser: true
         },
+        where: {
+          gameRequestId: null
+        },
         orderBy: {
           createdAt: "asc"
         }
@@ -133,6 +180,14 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
     },
     include: {
       proposedCourt: true,
+      messages: {
+        include: {
+          senderUser: true
+        },
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
       createdByUser: true,
       matchedUser: true,
       match: {
@@ -142,6 +197,9 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
           messages: {
             include: {
               senderUser: true
+            },
+            where: {
+              gameRequestId: null
             },
             orderBy: {
               createdAt: "asc"

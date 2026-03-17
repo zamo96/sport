@@ -125,14 +125,14 @@ export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
             </div>
             <h3 className="mt-4 text-2xl font-bold">Карточки закончились</h3>
             <p className="mt-2 max-w-xs text-sm leading-6 text-ink/65">
-              Измени фильтры, загляни позже или перейди к кортам для текущих мэтчей.
+              Измени фильтры, загляни позже или перейди к спортивным центрам для текущих мэтчей.
             </p>
             <div className="mt-5 flex gap-3">
               <Link href="/inbox">
                 <Button>Открыть мэтчи</Button>
               </Link>
               <Link href="/play/courts">
-                <Button variant="ghost">Посмотреть корты</Button>
+                <Button variant="ghost">Посмотреть центры</Button>
               </Link>
             </div>
           </Panel>
@@ -250,7 +250,7 @@ export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
           <div className="mt-1 text-xl font-bold text-ink">Осталось {Math.max(remaining, 0)} карточек</div>
         </div>
         <Link href="/play/courts" className="text-sm font-semibold text-clay">
-          Сначала выбрать корт
+          Сначала выбрать центр
         </Link>
       </Panel>
 
@@ -260,7 +260,7 @@ export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">Это мэтч</div>
             <h3 className="text-3xl font-bold leading-none text-ink">{matchName} тоже поставил(а) лайк.</h3>
             <p className="text-sm leading-6 text-ink/68">
-              Переходи в чат и сразу отправляй предложение с кортом и временем.
+              Переходи в чат и сразу отправляй предложение с площадкой и временем.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Button variant="ghost" fullWidth onClick={() => setMatchId(null)}>

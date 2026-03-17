@@ -44,6 +44,8 @@ export default async function GameSearchesPage() {
           status: search.status,
           searchType: search.searchType,
           hotWindow: search.hotWindow,
+          hotStartsAt: search.hotStartsAt?.toISOString() ?? null,
+          durationMinutes: search.durationMinutes,
           hasCourtBooked: search.hasCourtBooked,
           sport: search.sport,
           preferredDays: search.preferredDays,

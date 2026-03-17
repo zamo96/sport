@@ -33,9 +33,9 @@ export default async function CourtsPage({
   return (
     <PageShell>
       <SectionTitle
-        eyebrow="Корты"
+        eyebrow="Спортивные центры"
         title="Выбери место до начала переписки."
-        subtitle="Пока показываем только площадки Санкт-Петербурга. Карта и список фильтруются по видам спорта."
+        subtitle="Пока показываем только площадки и спортивные центры Санкт-Петербурга. Карта и список фильтруются по видам спорта."
       />
       <CourtsBrowser courts={courts.map(serializeCourt)} />
     </PageShell>

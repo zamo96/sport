@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
 import { PageShell } from "@/components/layout/page-shell";
-import { ChatRoom } from "@/components/chat/chat-room";
+import { GameRequestChatRoom } from "@/components/chat/game-request-chat-room";
 import { GameRequestCard } from "@/components/chat/game-request-card";
 import { Button } from "@/components/ui/button";
 import { SectionTitle } from "@/components/ui/section-title";
@@ -30,7 +30,7 @@ export default async function GameRequestDetailPage({ params }: { params: { id: 
       <SectionTitle
         eyebrow="Игра"
         title="Просмотр договоренности"
-        subtitle="Здесь собраны детали игры, итоговый статус и весь чат по этому мэтчу."
+        subtitle="Здесь собраны детали игры и отдельный чат именно по этой договоренности. Общий чат мэтча остаётся отдельным."
       />
       <div className="space-y-4">
         <GameRequestCard
@@ -53,39 +53,19 @@ export default async function GameRequestDetailPage({ params }: { params: { id: 
           currentUserId={user.id}
         />
         <Link href={`/inbox/${match.id}`} className="block">
-          <Button fullWidth variant="ghost">Открыть чат мэтча отдельно</Button>
+          <Button fullWidth variant="ghost">Открыть общий чат мэтча</Button>
         </Link>
-        <ChatRoom
-          matchId={match.id}
+        <GameRequestChatRoom
+          gameRequestId={gameRequest.id}
           currentUserId={user.id}
           otherUser={{
             name: otherUser.name,
-            avatarUrl: otherUser.avatarUrl,
-            tennisLevel: otherUser.tennisLevel,
-            preferredSports: otherUser.preferredSports,
-            sportLevels: otherUser.sportLevels
+            avatarUrl: otherUser.avatarUrl
           }}
-          initialMessages={match.messages.map((message) => ({
+          initialMessages={gameRequest.messages.map((message) => ({
             ...message,
             createdAt: message.createdAt.toISOString()
           }))}
-          gameRequests={match.gameRequests.map((request) => ({
-            id: request.id,
-            status: request.status,
-            outcome: request.outcome,
-            outcomeUpdatedAt: request.outcomeUpdatedAt?.toISOString() ?? null,
-            proposedDatetime: request.proposedDatetime.toISOString(),
-            comment: request.comment,
-            sport: request.sport,
-            format: request.format,
-            createdByUserId: request.createdByUserId,
-            matchedUserId: request.matchedUserId,
-            proposedCourt: {
-              name: request.proposedCourt.name,
-              address: request.proposedCourt.address
-            }
-          }))}
-          showLatestRequest={false}
         />
       </div>
     </PageShell>

@@ -17,7 +17,7 @@ export default async function ProfilePage() {
       <SectionTitle
         eyebrow="Профиль"
         title="Настрой свою карточку, уровень и время."
-        subtitle="Эти данные влияют на ранжирование в поиске, качество мэтчей и релевантность кортов."
+        subtitle="Эти данные влияют на ранжирование в поиске, качество мэтчей и релевантность спортивных центров."
       />
       <ProfileForm user={user} />
     </PageShell>

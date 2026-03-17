@@ -26,7 +26,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
       <SectionTitle
         eyebrow="Чат"
         title={otherUser.name ?? "Чат с игроком"}
-        subtitle="Пиши коротко. Главное действие здесь — предложить игру с кортом и временем."
+        subtitle="Пиши коротко. Главное действие здесь — предложить игру с площадкой и временем."
       />
       <ChatRoom
         matchId={match.id}

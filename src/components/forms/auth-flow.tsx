@@ -65,7 +65,7 @@ export function AuthFlow() {
             Найди следующую игру свайпом.
           </h1>
           <p className="mt-3 max-w-xs text-sm leading-6 text-white/80">
-            Вход по email, быстрые мэтчи, выбор корта и договоренность об игре в одном потоке.
+            Вход по email, быстрые мэтчи, выбор площадки и договоренность об игре в одном потоке.
           </p>
         </div>
         <div className="space-y-4 p-5">

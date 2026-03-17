@@ -4,6 +4,7 @@ type YandexMapsApi = {
   YMapDefaultSchemeLayer: new (props?: Record<string, unknown>) => unknown;
   YMapDefaultFeaturesLayer: new (props?: Record<string, unknown>) => unknown;
   YMapMarker: new (props: Record<string, unknown>, element?: HTMLElement) => unknown;
+  YMapFeature?: new (props: Record<string, unknown>) => unknown;
 };
 
 type YMapInstance = {

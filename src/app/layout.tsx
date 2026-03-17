@@ -18,7 +18,7 @@ const headingFont = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "Поиск партнера для игры",
-  description: "Быстрый поиск партнера по ракетным видам спорта, мэтчинг, выбор корта и договоренность об игре.",
+  description: "Быстрый поиск партнера по спорту, мэтчинг, выбор площадки и договоренность об игре.",
   manifest: "/manifest.webmanifest"
 };
 

@@ -41,6 +41,30 @@ export async function POST(request: NextRequest) {
         }
       });
 
+      const summaryText = `Предложение игры: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+        created.comment?.trim() ? created.comment : "Открой детали, чтобы обсудить игру отдельно."
+      }`;
+
+      await tx.chatMessage.create({
+        data: {
+          matchId: match.id,
+          gameRequestId: null,
+          senderUserId: user.id,
+          text: summaryText
+        }
+      });
+
+      await tx.chatMessage.create({
+        data: {
+          matchId: match.id,
+          gameRequestId: created.id,
+          senderUserId: user.id,
+          text: created.comment?.trim()
+            ? `Создал(а) отдельный чат по этой игре. ${created.comment}`
+            : "Создал(а) отдельный чат по этой игре. Тут можно обсуждать только эту договоренность."
+        }
+      });
+
       await tx.match.update({
         where: { id: match.id },
         data: { updatedAt: new Date() }

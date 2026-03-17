@@ -148,6 +148,12 @@ export const createGameSearchSchema = z
     preferredTimeRanges: z.array(timeRangeEnum).min(1),
     searchType: z.nativeEnum(GameSearchType).default(GameSearchType.regular),
     hotWindow: z.nativeEnum(HotSearchWindow).optional().nullable(),
+    hotStartTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Укажи время начала в формате ЧЧ:ММ")
+      .optional()
+      .nullable(),
+    durationMinutes: z.number().int().min(30).max(240).optional().nullable(),
     hasCourtBooked: z.boolean().optional().default(false),
     sport: z.nativeEnum(Sport),
     format: z.nativeEnum(PlayFormat),
@@ -167,6 +173,22 @@ export const createGameSearchSchema = z
         code: z.ZodIssueCode.custom,
         path: ["hotWindow"],
         message: "Для горячего поиска выбери сегодня или завтра"
+      });
+    }
+
+    if (value.searchType === GameSearchType.hot && !value.hotStartTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["hotStartTime"],
+        message: "Для горячего поиска укажи время начала"
+      });
+    }
+
+    if (value.searchType === GameSearchType.hot && !value.durationMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["durationMinutes"],
+        message: "Для горячего поиска укажи длительность"
       });
     }
   });

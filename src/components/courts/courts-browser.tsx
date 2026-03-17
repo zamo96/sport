@@ -45,8 +45,8 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
       <Panel className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Фильтры кортов</div>
-            <div className="mt-1 text-sm text-ink/70">Площадки в {DEFAULT_CITY}. Отфильтруй по виду спорта и формату площадки.</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Фильтры центров</div>
+            <div className="mt-1 text-sm text-ink/70">Площадки и спортивные центры в {DEFAULT_CITY}. Отфильтруй по виду спорта и формату площадки.</div>
           </div>
           <div className="flex rounded-full bg-cream p-1">
             {(["list", "map"] as const).map((value) => (
@@ -130,7 +130,7 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
               </div>
               <Link href={`/play/proposals/new?courtId=${court.id}`}>
                 <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
-                  Выбрать этот корт
+                  Выбрать эту площадку
                 </div>
               </Link>
             </Panel>

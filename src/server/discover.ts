@@ -22,7 +22,10 @@ export async function getDiscoverCandidates(userId: string, filters: DiscoverFil
             gameSearches: {
               some: {
                 isActive: true,
-                searchType: "hot"
+                searchType: "hot",
+                hotStartsAt: {
+                  gt: new Date()
+                }
               }
             }
           }
@@ -69,7 +72,14 @@ export async function getDiscoverCandidates(userId: string, filters: DiscoverFil
       gameSearches: {
         where: {
           isActive: true,
-          ...(filters.view === "hot" ? { searchType: "hot" } : {})
+          ...(filters.view === "hot"
+            ? {
+                searchType: "hot",
+                hotStartsAt: {
+                  gt: new Date()
+                }
+              }
+            : {})
         },
         include: {
           preferredCourt: true,
