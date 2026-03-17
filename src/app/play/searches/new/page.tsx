@@ -36,6 +36,12 @@ export default async function NewGameSearchPage({
       <GameSearchForm
         initialMode={initialMode as GameSearchType}
         availableSports={[...SPORT_OPTIONS] as Sport[]}
+        profileSports={
+          Array.isArray(user.preferredSports)
+            ? user.preferredSports.filter((sport): sport is Sport => typeof sport === "string")
+            : []
+        }
+        sportLevels={user.sportLevels}
         courts={courts.map((court) => ({
           id: court.id,
           name: court.name,

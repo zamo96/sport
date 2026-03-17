@@ -4,12 +4,18 @@ import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { hasExplicitSportProfile } from "@/lib/sport-levels";
 import { createGameSearchSchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireSessionUser();
     const body = createGameSearchSchema.parse(await request.json());
+
+    if (!hasExplicitSportProfile(user.preferredSports, user.sportLevels, body.sport)) {
+      return fail("Сначала добавь этот вид спорта в профиль и укажи по нему уровень");
+    }
+
     const preferredDays = resolveSearchDays(body.searchType, body.preferredDays, body.hotWindow);
     const hotStartsAt =
       body.searchType === "hot" && body.hotWindow && body.hotStartTime

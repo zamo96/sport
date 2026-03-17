@@ -1,12 +1,14 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HotSearchWindow, PlayFormat, type GameSearchType, type Sport } from "@prisma/client";
 import { Flame } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
 import { HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
+import { hasExplicitSportProfile } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
 import { Button } from "@/components/ui/button";
@@ -22,11 +24,15 @@ type CourtOption = {
 export function GameSearchForm({
   courts,
   initialMode = "regular",
-  availableSports
+  availableSports,
+  profileSports,
+  sportLevels
 }: {
   courts: CourtOption[];
   initialMode?: GameSearchType;
   availableSports: Sport[];
+  profileSports: Sport[];
+  sportLevels?: unknown;
 }) {
   const router = useRouter();
   const [searchType, setSearchType] = useState<GameSearchType>(initialMode);
@@ -43,6 +49,10 @@ export function GameSearchForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchLabels = SPORT_SEARCH_LABELS[sport];
+  const hasSportInProfile = useMemo(
+    () => hasExplicitSportProfile(profileSports, sportLevels, sport),
+    [profileSports, sport, sportLevels]
+  );
   const visibleCourts = useMemo(
     () => courts.filter((court) => !court.supportedSports || court.supportedSports.length === 0 || court.supportedSports.includes(sport)),
     [courts, sport]
@@ -54,11 +64,11 @@ export function GameSearchForm({
     }
 
     if (searchType === "regular") {
-      return preferredDays.length === 0;
+      return preferredDays.length === 0 || !hasSportInProfile;
     }
 
-    return !hotStartTime || !durationMinutes;
-  }, [durationMinutes, hotStartTime, preferredDays, preferredTimeRanges, searchType]);
+    return !hotStartTime || !durationMinutes || !hasSportInProfile;
+  }, [durationMinutes, hasSportInProfile, hotStartTime, preferredDays, preferredTimeRanges, searchType]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -109,6 +119,15 @@ export function GameSearchForm({
         <Panel className="bg-cream text-sm leading-6 text-ink/72">
           Форма подстраивается под выбранный вид спорта. Сейчас поиск будет создан для: <span className="font-semibold text-ink">{searchLabels.centerLabel.toLowerCase()}</span>.
         </Panel>
+
+        {!hasSportInProfile ? (
+          <Panel className="bg-red-50 text-sm leading-6 text-red-700">
+            Для поиска по этому виду спорта сначала добавь его в профиль и укажи уровень.
+            <Link href="/profile" className="ml-1 font-semibold underline underline-offset-2">
+              Открыть профиль
+            </Link>
+          </Panel>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3">
           <button

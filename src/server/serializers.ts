@@ -1,5 +1,7 @@
 import type { Court, GameRequest, Match, User } from "@prisma/client";
 
+import type { ExternalCourt } from "@/lib/maps/yandex-organizations";
+
 import { formatDistanceKm } from "@/lib/utils";
 
 export function serializeUserPreview(user: Partial<User> & { distanceKm?: number | null; score?: number | null }) {
@@ -26,7 +28,7 @@ export function serializeUserPreview(user: Partial<User> & { distanceKm?: number
   };
 }
 
-export function serializeCourt(court: Court & { distanceKm?: number | null }) {
+export function serializeCourt(court: (Court | ExternalCourt) & { distanceKm?: number | null }) {
   return {
     ...court,
     distanceKm: court.distanceKm ?? null,

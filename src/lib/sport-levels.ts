@@ -105,3 +105,16 @@ export function getSharedSports(
 
   return shared.filter((sport) => restrictedSports.includes(sport));
 }
+
+export function hasExplicitSportProfile(preferredSports: unknown, sportLevels: unknown, sport: Sport) {
+  const sports = Array.isArray(preferredSports)
+    ? preferredSports.filter((item): item is Sport => typeof item === "string" && SPORT_OPTIONS.includes(item as Sport))
+    : [];
+  const levels =
+    sportLevels && typeof sportLevels === "object" && !Array.isArray(sportLevels)
+      ? (sportLevels as Record<string, unknown>)
+      : {};
+  const rawLevel = levels[sport];
+
+  return sports.includes(sport) && typeof rawLevel === "number" && Number.isInteger(rawLevel) && rawLevel >= 1 && rawLevel <= 10;
+}

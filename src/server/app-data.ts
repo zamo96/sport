@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
 import { type DiscoverFilters } from "@/lib/scoring";
 import { courtSupportsSport } from "@/lib/courts";
+import { fetchYandexOrganizations } from "@/lib/maps/yandex-organizations";
 import { getDiscoverCandidates } from "@/server/discover";
 
 async function closeExpiredHotSearches() {
@@ -250,7 +251,12 @@ export async function getCourtsForUser(
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
 
-  return courts
+  const includeYandexOrganizations = Boolean(filters.city && filters.sport && !filters.surface && !filters.setting);
+  const externalCourts = includeYandexOrganizations
+    ? await fetchYandexOrganizations(filters.city ?? user.city ?? "", filters.sport!)
+    : [];
+
+  return [...courts, ...externalCourts]
     .map((court) => ({
       ...court,
       distanceKm: haversineDistanceKm(

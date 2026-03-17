@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { isExpiredHotSearch, resolveHotSearchStartAt } from "@/lib/game-search";
+import { hasExplicitSportProfile } from "@/lib/sport-levels";
 
 describe("game search helpers", () => {
   it("builds a hot search datetime from day window and time", () => {
@@ -24,5 +25,11 @@ describe("game search helpers", () => {
     expect(isExpiredHotSearch("2026-03-17T10:01:00.000Z")).toBe(false);
 
     vi.useRealTimers();
+  });
+
+  it("requires explicit sport and level in profile before creating search", () => {
+    expect(hasExplicitSportProfile(["tennis", "football"], { tennis: 6, football: 4 }, "football")).toBe(true);
+    expect(hasExplicitSportProfile(["tennis"], { tennis: 6 }, "football")).toBe(false);
+    expect(hasExplicitSportProfile(["tennis", "football"], { tennis: 6 }, "football")).toBe(false);
   });
 });

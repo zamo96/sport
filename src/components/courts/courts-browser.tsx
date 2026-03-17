@@ -24,6 +24,7 @@ type Court = {
   distanceKm: number | null;
   locationLat: number;
   locationLng: number;
+  sourceType: string;
   supportedSports?: unknown;
 };
 
@@ -120,7 +121,11 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
                 {normalizeCourtSports(court.supportedSports).map((sport) => (
                   <SportBadge key={sport} sport={sport as Sport} className="bg-cream text-ink" />
                 ))}
-                <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{SURFACE_LABELS[court.surface]}</span>
+                {court.sourceType !== "yandex_org_search" ? (
+                  <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{SURFACE_LABELS[court.surface]}</span>
+                ) : (
+                  <span className="rounded-full bg-mint px-3 py-2 text-xs font-semibold text-ink">Яндекс Карты</span>
+                )}
                 <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{court.priceRange}</span>
                 {court.rating ? (
                   <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
