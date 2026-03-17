@@ -158,4 +158,25 @@ describe("scoring", () => {
 
     expect(ranked.map((candidate) => candidate.id)).toEqual(["moscow-female"]);
   });
+
+  it("does not require isLookingForGame in hot mode when sport matches", () => {
+    const ranked = scoreCandidates(
+      viewer,
+      [
+        {
+          ...viewer,
+          id: "hot-candidate",
+          preferredSports: [Sport.tennis],
+          sportLevels: { tennis: 5 },
+          isLookingForGame: false
+        }
+      ],
+      {
+        view: "hot",
+        sport: [Sport.tennis]
+      }
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["hot-candidate"]);
+  });
 });

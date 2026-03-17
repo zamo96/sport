@@ -152,10 +152,6 @@ export function scoreCandidate<T extends CandidateUser>(
       return null;
   }
 
-  if (filters.view === "hot" && !candidate.isLookingForGame) {
-      return null;
-  }
-
   const sportsOverlapCount = relevantSports.length;
   const levelGap = Math.min(
     ...sportsAfterLevelFilter.map((sport) =>
