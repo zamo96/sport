@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
           matchedUserId,
           proposedCourtId: body.proposedCourtId,
           proposedDatetime: new Date(body.proposedDatetime),
+          durationMinutes: body.durationMinutes ?? null,
           levelRangeMin: body.levelRangeMin ?? null,
           levelRangeMax: body.levelRangeMax ?? null,
           sport: body.sport,

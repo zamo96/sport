@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { PageShell } from "@/components/layout/page-shell";
 import { GameSearchesList } from "@/components/forms/game-searches-list";
 import { Button } from "@/components/ui/button";
+import { LiveRefresh } from "@/components/ui/live-refresh";
 import { SectionTitle } from "@/components/ui/section-title";
 import { getGameSearchesForUser } from "@/server/app-data";
 
@@ -20,6 +21,7 @@ export default async function GameSearchesPage() {
 
   return (
     <PageShell>
+      <LiveRefresh intervalMs={10000} />
       <SectionTitle
         eyebrow="Мои поиски"
         title="Смотри статус и подтверждай отклики."

@@ -40,6 +40,7 @@ export default async function GameRequestDetailPage({ params }: { params: { id: 
             outcome: gameRequest.outcome,
             outcomeUpdatedAt: gameRequest.outcomeUpdatedAt?.toISOString() ?? null,
             proposedDatetime: gameRequest.proposedDatetime.toISOString(),
+            durationMinutes: gameRequest.durationMinutes,
             comment: gameRequest.comment,
             sport: gameRequest.sport,
             format: gameRequest.format,

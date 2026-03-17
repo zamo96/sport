@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
 import { SectionTitle } from "@/components/ui/section-title";
 import { GameRequestCard } from "@/components/chat/game-request-card";
+import { LiveRefresh } from "@/components/ui/live-refresh";
 import { getMatchesForUser } from "@/server/app-data";
 
 export default async function InboxPage() {
@@ -24,6 +25,7 @@ export default async function InboxPage() {
 
   return (
     <PageShell>
+      <LiveRefresh intervalMs={10000} />
       <SectionTitle
         eyebrow="Мэтчи"
         title="Переходи от мэтча к игре без лишних шагов."
@@ -80,6 +82,7 @@ export default async function InboxPage() {
                   gameRequest={{
                     ...latestRequest,
                     proposedDatetime: latestRequest.proposedDatetime.toISOString(),
+                    durationMinutes: latestRequest.durationMinutes,
                     outcome: latestRequest.outcome,
                     outcomeUpdatedAt: latestRequest.outcomeUpdatedAt?.toISOString() ?? null
                   }}

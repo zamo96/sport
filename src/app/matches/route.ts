@@ -49,6 +49,7 @@ export async function GET() {
           ? {
               ...match.gameRequests[0],
               proposedDatetime: match.gameRequests[0].proposedDatetime.toISOString(),
+              durationMinutes: match.gameRequests[0].durationMinutes ?? null,
               outcomeUpdatedAt: match.gameRequests[0].outcomeUpdatedAt?.toISOString() ?? null,
               createdAt: match.gameRequests[0].createdAt.toISOString(),
               updatedAt: match.gameRequests[0].updatedAt.toISOString()

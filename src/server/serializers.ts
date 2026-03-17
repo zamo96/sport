@@ -40,6 +40,7 @@ export function serializeGameRequest(gameRequest: GameRequest & { proposedCourt?
   return {
     ...gameRequest,
     proposedDatetime: gameRequest.proposedDatetime.toISOString(),
+    durationMinutes: gameRequest.durationMinutes ?? null,
     outcomeUpdatedAt: gameRequest.outcomeUpdatedAt?.toISOString() ?? null
   };
 }

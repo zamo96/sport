@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { SendHorizonal } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
@@ -35,6 +35,27 @@ export function GameRequestChatRoom({
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMessages() {
+      try {
+        const data = await apiFetch<{ messages: Message[] }>(`/game-requests/${gameRequestId}/messages`);
+        if (active) {
+          setMessages(data.messages);
+        }
+      } catch {
+        return;
+      }
+    }
+
+    const interval = window.setInterval(loadMessages, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [gameRequestId]);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();

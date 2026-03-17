@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Flame } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
@@ -47,9 +48,37 @@ type SearchItem = {
 };
 
 export function GameSearchesList({ searches }: { searches: SearchItem[] }) {
+  const [items, setItems] = useState(searches);
+
+  useEffect(() => {
+    setItems(searches);
+  }, [searches]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSearches() {
+      try {
+        const data = await apiFetch<{ gameSearches: SearchItem[] }>("/game-searches/my");
+        if (active) {
+          setItems(data.gameSearches);
+        }
+      } catch {
+        return;
+      }
+    }
+
+    const interval = window.setInterval(loadSearches, 10000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   return (
     <div className="space-y-4">
-      {searches.length === 0 ? (
+      {items.length === 0 ? (
         <Panel className="text-center">
           <div className="text-xl font-bold text-ink">У тебя пока нет поисков игры</div>
           <div className="mt-2 text-sm leading-6 text-ink/65">
@@ -61,7 +90,7 @@ export function GameSearchesList({ searches }: { searches: SearchItem[] }) {
         </Panel>
       ) : null}
 
-      {searches.map((search) => (
+      {items.map((search) => (
         <GameSearchCard key={search.id} search={search} />
       ))}
     </div>
@@ -209,10 +238,14 @@ function SearchResponseCard({
   const router = useRouter();
 
   async function updateStatus(status: SearchResponse["status"]) {
-    const data = await apiFetch<{ matchId?: string | null }>(`/game-search-responses/${response.id}`, {
+    const data = await apiFetch<{ matchId?: string | null; gameRequestId?: string | null }>(`/game-search-responses/${response.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status })
     });
+    if (status === "approved" && data.gameRequestId) {
+      router.push(`/play/games/${data.gameRequestId}`);
+      return;
+    }
     if (status === "approved" && data.matchId) {
       router.push(`/inbox/${data.matchId}`);
       return;

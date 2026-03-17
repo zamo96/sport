@@ -118,6 +118,7 @@ model User {
   notificationMatches  Boolean       @default(true)
   notificationMessages Boolean       @default(true)
   notificationGames    Boolean       @default(true)
+  lastInboxSeenAt      DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   swipesSent           Swipe[]       @relation("SwipeFromUser")
@@ -191,6 +192,7 @@ model GameRequest {
   matchedUserId    String
   proposedCourtId  String
   proposedDatetime DateTime
+  durationMinutes  Int?
   levelRangeMin    Int?
   levelRangeMax    Int?
   sport            Sport             @default(tennis)

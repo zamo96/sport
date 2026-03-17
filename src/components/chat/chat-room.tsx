@@ -1,8 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { SendHorizonal } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
@@ -43,6 +42,7 @@ type ChatRoomProps = {
     outcome?: "played" | "not_played" | null;
     outcomeUpdatedAt?: string | null;
     proposedDatetime: string;
+    durationMinutes?: number | null;
     comment: string | null;
     sport: Sport;
     format: string;
@@ -64,7 +64,6 @@ export function ChatRoom({
   gameRequests,
   showLatestRequest = true
 }: ChatRoomProps) {
-  const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,6 +74,27 @@ export function ChatRoom({
   const shouldShowLatestRequest = showLatestRequest && latestRequest && !upcomingBookedGames.some((request) => request.id === latestRequest.id);
   const primarySport = getPrimarySport(otherUser.preferredSports);
   const primarySportLevel = getSportLevel(otherUser.sportLevels, primarySport, otherUser.tennisLevel ?? 5);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMessages() {
+      try {
+        const data = await apiFetch<{ messages: Message[] }>(`/matches/${matchId}/messages`);
+        if (active) {
+          setMessages(data.messages);
+        }
+      } catch {
+        return;
+      }
+    }
+
+    const interval = window.setInterval(loadMessages, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [matchId]);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
@@ -88,7 +108,6 @@ export function ChatRoom({
       });
       setMessages((current) => [...current, data.message]);
       setText("");
-      router.refresh();
     } finally {
       setLoading(false);
     }

@@ -48,6 +48,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
           outcome: request.outcome,
           outcomeUpdatedAt: request.outcomeUpdatedAt?.toISOString() ?? null,
           proposedDatetime: request.proposedDatetime.toISOString(),
+          durationMinutes: request.durationMinutes,
           comment: request.comment,
           sport: request.sport,
           format: request.format,

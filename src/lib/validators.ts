@@ -125,6 +125,7 @@ export const createGameRequestSchema = z.object({
   matchId: z.string().min(1),
   proposedCourtId: z.string().min(1),
   proposedDatetime: z.string().datetime(),
+  durationMinutes: z.number().int().min(30).max(240).optional().nullable(),
   levelRangeMin: z.number().int().min(1).max(10).optional().nullable(),
   levelRangeMax: z.number().int().min(1).max(10).optional().nullable(),
   sport: z.nativeEnum(Sport),

@@ -23,6 +23,7 @@ type GameRequestCardProps = {
     outcome?: "played" | "not_played" | null;
     outcomeUpdatedAt?: string | null;
     proposedDatetime: string;
+    durationMinutes?: number | null;
     comment: string | null;
     sport: Sport;
     format: string;
@@ -82,6 +83,11 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
       <div className="flex flex-wrap gap-2">
         <SportBadge sport={gameRequest.sport} className="bg-white text-ink" />
         <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">{gameRequest.format}</span>
+        {gameRequest.durationMinutes ? (
+          <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
+            {gameRequest.durationMinutes} мин
+          </span>
+        ) : null}
         <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
           {translateGameRequestStatus(gameRequest.status)}
         </span>

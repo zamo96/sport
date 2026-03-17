@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Compass, MessageCircle, Settings2, Trophy, User2 } from "lucide-react";
 
+import { apiFetch } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -18,8 +20,53 @@ const hiddenRoutes = ["/auth", "/onboarding", "/offline"];
 
 export function BottomNav() {
   const pathname = usePathname();
+  const [inboxBadgeCount, setInboxBadgeCount] = useState(0);
+  const isHidden = hiddenRoutes.some((route) => pathname.startsWith(route));
 
-  if (hiddenRoutes.some((route) => pathname.startsWith(route))) {
+  useEffect(() => {
+    if (isHidden) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadSummary() {
+      try {
+        const data = await apiFetch<{ inboxBadgeCount: number }>("/activity/summary");
+        if (active) {
+          setInboxBadgeCount(data.inboxBadgeCount);
+        }
+      } catch {
+        if (active) {
+          setInboxBadgeCount(0);
+        }
+      }
+    }
+
+    loadSummary();
+    const interval = window.setInterval(loadSummary, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isHidden]);
+
+  useEffect(() => {
+    if (isHidden) {
+      return;
+    }
+
+    if (!pathname.startsWith("/inbox") && !pathname.startsWith("/play/games")) {
+      return;
+    }
+
+    void apiFetch("/activity/inbox-seen", {
+      method: "POST"
+    }).then(() => setInboxBadgeCount(0)).catch(() => undefined);
+  }, [isHidden, pathname]);
+
+  if (isHidden) {
     return null;
   }
 
@@ -37,10 +84,15 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center rounded-2xl text-[11px] font-semibold transition",
+                "relative flex min-h-14 flex-col items-center justify-center rounded-2xl text-[11px] font-semibold transition",
                 isActive ? "bg-ink text-white shadow-glow" : "text-ink/60"
               )}
             >
+              {item.href === "/inbox" && inboxBadgeCount > 0 ? (
+                <span className="absolute right-2 top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {inboxBadgeCount > 99 ? "99+" : inboxBadgeCount}
+                </span>
+              ) : null}
               <Icon className="mb-1 h-4 w-4" />
               {item.label}
             </Link>

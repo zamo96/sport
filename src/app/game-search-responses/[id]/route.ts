@@ -53,6 +53,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       });
 
       let matchId: string | null = null;
+      let gameRequestId: string | null = null;
 
       if (body.status === GameSearchResponseStatus.approved) {
         await tx.gameSearchResponse.updateMany({
@@ -77,12 +78,66 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         const match = await ensureMatchForUsers(tx, response.gameSearch.createdByUserId, response.responderUserId);
         matchId = match.id;
 
-        await tx.chatMessage.create({
-          data: {
-            matchId: match.id,
-            senderUserId: response.gameSearch.createdByUserId,
-            text: `Я подтвердил(а) твой отклик на поиск игры. Давай согласуем площадку и время.`
-          }
+        if (
+          response.gameSearch.searchType === "hot" &&
+          response.gameSearch.preferredCourtId &&
+          response.gameSearch.hotStartsAt
+        ) {
+          const createdGame = await tx.gameRequest.create({
+            data: {
+              matchId: match.id,
+              createdByUserId: response.gameSearch.createdByUserId,
+              matchedUserId: response.responderUserId,
+              proposedCourtId: response.gameSearch.preferredCourtId,
+              proposedDatetime: response.gameSearch.hotStartsAt,
+              durationMinutes: response.gameSearch.durationMinutes ?? null,
+              sport: response.gameSearch.sport,
+              format: response.gameSearch.format,
+              comment: response.gameSearch.comment,
+              status: "accepted"
+            },
+            include: {
+              proposedCourt: true
+            }
+          });
+
+          gameRequestId = createdGame.id;
+
+          const summaryText = `Горячий поиск подтвержден: ${createdGame.proposedDatetime.toLocaleString("ru-RU")} · ${
+            createdGame.format
+          }${createdGame.durationMinutes ? ` · ${createdGame.durationMinutes} мин` : ""}. ${
+            createdGame.comment?.trim() ? createdGame.comment : "Открой детали, чтобы обсудить игру отдельно."
+          }`;
+
+          await tx.chatMessage.create({
+            data: {
+              matchId: match.id,
+              senderUserId: response.gameSearch.createdByUserId,
+              text: summaryText
+            }
+          });
+
+          await tx.chatMessage.create({
+            data: {
+              matchId: match.id,
+              gameRequestId: createdGame.id,
+              senderUserId: response.gameSearch.createdByUserId,
+              text: "Подтвердил(а) отклик на горячий поиск. Игра сразу зафиксирована, можно обсуждать детали здесь."
+            }
+          });
+        } else {
+          await tx.chatMessage.create({
+            data: {
+              matchId: match.id,
+              senderUserId: response.gameSearch.createdByUserId,
+              text: `Я подтвердил(а) твой отклик на поиск игры. Давай согласуем площадку и время.`
+            }
+          });
+        }
+
+        await tx.match.update({
+          where: { id: match.id },
+          data: { updatedAt: new Date() }
         });
       } else {
         const remainingPending = await tx.gameSearchResponse.count({
@@ -107,7 +162,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         });
       }
 
-      return { updated, matchId };
+      return { updated, matchId, gameRequestId };
     });
 
     return ok({
@@ -116,7 +171,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         createdAt: result.updated.createdAt.toISOString(),
         updatedAt: result.updated.updatedAt.toISOString()
       },
-      matchId: result.matchId
+      matchId: result.matchId,
+      gameRequestId: result.gameRequestId
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
