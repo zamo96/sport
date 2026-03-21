@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run prisma:generate && npx prisma db push && next build",
-    "start": "next start",
+    "build": "npm run prisma:generate && next build",
+    "start": "npm run prisma:push && next start",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
