@@ -15,6 +15,141 @@ export const CITY_PRESETS = {
   "St. Petersburg": DEFAULT_CITY_COORDINATES
 } as const;
 
+export const DISTRICT_OPTIONS = [
+  "central",
+  "petrogradsky",
+  "primorsky",
+  "vasileostrovsky",
+  "moskovsky",
+  "nevsky",
+  "kalininsky",
+  "admiralteysky"
+] as const;
+
+export type DistrictOption = (typeof DISTRICT_OPTIONS)[number];
+
+export const DISTRICT_LABELS: Record<DistrictOption, string> = {
+  central: "Центральный",
+  petrogradsky: "Петроградский",
+  primorsky: "Приморский",
+  vasileostrovsky: "Василеостровский",
+  moskovsky: "Московский",
+  nevsky: "Невский",
+  kalininsky: "Калининский",
+  admiralteysky: "Адмиралтейский"
+};
+
+export const DISTRICT_MAP_AREAS: Record<
+  DistrictOption,
+  {
+    label: string;
+    color: string;
+    center: { lat: number; lng: number };
+    polygon: [number, number][];
+    searchHints: string[];
+  }
+> = {
+  central: {
+    label: DISTRICT_LABELS.central,
+    color: "#D96A47",
+    center: { lat: 59.9315, lng: 30.3609 },
+    polygon: [
+      [30.314, 59.948],
+      [30.402, 59.948],
+      [30.412, 59.917],
+      [30.33, 59.907],
+      [30.302, 59.924]
+    ],
+    searchHints: ["Лиговский", "Чернышевская", "поближе к центру"]
+  },
+  petrogradsky: {
+    label: DISTRICT_LABELS.petrogradsky,
+    color: "#2F7A65",
+    center: { lat: 59.9669, lng: 30.3045 },
+    polygon: [
+      [30.233, 59.983],
+      [30.332, 59.983],
+      [30.343, 59.948],
+      [30.251, 59.942]
+    ],
+    searchHints: ["Петроградка", "Крестовский", "Чкаловская"]
+  },
+  primorsky: {
+    label: DISTRICT_LABELS.primorsky,
+    color: "#548BFF",
+    center: { lat: 59.993, lng: 30.2398 },
+    polygon: [
+      [30.153, 60.04],
+      [30.318, 60.04],
+      [30.339, 59.982],
+      [30.205, 59.956]
+    ],
+    searchHints: ["Приморский", "Старая Деревня", "Комендантский"]
+  },
+  vasileostrovsky: {
+    label: DISTRICT_LABELS.vasileostrovsky,
+    color: "#7B61FF",
+    center: { lat: 59.9432, lng: 30.2492 },
+    polygon: [
+      [30.19, 59.962],
+      [30.276, 59.962],
+      [30.292, 59.925],
+      [30.205, 59.913]
+    ],
+    searchHints: ["Васька", "Приморская", "Василеостровский"]
+  },
+  moskovsky: {
+    label: DISTRICT_LABELS.moskovsky,
+    color: "#E7A938",
+    center: { lat: 59.8553, lng: 30.3215 },
+    polygon: [
+      [30.25, 59.89],
+      [30.385, 59.89],
+      [30.392, 59.825],
+      [30.265, 59.81]
+    ],
+    searchHints: ["Московский", "Парк Победы", "Московская"]
+  },
+  nevsky: {
+    label: DISTRICT_LABELS.nevsky,
+    color: "#E85B7B",
+    center: { lat: 59.8964, lng: 30.4724 },
+    polygon: [
+      [30.368, 59.926],
+      [30.57, 59.926],
+      [30.585, 59.848],
+      [30.39, 59.84]
+    ],
+    searchHints: ["Невский район", "Проспект Большевиков", "Ломоносовская"]
+  },
+  kalininsky: {
+    label: DISTRICT_LABELS.kalininsky,
+    color: "#23A27A",
+    center: { lat: 60.0121, lng: 30.4041 },
+    polygon: [
+      [30.292, 60.055],
+      [30.497, 60.055],
+      [30.478, 59.982],
+      [30.32, 59.982]
+    ],
+    searchHints: ["Калининский", "Академическая", "Гражданка"]
+  },
+  admiralteysky: {
+    label: DISTRICT_LABELS.admiralteysky,
+    color: "#855D4E",
+    center: { lat: 59.9192, lng: 30.2857 },
+    polygon: [
+      [30.218, 59.939],
+      [30.334, 59.939],
+      [30.338, 59.894],
+      [30.225, 59.895]
+    ],
+    searchHints: ["Адмиралтейский", "Технологический институт", "Балтийская"]
+  }
+};
+
+export const DISTRICT_SEARCH_HINTS = Object.values(DISTRICT_MAP_AREAS).flatMap((district) => district.searchHints);
+
 export const DAY_OPTIONS = [
   "monday",
   "tuesday",

@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SectionTitle } from "@/components/ui/section-title";
 import { PLAY_FORMAT_LABELS } from "@/lib/constants";
-import { getSportLevelEntries } from "@/lib/sport-levels";
+import { getSportLevelEntries, normalizeSports } from "@/lib/sport-levels";
 import { SportBadge } from "@/components/ui/sport-badge";
-import { getDiscoverPageData, getHotPlayers, getSeekingPlayers, getUpcomingGamesForUser } from "@/server/app-data";
+import { getActiveSearchesCount, getDiscoverPageData, getHotPlayers, getSeekingPlayers, getUpcomingGamesForUser } from "@/server/app-data";
 import { serializeUserPreview } from "@/server/serializers";
 
 export default async function DiscoverPage({
@@ -38,27 +38,33 @@ export default async function DiscoverPage({
       Object.entries(searchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value ?? ""])
     )
   );
+  const profileSports = normalizeSports(user.preferredSports);
+  const effectiveFilters = {
+    ...parsedFilters,
+    sport: parsedFilters.sport.length > 0 ? parsedFilters.sport : profileSports
+  };
   const swipeDeckKey = JSON.stringify({
-    view: parsedFilters.view ?? "swipe",
-    city: parsedFilters.city ?? null,
-    gender: parsedFilters.gender ?? [],
-    sport: parsedFilters.sport ?? [],
-    format: parsedFilters.format ?? [],
-    surface: parsedFilters.surface ?? [],
-    day: parsedFilters.day ?? [],
-    timeRange: parsedFilters.timeRange ?? [],
-    distanceKm: parsedFilters.distanceKm ?? null,
-    levelMin: parsedFilters.levelMin ?? null,
-    levelMax: parsedFilters.levelMax ?? null
+    view: effectiveFilters.view ?? "swipe",
+    city: effectiveFilters.city ?? null,
+    gender: effectiveFilters.gender ?? [],
+    sport: effectiveFilters.sport ?? [],
+    format: effectiveFilters.format ?? [],
+    surface: effectiveFilters.surface ?? [],
+    day: effectiveFilters.day ?? [],
+    timeRange: effectiveFilters.timeRange ?? [],
+    distanceKm: effectiveFilters.distanceKm ?? null,
+    levelMin: effectiveFilters.levelMin ?? null,
+    levelMax: effectiveFilters.levelMax ?? null
   });
-  const isSeekingView = parsedFilters.view === "seeking";
-  const isHotView = parsedFilters.view === "hot";
+  const isSeekingView = effectiveFilters.view === "seeking";
+  const isHotView = effectiveFilters.view === "hot";
   const userSportLevels = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
-  const [{ candidates }, seekingPlayers, hotPlayers, upcomingGames] = await Promise.all([
-    getDiscoverPageData(user.id, parsedFilters),
-    getSeekingPlayers(user.id, parsedFilters),
-    getHotPlayers(user.id, parsedFilters),
-    getUpcomingGamesForUser(user.id)
+  const [{ candidates }, seekingPlayers, hotPlayers, upcomingGames, activeSearchesCount] = await Promise.all([
+    getDiscoverPageData(user.id, effectiveFilters),
+    getSeekingPlayers(user.id, effectiveFilters),
+    getHotPlayers(user.id, effectiveFilters),
+    getUpcomingGamesForUser(user.id),
+    getActiveSearchesCount(user.id)
   ]);
 
   return (
@@ -92,112 +98,149 @@ export default async function DiscoverPage({
             <div className="mt-1 font-bold text-ink">{user.searchRadiusKm} км</div>
           </div>
         </Panel>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <a href="/play/searches/new" className="block">
-            <Button fullWidth variant="secondary">Создать поиск игры</Button>
+        <div className="grid grid-cols-3 gap-2">
+          <a href="/play/searches" className="block">
+            <Button fullWidth variant="ghost">
+              <span className="relative inline-flex items-center gap-2">
+                Мои поиски
+                {activeSearchesCount > 0 ? (
+                  <span className="absolute -right-4 -top-3 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                    {activeSearchesCount}
+                  </span>
+                ) : null}
+              </span>
+            </Button>
           </a>
           <a href="/play/searches/new?mode=hot" className="block">
             <Button fullWidth variant="danger">
               <span className="inline-flex items-center gap-2">
-                <Flame className="h-4 w-4" />
+                <Flame className="h-4 w-4 text-orange-200" />
                 Срочно найти
               </span>
             </Button>
           </a>
-          <a href="/play/searches" className="block">
-            <Button fullWidth variant="ghost">Мои поиски</Button>
+          <a href="/play/searches/new" className="block">
+            <Button fullWidth variant="secondary">Создать поиск</Button>
           </a>
         </div>
-        <UpcomingGames
-          currentUserId={user.id}
-          games={upcomingGames.map((game) => ({
-            id: game.id,
-            opponentName: game.createdByUserId === user.id ? game.matchedUser.name : game.createdByUser.name,
-            matchId: game.matchId,
-            status: game.status,
-            outcome: game.outcome,
-            outcomeUpdatedAt: game.outcomeUpdatedAt?.toISOString() ?? null,
-            proposedDatetime: game.proposedDatetime.toISOString(),
-            comment: game.comment,
-            sport: game.sport,
-            format: game.format,
-            createdByUserId: game.createdByUserId,
-            matchedUserId: game.matchedUserId,
-            proposedCourt: {
-              name: game.proposedCourt.name,
-              address: game.proposedCourt.address
-            }
-          }))}
-        />
         <DiscoverTabs />
-        <FiltersBar />
         {isSeekingView || isHotView ? (
-          <SeekingPlayersList
-            variant={isHotView ? "hot" : "seeking"}
-            users={(isHotView ? hotPlayers : seekingPlayers).map((candidate) => ({
-              id: candidate.id,
-              name: candidate.name,
-              age: candidate.age,
-              city: candidate.city,
-              bio: candidate.bio,
-              avatarUrl: candidate.avatarUrl,
-              tennisLevel: candidate.tennisLevel,
-              preferredSports: candidate.preferredSports,
-              sportLevels: candidate.sportLevels,
-              preferredPlayFormat: candidate.preferredPlayFormat,
-              distanceLabel: serializeUserPreview(candidate).distanceLabel,
-              score: candidate.score,
-              availableDays: candidate.availableDays,
-              availableTimeRanges: candidate.availableTimeRanges,
-              gameSearches: Array.isArray(candidate.gameSearches)
-                ? candidate.gameSearches.map((gameSearch) => ({
-                    id: gameSearch.id,
-                    preferredDays: gameSearch.preferredDays,
-                    preferredTimeRanges: gameSearch.preferredTimeRanges,
-                    searchType: gameSearch.searchType,
-                    hotWindow: gameSearch.hotWindow,
-                    hotStartsAt: gameSearch.hotStartsAt?.toISOString() ?? null,
-                    durationMinutes: gameSearch.durationMinutes ?? null,
-                    hasCourtBooked: gameSearch.hasCourtBooked,
-                    sport: gameSearch.sport,
-                    format: gameSearch.format,
-                    comment: gameSearch.comment,
-                    responses: Array.isArray(gameSearch.responses)
-                      ? gameSearch.responses.map((response) => ({
-                          id: response.id,
-                          status: response.status
-                        }))
-                      : [],
-                    preferredCourt: gameSearch.preferredCourt
-                      ? {
-                          name: gameSearch.preferredCourt.name
-                        }
-                      : null
-                  }))
-                : []
-            }))}
-          />
+          <>
+            <FiltersBar profileSports={profileSports} />
+            <UpcomingGames
+              currentUserId={user.id}
+              games={upcomingGames.map((game) => ({
+                id: game.id,
+                opponentName: game.createdByUserId === user.id ? game.matchedUser.name : game.createdByUser.name,
+                matchId: game.matchId,
+                status: game.status,
+                outcome: game.outcome,
+                outcomeUpdatedAt: game.outcomeUpdatedAt?.toISOString() ?? null,
+                proposedDatetime: game.proposedDatetime.toISOString(),
+                comment: game.comment,
+                sport: game.sport,
+                format: game.format,
+                createdByUserId: game.createdByUserId,
+                matchedUserId: game.matchedUserId,
+                proposedCourt: {
+                  name: game.proposedCourt.name,
+                  address: game.proposedCourt.address
+                }
+              }))}
+            />
+            <SeekingPlayersList
+              variant={isHotView ? "hot" : "seeking"}
+              users={(isHotView ? hotPlayers : seekingPlayers).map((candidate) => ({
+                id: candidate.id,
+                name: candidate.name,
+                age: candidate.age,
+                city: candidate.city,
+                bio: candidate.bio,
+                avatarUrl: candidate.avatarUrl,
+                tennisLevel: candidate.tennisLevel,
+                preferredSports: candidate.preferredSports,
+                sportLevels: candidate.sportLevels,
+                preferredPlayFormat: candidate.preferredPlayFormat,
+                distanceLabel: serializeUserPreview(candidate).distanceLabel,
+                score: candidate.score,
+                availableDays: candidate.availableDays,
+                availableTimeRanges: candidate.availableTimeRanges,
+                gameSearches: Array.isArray(candidate.gameSearches)
+                  ? candidate.gameSearches.map((gameSearch) => ({
+                      id: gameSearch.id,
+                      preferredDays: gameSearch.preferredDays,
+                      preferredTimeRanges: gameSearch.preferredTimeRanges,
+                      searchType: gameSearch.searchType,
+                      hotWindow: gameSearch.hotWindow,
+                      hotStartsAt: gameSearch.hotStartsAt?.toISOString() ?? null,
+                      durationMinutes: gameSearch.durationMinutes ?? null,
+                      hasCourtBooked: gameSearch.hasCourtBooked,
+                      sport: gameSearch.sport,
+                      format: gameSearch.format,
+                      playersNeeded: gameSearch.playersNeeded ?? 1,
+                      comment: gameSearch.comment,
+                      responses: Array.isArray(gameSearch.responses)
+                        ? gameSearch.responses.map((response) => ({
+                            id: response.id,
+                            status: response.status
+                          }))
+                        : [],
+                      preferredCourt: gameSearch.preferredCourt
+                        ? {
+                            name: gameSearch.preferredCourt.name
+                          }
+                        : null
+                    }))
+                  : []
+              }))}
+            />
+          </>
         ) : (
-          <SwipeDeck
-            key={swipeDeckKey}
-            initialUsers={candidates.map((candidate) => ({
-              id: candidate.id,
-              name: candidate.name,
-              age: candidate.age,
-              city: candidate.city,
-              bio: candidate.bio,
-              avatarUrl: candidate.avatarUrl,
-              tennisLevel: candidate.tennisLevel,
-              preferredSports: candidate.preferredSports,
-              sportLevels: candidate.sportLevels,
-              preferredPlayFormat: candidate.preferredPlayFormat,
-              preferredSurface: candidate.preferredSurface,
-              availableDays: candidate.availableDays,
-              availableTimeRanges: candidate.availableTimeRanges,
-              distanceLabel: serializeUserPreview(candidate).distanceLabel,
-              score: candidate.score
-            }))}
-          />
+          <>
+            <SwipeDeck
+              key={swipeDeckKey}
+              profileSports={profileSports}
+              initialUsers={candidates.map((candidate) => ({
+                id: candidate.id,
+                name: candidate.name,
+                age: candidate.age,
+                city: candidate.city,
+                bio: candidate.bio,
+                avatarUrl: candidate.avatarUrl,
+                tennisLevel: candidate.tennisLevel,
+                preferredSports: candidate.preferredSports,
+                sportLevels: candidate.sportLevels,
+                preferredPlayFormat: candidate.preferredPlayFormat,
+                preferredSurface: candidate.preferredSurface,
+                availableDays: candidate.availableDays,
+                availableTimeRanges: candidate.availableTimeRanges,
+                distanceLabel: serializeUserPreview(candidate).distanceLabel,
+                score: candidate.score
+              }))}
+            />
+            <FiltersBar profileSports={profileSports} />
+            <UpcomingGames
+              currentUserId={user.id}
+              games={upcomingGames.map((game) => ({
+                id: game.id,
+                opponentName: game.createdByUserId === user.id ? game.matchedUser.name : game.createdByUser.name,
+                matchId: game.matchId,
+                status: game.status,
+                outcome: game.outcome,
+                outcomeUpdatedAt: game.outcomeUpdatedAt?.toISOString() ?? null,
+                proposedDatetime: game.proposedDatetime.toISOString(),
+                comment: game.comment,
+                sport: game.sport,
+                format: game.format,
+                createdByUserId: game.createdByUserId,
+                matchedUserId: game.matchedUserId,
+                proposedCourt: {
+                  name: game.proposedCourt.name,
+                  address: game.proposedCourt.address
+                }
+              }))}
+            />
+          </>
         )}
       </div>
     </PageShell>

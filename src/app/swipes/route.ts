@@ -23,6 +23,19 @@ export async function POST(request: NextRequest) {
       return fail("Игрок не найден", 404);
     }
 
+    const existingBlock = await prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerUserId: user.id, blockedUserId: body.toUserId },
+          { blockerUserId: body.toUserId, blockedUserId: user.id }
+        ]
+      }
+    });
+
+    if (existingBlock) {
+      return fail("Взаимодействие с этим пользователем недоступно");
+    }
+
     const result = await createSwipeAndMaybeMatch(user.id, body.toUserId, body.action);
 
     return ok({

@@ -33,6 +33,7 @@ export async function GET() {
         createdAt: gameSearch.createdAt.toISOString(),
         updatedAt: gameSearch.updatedAt.toISOString(),
         hotStartsAt: gameSearch.hotStartsAt?.toISOString() ?? null,
+        playersNeeded: gameSearch.playersNeeded,
         isExpired: isExpiredHotSearch(gameSearch.hotStartsAt)
       }))
     });

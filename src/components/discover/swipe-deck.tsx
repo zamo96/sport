@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, MapPin, Star, X } from "lucide-react";
+import { Ban, MapPin, MessageCircleQuestion, Star, X } from "lucide-react";
+import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import { DAY_LABELS, PLAY_FORMAT_LABELS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import { getSportLevelEntries } from "@/lib/sport-levels";
-import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -32,30 +32,30 @@ type DiscoverUser = {
   score: number | null;
 };
 
-export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
+export function SwipeDeck({
+  initialUsers,
+  profileSports
+}: {
+  initialUsers: DiscoverUser[];
+  profileSports: Sport[];
+}) {
   const router = useRouter();
   const [users, setUsers] = useState(initialUsers);
-  const [dragX, setDragX] = useState(0);
-  const [isSwiping, setIsSwiping] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(null);
   const [matchName, setMatchName] = useState<string | null>(null);
-  const startX = useRef<number | null>(null);
 
   useEffect(() => {
     setUsers(initialUsers);
-    setDragX(0);
-    setIsSwiping(false);
   }, [initialUsers]);
 
   const activeUser = users[0];
   const remaining = users.length - 1;
-  const angle = dragX / 24;
-  const overlay = dragX > 18 ? "ЛАЙК" : dragX < -18 ? "ПРОПУСК" : null;
 
-  async function submitSwipe(action: "like" | "dislike" | "superlike") {
-    if (!activeUser || isSwiping) return;
+  async function submitSwipe(action: "like" | "dislike") {
+    if (!activeUser || busy) return;
 
-    setIsSwiping(true);
+    setBusy(true);
     try {
       const data = await apiFetch<{ match: { id: string } | null }>("/swipes", {
         method: "POST",
@@ -68,206 +68,177 @@ export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
       }
 
       setUsers((current) => current.slice(1));
-      setDragX(0);
       router.refresh();
     } catch {
-      setDragX(0);
+      return;
     } finally {
-      setIsSwiping(false);
+      setBusy(false);
     }
   }
 
-  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    startX.current = event.clientX;
-  }
+  async function blockUser() {
+    if (!activeUser || busy) return;
 
-  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (startX.current == null || isSwiping) return;
-    setDragX(event.clientX - startX.current);
-  }
-
-  function onPointerUp() {
-    if (startX.current == null || isSwiping) return;
-    if (dragX > 110) {
-      submitSwipe("like");
-    } else if (dragX < -110) {
-      submitSwipe("dislike");
-    } else {
-      setDragX(0);
+    setBusy(true);
+    try {
+      await apiFetch(`/users/${activeUser.id}/block`, {
+        method: "POST"
+      });
+      setUsers((current) => current.slice(1));
+      router.refresh();
+    } catch {
+      return;
+    } finally {
+      setBusy(false);
     }
-    startX.current = null;
   }
 
-  const stack = useMemo(() => users.slice(0, 3), [users]);
+  const stack = useMemo(() => users.slice(0, 2), [users]);
+
+  if (stack.length === 0) {
+    return (
+      <Panel className="flex min-h-[58vh] flex-col items-center justify-center text-center">
+        <div className="rounded-full bg-mint p-4">
+          <Star className="h-7 w-7 text-court" />
+        </div>
+        <h3 className="mt-4 text-2xl font-bold">Карточки закончились</h3>
+        <p className="mt-2 max-w-xs text-sm leading-6 text-ink/65">
+          Измени спорт в фильтрах или вернись позже, когда появятся новые игроки.
+        </p>
+        <div className="mt-5 flex gap-3">
+          <Link href="/inbox">
+            <Button>Открыть мэтчи</Button>
+          </Link>
+          <Link href="/play/courts">
+            <Button variant="ghost">Спортивные центры</Button>
+          </Link>
+        </div>
+      </Panel>
+    );
+  }
+
+  const sports = activeUser ? getSportLevelEntries(activeUser.preferredSports, activeUser.sportLevels, activeUser.tennisLevel ?? 5) : [];
+  const day = activeUser && Array.isArray(activeUser.availableDays) ? activeUser.availableDays[0] : null;
+  const timeRange = activeUser && Array.isArray(activeUser.availableTimeRanges) ? activeUser.availableTimeRanges[0] : null;
 
   return (
-    <div className="space-y-4">
-      <Panel className="grid grid-cols-2 gap-3">
-        <div className="rounded-[24px] bg-cream p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-clay">Свайп влево</div>
-          <div className="mt-1 text-sm font-semibold text-ink">Не интересно</div>
-          <div className="mt-1 text-xs leading-5 text-ink/60">Пропустить игрока и перейти к следующей карточке.</div>
-        </div>
-        <div className="rounded-[24px] bg-mint p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court">Свайп вправо</div>
-          <div className="mt-1 text-sm font-semibold text-ink">Лайк</div>
-          <div className="mt-1 text-xs leading-5 text-ink/60">
-            Игрок увидит, что ты, возможно, хочешь сыграть именно с ним.
+    <div className="space-y-3">
+      <Panel className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Быстрый подбор</div>
+            <div className="mt-1 text-sm text-ink/70">
+              Сейчас ищем по видам спорта из твоего профиля: {profileSports.length > 0 ? profileSports.length : 0}
+            </div>
+          </div>
+          <div className="rounded-[22px] bg-cream px-3 py-2 text-right">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-court">Осталось</div>
+            <div className="mt-1 font-bold text-ink">{Math.max(remaining, 0)}</div>
           </div>
         </div>
       </Panel>
 
-      <div className="relative h-[490px]">
-        {stack.length === 0 ? (
-          <Panel className="flex h-full flex-col items-center justify-center text-center">
-            <div className="rounded-full bg-mint p-4">
-              <Star className="h-7 w-7 text-court" />
-            </div>
-            <h3 className="mt-4 text-2xl font-bold">Карточки закончились</h3>
-            <p className="mt-2 max-w-xs text-sm leading-6 text-ink/65">
-              Измени фильтры, загляни позже или перейди к спортивным центрам для текущих мэтчей.
-            </p>
-            <div className="mt-5 flex gap-3">
-              <Link href="/inbox">
-                <Button>Открыть мэтчи</Button>
-              </Link>
-              <Link href="/play/courts">
-                <Button variant="ghost">Посмотреть центры</Button>
-              </Link>
-            </div>
-          </Panel>
-        ) : null}
-
+      <div className="relative min-h-[62vh]">
         {stack
-          .map((user, index) => {
-            const isTop = index === 0;
-            const day = Array.isArray(user.availableDays) ? user.availableDays[0] : null;
-            const timeRange = Array.isArray(user.availableTimeRanges) ? user.availableTimeRanges[0] : null;
-            const sports = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
-            return (
-              <div
-                key={user.id}
-                className={cn(
-                  "absolute inset-0 rounded-[34px] border border-white/70 bg-white/88 p-4 shadow-card transition",
-                  !isTop && "scale-[0.96] opacity-85"
-                )}
-                style={{
-                  transform: isTop
-                    ? `translateX(${dragX}px) rotate(${angle}deg)`
-                    : `translateY(${index * 10}px) scale(${1 - index * 0.03})`,
-                  zIndex: stack.length - index
-                }}
-                onPointerDown={isTop ? onPointerDown : undefined}
-                onPointerMove={isTop ? onPointerMove : undefined}
-                onPointerUp={isTop ? onPointerUp : undefined}
-                onPointerCancel={isTop ? onPointerUp : undefined}
-              >
-                {isTop && overlay ? (
-                  <div
-                    className={cn(
-                      "absolute left-4 top-4 rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.3em]",
-                      dragX > 0 ? "border-court text-court" : "border-clay text-clay"
-                    )}
-                  >
-                    {overlay}
+          .map((user, index) => (
+            <div
+              key={user.id}
+              className="absolute inset-0 rounded-[34px] border border-white/70 bg-white/88 p-3 shadow-card"
+              style={{
+                transform: index === 0 ? "translateY(0px) scale(1)" : "translateY(14px) scale(0.97)",
+                zIndex: stack.length - index
+              }}
+            >
+              <div className="relative flex h-full flex-col overflow-hidden rounded-[28px] bg-gradient-to-b from-court via-court to-ink p-4 text-white">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_40%)]" />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="space-y-3">
+                    <div className="rounded-full bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
+                      Скор {user.score ?? 0}
+                    </div>
+                    <Avatar src={user.avatarUrl} alt={user.name ?? "Игрок"} size="lg" className="ring-4 ring-white/15" />
                   </div>
-                ) : null}
-
-                <div className="relative h-full overflow-hidden rounded-[28px] bg-gradient-to-b from-court via-court to-ink p-5 text-white">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_40%)]" />
-                  <div className="relative flex h-full flex-col">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-3">
-                        <div className="rounded-full bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
-                          Скор {user.score ?? 0}
-                        </div>
-                        <Avatar src={user.avatarUrl} alt={user.name ?? "Игрок"} size="xl" className="ring-4 ring-white/15" />
-                      </div>
-                      <div className="rounded-[24px] bg-white/14 px-3 py-2 text-right backdrop-blur">
-                        <div className="text-xs uppercase tracking-[0.2em] text-white/65">Расстояние</div>
-                        <div className="mt-1 text-lg font-bold">{user.distanceLabel}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-auto">
-                      <h3 className="font-[var(--font-heading)] text-4xl font-bold leading-none">
-                        {user.name ?? "Игрок"} {user.age ? `, ${user.age}` : ""}
-                      </h3>
-                      <div className="mt-2 flex items-center gap-2 text-sm text-white/72">
-                        <MapPin className="h-4 w-4" />
-                        {user.city ?? "Город не указан"}
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {sports.slice(0, 2).map(({ sport, level }) => (
-                          <SportLevelBadge
-                            key={sport}
-                            sport={sport}
-                            level={level}
-                            badgeClassName="bg-white/12 text-white"
-                            levelClassName="bg-white/12 text-white"
-                            iconClassName="h-3.5 w-3.5 text-white"
-                          />
-                        ))}
-                        <Tag label={PLAY_FORMAT_LABELS[user.preferredPlayFormat]} />
-                        <Tag label={SURFACE_LABELS[user.preferredSurface]} />
-                        {day ? <Tag label={DAY_LABELS[day as keyof typeof DAY_LABELS]} /> : null}
-                        {timeRange ? (
-                          <Tag label={TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]} />
-                        ) : null}
-                      </div>
-                      <p className="mt-4 line-clamp-4 text-sm leading-6 text-white/82">
-                        {user.bio ?? "Готов(а) к игре и короткой договоренности без лишней переписки."}
-                      </p>
-                    </div>
+                  <div className="rounded-[24px] bg-white/14 px-3 py-2 text-right backdrop-blur">
+                    <div className="text-xs uppercase tracking-[0.2em] text-white/65">Расстояние</div>
+                    <div className="mt-1 text-lg font-bold">{user.distanceLabel}</div>
                   </div>
                 </div>
+
+                <div className="relative mt-auto">
+                  <h3 className="font-[var(--font-heading)] text-[2rem] font-bold leading-none">
+                    {user.name ?? "Игрок"} {user.age ? `, ${user.age}` : ""}
+                  </h3>
+                  <div className="mt-2 flex items-center gap-2 text-sm text-white/72">
+                    <MapPin className="h-4 w-4" />
+                    {user.city ?? "Город не указан"}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {sports.slice(0, 2).map(({ sport, level }) => (
+                      <SportLevelBadge
+                        key={sport}
+                        sport={sport}
+                        level={level}
+                        badgeClassName="bg-white/12 text-white"
+                        levelClassName="bg-white/12 text-white"
+                        iconClassName="h-3.5 w-3.5 text-white"
+                      />
+                    ))}
+                    <Tag label={PLAY_FORMAT_LABELS[user.preferredPlayFormat]} />
+                    <Tag label={SURFACE_LABELS[user.preferredSurface]} />
+                    {day ? <Tag label={DAY_LABELS[day as keyof typeof DAY_LABELS]} /> : null}
+                    {timeRange ? <Tag label={TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]} /> : null}
+                  </div>
+                  <p className="mt-3 line-clamp-4 text-sm leading-6 text-white/82">
+                    {user.bio ?? "Готов(а) быстро договориться, выбрать центр и выйти на игру без длинной переписки."}
+                  </p>
+                </div>
               </div>
-            );
-          })
+            </div>
+          ))
           .reverse()}
       </div>
 
-      {activeUser ? (
-        <div className="grid grid-cols-[1fr,1.2fr,1fr] gap-3">
-          <Button variant="ghost" className="rounded-[24px]" onClick={() => submitSwipe("dislike")}>
-            <X className="mr-2 h-5 w-5" />
-            Пропустить
-          </Button>
-          <Button variant="primary" className="rounded-[24px]" onClick={() => submitSwipe("superlike")}>
-            <Star className="mr-2 h-5 w-5" />
-            Суперлайк
-          </Button>
-          <Button variant="secondary" className="rounded-[24px]" onClick={() => submitSwipe("like")}>
-            <Heart className="mr-2 h-5 w-5" />
-            Лайк
-          </Button>
-        </div>
-      ) : null}
+      <div className="grid grid-cols-[1fr,1.2fr] gap-3">
+        <Button variant="ghost" className="rounded-[24px]" onClick={() => submitSwipe("dislike")} disabled={busy}>
+          <X className="mr-2 h-5 w-5" />
+          Пропустить
+        </Button>
+        <Button variant="secondary" className="rounded-[24px]" onClick={() => submitSwipe("like")} disabled={busy}>
+          <MessageCircleQuestion className="mr-2 h-5 w-5" />
+          Можно поиграть
+        </Button>
+      </div>
 
-      <Panel className="flex items-center justify-between">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/50">Очередь</div>
-          <div className="mt-1 text-xl font-bold text-ink">Осталось {Math.max(remaining, 0)} карточек</div>
-        </div>
-        <Link href="/play/courts" className="text-sm font-semibold text-clay">
-          Сначала выбрать центр
-        </Link>
-      </Panel>
+      <button
+        type="button"
+        onClick={blockUser}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-semibold text-ink/70"
+      >
+        <Ban className="h-4 w-4" />
+        Заблокировать пользователя
+      </button>
 
       {matchId && matchName ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 px-4 pb-6">
           <Panel className="w-full max-w-md space-y-3 rounded-[32px] bg-cream">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">Это мэтч</div>
-            <h3 className="text-3xl font-bold leading-none text-ink">{matchName} тоже поставил(а) лайк.</h3>
-            <p className="text-sm leading-6 text-ink/68">
-              Переходи в чат и сразу отправляй предложение с площадкой и временем.
-            </p>
+            <div className="text-2xl font-bold text-ink">У тебя взаимный интерес с {matchName}</div>
+            <div className="text-sm leading-6 text-ink/65">
+              Теперь можно перейти в общий чат и договориться о деталях или сразу выбрать спортивный центр.
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="ghost" fullWidth onClick={() => setMatchId(null)}>
-                Продолжить свайпы
-              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMatchId(null);
+                  setMatchName(null);
+                }}
+                className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-ink"
+              >
+                Продолжить поиск
+              </button>
               <Link href={`/inbox/${matchId}`} className="block">
-                <Button fullWidth>Открыть чат</Button>
+                <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">Открыть чат</div>
               </Link>
             </div>
           </Panel>
@@ -278,5 +249,5 @@ export function SwipeDeck({ initialUsers }: { initialUsers: DiscoverUser[] }) {
 }
 
 function Tag({ label }: { label: string }) {
-  return <span className="rounded-full bg-white/14 px-3 py-2 text-xs font-semibold">{label}</span>;
+  return <span className="rounded-full bg-white/12 px-3 py-2 text-xs font-semibold text-white">{label}</span>;
 }

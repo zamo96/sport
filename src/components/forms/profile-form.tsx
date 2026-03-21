@@ -9,6 +9,10 @@ import {
   AVAILABLE_CITIES,
   DAY_LABELS,
   DEFAULT_CITY,
+  type DistrictOption,
+  DISTRICT_LABELS,
+  DISTRICT_MAP_AREAS,
+  DISTRICT_OPTIONS,
   PLAY_FORMAT_LABELS,
   SPORT_OPTIONS,
   SURFACE_LABELS,
@@ -41,10 +45,12 @@ type ProfilePayload = Pick<
   | "notificationMatches"
   | "notificationMessages"
 > & {
+  district: DistrictOption;
   preferredSports: SportOption[];
   sportLevels: Partial<Record<SportOption, number>>;
   availableDays: string[];
   availableTimeRanges: string[];
+  availabilityByDay: Partial<Record<string, string[]>>;
 };
 
 type SportOption = (typeof SPORT_OPTIONS)[number];
@@ -56,6 +62,7 @@ export function ProfileForm({
   user: Partial<User> & {
     availableDays?: unknown;
     availableTimeRanges?: unknown;
+    availabilityByDay?: unknown;
     preferredSports?: unknown;
     sportLevels?: unknown;
   };
@@ -67,11 +74,13 @@ export function ProfileForm({
   const initialSportLevels = normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5) as Partial<
     Record<SportOption, number>
   >;
+  const initialAvailabilityByDay = normalizeAvailabilityByDay(user.availabilityByDay, user.availableDays, user.availableTimeRanges);
   const [form, setForm] = useState<ProfilePayload>({
     name: user.name ?? "",
     age: user.age ?? 28,
     gender: (user.gender as Gender | null | undefined) ?? null,
     city: DEFAULT_CITY,
+    district: (user.district as ProfilePayload["district"]) ?? "central",
     tennisLevel: getPrimarySportLevel(initialPreferredSports, initialSportLevels, user.tennisLevel ?? 5),
     preferredSports: initialPreferredSports,
     sportLevels: initialSportLevels,
@@ -86,6 +95,7 @@ export function ProfileForm({
     availableTimeRanges: Array.isArray(user.availableTimeRanges)
       ? user.availableTimeRanges.filter((slot): slot is string => typeof slot === "string")
       : [],
+    availabilityByDay: initialAvailabilityByDay,
     isLookingForGame: user.isLookingForGame ?? true,
     notificationGames: user.notificationGames ?? true,
     notificationMatches: user.notificationMatches ?? true,
@@ -95,12 +105,26 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const searchCenterLat = user.homeLat ?? null;
-  const searchCenterLng = user.homeLng ?? null;
-  const isApproximateSearchArea = searchCenterLat == null || searchCenterLng == null;
+  const selectedDistrictCenter = DISTRICT_MAP_AREAS[form.district].center;
+  const searchCenterLat = selectedDistrictCenter.lat;
+  const searchCenterLng = selectedDistrictCenter.lng;
+  const isApproximateSearchArea = false;
 
   function setField<Key extends keyof ProfilePayload>(key: Key, value: ProfilePayload[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function setAvailabilityByDay(nextAvailabilityByDay: ProfilePayload["availabilityByDay"]) {
+    const normalized = Object.fromEntries(
+      Object.entries(nextAvailabilityByDay).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
+    );
+
+    setForm((current) => ({
+      ...current,
+      availabilityByDay: normalized,
+      availableDays: Object.keys(normalized),
+      availableTimeRanges: Array.from(new Set(Object.values(normalized).flat()))
+    }));
   }
 
   function setPreferredSports(nextSports: SportOption[]) {
@@ -140,7 +164,7 @@ export function ProfileForm({
     });
   }
 
-  const hasAvailability = form.availableDays.length > 0 && form.availableTimeRanges.length > 0;
+  const hasAvailability = Object.keys(form.availabilityByDay).length > 0;
   const canContinueBasics = (form.name ?? "").trim().length >= 2 && (form.city ?? "").trim().length >= 2 && (form.age ?? 0) >= 18;
   const hasSports = Array.isArray(form.preferredSports) && form.preferredSports.length > 0;
 
@@ -188,7 +212,8 @@ export function ProfileForm({
           ...form,
           tennisLevel: getPrimarySportLevel(form.preferredSports, form.sportLevels, form.tennisLevel ?? 5),
           availableDays: skipAvailability ? [] : form.availableDays,
-          availableTimeRanges: skipAvailability ? [] : form.availableTimeRanges
+          availableTimeRanges: skipAvailability ? [] : form.availableTimeRanges,
+          availabilityByDay: skipAvailability ? {} : form.availabilityByDay
         })
       });
       router.push("/discover");
@@ -300,6 +325,23 @@ export function ProfileForm({
                   </select>
                   <div className="mt-2 text-xs leading-5 text-ink/55">Пока запускаемся только в Санкт-Петербурге.</div>
                 </Field>
+                <Field label="Район" className="col-span-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {DISTRICT_OPTIONS.map((district) => (
+                      <button
+                        key={district}
+                        type="button"
+                        onClick={() => setField("district", district)}
+                        className={`rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition ${
+                          form.district === district ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
+                        }`}
+                      >
+                        {DISTRICT_LABELS[district]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">Сначала выбери район, а уже потом радиус поиска вокруг него.</div>
+                </Field>
               </div>
             ) : null}
 
@@ -342,12 +384,11 @@ export function ProfileForm({
                     centerLng={searchCenterLng}
                     radiusKm={form.searchRadiusKm}
                     city={form.city ?? DEFAULT_CITY}
+                    district={form.district}
                     isApproximate={isApproximateSearchArea}
                   />
                   <div className="mt-2 text-xs leading-5 text-ink/55">
-                    {isApproximateSearchArea
-                      ? "Пока показываем примерный район поиска от центра Санкт-Петербурга. Точный выбор района подключим позже."
-                      : `Текущий круг поиска: ${form.searchRadiusKm} км вокруг твоего района.`}
+                    {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
                   </div>
                 </Field>
 
@@ -414,10 +455,8 @@ export function ProfileForm({
                 </div>
                 <Field label="Доступность">
                   <AvailabilityPicker
-                    days={form.availableDays}
-                    timeRanges={form.availableTimeRanges}
-                    onDaysChange={(value) => setField("availableDays", value)}
-                    onTimeRangesChange={(value) => setField("availableTimeRanges", value)}
+                    availabilityByDay={form.availabilityByDay}
+                    onAvailabilityByDayChange={setAvailabilityByDay}
                   />
                 </Field>
                 <div className="rounded-[24px] bg-mint/60 p-4">
@@ -427,14 +466,9 @@ export function ProfileForm({
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {hasAvailability ? (
                       <>
-                        {form.availableDays.map((day) => (
+                        {Object.entries(form.availabilityByDay).map(([day, ranges]) => (
                           <span key={day} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                            {DAY_LABELS[day as keyof typeof DAY_LABELS]}
-                          </span>
-                        ))}
-                        {form.availableTimeRanges.map((timeRange) => (
-                          <span key={timeRange} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                            {TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]}
+                            {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? []).map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")}
                           </span>
                         ))}
                       </>
@@ -538,6 +572,22 @@ export function ProfileForm({
                 </select>
                 <div className="mt-2 text-xs leading-5 text-ink/55">Пока только Санкт-Петербург.</div>
               </Field>
+              <Field label="Район">
+                <select
+                  value={form.district}
+                  onChange={(event) => setField("district", event.target.value as ProfilePayload["district"])}
+                  className="input"
+                >
+                  {DISTRICT_OPTIONS.map((district) => (
+                    <option key={district} value={district}>
+                      {DISTRICT_LABELS[district]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
               <Field label="Пол">
                 <select
                   value={form.gender ?? ""}
@@ -555,7 +605,7 @@ export function ProfileForm({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
-                <Field label="Виды спорта" className="col-span-2">
+              <Field label="Виды спорта" className="col-span-2">
                 <SportPicker
                   multiple
                   value={form.preferredSports}
@@ -580,12 +630,11 @@ export function ProfileForm({
                 centerLng={searchCenterLng}
                 radiusKm={form.searchRadiusKm}
                 city={form.city ?? DEFAULT_CITY}
+                district={form.district}
                 isApproximate={isApproximateSearchArea}
               />
               <div className="mt-2 text-xs leading-5 text-ink/55">
-                {isApproximateSearchArea
-                  ? "Пока карта строится от центра Санкт-Петербурга. Когда подключим точный выбор района, круг будет считаться от домашней точки."
-                  : `Сейчас показываем радиус ${form.searchRadiusKm} км вокруг твоего района.`}
+                {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
               </div>
             </Field>
 
@@ -632,10 +681,8 @@ export function ProfileForm({
 
             <Field label="Доступность" className="mt-3">
               <AvailabilityPicker
-                days={form.availableDays}
-                timeRanges={form.availableTimeRanges}
-                onDaysChange={(value) => setField("availableDays", value)}
-                onTimeRangesChange={(value) => setField("availableTimeRanges", value)}
+                availabilityByDay={form.availabilityByDay}
+                onAvailabilityByDayChange={setAvailabilityByDay}
               />
             </Field>
 
@@ -669,14 +716,9 @@ export function ProfileForm({
                 ))}
                 {hasAvailability ? (
                   <>
-                    {form.availableDays.map((day) => (
+                    {Object.entries(form.availabilityByDay).map(([day, ranges]) => (
                       <span key={day} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                        {DAY_LABELS[day as keyof typeof DAY_LABELS]}
-                      </span>
-                    ))}
-                    {form.availableTimeRanges.map((timeRange) => (
-                      <span key={timeRange} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                        {TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]}
+                        {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? []).map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")}
                       </span>
                     ))}
                   </>
@@ -706,6 +748,23 @@ export function ProfileForm({
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </form>
   );
+}
+
+function normalizeAvailabilityByDay(availabilityByDay: unknown, availableDays: unknown, availableTimeRanges: unknown) {
+  if (availabilityByDay && typeof availabilityByDay === "object" && !Array.isArray(availabilityByDay)) {
+    return Object.fromEntries(
+      Object.entries(availabilityByDay).filter(
+        (entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0
+      )
+    );
+  }
+
+  const days = Array.isArray(availableDays) ? availableDays.filter((value): value is string => typeof value === "string") : [];
+  const ranges = Array.isArray(availableTimeRanges)
+    ? availableTimeRanges.filter((value): value is string => typeof value === "string")
+    : [];
+
+  return Object.fromEntries(days.map((day) => [day, ranges]));
 }
 
 function Field({

@@ -45,6 +45,7 @@ export function GameSearchForm({
   const [preferredDays, setPreferredDays] = useState<string[]>(["wednesday", "saturday"]);
   const [preferredTimeRanges, setPreferredTimeRanges] = useState<string[]>(["evening"]);
   const [format, setFormat] = useState<PlayFormat>(PlayFormat.singles);
+  const [playersNeeded, setPlayersNeeded] = useState(1);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +90,7 @@ export function GameSearchForm({
           hasCourtBooked,
           sport,
           format,
+          playersNeeded,
           comment
         })
       });
@@ -112,6 +114,7 @@ export function GameSearchForm({
               const nextSport = (value[0] as Sport | undefined) ?? "tennis";
               setSport(nextSport);
               setPreferredCourtId("");
+              setPlayersNeeded(getDefaultPlayersNeeded(nextSport, format));
             }}
           />
         </Field>
@@ -232,13 +235,40 @@ export function GameSearchForm({
         )}
 
         <Field label="Формат">
-          <select className="input" value={format} onChange={(event) => setFormat(event.target.value as PlayFormat)}>
+          <select
+            className="input"
+            value={format}
+            onChange={(event) => {
+              const nextFormat = event.target.value as PlayFormat;
+              setFormat(nextFormat);
+              setPlayersNeeded(getDefaultPlayersNeeded(sport, nextFormat));
+            }}
+          >
             {Object.entries(PLAY_FORMAT_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
           </select>
+        </Field>
+
+        <Field label={needsLobbyCounter(sport, format) ? "Сколько игроков нужно в лобби" : "Сколько ещё игроков нужно"}>
+          <select
+            className="input"
+            value={playersNeeded}
+            onChange={(event) => setPlayersNeeded(Number(event.target.value))}
+          >
+            {Array.from({ length: sport === "football" ? 12 : 8 }, (_, index) => index + 1).map((count) => (
+              <option key={count} value={count}>
+                {count} {pluralizePlayers(count)}
+              </option>
+            ))}
+          </select>
+          <div className="mt-2 text-xs leading-5 text-ink/55">
+            {needsLobbyCounter(sport, format)
+              ? "Подходит для футбола, волейбола и парного формата: будешь видеть прогресс набора по откликам."
+              : "Если ищешь одного человека, оставь 1."}
+          </div>
         </Field>
 
         <Field label={searchType === "hot" ? searchLabels.centerLabel : `Предпочтительный ${searchLabels.centerLabel.toLowerCase()}`}>
@@ -297,6 +327,23 @@ function getTimeRangeFromTime(value: string) {
   }
 
   return "evening";
+}
+
+function needsLobbyCounter(sport: Sport, format: PlayFormat) {
+  return sport === "football" || sport === "volleyball" || format === PlayFormat.doubles;
+}
+
+function getDefaultPlayersNeeded(sport: Sport, format: PlayFormat) {
+  if (sport === "football") return 9;
+  if (sport === "volleyball") return 5;
+  if (format === PlayFormat.doubles) return 3;
+  return 1;
+}
+
+function pluralizePlayers(value: number) {
+  if (value % 10 === 1 && value % 100 !== 11) return "игрок";
+  if ([2, 3, 4].includes(value % 10) && ![12, 13, 14].includes(value % 100)) return "игрока";
+  return "игроков";
 }
 
 function Field({

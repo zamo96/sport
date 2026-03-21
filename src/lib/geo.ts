@@ -1,4 +1,4 @@
-import { CITY_PRESETS } from "@/lib/constants";
+import { CITY_PRESETS, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 
 export type Coordinates = { lat: number; lng: number };
 
@@ -22,6 +22,14 @@ export async function resolveLocationFromCity(city: string | null | undefined) {
   }
 
   return provider.resolveCity(city.trim());
+}
+
+export function resolveLocationFromDistrict(district: string | null | undefined) {
+  if (!district) {
+    return null;
+  }
+
+  return DISTRICT_MAP_AREAS[district as DistrictOption]?.center ?? null;
 }
 
 export function haversineDistanceKm(

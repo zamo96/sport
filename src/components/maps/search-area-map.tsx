@@ -9,26 +9,29 @@ export function SearchAreaMap({
   centerLng,
   radiusKm,
   city,
+  district,
   isApproximate = false
 }: {
   centerLat?: number | null;
   centerLng?: number | null;
   radiusKm: number;
   city: string;
+  district?: string | null;
   isApproximate?: boolean;
 }) {
   const provider = getMapProvider();
 
   if (provider === "yandex") {
     return (
-      <YandexSearchAreaMap
-        centerLat={centerLat}
-        centerLng={centerLng}
-        radiusKm={radiusKm}
-        city={city}
-        isApproximate={isApproximate}
-      />
-    );
+        <YandexSearchAreaMap
+          centerLat={centerLat}
+          centerLng={centerLng}
+          radiusKm={radiusKm}
+          city={city}
+          district={district}
+          isApproximate={isApproximate}
+        />
+      );
   }
 
   return (

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES } from "@/lib/constants";
+import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES, DISTRICT_LABELS, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { loadYandexMaps } from "@/lib/maps/yandex";
 import { Panel } from "@/components/ui/panel";
@@ -12,12 +12,14 @@ export function YandexSearchAreaMap({
   centerLng,
   radiusKm,
   city = DEFAULT_CITY,
+  district,
   isApproximate = false
 }: {
   centerLat?: number | null;
   centerLng?: number | null;
   radiusKm: number;
   city?: string;
+  district?: string | null;
   isApproximate?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -26,10 +28,10 @@ export function YandexSearchAreaMap({
   const center = useMemo(
     () =>
       [
-        centerLng ?? DEFAULT_CITY_COORDINATES.lng,
-        centerLat ?? DEFAULT_CITY_COORDINATES.lat
+        centerLng ?? DISTRICT_MAP_AREAS[district as DistrictOption]?.center.lng ?? DEFAULT_CITY_COORDINATES.lng,
+        centerLat ?? DISTRICT_MAP_AREAS[district as DistrictOption]?.center.lat ?? DEFAULT_CITY_COORDINATES.lat
       ] as [number, number],
-    [centerLat, centerLng]
+    [centerLat, centerLng, district]
   );
   const initialLocation = useMemo(
     () => ({
@@ -70,6 +72,23 @@ export function YandexSearchAreaMap({
         map.addChild(new YMapDefaultFeaturesLayer());
 
         if (YMapFeature) {
+          for (const [districtKey, area] of Object.entries(DISTRICT_MAP_AREAS)) {
+            const isSelected = districtKey === district;
+
+            map.addChild(
+              new YMapFeature({
+                geometry: {
+                  type: "Polygon",
+                  coordinates: [area.polygon]
+                },
+                style: {
+                  fill: hexToRgba(area.color, isSelected ? 0.18 : 0.08),
+                  stroke: [{ color: area.color, width: isSelected ? 3 : 1.5 }]
+                }
+              })
+            );
+          }
+
           map.addChild(
             new YMapFeature({
               geometry: {
@@ -91,7 +110,7 @@ export function YandexSearchAreaMap({
             <span style="font-size:18px;line-height:1">📍</span>
           </span>
           <span class="mt-2 rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-[#142F26] shadow-md">
-            ${escapeHtml(city)} · ${radiusKm} км
+            ${escapeHtml(district ? DISTRICT_LABELS[district as DistrictOption] : city)} · ${radiusKm} км
           </span>
         `;
         markerElement.title = isApproximate
@@ -122,13 +141,22 @@ export function YandexSearchAreaMap({
       cancelled = true;
       mapInstance?.destroy();
     };
-  }, [apiKey, center, city, initialLocation, isApproximate, radiusKm]);
+  }, [apiKey, center, city, district, initialLocation, isApproximate, radiusKm]);
 
   if (error) {
     return <Panel className="text-sm leading-6 text-ink/70">{error}</Panel>;
   }
 
   return <div ref={containerRef} className="h-[240px] w-full overflow-hidden rounded-[28px]" />;
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const value = hex.replace("#", "");
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function getZoomByRadius(radiusKm: number) {

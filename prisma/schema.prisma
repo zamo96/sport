@@ -99,6 +99,7 @@ model User {
   age                  Int?
   gender               Gender?
   city                 String?
+  district             String?
   homeLat              Float?
   homeLng              Float?
   tennisLevel          Int?
@@ -112,12 +113,14 @@ model User {
   availableDays        Json?
   availableTimeRanges  Json?
   availableTimeSlots   Json?
+  availabilityByDay    Json?
   isLookingForGame     Boolean       @default(true)
   isVerified           Boolean       @default(false)
   onboardingCompleted  Boolean       @default(false)
   notificationMatches  Boolean       @default(true)
   notificationMessages Boolean       @default(true)
   notificationGames    Boolean       @default(true)
+  notificationSound    Boolean       @default(true)
   lastInboxSeenAt      DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
@@ -132,6 +135,8 @@ model User {
   gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
   gameSearches         GameSearch[]
   gameSearchResponses  GameSearchResponse[]
+  blockedUsers         Block[]       @relation("BlockerUser")
+  blockingUsers        Block[]       @relation("BlockedUser")
 }
 
 model Court {
@@ -139,6 +144,7 @@ model Court {
   name         String
   address      String
   city         String
+  district     String?
   locationLat  Float
   locationLng  Float
   surface      Surface
@@ -241,6 +247,7 @@ model GameSearch {
   hasCourtBooked      Boolean              @default(false)
   sport               Sport                @default(tennis)
   format              PlayFormat
+  playersNeeded       Int                  @default(1)
   comment             String?
   status              GameSearchStatus     @default(active)
   isActive            Boolean              @default(true)
@@ -268,6 +275,18 @@ model GameSearchResponse {
   @@unique([gameSearchId, responderUserId])
   @@index([gameSearchId, status])
   @@index([responderUserId, status])
+}
+
+model Block {
+  id            String   @id @default(cuid())
+  blockerUserId String
+  blockedUserId String
+  createdAt     DateTime @default(now())
+  blockerUser   User     @relation("BlockerUser", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUser   User     @relation("BlockedUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
 }
 
 model Session {

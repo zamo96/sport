@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import type { Sport } from "@prisma/client";
 
 import {
   AVAILABLE_CITIES,
@@ -20,7 +21,7 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
 
-export function FiltersBar() {
+export function FiltersBar({ profileSports }: { profileSports: Sport[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -110,7 +111,7 @@ export function FiltersBar() {
           </span>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {SPORT_OPTIONS.map((sport) => (
+          {(profileSports.length > 0 ? profileSports : SPORT_OPTIONS).map((sport) => (
             <button
               key={sport}
               type="button"

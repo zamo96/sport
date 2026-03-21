@@ -36,6 +36,7 @@ type SearchItem = {
   durationMinutes?: number | null;
   hasCourtBooked: boolean;
   sport: Sport;
+  playersNeeded?: number | null;
   preferredDays: unknown;
   preferredTimeRanges: unknown;
   format: "singles" | "doubles" | "both";
@@ -101,7 +102,8 @@ function GameSearchCard({ search }: { search: SearchItem }) {
   const days = Array.isArray(search.preferredDays) ? search.preferredDays : [];
   const timeRanges = Array.isArray(search.preferredTimeRanges) ? search.preferredTimeRanges : [];
   const pendingResponses = search.responses.filter((response) => response.status === "pending");
-  const approvedResponse = search.responses.find((response) => response.status === "approved");
+  const approvedResponses = search.responses.filter((response) => response.status === "approved");
+  const playersNeeded = Math.max(search.playersNeeded ?? 1, 1);
   const hotScheduleLabel =
     search.searchType === "hot" && search.hotStartsAt
       ? `${new Date(search.hotStartsAt).toLocaleString("ru-RU", {
@@ -119,7 +121,7 @@ function GameSearchCard({ search }: { search: SearchItem }) {
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Мой поиск игры</div>
           <div className="mt-1 text-xl font-bold text-ink">{statusLabel(search.status)}</div>
           <div className="mt-1 text-sm text-ink/60">
-            Ожидают ответа: {pendingResponses.length}
+            Собрано {approvedResponses.length} из {playersNeeded} · Ожидают ответа: {pendingResponses.length}
           </div>
         </div>
         <SearchStatusActions searchId={search.id} isActive={search.isActive} status={search.status} />
@@ -136,6 +138,9 @@ function GameSearchCard({ search }: { search: SearchItem }) {
         </span>
         <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
           {PLAY_FORMAT_LABELS[search.format]}
+        </span>
+        <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
+          Нужно игроков: {playersNeeded}
         </span>
         <SportBadge sport={search.sport} className="bg-cream text-ink" />
         {search.hotWindow ? (
@@ -168,26 +173,26 @@ function GameSearchCard({ search }: { search: SearchItem }) {
 
       {search.comment ? <div className="text-sm leading-6 text-ink/72">{search.comment}</div> : null}
 
-      {approvedResponse ? (
-        <ApprovedPlayerCard response={approvedResponse} searchSport={search.sport} />
-      ) : (
-        <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Отклики</div>
-          {search.responses.length === 0 ? (
-            <div className="rounded-2xl bg-cream px-4 py-3 text-sm text-ink/65">
-              Пока никто не откликнулся.
-            </div>
-          ) : null}
-          {search.responses.map((response) => (
-            <SearchResponseCard
-              key={response.id}
-              response={response}
-              canApprove={search.status !== "matched"}
-              searchSport={search.sport}
-            />
-          ))}
-        </div>
-      )}
+      {approvedResponses.length > 0 ? (
+        <ApprovedPlayersCard responses={approvedResponses} searchSport={search.sport} playersNeeded={playersNeeded} />
+      ) : null}
+
+      <div className="space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Отклики</div>
+        {search.responses.length === 0 ? (
+          <div className="rounded-2xl bg-cream px-4 py-3 text-sm text-ink/65">
+            Пока никто не откликнулся.
+          </div>
+        ) : null}
+        {search.responses.map((response) => (
+          <SearchResponseCard
+            key={response.id}
+            response={response}
+            canApprove={search.status !== "matched" && approvedResponses.length < playersNeeded}
+            searchSport={search.sport}
+          />
+        ))}
+      </div>
     </Panel>
   );
 }
@@ -282,24 +287,40 @@ function SearchResponseCard({
   );
 }
 
-function ApprovedPlayerCard({
-  response,
-  searchSport
+function ApprovedPlayersCard({
+  responses,
+  searchSport,
+  playersNeeded
 }: {
-  response: SearchResponse;
+  responses: SearchResponse[];
   searchSport: SearchItem["sport"];
+  playersNeeded: number;
 }) {
   return (
     <div className="rounded-[24px] bg-mint p-4">
-      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Выбранный игрок</div>
-      <div className="mt-3 flex items-center gap-3">
-        <Avatar src={response.responderUser.avatarUrl} alt={response.responderUser.name ?? "Игрок"} />
-        <div>
-          <div className="text-lg font-bold text-ink">{response.responderUser.name}</div>
-          <div className="text-sm text-ink/60">
-            Уровень {getSportLevel(response.responderUser.sportLevels, searchSport, response.responderUser.tennisLevel ?? 5)}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Подтвержденные игроки</div>
+        <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
+          {responses.length}/{playersNeeded}
+        </span>
+      </div>
+      <div className="mt-3 space-y-3">
+        {responses.map((response) => (
+          <div key={response.id} className="flex items-center gap-3">
+            <Avatar src={response.responderUser.avatarUrl} alt={response.responderUser.name ?? "Игрок"} />
+            <div>
+              <div className="text-lg font-bold text-ink">{response.responderUser.name}</div>
+              <div className="text-sm text-ink/60">
+                Уровень {getSportLevel(response.responderUser.sportLevels, searchSport, response.responderUser.tennisLevel ?? 5)}
+              </div>
+            </div>
           </div>
-        </div>
+        ))}
+        {responses.length < playersNeeded ? (
+          <div className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-ink/65">
+            Поиск ещё открыт. Нужно добрать ещё {playersNeeded - responses.length}.
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -310,9 +331,9 @@ function statusLabel(status: SearchItem["status"]) {
     case "active":
       return "Активен";
     case "in_review":
-      return "Есть отклики";
+      return "Идёт набор";
     case "matched":
-      return "Игрок выбран";
+      return "Состав собран";
     case "closed":
       return "Закрыт";
     default:

@@ -41,6 +41,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return fail("Отозвать отклик может только тот, кто его отправил", 403);
     }
 
+    const playersNeeded = Math.max(response.gameSearch.playersNeeded ?? 1, 1);
+
+    if (body.status === GameSearchResponseStatus.approved && response.status !== GameSearchResponseStatus.approved) {
+      const approvedCount = await prisma.gameSearchResponse.count({
+        where: {
+          gameSearchId: response.gameSearchId,
+          status: GameSearchResponseStatus.approved
+        }
+      });
+
+      if (approvedCount >= playersNeeded) {
+        return fail("Лобби уже собрано", 409);
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.gameSearchResponse.update({
         where: { id: response.id },
@@ -56,29 +71,27 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       let gameRequestId: string | null = null;
 
       if (body.status === GameSearchResponseStatus.approved) {
-        await tx.gameSearchResponse.updateMany({
+        const approvedCount = await tx.gameSearchResponse.count({
           where: {
             gameSearchId: response.gameSearchId,
-            id: { not: response.id },
-            status: GameSearchResponseStatus.pending
-          },
-          data: {
-            status: GameSearchResponseStatus.rejected
-          }
-        });
-
-        await tx.gameSearch.update({
-          where: { id: response.gameSearchId },
-          data: {
-            status: "matched",
-            isActive: false
+            status: GameSearchResponseStatus.approved
           }
         });
 
         const match = await ensureMatchForUsers(tx, response.gameSearch.createdByUserId, response.responderUserId);
         matchId = match.id;
+        const isFilled = approvedCount >= playersNeeded;
+
+        await tx.gameSearch.update({
+          where: { id: response.gameSearchId },
+          data: {
+            status: isFilled ? "matched" : "in_review",
+            isActive: !isFilled
+          }
+        });
 
         if (
+          playersNeeded === 1 &&
           response.gameSearch.searchType === "hot" &&
           response.gameSearch.preferredCourtId &&
           response.gameSearch.hotStartsAt
@@ -130,7 +143,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             data: {
               matchId: match.id,
               senderUserId: response.gameSearch.createdByUserId,
-              text: `Я подтвердил(а) твой отклик на поиск игры. Давай согласуем площадку и время.`
+              text: isFilled
+                ? "Я подтвердил(а) твой отклик. Состав собран, дальше можно согласовать детали."
+                : `Я подтвердил(а) твой отклик. Уже собрано ${approvedCount} из ${playersNeeded} игроков.`
             }
           });
         }
@@ -140,6 +155,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           data: { updatedAt: new Date() }
         });
       } else {
+        const approvedCount = await tx.gameSearchResponse.count({
+          where: {
+            gameSearchId: response.gameSearchId,
+            status: GameSearchResponseStatus.approved
+          }
+        });
         const remainingPending = await tx.gameSearchResponse.count({
           where: {
             gameSearchId: response.gameSearchId,
@@ -150,14 +171,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         await tx.gameSearch.update({
           where: { id: response.gameSearchId },
           data: {
-            status:
-              response.gameSearch.status === "matched"
-                ? "matched"
-                : remainingPending > 0
-                  ? "in_review"
-                  : response.gameSearch.isActive
-                    ? "active"
-                    : "closed"
+            status: approvedCount >= playersNeeded ? "matched" : remainingPending > 0 || approvedCount > 0 ? "in_review" : response.gameSearch.isActive ? "active" : "closed",
+            isActive: approvedCount >= playersNeeded ? false : response.gameSearch.isActive
           }
         });
       }

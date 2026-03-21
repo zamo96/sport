@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
 import { type DiscoverFilters } from "@/lib/scoring";
 import { courtSupportsSport } from "@/lib/courts";
-import { fetchYandexOrganizations } from "@/lib/maps/yandex-organizations";
 import { getDiscoverCandidates } from "@/server/discover";
 
 async function closeExpiredHotSearches() {
@@ -79,6 +78,17 @@ export async function getGameSearchesForUser(userId: string) {
   });
 }
 
+export async function getActiveSearchesCount(userId: string) {
+  await closeExpiredHotSearches();
+
+  return prisma.gameSearch.count({
+    where: {
+      createdByUserId: userId,
+      isActive: true
+    }
+  });
+}
+
 export async function getUpcomingGamesForUser(userId: string) {
   return prisma.gameRequest.findMany({
     where: {
@@ -104,6 +114,7 @@ export async function getUpcomingGamesForUser(userId: string) {
 export async function getMatchesForUser(userId: string) {
   return prisma.match.findMany({
     where: {
+      status: "active",
       OR: [{ user1Id: userId }, { user2Id: userId }]
     },
     include: {
@@ -143,6 +154,7 @@ export async function getMatchDetail(matchId: string, userId: string) {
   return prisma.match.findFirst({
     where: {
       id: matchId,
+      status: "active",
       OR: [{ user1Id: userId }, { user2Id: userId }]
     },
     include: {
@@ -225,8 +237,7 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
 export type CourtsFilters = {
   sport?: import("@prisma/client").Sport;
   q?: string;
-  surface?: "hard" | "clay" | "grass" | "any";
-  setting?: "indoor" | "outdoor";
+  district?: string;
   maxDistanceKm?: number;
   city?: string;
 };
@@ -246,8 +257,7 @@ export async function getCourtsForUser(
   const courts = await prisma.court.findMany({
     where: {
       city: filters.city,
-      surface: filters.surface,
-      setting: filters.setting,
+      ...(filters.district ? { district: filters.district } : {}),
       ...(filters.q
         ? {
             OR: [
@@ -262,6 +272,12 @@ export async function getCourtsForUser(
                   contains: filters.q,
                   mode: "insensitive"
                 }
+              },
+              {
+                district: {
+                  contains: filters.q,
+                  mode: "insensitive"
+                }
               }
             ]
           }
@@ -270,12 +286,7 @@ export async function getCourtsForUser(
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
 
-  const includeYandexOrganizations = Boolean(filters.city && (filters.sport || filters.q) && !filters.surface && !filters.setting);
-  const externalCourts = includeYandexOrganizations
-    ? await fetchYandexOrganizations(filters.city ?? user.city ?? "", filters.sport, filters.q)
-    : [];
-
-  return [...courts, ...externalCourts]
+  return courts
     .map((court) => ({
       ...court,
       distanceKm: haversineDistanceKm(
@@ -285,10 +296,19 @@ export async function getCourtsForUser(
     }))
     .filter((court) =>
       courtSupportsSport(court.supportedSports, filters.sport) &&
-      (
-      filters.maxDistanceKm && court.distanceKm != null
+      (filters.maxDistanceKm && court.distanceKm != null
         ? court.distanceKm <= filters.maxDistanceKm
         : true
       )
-    );
+    )
+    .sort((first, second) => {
+      const firstDistance = first.distanceKm ?? Number.POSITIVE_INFINITY;
+      const secondDistance = second.distanceKm ?? Number.POSITIVE_INFINITY;
+
+      if (firstDistance !== secondDistance) {
+        return firstDistance - secondDistance;
+      }
+
+      return (second.rating ?? 0) - (first.rating ?? 0);
+    });
 }

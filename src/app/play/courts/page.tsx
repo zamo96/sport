@@ -5,6 +5,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { CourtsBrowser } from "@/components/courts/courts-browser";
 import { DEFAULT_CITY } from "@/lib/constants";
+import { normalizeSports } from "@/lib/sport-levels";
 import { courtsQuerySchema } from "@/lib/validators";
 import { getCourtsForUser } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
@@ -26,8 +27,8 @@ export default async function CourtsPage({
     )
   );
   const courts = await getCourtsForUser(user.id, {
-    ...query,
-    city: DEFAULT_CITY
+    city: DEFAULT_CITY,
+    maxDistanceKm: user.searchRadiusKm
   });
 
   return (
@@ -35,9 +36,16 @@ export default async function CourtsPage({
       <SectionTitle
         eyebrow="Спортивные центры"
         title="Выбери место до начала переписки."
-        subtitle="Пока показываем только площадки и спортивные центры Санкт-Петербурга. Карта и список фильтруются по видам спорта."
+        subtitle="Показываем свою базу спортивных центров Санкт-Петербурга. Поиск подсказывает клубы и районы сразу при вводе."
       />
-      <CourtsBrowser courts={courts.map(serializeCourt)} />
+      <CourtsBrowser
+        courts={courts.map(serializeCourt)}
+        userDistrict={user.district}
+        searchRadiusKm={user.searchRadiusKm}
+        profileSports={normalizeSports(user.preferredSports)}
+        initialQuery={query.q ?? ""}
+        initialSport={query.sport ?? null}
+      />
     </PageShell>
   );
 }

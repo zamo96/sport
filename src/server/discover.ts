@@ -17,6 +17,16 @@ export async function getDiscoverCandidates(userId: string, filters: DiscoverFil
       id: { not: userId },
       onboardingCompleted: true,
       isVerified: true,
+      blockedUsers: {
+        none: {
+          blockedUserId: userId
+        }
+      },
+      blockingUsers: {
+        none: {
+          blockerUserId: userId
+        }
+      },
       ...(filters.view === "hot"
         ? {
             gameSearches: {

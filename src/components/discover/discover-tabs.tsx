@@ -34,14 +34,14 @@ export function DiscoverTabs() {
         onClick={() => switchTab("seeking")}
         className={`rounded-[22px] px-4 py-3 text-sm font-semibold ${current === "seeking" ? "bg-clay text-white" : "text-ink/55"}`}
       >
-        Ищут игру
+        🙋 Ищут игру
       </button>
       <button
         type="button"
         onClick={() => switchTab("hot")}
-        className={`inline-flex items-center justify-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold ${current === "hot" ? "bg-red-500 text-white" : "text-ink/55"}`}
+        className={`inline-flex items-center justify-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold ${current === "hot" ? "bg-red-500 text-white" : "text-red-600"}`}
       >
-        <Flame className="h-4 w-4" />
+        <Flame className={`h-4 w-4 ${current === "hot" ? "text-orange-200" : "text-orange-500"}`} />
         Срочно
       </button>
     </div>

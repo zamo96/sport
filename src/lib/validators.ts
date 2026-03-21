@@ -12,7 +12,7 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 
-import { DAY_OPTIONS, DEFAULT_CITY, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { DAY_OPTIONS, DEFAULT_CITY, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 
 const dayEnum = z.enum(DAY_OPTIONS);
 const timeRangeEnum = z.enum(TIME_RANGE_OPTIONS);
@@ -52,6 +52,14 @@ function parseOptionalText(value: unknown) {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function parseAvailabilityByDayValue(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value;
+}
+
 export const requestLinkSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase())
 });
@@ -66,6 +74,7 @@ export const updateMeSchema = z.object({
   age: z.number().int().min(18).max(70),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: z.literal(DEFAULT_CITY),
+  district: z.enum(DISTRICT_OPTIONS),
   tennisLevel: z.number().int().min(1).max(10),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
   sportLevels: z
@@ -83,11 +92,22 @@ export const updateMeSchema = z.object({
   searchRadiusKm: z.number().int().min(1).max(100),
   availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
   availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).default([]),
+  availabilityByDay: z
+    .preprocess(
+      (value) => parseAvailabilityByDayValue(value),
+      z.record(z.string(), z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length))
+    )
+    .refine(
+      (value) => Object.keys(value).every((key) => DAY_OPTIONS.includes(key as (typeof DAY_OPTIONS)[number])),
+      "Некорректные дни в доступности"
+    )
+    .default({}),
   avatarUrl: z.string().max(300).optional().nullable(),
   isLookingForGame: z.boolean().optional(),
   notificationMatches: z.boolean().optional(),
   notificationMessages: z.boolean().optional(),
-  notificationGames: z.boolean().optional()
+  notificationGames: z.boolean().optional(),
+  notificationSound: z.boolean().optional()
 });
 
 export const discoverFiltersSchema = z.object({
@@ -116,8 +136,7 @@ export const messageSchema = z.object({
 export const courtsQuerySchema = z.object({
   sport: z.nativeEnum(Sport).optional(),
   q: z.string().trim().max(120).optional(),
-  surface: z.nativeEnum(Surface).optional(),
-  setting: z.enum(["indoor", "outdoor"]).optional(),
+  district: z.enum(DISTRICT_OPTIONS).optional(),
   maxDistanceKm: z.coerce.number().int().min(1).max(100).optional(),
   city: z.literal(DEFAULT_CITY).optional()
 });
@@ -159,6 +178,7 @@ export const createGameSearchSchema = z
     hasCourtBooked: z.boolean().optional().default(false),
     sport: z.nativeEnum(Sport),
     format: z.nativeEnum(PlayFormat),
+    playersNeeded: z.number().int().min(1).max(30).optional().default(1),
     comment: z.string().max(240).optional().default("")
   })
   .superRefine((value, ctx) => {

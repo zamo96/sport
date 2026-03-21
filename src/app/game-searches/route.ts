@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
           hasCourtBooked: body.hasCourtBooked ?? false,
           sport: body.sport,
           format: body.format,
+          playersNeeded: body.playersNeeded ?? 1,
           comment: body.comment,
           status: "active",
           isActive: true

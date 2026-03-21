@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Compass, MessageCircle, Settings2, Trophy, User2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
@@ -21,7 +21,37 @@ const hiddenRoutes = ["/auth", "/onboarding", "/offline"];
 export function BottomNav() {
   const pathname = usePathname();
   const [inboxBadgeCount, setInboxBadgeCount] = useState(0);
+  const lastBadgeRef = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const isHidden = hiddenRoutes.some((route) => pathname.startsWith(route));
+
+  function playNotificationBeep() {
+    const context = audioContextRef.current;
+    if (!context) {
+      return;
+    }
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.03;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.12);
+  }
+
+  useEffect(() => {
+    function unlockAudio() {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new window.AudioContext();
+      }
+    }
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    return () => window.removeEventListener("pointerdown", unlockAudio);
+  }, []);
 
   useEffect(() => {
     if (isHidden) {
@@ -34,10 +64,15 @@ export function BottomNav() {
       try {
         const data = await apiFetch<{ inboxBadgeCount: number }>("/activity/summary");
         if (active) {
+          if (data.inboxBadgeCount > lastBadgeRef.current && lastBadgeRef.current > 0) {
+            playNotificationBeep();
+          }
+          lastBadgeRef.current = data.inboxBadgeCount;
           setInboxBadgeCount(data.inboxBadgeCount);
         }
       } catch {
         if (active) {
+          lastBadgeRef.current = 0;
           setInboxBadgeCount(0);
         }
       }
@@ -63,7 +98,10 @@ export function BottomNav() {
 
     void apiFetch("/activity/inbox-seen", {
       method: "POST"
-    }).then(() => setInboxBadgeCount(0)).catch(() => undefined);
+    }).then(() => {
+      lastBadgeRef.current = 0;
+      setInboxBadgeCount(0);
+    }).catch(() => undefined);
   }, [isHidden, pathname]);
 
   if (isHidden) {

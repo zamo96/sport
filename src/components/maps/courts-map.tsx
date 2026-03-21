@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { getMapProvider } from "@/lib/maps/config";
 import { Panel } from "@/components/ui/panel";
 import { YandexCourtsMap } from "@/components/maps/yandex-courts-map";
@@ -10,16 +8,25 @@ type CourtMapPoint = {
   id: string;
   name: string;
   address: string;
+  district?: string | null;
   locationLat: number;
   locationLng: number;
   supportedSports?: unknown;
 };
 
-export function CourtsMap({ courts }: { courts: CourtMapPoint[] }) {
+export function CourtsMap({
+  courts,
+  district,
+  radiusKm
+}: {
+  courts: CourtMapPoint[];
+  district?: string | null;
+  radiusKm?: number;
+}) {
   const provider = getMapProvider();
 
   if (provider === "yandex") {
-    return <YandexCourtsMap courts={courts} />;
+    return <YandexCourtsMap courts={courts} district={district} radiusKm={radiusKm} />;
   }
 
   return (

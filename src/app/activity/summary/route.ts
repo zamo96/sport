@@ -7,6 +7,7 @@ export async function GET() {
     const user = await requireSessionUser();
     const seenAt = user.lastInboxSeenAt ?? new Date(0);
     const matchWhere = {
+      status: "active" as const,
       OR: [{ user1Id: user.id }, { user2Id: user.id }]
     };
 

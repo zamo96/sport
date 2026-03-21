@@ -50,6 +50,7 @@ export default async function GameSearchesPage() {
           durationMinutes: search.durationMinutes,
           hasCourtBooked: search.hasCourtBooked,
           sport: search.sport,
+          playersNeeded: search.playersNeeded,
           preferredDays: search.preferredDays,
           preferredTimeRanges: search.preferredTimeRanges,
           format: search.format,

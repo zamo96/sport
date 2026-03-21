@@ -35,6 +35,7 @@ async function main() {
         name: "Анна Волкова",
         age: 27,
         city: "Санкт-Петербург",
+        district: "petrogradsky",
         homeLat: 59.9539,
         homeLng: 30.3158,
         tennisLevel: 5,
@@ -48,6 +49,11 @@ async function main() {
         availableDays: ["monday", "wednesday", "saturday"],
         availableTimeRanges: ["evening", "morning"],
         availableTimeSlots: ["monday-evening", "wednesday-evening", "saturday-morning"],
+        availabilityByDay: {
+          monday: ["evening"],
+          wednesday: ["evening"],
+          saturday: ["morning"]
+        },
         isLookingForGame: true
       },
       {
@@ -55,6 +61,7 @@ async function main() {
         name: "Елена Козлова",
         age: 29,
         city: "Санкт-Петербург",
+        district: "central",
         homeLat: 59.9346,
         homeLng: 30.3342,
         tennisLevel: 6,
@@ -68,6 +75,11 @@ async function main() {
         availableDays: ["tuesday", "thursday", "sunday"],
         availableTimeRanges: ["evening", "day"],
         availableTimeSlots: ["tuesday-evening", "thursday-evening", "sunday-day"],
+        availabilityByDay: {
+          tuesday: ["evening"],
+          thursday: ["evening"],
+          sunday: ["day"]
+        },
         isLookingForGame: true
       },
       {
@@ -75,6 +87,7 @@ async function main() {
         name: "Мария Соколова",
         age: 31,
         city: "Санкт-Петербург",
+        district: "admiralteysky",
         homeLat: 59.9196,
         homeLng: 30.3015,
         tennisLevel: 6,
@@ -88,6 +101,11 @@ async function main() {
         availableDays: ["monday", "friday", "saturday"],
         availableTimeRanges: ["day", "evening", "morning"],
         availableTimeSlots: ["monday-day", "friday-evening", "saturday-morning"],
+        availabilityByDay: {
+          monday: ["day"],
+          friday: ["evening"],
+          saturday: ["morning"]
+        },
         isLookingForGame: false
       },
       {
@@ -95,11 +113,12 @@ async function main() {
         name: "Дарья Ким",
         age: 25,
         city: "Санкт-Петербург",
+        district: "primorsky",
         homeLat: 60.0054,
         homeLng: 30.2651,
         tennisLevel: 4,
-        preferredSports: [Sport.volleyball, Sport.badminton],
-        sportLevels: { volleyball: 5, badminton: 4 },
+        preferredSports: [Sport.volleyball, Sport.badminton, Sport.football],
+        sportLevels: { volleyball: 5, badminton: 4, football: 5 },
         preferredPlayFormat: PlayFormat.doubles,
         preferredSurface: Surface.any,
         bio: "Ищу регулярные командные игры на севере города и быстрые договоренности без лишней переписки.",
@@ -108,6 +127,11 @@ async function main() {
         availableDays: ["wednesday", "friday", "sunday"],
         availableTimeRanges: ["evening"],
         availableTimeSlots: ["wednesday-evening", "friday-evening", "sunday-evening"],
+        availabilityByDay: {
+          wednesday: ["evening"],
+          friday: ["evening"],
+          sunday: ["evening"]
+        },
         isLookingForGame: true
       },
       {
@@ -115,6 +139,7 @@ async function main() {
         name: "София Петрова",
         age: 26,
         city: "Санкт-Петербург",
+        district: "kalininsky",
         homeLat: 59.9723,
         homeLng: 30.3108,
         tennisLevel: 5,
@@ -128,6 +153,11 @@ async function main() {
         availableDays: ["tuesday", "saturday", "sunday"],
         availableTimeRanges: ["morning", "day"],
         availableTimeSlots: ["tuesday-morning", "saturday-morning", "sunday-day"],
+        availabilityByDay: {
+          tuesday: ["morning"],
+          saturday: ["morning"],
+          sunday: ["day"]
+        },
         isLookingForGame: true
       },
       {
@@ -135,6 +165,7 @@ async function main() {
         name: "Нина Лебедева",
         age: 33,
         city: "Санкт-Петербург",
+        district: "nevsky",
         homeLat: 59.9412,
         homeLng: 30.3776,
         tennisLevel: 7,
@@ -148,6 +179,10 @@ async function main() {
         availableDays: ["monday", "thursday"],
         availableTimeRanges: ["day", "evening"],
         availableTimeSlots: ["monday-day", "thursday-evening"],
+        availabilityByDay: {
+          monday: ["day"],
+          thursday: ["evening"]
+        },
         isLookingForGame: false
       }
     ].map((user) =>
@@ -167,6 +202,7 @@ async function main() {
         name: "Крестовский Tennis & Padel Club",
         address: "Крестовский проспект, 21",
         city: "Санкт-Петербург",
+        district: "petrogradsky",
         locationLat: 59.9722,
         locationLng: 30.2324,
         surface: Surface.clay,
@@ -181,6 +217,7 @@ async function main() {
         name: "Петроград Indoor Arena",
         address: "Большой проспект П.С., 98",
         city: "Санкт-Петербург",
+        district: "petrogradsky",
         locationLat: 59.9667,
         locationLng: 30.3119,
         surface: Surface.hard,
@@ -195,6 +232,7 @@ async function main() {
         name: "Приморский MultiSport Center",
         address: "Приморский проспект, 72",
         city: "Санкт-Петербург",
+        district: "primorsky",
         locationLat: 59.9854,
         locationLng: 30.2297,
         surface: Surface.hard,
@@ -209,6 +247,7 @@ async function main() {
         name: "Невский Court House",
         address: "Лиговский проспект, 50",
         city: "Санкт-Петербург",
+        district: "central",
         locationLat: 59.9207,
         locationLng: 30.3615,
         surface: Surface.hard,
@@ -218,6 +257,81 @@ async function main() {
         rating: 4.5,
         sourceType: "manual",
         bookingUrl: "https://example.com/nevsky-court-house"
+      },
+      {
+        name: "Московский Football Hub",
+        address: "Московский проспект, 183",
+        city: "Санкт-Петербург",
+        district: "moskovsky",
+        locationLat: 59.8519,
+        locationLng: 30.3211,
+        surface: Surface.hard,
+        setting: CourtSetting.outdoor,
+        supportedSports: [Sport.football, Sport.volleyball],
+        priceRange: "$$$",
+        rating: 4.7,
+        sourceType: "manual",
+        bookingUrl: "https://example.com/moskovsky-football-hub"
+      },
+      {
+        name: "Невский Racket Lab",
+        address: "Проспект Большевиков, 18",
+        city: "Санкт-Петербург",
+        district: "nevsky",
+        locationLat: 59.9189,
+        locationLng: 30.4688,
+        surface: Surface.hard,
+        setting: CourtSetting.indoor,
+        supportedSports: [Sport.table_tennis, Sport.badminton, Sport.squash],
+        priceRange: "$$",
+        rating: 4.6,
+        sourceType: "manual",
+        bookingUrl: "https://example.com/nevsky-racket-lab"
+      },
+      {
+        name: "Васька Padel Yard",
+        address: "Малый проспект В.О., 64",
+        city: "Санкт-Петербург",
+        district: "vasileostrovsky",
+        locationLat: 59.9448,
+        locationLng: 30.2497,
+        surface: Surface.hard,
+        setting: CourtSetting.indoor,
+        supportedSports: [Sport.padel, Sport.tennis],
+        priceRange: "$$$",
+        rating: 4.8,
+        sourceType: "manual",
+        bookingUrl: "https://example.com/padel-yard"
+      },
+      {
+        name: "Центр Balance & Yoga",
+        address: "Набережная Обводного канала, 118",
+        city: "Санкт-Петербург",
+        district: "admiralteysky",
+        locationLat: 59.9102,
+        locationLng: 30.3054,
+        surface: Surface.any,
+        setting: CourtSetting.indoor,
+        supportedSports: [Sport.yoga, Sport.fitness, Sport.boxing],
+        priceRange: "$$",
+        rating: 4.4,
+        sourceType: "manual",
+        bookingUrl: "https://example.com/balance-yoga"
+      },
+      {
+        name: "Калининский Sports Hall",
+        address: "Гражданский проспект, 84",
+        city: "Санкт-Петербург",
+        district: "kalininsky",
+        locationLat: 60.0142,
+        locationLng: 30.4091,
+        surface: Surface.hard,
+        setting: CourtSetting.indoor,
+        supportedSports: [Sport.volleyball, Sport.badminton, Sport.fitness],
+        priceRange: "$",
+        rating: 4.3,
+        sourceType: "manual",
+        bookingUrl: "https://example.com/kalininsky-hall"
       }
     ].map((court) => prisma.court.create({ data: court }))
   );
@@ -277,6 +391,23 @@ async function main() {
         status: GameSearchStatus.in_review,
         isActive: true
       }
+    }),
+    prisma.gameSearch.create({
+      data: {
+        createdByUserId: daria.id,
+        preferredCourtId: courts[4].id,
+        preferredDays: ["friday"],
+        preferredTimeRanges: ["evening"],
+        searchType: GameSearchType.regular,
+        hotWindow: null,
+        hasCourtBooked: true,
+        sport: Sport.football,
+        format: PlayFormat.doubles,
+        playersNeeded: 4,
+        comment: "Собираю мини-футбол на пятницу вечером. Поле уже есть, нужно ещё несколько человек.",
+        status: GameSearchStatus.in_review,
+        isActive: true
+      }
     })
   ]);
 
@@ -292,6 +423,18 @@ async function main() {
         gameSearchId: gameSearches[0].id,
         responderUserId: daria.id,
         message: "Суббота мне тоже подходит.",
+        status: GameSearchResponseStatus.pending
+      },
+      {
+        gameSearchId: gameSearches[3].id,
+        responderUserId: anna.id,
+        message: "Могу в пятницу вечером, если нужен ещё один игрок.",
+        status: GameSearchResponseStatus.approved
+      },
+      {
+        gameSearchId: gameSearches[3].id,
+        responderUserId: elena.id,
+        message: "Тоже смогу присоединиться после работы.",
         status: GameSearchResponseStatus.pending
       },
       {

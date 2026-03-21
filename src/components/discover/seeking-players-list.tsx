@@ -37,6 +37,7 @@ type SeekingUser = {
     hasCourtBooked: boolean;
     sport: Sport;
     format: "singles" | "doubles" | "both";
+    playersNeeded?: number | null;
     comment: string | null;
     responses?: Array<{
       id: string;
@@ -171,6 +172,11 @@ export function SeekingPlayersList({
                   <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
                     {PLAY_FORMAT_LABELS[latestSearch.format]}
                   </span>
+                  {latestSearch.playersNeeded ? (
+                    <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
+                      Нужно ещё {latestSearch.playersNeeded}
+                    </span>
+                  ) : null}
                   {latestSearch.hotWindow ? (
                     <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-red-700">
                       {HOT_SEARCH_WINDOW_LABELS[latestSearch.hotWindow]}

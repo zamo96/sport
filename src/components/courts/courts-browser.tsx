@@ -1,24 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, Sparkles, X } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { Sport } from "@prisma/client";
 
-import { COURT_SETTING_LABELS, DEFAULT_CITY, SPORT_LABELS, SPORT_OPTIONS, SURFACE_LABELS } from "@/lib/constants";
+import {
+  DEFAULT_CITY,
+  DISTRICT_LABELS,
+  DISTRICT_SEARCH_HINTS,
+  SPORT_LABELS,
+  SPORT_OPTIONS
+} from "@/lib/constants";
 import { normalizeCourtSports } from "@/lib/courts";
-import { Chip } from "@/components/ui/chip";
-import { Panel } from "@/components/ui/panel";
+import { cn } from "@/lib/utils";
 import { CourtsMap } from "@/components/maps/courts-map";
+import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
 
 type Court = {
   id: string;
   name: string;
   address: string;
-  surface: "hard" | "clay" | "grass" | "any";
-  setting: "indoor" | "outdoor";
+  district?: string | null;
   priceRange: string;
   rating: number | null;
   distanceLabel: string;
@@ -29,101 +33,115 @@ type Court = {
   supportedSports?: unknown;
 };
 
-export function CourtsBrowser({ courts }: { courts: Court[] }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [mode, setMode] = useState<"list" | "map">("list");
-  const [searchInput, setSearchInput] = useState(searchParams.get("q") || "");
-  const selectedSport = searchParams.get("sport");
+type CourtsBrowserProps = {
+  courts: Court[];
+  userDistrict?: string | null;
+  searchRadiusKm: number;
+  profileSports: Sport[];
+  initialQuery?: string;
+  initialSport?: Sport | null;
+};
 
-  useEffect(() => {
-    setSearchInput(searchParams.get("q") || "");
-  }, [searchParams]);
+export function CourtsBrowser({
+  courts,
+  userDistrict,
+  searchRadiusKm,
+  profileSports,
+  initialQuery = "",
+  initialSport = null
+}: CourtsBrowserProps) {
+  const [searchInput, setSearchInput] = useState(initialQuery);
+  const [selectedSport, setSelectedSport] = useState<Sport | null>(initialSport ?? profileSports[0] ?? null);
 
-  function update(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (!value) params.delete(key);
-    else params.set(key, value);
-    router.replace(`${pathname}?${params.toString()}`);
-  }
+  const visibleSports = useMemo(() => {
+    const base = profileSports.length > 0 ? profileSports : SPORT_OPTIONS;
+    return Array.from(new Set(base));
+  }, [profileSports]);
 
-  function handleSearchSubmit(event: FormEvent) {
-    event.preventDefault();
-    update("q", searchInput.trim());
-  }
+  const smartSuggestions = useMemo(() => {
+    const districtLabel =
+      userDistrict && userDistrict in DISTRICT_LABELS
+        ? DISTRICT_LABELS[userDistrict as keyof typeof DISTRICT_LABELS]
+        : null;
+    const sportLabel = selectedSport ? SPORT_LABELS[selectedSport] : null;
+    const dynamic = [
+      sportLabel ? `${sportLabel} рядом` : null,
+      sportLabel && districtLabel ? `${sportLabel} ${districtLabel}` : null,
+      districtLabel ? `${districtLabel}` : null,
+      ...DISTRICT_SEARCH_HINTS.slice(0, 4)
+    ].filter((value): value is string => Boolean(value));
 
-  function applySmartSuggestion(value: string) {
-    setSearchInput(value);
-    update("q", value);
-  }
+    return Array.from(new Set(dynamic)).slice(0, 6);
+  }, [selectedSport, userDistrict]);
 
-  const smartSuggestions = selectedSport
-    ? [
-        SPORT_LABELS[selectedSport as Sport],
-        `${SPORT_LABELS[selectedSport as Sport]} рядом`,
-        `${SPORT_LABELS[selectedSport as Sport]} у метро`
+  const searchSuggestions = useMemo(() => {
+    const normalized = searchInput.trim().toLowerCase();
+    const baseSuggestions = courts.flatMap((court) => [
+      court.name,
+      court.address,
+      court.district ? DISTRICT_LABELS[court.district as keyof typeof DISTRICT_LABELS] ?? court.district : null
+    ]);
+
+    return Array.from(new Set(baseSuggestions.filter((item): item is string => Boolean(item))))
+      .filter((item) => !normalized || item.toLowerCase().includes(normalized))
+      .slice(0, 6);
+  }, [courts, searchInput]);
+
+  const filteredCourts = useMemo(() => {
+    const normalizedQuery = searchInput.trim().toLowerCase();
+
+    return courts.filter((court) => {
+      const supportsSport = !selectedSport || normalizeCourtSports(court.supportedSports).includes(selectedSport);
+      const haystack = [
+        court.name,
+        court.address,
+        court.district ? DISTRICT_LABELS[court.district as keyof typeof DISTRICT_LABELS] ?? court.district : ""
       ]
-    : ["Теннисный клуб", "Падел-клуб", "Футбольный клуб"];
+        .join(" ")
+        .toLowerCase();
+      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
+
+      return supportsSport && matchesQuery;
+    });
+  }, [courts, searchInput, selectedSport]);
 
   return (
     <div className="space-y-4">
-      <Panel className="space-y-3">
-        <div className="flex items-center justify-between">
+      <Panel className="space-y-4 overflow-hidden">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Фильтры центров</div>
-            <div className="mt-1 text-sm text-ink/70">Площадки и спортивные центры в {DEFAULT_CITY}. Отфильтруй по виду спорта и формату площадки.</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Спортивные центры</div>
+            <div className="mt-1 text-sm leading-6 text-ink/72">
+              Собственная база клубов и площадок в {DEFAULT_CITY}. Карта видна сразу, а поиск подсказывает варианты по мере ввода.
+            </div>
           </div>
-          <div className="flex rounded-full bg-cream p-1">
-            {(["list", "map"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setMode(value)}
-                className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${mode === value ? "bg-ink text-white" : "text-ink/50"}`}
-              >
-                {value === "list" ? "список" : "карта"}
-              </button>
-            ))}
+          <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-court">Радиус</div>
+            <div className="mt-1 font-bold text-ink">{searchRadiusKm} км</div>
           </div>
         </div>
-        <form onSubmit={handleSearchSubmit} className="space-y-3">
-          <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-court">Умный поиск</div>
-            <div className="text-sm text-ink/70">Введи название клуба, район, метро или просто вид спорта. Поиск учитывает выбранный спорт и ищет и по базе, и по Яндекс Картам.</div>
+
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40" />
+            <input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              className="input pl-11"
+              placeholder={
+                selectedSport
+                  ? `${SPORT_LABELS[selectedSport]} в удобном районе, у метро или по названию клуба`
+                  : "Клуб, адрес, метро или район"
+              }
+            />
           </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40" />
-              <input
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                className="input pl-11 pr-11"
-                placeholder={selectedSport ? `${SPORT_LABELS[selectedSport as Sport]} в центре или рядом с тобой` : "Например: Теннисный клуб, Петроградка, Крестовский"}
-              />
-              {searchInput ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchInput("");
-                    update("q", "");
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink/45 transition hover:bg-cream"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-            <button type="submit" className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white">
-              Найти
-            </button>
-          </div>
+
           <div className="flex flex-wrap gap-2">
             {smartSuggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
-                onClick={() => applySmartSuggestion(suggestion)}
+                onClick={() => setSearchInput(suggestion)}
                 className="inline-flex items-center gap-2 rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink"
               >
                 <Sparkles className="h-3.5 w-3.5 text-court" />
@@ -131,95 +149,105 @@ export function CourtsBrowser({ courts }: { courts: Court[] }) {
               </button>
             ))}
           </div>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {SPORT_OPTIONS.map((sport) => (
-            <button
-              key={sport}
-              type="button"
-              onClick={() => update("sport", searchParams.get("sport") === sport ? "" : sport)}
-              className={`rounded-full border px-1.5 py-1 transition ${searchParams.get("sport") === sport ? "border-ink bg-ink" : "border-white/60 bg-white/80"}`}
-            >
-              <SportBadge
-                sport={sport}
-                className={searchParams.get("sport") === sport ? "bg-transparent px-2 py-1 text-white" : "bg-transparent px-2 py-1 text-ink"}
-                iconClassName={searchParams.get("sport") === sport ? "h-3.5 w-3.5 text-white" : "h-3.5 w-3.5 text-ink"}
-              />
-            </button>
-          ))}
+
+          {searchInput ? (
+            <div className="rounded-[24px] border border-line bg-white/90 p-2 shadow-card">
+              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-ink/45">
+                Подсказки
+              </div>
+              <div className="space-y-1">
+                {searchSuggestions.length === 0 ? (
+                  <div className="rounded-2xl px-3 py-2 text-sm text-ink/55">Ничего не подсказали, попробуй район или название клуба.</div>
+                ) : (
+                  searchSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => setSearchInput(suggestion)}
+                      className="block w-full rounded-2xl px-3 py-2 text-left text-sm font-medium text-ink transition hover:bg-cream"
+                    >
+                      {suggestion}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(["hard", "clay", "grass", "any"] as const).map((surface) => (
-            <Chip
-              key={surface}
-              active={searchParams.get("surface") === surface}
-              onClick={() => update("surface", searchParams.get("surface") === surface ? "" : surface)}
-            >
-              {SURFACE_LABELS[surface]}
-            </Chip>
-          ))}
-          {(["indoor", "outdoor"] as const).map((setting) => (
-            <Chip
-              key={setting}
-              active={searchParams.get("setting") === setting}
-              onClick={() => update("setting", searchParams.get("setting") === setting ? "" : setting)}
-            >
-              {COURT_SETTING_LABELS[setting]}
-            </Chip>
-          ))}
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {visibleSports.map((sport) => {
+            const active = selectedSport === sport;
+
+            return (
+              <button
+                key={sport}
+                type="button"
+                onClick={() => setSelectedSport(active ? null : sport)}
+                className={cn(
+                  "rounded-full border px-1.5 py-1 transition",
+                  active ? "border-ink bg-ink" : "border-white/60 bg-white/85"
+                )}
+              >
+                <SportBadge
+                  sport={sport}
+                  className={active ? "bg-transparent px-2 py-1 text-white" : "bg-transparent px-2 py-1 text-ink"}
+                  iconClassName={active ? "h-3.5 w-3.5 text-white" : "h-3.5 w-3.5 text-ink"}
+                />
+              </button>
+            );
+          })}
         </div>
+
+        <CourtsMap courts={filteredCourts} district={userDistrict} radiusKm={searchRadiusKm} />
       </Panel>
 
-      {mode === "map" ? (
-        <CourtsMap courts={courts} />
-      ) : (
-        <div className="space-y-3">
-          {courts.length === 0 ? (
-            <Panel className="text-center">
-              <div className="text-xl font-bold text-ink">Ничего не найдено</div>
-              <div className="mt-2 text-sm leading-6 text-ink/65">
-                Попробуй изменить спортивный фильтр, район или текст запроса.
-              </div>
-            </Panel>
-          ) : null}
-          {courts.map((court) => (
-            <Panel key={court.id} className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">{COURT_SETTING_LABELS[court.setting]}</div>
-                  <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
-                  <div className="mt-1 text-sm leading-6 text-ink/65">{court.address}</div>
+      <div className="space-y-3">
+        {filteredCourts.length === 0 ? (
+          <Panel className="text-center">
+            <div className="text-xl font-bold text-ink">Подходящих центров пока нет</div>
+            <div className="mt-2 text-sm leading-6 text-ink/65">
+              Попробуй убрать текст запроса или сменить вид спорта.
+            </div>
+          </Panel>
+        ) : null}
+
+        {filteredCourts.map((court) => (
+          <Panel key={court.id} className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
+                  {court.district ? DISTRICT_LABELS[court.district as keyof typeof DISTRICT_LABELS] ?? court.district : DEFAULT_CITY}
                 </div>
-                <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-court">Расстояние</div>
-                  <div className="mt-1 font-bold text-ink">{court.distanceLabel}</div>
-                </div>
+                <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
+                <div className="mt-1 text-sm leading-6 text-ink/65">{court.address}</div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {normalizeCourtSports(court.supportedSports).map((sport) => (
-                  <SportBadge key={sport} sport={sport as Sport} className="bg-cream text-ink" />
-                ))}
-                {court.sourceType !== "yandex_org_search" ? (
-                  <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{SURFACE_LABELS[court.surface]}</span>
-                ) : (
-                  <span className="rounded-full bg-mint px-3 py-2 text-xs font-semibold text-ink">Яндекс Карты</span>
-                )}
-                <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{court.priceRange}</span>
-                {court.rating ? (
-                  <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
-                    Рейтинг {court.rating.toFixed(1)}
-                  </span>
-                ) : null}
+              <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-court">Расстояние</div>
+                <div className="mt-1 font-bold text-ink">{court.distanceLabel}</div>
               </div>
-              <Link href={`/play/proposals/new?courtId=${court.id}`}>
-                <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
-                  Выбрать эту площадку
-                </div>
-              </Link>
-            </Panel>
-          ))}
-        </div>
-      )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {normalizeCourtSports(court.supportedSports).map((sport) => (
+                <SportBadge key={sport} sport={sport as Sport} className="bg-cream text-ink" />
+              ))}
+              <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{court.priceRange}</span>
+              {court.rating ? (
+                <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
+                  Рейтинг {court.rating.toFixed(1)}
+                </span>
+              ) : null}
+            </div>
+
+            <Link href={`/play/proposals/new?courtId=${court.id}`}>
+              <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
+                Выбрать этот центр
+              </div>
+            </Link>
+          </Panel>
+        ))}
+      </div>
     </div>
   );
 }
