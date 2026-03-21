@@ -40,6 +40,9 @@ export default async function NewProposalPage({
           id: court.id,
           name: court.name,
           address: court.address,
+          district: court.district,
+          locationLat: court.locationLat,
+          locationLng: court.locationLng,
           supportedSports: Array.isArray(court.supportedSports)
             ? court.supportedSports.filter((sport): sport is Sport => typeof sport === "string")
             : []

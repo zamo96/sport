@@ -11,6 +11,7 @@ import { HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } fro
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
+import { CourtsMap } from "@/components/maps/courts-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
@@ -18,6 +19,9 @@ type CourtOption = {
   id: string;
   name: string;
   address: string;
+  district?: string | null;
+  locationLat: number;
+  locationLng: number;
   supportedSports?: Sport[];
 };
 
@@ -57,6 +61,10 @@ export function GameSearchForm({
   const visibleCourts = useMemo(
     () => courts.filter((court) => !court.supportedSports || court.supportedSports.length === 0 || court.supportedSports.includes(sport)),
     [courts, sport]
+  );
+  const selectedCourt = useMemo(
+    () => visibleCourts.find((court) => court.id === preferredCourtId) ?? null,
+    [preferredCourtId, visibleCourts]
   );
 
   const disabled = useMemo(() => {
@@ -280,6 +288,15 @@ export function GameSearchForm({
               </option>
             ))}
           </select>
+          {selectedCourt ? (
+            <div className="mt-3 space-y-2">
+              <div className="rounded-[24px] bg-cream/80 p-3">
+                <div className="text-sm font-semibold text-ink">{selectedCourt.name}</div>
+                <div className="mt-1 text-xs leading-5 text-ink/60">{selectedCourt.address}</div>
+              </div>
+              <CourtsMap courts={[selectedCourt]} compact />
+            </div>
+          ) : null}
         </Field>
 
         <Field label="Комментарий">

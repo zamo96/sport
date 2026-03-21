@@ -91,44 +91,42 @@ export default async function DiscoverPage({
         subtitle="Свайпай карточки, смотри активных игроков или открывай срочные запросы на сегодня и завтра."
       />
       <div className="space-y-4">
-        <Panel className="flex items-center justify-between">
-          <div>
+        <Panel className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Твой профиль поиска</div>
             <div className="mt-1 text-lg font-bold text-ink">
               {PLAY_FORMAT_LABELS[user.preferredPlayFormat]}
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-1 text-sm text-ink/60">
+                {user.isLookingForGame ? "Ты виден в списке активных игроков" : "Ты скрыт из списка активных игроков"}
+              </div>
+            </div>
+            <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-court">Радиус</div>
+              <div className="mt-1 font-bold text-ink">{user.searchRadiusKm} км</div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
               {userSportLevels.slice(0, 3).map(({ sport, level }) => (
                 <span key={sport} className="inline-flex items-center gap-2">
                   <SportBadge sport={sport} className="bg-cream text-ink" />
                   <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">Уровень {level}</span>
                 </span>
               ))}
-            </div>
-            <div className="mt-1 text-sm text-ink/60">
-              {user.isLookingForGame ? "Ты виден в списке активных игроков" : "Ты скрыт из списка активных игроков"}
-            </div>
-          </div>
-          <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-court">Радиус</div>
-            <div className="mt-1 font-bold text-ink">{user.searchRadiusKm} км</div>
           </div>
         </Panel>
-        <div className="grid grid-cols-3 gap-2">
-          <a href="/play/searches" className="block">
-            <Button fullWidth variant="ghost">
-              <span className="relative inline-flex items-center gap-2">
-                Мои поиски
-                {activeSearchesCount > 0 ? (
-                  <span className="absolute -right-4 -top-3 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                    {activeSearchesCount}
-                  </span>
-                ) : null}
+        <div className="grid grid-cols-2 gap-3">
+          <a href="/play/searches" className="col-span-2 block">
+            <Button fullWidth variant="ghost" className="justify-between rounded-[26px] px-5 py-4">
+              <span>Мои поиски</span>
+              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${activeSearchesCount > 0 ? "bg-red-500 text-white" : "bg-line text-ink/60"}`}>
+                {activeSearchesCount}
               </span>
             </Button>
           </a>
           <a href="/play/searches/new?mode=hot" className="block">
-            <Button fullWidth variant="danger">
+            <Button fullWidth variant="danger" className="rounded-[26px] py-4">
               <span className="inline-flex items-center gap-2">
                 <Flame className="h-4 w-4 text-orange-200" />
                 Срочно найти
@@ -136,22 +134,24 @@ export default async function DiscoverPage({
             </Button>
           </a>
           <a href="/play/searches/new" className="block">
-            <Button fullWidth variant="secondary">Создать поиск</Button>
+            <Button fullWidth variant="secondary" className="rounded-[26px] py-4">Создать поиск</Button>
           </a>
         </div>
-        <a href="/notifications" className="block">
-          <Panel className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уведомления</div>
-              <div className="mt-1 text-sm text-ink/70">
-                {notifications[0]?.title ?? "Здесь будут входящие лайки, срочные события и решения по заявкам."}
+        {notifications.length > 0 ? (
+          <a href="/notifications" className="block">
+            <Panel className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уведомления</div>
+                <div className="mt-1 line-clamp-2 text-sm text-ink/70">
+                  {notifications[0]?.title}
+                </div>
               </div>
-            </div>
-            <span className="rounded-full bg-red-500 px-3 py-2 text-xs font-semibold text-white">
-              {notifications.length}
-            </span>
-          </Panel>
-        </a>
+              <span className="rounded-full bg-red-500 px-3 py-2 text-xs font-semibold text-white">
+                {notifications.length}
+              </span>
+            </Panel>
+          </a>
+        ) : null}
         <DiscoverTabs incomingLikesCount={incomingLikesCount} hotCount={hotCount} />
         {isLikesView ? (
           <>

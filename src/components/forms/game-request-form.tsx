@@ -7,6 +7,7 @@ import { PlayFormat, type Sport } from "@prisma/client";
 import { apiFetch } from "@/lib/client-api";
 import { PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
 import { SportPicker } from "@/components/forms/sport-picker";
+import { CourtsMap } from "@/components/maps/courts-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
@@ -19,6 +20,9 @@ type CourtOption = {
   id: string;
   name: string;
   address: string;
+  district?: string | null;
+  locationLat: number;
+  locationLng: number;
   supportedSports?: Sport[];
 };
 
@@ -54,6 +58,10 @@ export function GameRequestForm({
   const visibleCourts = useMemo(
     () => courts.filter((court) => !court.supportedSports || court.supportedSports.length === 0 || court.supportedSports.includes(sport)),
     [courts, sport]
+  );
+  const selectedCourt = useMemo(
+    () => visibleCourts.find((court) => court.id === proposedCourtId) ?? null,
+    [proposedCourtId, visibleCourts]
   );
 
   const disabled = useMemo(() => !matchId || !proposedCourtId || !proposedDatetime, [matchId, proposedCourtId, proposedDatetime]);
@@ -119,6 +127,15 @@ export function GameRequestForm({
               </option>
             ))}
           </select>
+          {selectedCourt ? (
+            <div className="mt-3 space-y-2">
+              <div className="rounded-[24px] bg-cream/80 p-3">
+                <div className="text-sm font-semibold text-ink">{selectedCourt.name}</div>
+                <div className="mt-1 text-xs leading-5 text-ink/60">{selectedCourt.address}</div>
+              </div>
+              <CourtsMap courts={[selectedCourt]} compact />
+            </div>
+          ) : null}
         </Field>
 
         <Field label="Дата и время">

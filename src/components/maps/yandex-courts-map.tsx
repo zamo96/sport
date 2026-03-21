@@ -28,11 +28,13 @@ type CourtMapPoint = {
 export function YandexCourtsMap({
   courts,
   district,
-  radiusKm
+  radiusKm,
+  compact = false
 }: {
   courts: CourtMapPoint[];
   district?: string | null;
   radiusKm?: number;
+  compact?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +178,7 @@ export function YandexCourtsMap({
     return <Panel className="text-sm leading-6 text-ink/70">{error}</Panel>;
   }
 
-  return <div ref={containerRef} className="h-[420px] w-full overflow-hidden rounded-[28px]" />;
+  return <div ref={containerRef} className={`${compact ? "h-[220px]" : "h-[420px]"} w-full overflow-hidden rounded-[28px]`} />;
 }
 
 function buildCircle(centerLat: number, centerLng: number, radiusKm: number) {

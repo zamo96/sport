@@ -17,16 +17,18 @@ type CourtMapPoint = {
 export function CourtsMap({
   courts,
   district,
-  radiusKm
+  radiusKm,
+  compact = false
 }: {
   courts: CourtMapPoint[];
   district?: string | null;
   radiusKm?: number;
+  compact?: boolean;
 }) {
   const provider = getMapProvider();
 
   if (provider === "yandex") {
-    return <YandexCourtsMap courts={courts} district={district} radiusKm={radiusKm} />;
+    return <YandexCourtsMap courts={courts} district={district} radiusKm={radiusKm} compact={compact} />;
   }
 
   return (

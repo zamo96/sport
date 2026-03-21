@@ -94,6 +94,15 @@ npm run dev:local
 - `npm run lint` - ESLint
 - `npm run test` - Vitest
 
+## Импорт спортивных центров
+
+Шаблоны для ручного наполнения базы лежат в [docs/import](/Users/matvey/Desktop/TennisSearch/docs/import/README.md):
+
+- [clubs.template.csv](/Users/matvey/Desktop/TennisSearch/docs/import/clubs.template.csv)
+- [sports-reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/sports-reference.csv)
+- [districts-reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/districts-reference.csv)
+- [metros-spb.reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/metros-spb.reference.csv)
+
 ## API
 
 - `POST /auth/request-link`
