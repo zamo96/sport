@@ -37,7 +37,7 @@ export type DiscoverFilters = {
   surface?: Surface[];
   day?: string[];
   timeRange?: string[];
-  view?: "swipe" | "seeking" | "hot";
+  view?: "swipe" | "likes" | "seeking" | "hot";
 };
 
 export type ScoredCandidate = CandidateUser & {

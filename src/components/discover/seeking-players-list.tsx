@@ -4,6 +4,7 @@ import { Flame, MapPin } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { formatTimeUntilHotSearch } from "@/lib/game-search";
 import { getSportLevel, getSportLevelEntries } from "@/lib/sport-levels";
 import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
@@ -31,7 +32,7 @@ type SeekingUser = {
     preferredDays: unknown;
     preferredTimeRanges: unknown;
     searchType: "regular" | "hot";
-    hotWindow: "today" | "tomorrow" | null;
+    hotWindow: "today" | "tomorrow" | "day_after_tomorrow" | null;
     hotStartsAt?: string | null;
     durationMinutes?: number | null;
     hasCourtBooked: boolean;
@@ -89,6 +90,8 @@ export function SeekingPlayersList({
                 minute: "2-digit"
               })}${latestSearch.durationMinutes ? ` · ${latestSearch.durationMinutes} мин` : ""}`
             : null;
+        const hotCountdownLabel =
+          latestSearch?.searchType === "hot" ? formatTimeUntilHotSearch(latestSearch.hotStartsAt) : null;
         const myResponseStatus = latestSearch?.responses?.[0]?.status;
         const sports = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
 
@@ -185,6 +188,11 @@ export function SeekingPlayersList({
                   {hotScheduleLabel ? (
                     <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-red-700">
                       {hotScheduleLabel}
+                    </span>
+                  ) : null}
+                  {hotCountdownLabel ? (
+                    <span className="rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white">
+                      {hotCountdownLabel}
                     </span>
                   ) : null}
                   {latestSearch.hasCourtBooked ? (

@@ -1,6 +1,7 @@
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { getHotNotificationsCount, getIncomingLikesCount } from "@/server/app-data";
 
 export async function GET() {
   try {
@@ -11,7 +12,7 @@ export async function GET() {
       OR: [{ user1Id: user.id }, { user2Id: user.id }]
     };
 
-    const [newMatches, unreadMessages] = await Promise.all([
+    const [newMatches, unreadMessages, incomingLikesCount, hotBadgeCount] = await Promise.all([
       prisma.match.findMany({
         where: {
           ...matchWhere,
@@ -36,7 +37,9 @@ export async function GET() {
         select: {
           matchId: true
         }
-      })
+      }),
+      getIncomingLikesCount(user.id),
+      getHotNotificationsCount(user.id)
     ]);
 
     const unreadMatchIds = new Set<string>();
@@ -50,7 +53,11 @@ export async function GET() {
     }
 
     return ok({
-      inboxBadgeCount: unreadMatchIds.size
+      inboxBadgeCount: unreadMatchIds.size,
+      incomingLikesCount,
+      hotBadgeCount,
+      discoverBadgeCount: incomingLikesCount + hotBadgeCount,
+      notificationSound: user.notificationSound ?? true
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {

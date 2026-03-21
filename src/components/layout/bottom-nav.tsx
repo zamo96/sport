@@ -21,7 +21,9 @@ const hiddenRoutes = ["/auth", "/onboarding", "/offline"];
 export function BottomNav() {
   const pathname = usePathname();
   const [inboxBadgeCount, setInboxBadgeCount] = useState(0);
+  const [discoverBadgeCount, setDiscoverBadgeCount] = useState(0);
   const lastBadgeRef = useRef(0);
+  const lastDiscoverBadgeRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const isHidden = hiddenRoutes.some((route) => pathname.startsWith(route));
 
@@ -62,18 +64,28 @@ export function BottomNav() {
 
     async function loadSummary() {
       try {
-        const data = await apiFetch<{ inboxBadgeCount: number }>("/activity/summary");
+        const data = await apiFetch<{ inboxBadgeCount: number; discoverBadgeCount: number; notificationSound?: boolean }>("/activity/summary");
         if (active) {
-          if (data.inboxBadgeCount > lastBadgeRef.current && lastBadgeRef.current > 0) {
+          if (
+            (
+              (data.inboxBadgeCount > lastBadgeRef.current && lastBadgeRef.current > 0) ||
+              (data.discoverBadgeCount > lastDiscoverBadgeRef.current && lastDiscoverBadgeRef.current > 0)
+            ) &&
+            data.notificationSound !== false
+          ) {
             playNotificationBeep();
           }
           lastBadgeRef.current = data.inboxBadgeCount;
+          lastDiscoverBadgeRef.current = data.discoverBadgeCount;
           setInboxBadgeCount(data.inboxBadgeCount);
+          setDiscoverBadgeCount(data.discoverBadgeCount);
         }
       } catch {
         if (active) {
           lastBadgeRef.current = 0;
+          lastDiscoverBadgeRef.current = 0;
           setInboxBadgeCount(0);
+          setDiscoverBadgeCount(0);
         }
       }
     }
@@ -126,6 +138,11 @@ export function BottomNav() {
                 isActive ? "bg-ink text-white shadow-glow" : "text-ink/60"
               )}
             >
+              {item.href === "/discover" && discoverBadgeCount > 0 ? (
+                <span className="absolute right-2 top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {discoverBadgeCount > 99 ? "99+" : discoverBadgeCount}
+                </span>
+              ) : null}
               {item.href === "/inbox" && inboxBadgeCount > 0 ? (
                 <span className="absolute right-2 top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
                   {inboxBadgeCount > 99 ? "99+" : inboxBadgeCount}

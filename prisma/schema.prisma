@@ -83,6 +83,7 @@ enum GameSearchType {
 enum HotSearchWindow {
   today
   tomorrow
+  day_after_tomorrow
 }
 
 enum GameSearchResponseStatus {

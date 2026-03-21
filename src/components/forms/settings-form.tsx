@@ -16,7 +16,8 @@ export function SettingsForm({ user }: { user: User }) {
   const [values, setValues] = useState({
     notificationMatches: user.notificationMatches,
     notificationMessages: user.notificationMessages,
-    notificationGames: user.notificationGames
+    notificationGames: user.notificationGames,
+    notificationSound: user.notificationSound ?? true
   });
 
   async function saveSettings() {
@@ -30,6 +31,7 @@ export function SettingsForm({ user }: { user: User }) {
         age: user.age,
         gender: user.gender,
         city: DEFAULT_CITY,
+        district: user.district ?? "central",
         tennisLevel: user.tennisLevel,
         preferredSports,
         sportLevels,
@@ -43,6 +45,12 @@ export function SettingsForm({ user }: { user: User }) {
           Array.isArray(user.availableTimeRanges) && user.availableTimeRanges.length > 0
             ? user.availableTimeRanges
             : [TIME_RANGE_OPTIONS[2]],
+        availabilityByDay:
+          user.availabilityByDay && typeof user.availabilityByDay === "object" && !Array.isArray(user.availabilityByDay)
+            ? user.availabilityByDay
+            : {
+                [DAY_OPTIONS[0]]: [TIME_RANGE_OPTIONS[2]]
+              },
         isLookingForGame: user.isLookingForGame,
         ...values
       })
@@ -74,6 +82,11 @@ export function SettingsForm({ user }: { user: User }) {
           title="Уведомления о предложениях"
           checked={values.notificationGames}
           onChange={(checked) => setValues((current) => ({ ...current, notificationGames: checked }))}
+        />
+        <Switch
+          title="Звук уведомлений"
+          checked={values.notificationSound}
+          onChange={(checked) => setValues((current) => ({ ...current, notificationSound: checked }))}
         />
       </Panel>
 

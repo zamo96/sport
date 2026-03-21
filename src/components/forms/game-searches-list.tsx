@@ -8,6 +8,7 @@ import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { formatTimeUntilHotSearch } from "@/lib/game-search";
 import { getSportLevel } from "@/lib/sport-levels";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ type SearchItem = {
   id: string;
   status: "active" | "in_review" | "matched" | "closed";
   searchType: "regular" | "hot";
-  hotWindow: "today" | "tomorrow" | null;
+  hotWindow: "today" | "tomorrow" | "day_after_tomorrow" | null;
   hotStartsAt?: string | null;
   durationMinutes?: number | null;
   hasCourtBooked: boolean;
@@ -113,6 +114,7 @@ function GameSearchCard({ search }: { search: SearchItem }) {
           minute: "2-digit"
         })}${search.durationMinutes ? ` · ${search.durationMinutes} мин` : ""}`
       : null;
+  const hotCountdownLabel = search.searchType === "hot" ? formatTimeUntilHotSearch(search.hotStartsAt) : null;
 
   return (
     <Panel className="space-y-4">
@@ -150,6 +152,9 @@ function GameSearchCard({ search }: { search: SearchItem }) {
         ) : null}
         {hotScheduleLabel ? (
           <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{hotScheduleLabel}</span>
+        ) : null}
+        {hotCountdownLabel ? (
+          <span className="rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white">{hotCountdownLabel}</span>
         ) : null}
         {search.hasCourtBooked ? (
           <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Корт уже есть</span>

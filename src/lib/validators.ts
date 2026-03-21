@@ -121,7 +121,7 @@ export const discoverFiltersSchema = z.object({
   surface: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Surface)).default([])),
   day: z.preprocess((value) => parseMultiValue(value), z.array(dayEnum).default([])),
   timeRange: z.preprocess((value) => parseMultiValue(value), z.array(timeRangeEnum).default([])),
-  view: z.enum(["swipe", "seeking", "hot"]).optional()
+  view: z.enum(["swipe", "likes", "seeking", "hot"]).optional()
 });
 
 export const swipeSchema = z.object({

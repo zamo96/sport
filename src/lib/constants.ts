@@ -341,5 +341,6 @@ export const GAME_SEARCH_TYPE_LABELS = {
 
 export const HOT_SEARCH_WINDOW_LABELS = {
   today: "На сегодня",
-  tomorrow: "На завтра"
+  tomorrow: "На завтра",
+  day_after_tomorrow: "На послезавтра"
 } as const;

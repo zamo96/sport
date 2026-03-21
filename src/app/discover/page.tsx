@@ -6,6 +6,7 @@ import { discoverFiltersSchema } from "@/lib/validators";
 import { PageShell } from "@/components/layout/page-shell";
 import { FiltersBar } from "@/components/discover/filters-bar";
 import { DiscoverTabs } from "@/components/discover/discover-tabs";
+import { IncomingLikesList } from "@/components/discover/incoming-likes-list";
 import { SeekingPlayersList } from "@/components/discover/seeking-players-list";
 import { UpcomingGames } from "@/components/discover/upcoming-games";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
@@ -15,7 +16,17 @@ import { SectionTitle } from "@/components/ui/section-title";
 import { PLAY_FORMAT_LABELS } from "@/lib/constants";
 import { getSportLevelEntries, normalizeSports } from "@/lib/sport-levels";
 import { SportBadge } from "@/components/ui/sport-badge";
-import { getActiveSearchesCount, getDiscoverPageData, getHotPlayers, getSeekingPlayers, getUpcomingGamesForUser } from "@/server/app-data";
+import {
+  getActiveSearchesCount,
+  getDiscoverPageData,
+  getHotNotificationsCount,
+  getHotPlayers,
+  getIncomingLikePlayers,
+  getIncomingLikesCount,
+  getNotificationsForUser,
+  getSeekingPlayers,
+  getUpcomingGamesForUser
+} from "@/server/app-data";
 import { serializeUserPreview } from "@/server/serializers";
 
 export default async function DiscoverPage({
@@ -56,15 +67,20 @@ export default async function DiscoverPage({
     levelMin: effectiveFilters.levelMin ?? null,
     levelMax: effectiveFilters.levelMax ?? null
   });
+  const isLikesView = effectiveFilters.view === "likes";
   const isSeekingView = effectiveFilters.view === "seeking";
   const isHotView = effectiveFilters.view === "hot";
   const userSportLevels = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
-  const [{ candidates }, seekingPlayers, hotPlayers, upcomingGames, activeSearchesCount] = await Promise.all([
+  const [{ candidates }, incomingLikePlayers, seekingPlayers, hotPlayers, upcomingGames, activeSearchesCount, incomingLikesCount, hotCount, notifications] = await Promise.all([
     getDiscoverPageData(user.id, effectiveFilters),
+    getIncomingLikePlayers(user.id, effectiveFilters),
     getSeekingPlayers(user.id, effectiveFilters),
     getHotPlayers(user.id, effectiveFilters),
     getUpcomingGamesForUser(user.id),
-    getActiveSearchesCount(user.id)
+    getActiveSearchesCount(user.id),
+    getIncomingLikesCount(user.id),
+    getHotNotificationsCount(user.id),
+    getNotificationsForUser(user.id)
   ]);
 
   return (
@@ -123,8 +139,65 @@ export default async function DiscoverPage({
             <Button fullWidth variant="secondary">Создать поиск</Button>
           </a>
         </div>
-        <DiscoverTabs />
-        {isSeekingView || isHotView ? (
+        <a href="/notifications" className="block">
+          <Panel className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уведомления</div>
+              <div className="mt-1 text-sm text-ink/70">
+                {notifications[0]?.title ?? "Здесь будут входящие лайки, срочные события и решения по заявкам."}
+              </div>
+            </div>
+            <span className="rounded-full bg-red-500 px-3 py-2 text-xs font-semibold text-white">
+              {notifications.length}
+            </span>
+          </Panel>
+        </a>
+        <DiscoverTabs incomingLikesCount={incomingLikesCount} hotCount={hotCount} />
+        {isLikesView ? (
+          <>
+            <IncomingLikesList
+              users={incomingLikePlayers.map((candidate) => ({
+                id: candidate.id,
+                name: candidate.name,
+                age: candidate.age,
+                city: candidate.city,
+                bio: candidate.bio,
+                avatarUrl: candidate.avatarUrl,
+                tennisLevel: candidate.tennisLevel,
+                preferredSports: candidate.preferredSports,
+                sportLevels: candidate.sportLevels,
+                preferredPlayFormat: candidate.preferredPlayFormat,
+                preferredSurface: candidate.preferredSurface,
+                availableDays: candidate.availableDays,
+                availableTimeRanges: candidate.availableTimeRanges,
+                distanceLabel: serializeUserPreview(candidate).distanceLabel,
+                score: candidate.score
+              }))}
+            />
+            <FiltersBar profileSports={profileSports} />
+            <UpcomingGames
+              currentUserId={user.id}
+              games={upcomingGames.map((game) => ({
+                id: game.id,
+                opponentName: game.createdByUserId === user.id ? game.matchedUser.name : game.createdByUser.name,
+                matchId: game.matchId,
+                status: game.status,
+                outcome: game.outcome,
+                outcomeUpdatedAt: game.outcomeUpdatedAt?.toISOString() ?? null,
+                proposedDatetime: game.proposedDatetime.toISOString(),
+                comment: game.comment,
+                sport: game.sport,
+                format: game.format,
+                createdByUserId: game.createdByUserId,
+                matchedUserId: game.matchedUserId,
+                proposedCourt: {
+                  name: game.proposedCourt.name,
+                  address: game.proposedCourt.address
+                }
+              }))}
+            />
+          </>
+        ) : isSeekingView || isHotView ? (
           <>
             <FiltersBar profileSports={profileSports} />
             <UpcomingGames
