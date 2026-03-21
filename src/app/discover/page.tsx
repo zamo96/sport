@@ -137,21 +137,19 @@ export default async function DiscoverPage({
             <Button fullWidth variant="secondary" className="rounded-[26px] py-4">Создать поиск</Button>
           </a>
         </div>
-        {notifications.length > 0 ? (
-          <a href="/notifications" className="block">
-            <Panel className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уведомления</div>
-                <div className="mt-1 line-clamp-2 text-sm text-ink/70">
-                  {notifications[0]?.title}
-                </div>
+        <a href="/notifications" className="block">
+          <Panel className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Уведомления</div>
+              <div className="mt-1 line-clamp-2 text-sm text-ink/70">
+                {notifications[0]?.title ?? "Здесь будут входящие лайки, срочные события и решения по заявкам."}
               </div>
-              <span className="rounded-full bg-red-500 px-3 py-2 text-xs font-semibold text-white">
-                {notifications.length}
-              </span>
-            </Panel>
-          </a>
-        ) : null}
+            </div>
+            <span className={`rounded-full px-3 py-2 text-xs font-semibold ${notifications.length > 0 ? "bg-red-500 text-white" : "bg-line text-ink/60"}`}>
+              {notifications.length}
+            </span>
+          </Panel>
+        </a>
         <DiscoverTabs incomingLikesCount={incomingLikesCount} hotCount={hotCount} />
         {isLikesView ? (
           <>

@@ -609,6 +609,9 @@ export async function getCourtsForUser(
           }
         : {})
     },
+    include: {
+      nearestMetro: true
+    },
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
 

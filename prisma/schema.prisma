@@ -93,6 +93,33 @@ enum GameSearchResponseStatus {
   withdrawn
 }
 
+model District {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  city        String
+  color       String?
+  centerLat   Float?
+  centerLng   Float?
+  polygon     Json?
+  searchHints Json?
+  users       User[]  @relation("UserDistrict")
+  courts      Court[] @relation("CourtDistrict")
+
+  @@index([city, name])
+}
+
+model Metro {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  city      String
+  courts    Court[] @relation("CourtNearestMetro")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city, name])
+}
+
 model User {
   id                   String        @id @default(cuid())
   email                String        @unique
@@ -125,6 +152,7 @@ model User {
   lastInboxSeenAt      DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+  districtRef          District?     @relation("UserDistrict", fields: [district], references: [code], onDelete: SetNull)
   swipesSent           Swipe[]       @relation("SwipeFromUser")
   swipesReceived       Swipe[]       @relation("SwipeToUser")
   matchesAsUser1       Match[]       @relation("MatchUser1")
@@ -141,24 +169,30 @@ model User {
 }
 
 model Court {
-  id           String        @id @default(cuid())
-  name         String
-  address      String
-  city         String
-  district     String?
-  locationLat  Float
-  locationLng  Float
-  surface      Surface
-  setting      CourtSetting
+  id              String        @id @default(cuid())
+  name            String
+  address         String
+  city            String
+  district        String?
+  nearestMetroId  String?
+  locationLat     Float
+  locationLng     Float
+  surface         Surface
+  setting         CourtSetting
   supportedSports Json?
-  priceRange   String
-  rating       Float?
-  sourceType   String
-  bookingUrl   String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  gameRequests GameRequest[]
-  gameSearches GameSearch[]
+  priceRange      String
+  rating          Float?
+  sourceType      String
+  bookingUrl      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  districtRef     District?     @relation("CourtDistrict", fields: [district], references: [code], onDelete: SetNull)
+  nearestMetro    Metro?        @relation("CourtNearestMetro", fields: [nearestMetroId], references: [id], onDelete: SetNull)
+  gameRequests    GameRequest[]
+  gameSearches    GameSearch[]
+
+  @@index([district])
+  @@index([nearestMetroId])
 }
 
 model Swipe {

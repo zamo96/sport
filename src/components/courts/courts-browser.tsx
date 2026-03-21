@@ -23,6 +23,7 @@ type Court = {
   name: string;
   address: string;
   district?: string | null;
+  nearestMetroName?: string | null;
   priceRange: string;
   rating: number | null;
   distanceLabel: string;
@@ -221,6 +222,9 @@ export function CourtsBrowser({
                 </div>
                 <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
                 <div className="mt-1 text-sm leading-6 text-ink/65">{court.address}</div>
+                {court.nearestMetroName ? (
+                  <div className="mt-1 text-xs font-medium text-ink/55">Метро: {court.nearestMetroName}</div>
+                ) : null}
               </div>
               <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-court">Расстояние</div>

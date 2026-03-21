@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   CourtSetting,
   GameRequestStatus,
@@ -11,6 +13,7 @@ import {
   Surface
 } from "@prisma/client";
 
+import { DEFAULT_CITY, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 async function main() {
@@ -23,6 +26,39 @@ async function main() {
   await prisma.session.deleteMany();
   await prisma.court.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.metro.deleteMany();
+  await prisma.district.deleteMany();
+
+  const districtsReference = await loadReferenceRows("districts-reference.csv");
+  const metrosReference = await loadReferenceRows("metros-spb.reference.csv");
+
+  await prisma.district.createMany({
+    data: districtsReference.map((row) => {
+      const code = row.code as DistrictOption;
+      const area = DISTRICT_MAP_AREAS[code];
+
+      return {
+        code,
+        name: row.label,
+        city: DEFAULT_CITY,
+        color: area?.color ?? null,
+        centerLat: area?.center.lat ?? null,
+        centerLng: area?.center.lng ?? null,
+        polygon: area?.polygon ?? null,
+        searchHints: area?.searchHints ?? []
+      };
+    })
+  });
+
+  await prisma.metro.createMany({
+    data: metrosReference.map((row) => ({
+      name: row.name,
+      city: DEFAULT_CITY
+    }))
+  });
+
+  const metros = await prisma.metro.findMany();
+  const metroByName = new Map(metros.map((metro) => [metro.name, metro.id]));
 
   const tomorrowAt1930 = new Date();
   tomorrowAt1930.setDate(tomorrowAt1930.getDate() + 1);
@@ -203,6 +239,7 @@ async function main() {
         address: "Крестовский проспект, 21",
         city: "Санкт-Петербург",
         district: "petrogradsky",
+        nearestMetroId: metroByName.get("Крестовский остров"),
         locationLat: 59.9722,
         locationLng: 30.2324,
         surface: Surface.clay,
@@ -218,6 +255,7 @@ async function main() {
         address: "Большой проспект П.С., 98",
         city: "Санкт-Петербург",
         district: "petrogradsky",
+        nearestMetroId: metroByName.get("Петроградская"),
         locationLat: 59.9667,
         locationLng: 30.3119,
         surface: Surface.hard,
@@ -233,6 +271,7 @@ async function main() {
         address: "Приморский проспект, 72",
         city: "Санкт-Петербург",
         district: "primorsky",
+        nearestMetroId: metroByName.get("Беговая"),
         locationLat: 59.9854,
         locationLng: 30.2297,
         surface: Surface.hard,
@@ -248,6 +287,7 @@ async function main() {
         address: "Лиговский проспект, 50",
         city: "Санкт-Петербург",
         district: "central",
+        nearestMetroId: metroByName.get("Лиговский проспект"),
         locationLat: 59.9207,
         locationLng: 30.3615,
         surface: Surface.hard,
@@ -263,6 +303,7 @@ async function main() {
         address: "Московский проспект, 183",
         city: "Санкт-Петербург",
         district: "moskovsky",
+        nearestMetroId: metroByName.get("Московская"),
         locationLat: 59.8519,
         locationLng: 30.3211,
         surface: Surface.hard,
@@ -278,6 +319,7 @@ async function main() {
         address: "Проспект Большевиков, 18",
         city: "Санкт-Петербург",
         district: "nevsky",
+        nearestMetroId: metroByName.get("Проспект Большевиков"),
         locationLat: 59.9189,
         locationLng: 30.4688,
         surface: Surface.hard,
@@ -293,6 +335,7 @@ async function main() {
         address: "Малый проспект В.О., 64",
         city: "Санкт-Петербург",
         district: "vasileostrovsky",
+        nearestMetroId: metroByName.get("Василеостровская"),
         locationLat: 59.9448,
         locationLng: 30.2497,
         surface: Surface.hard,
@@ -308,6 +351,7 @@ async function main() {
         address: "Набережная Обводного канала, 118",
         city: "Санкт-Петербург",
         district: "admiralteysky",
+        nearestMetroId: metroByName.get("Балтийская"),
         locationLat: 59.9102,
         locationLng: 30.3054,
         surface: Surface.any,
@@ -323,6 +367,7 @@ async function main() {
         address: "Гражданский проспект, 84",
         city: "Санкт-Петербург",
         district: "kalininsky",
+        nearestMetroId: metroByName.get("Академическая"),
         locationLat: 60.0142,
         locationLng: 30.4091,
         surface: Surface.hard,
@@ -547,3 +592,26 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
+async function loadReferenceRows(filename: string) {
+  const csvPath = path.join(process.cwd(), "docs", "import", filename);
+  const content = await readFile(csvPath, "utf8");
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const headers = lines[0].split(",").map((item) => item.trim());
+
+  return lines.slice(1).map((line) => {
+    const values = line.split(",").map((item) => item.trim());
+    return headers.reduce<Record<string, string>>((accumulator, header, index) => {
+      accumulator[header] = values[index] ?? "";
+      return accumulator;
+    }, {});
+  });
+}

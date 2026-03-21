@@ -47,7 +47,7 @@ export function DiscoverTabs({
           onClick={() => switchTab("likes")}
           className={`relative rounded-[22px] px-4 py-3 text-sm font-semibold whitespace-nowrap ${current === "likes" ? "bg-court text-white" : "bg-white/80 text-ink/65"}`}
         >
-          Хотят с тобой
+          Хотят с тобой сыграть
           {incomingLikesCount > 0 ? (
             <span className={`absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${current === "likes" ? "bg-white text-court" : "bg-red-500 text-white"}`}>
               {incomingLikesCount > 99 ? "99+" : incomingLikesCount}

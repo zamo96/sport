@@ -1,4 +1,4 @@
-import type { Court, GameRequest, Match, User } from "@prisma/client";
+import type { Court, GameRequest, Match, Metro, User } from "@prisma/client";
 
 import { formatDistanceKm } from "@/lib/utils";
 
@@ -26,9 +26,10 @@ export function serializeUserPreview(user: Partial<User> & { distanceKm?: number
   };
 }
 
-export function serializeCourt(court: Court & { distanceKm?: number | null }) {
+export function serializeCourt(court: Court & { distanceKm?: number | null; nearestMetro?: Metro | null }) {
   return {
     ...court,
+    nearestMetroName: court.nearestMetro?.name ?? null,
     distanceKm: court.distanceKm ?? null,
     distanceLabel: formatDistanceKm(court.distanceKm)
   };
