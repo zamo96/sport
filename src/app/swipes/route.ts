@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { requireSessionUser } from "@/lib/auth";
+import { sendPushToUser } from "@/lib/apns";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { swipeSchema } from "@/lib/validators";
@@ -37,6 +38,16 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await createSwipeAndMaybeMatch(user.id, body.toUserId, body.action);
+
+    if (result.match && targetUser.notificationMatches) {
+      await sendPushToUser({
+        userId: targetUser.id,
+        title: "У тебя новый мэтч",
+        body: `${user.name ?? "Игрок"} ответил взаимностью. Можно открыть чат и договориться об игре.`,
+        href: `/inbox/${result.match.id}`,
+        sound: targetUser.notificationSound ?? true
+      });
+    }
 
     return ok({
       swipe: result.swipe,

@@ -226,3 +226,15 @@ export const createGameSearchResponseSchema = z.object({
 export const updateGameSearchResponseSchema = z.object({
   status: z.nativeEnum(GameSearchResponseStatus)
 });
+
+export const registerPushDeviceSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-fA-F]{32,256}$/, "Некорректный APNs token")
+    .transform((value) => value.toLowerCase()),
+  platform: z.enum(["ios"]).default("ios"),
+  environment: z.enum(["development", "production"]),
+  bundleId: z.string().trim().min(3).max(200),
+  deviceName: z.string().trim().max(120).optional().nullable()
+});

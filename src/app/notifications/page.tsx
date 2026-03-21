@@ -23,7 +23,7 @@ export default async function NotificationsPage() {
       <SectionTitle
         eyebrow="Уведомления"
         title="Что требует внимания прямо сейчас."
-        subtitle="Входящие лайки, новые отклики, решения по твоим заявкам и свежие срочные события."
+        subtitle="Новые мэтчи, сообщения, входящие лайки, решения по откликам и срочные события."
       />
 
       <div className="mb-4 flex gap-3">
@@ -73,6 +73,10 @@ export default async function NotificationsPage() {
 
 function translateNotificationType(type: string) {
   switch (type) {
+    case "new_match":
+      return "Новый мэтч";
+    case "new_message":
+      return "Новое сообщение";
     case "incoming_like":
       return "Хочет с тобой сыграть";
     case "search_response":

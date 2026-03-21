@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 
+import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -81,6 +82,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       return created;
     });
+
+    const recipientUserId = match.user1Id === user.id ? match.user2Id : match.user1Id;
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientUserId },
+      select: {
+        id: true,
+        notificationMessages: true,
+        notificationSound: true
+      }
+    });
+
+    if (recipient?.notificationMessages) {
+      await sendPushToUser({
+        userId: recipient.id,
+        title: `Новое сообщение от ${user.name ?? "игрока"}`,
+        body: body.text.length > 120 ? `${body.text.slice(0, 117)}...` : body.text,
+        href: `/inbox/${match.id}`,
+        sound: recipient.notificationSound ?? true
+      });
+    }
 
     return ok({
       message: {

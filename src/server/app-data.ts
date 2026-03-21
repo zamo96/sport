@@ -261,7 +261,10 @@ export async function getNotificationsForUser(userId: string) {
   const viewer = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      preferredSports: true
+      preferredSports: true,
+      lastInboxSeenAt: true,
+      notificationMatches: true,
+      notificationMessages: true
     }
   });
 
@@ -269,9 +272,10 @@ export async function getNotificationsForUser(userId: string) {
     return [];
   }
 
+  const seenAt = viewer.lastInboxSeenAt ?? new Date(0);
   const viewerSports = normalizeSports(viewer.preferredSports);
 
-  const [incomingLikes, searchResponsesToMySearches, myApplicationUpdates, hotEvents] = await Promise.all([
+  const [incomingLikes, searchResponsesToMySearches, myApplicationUpdates, hotEvents, newMatches, unreadMessages] = await Promise.all([
     prisma.swipe.findMany({
       where: {
         toUserId: userId,
@@ -353,7 +357,56 @@ export async function getNotificationsForUser(userId: string) {
         createdAt: "desc"
       },
       take: 20
-    })
+    }),
+    viewer.notificationMatches
+      ? prisma.match.findMany({
+          where: {
+            status: "active",
+            createdAt: {
+              gt: seenAt
+            },
+            OR: [{ user1Id: userId }, { user2Id: userId }]
+          },
+          include: {
+            user1: true,
+            user2: true
+          },
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 20
+        })
+      : Promise.resolve([]),
+    viewer.notificationMessages
+      ? prisma.chatMessage.findMany({
+          where: {
+            createdAt: {
+              gt: seenAt
+            },
+            gameRequestId: null,
+            senderUserId: {
+              not: userId
+            },
+            match: {
+              status: "active",
+              OR: [{ user1Id: userId }, { user2Id: userId }]
+            }
+          },
+          include: {
+            senderUser: true,
+            match: {
+              include: {
+                user1: true,
+                user2: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 50
+        })
+      : Promise.resolve([])
   ]);
 
   const outgoingSwipes = await prisma.swipe.findMany({
@@ -366,8 +419,39 @@ export async function getNotificationsForUser(userId: string) {
   });
 
   const respondedIds = new Set(outgoingSwipes.map((swipe) => swipe.toUserId));
+  const latestUnreadMessagesByMatch = new Map<string, (typeof unreadMessages)[number]>();
+
+  for (const message of unreadMessages) {
+    if (!latestUnreadMessagesByMatch.has(message.matchId)) {
+      latestUnreadMessagesByMatch.set(message.matchId, message);
+    }
+  }
 
   const notifications = [
+    ...newMatches.map((match) => {
+      const otherUser = match.user1Id === userId ? match.user2 : match.user1;
+
+      return {
+        id: `match-${match.id}`,
+        type: "new_match" as const,
+        createdAt: match.createdAt,
+        title: `Новый мэтч с ${otherUser.name ?? "игроком"}`,
+        description: "Открой чат и договорись о времени, формате и корте.",
+        href: `/inbox/${match.id}`
+      };
+    }),
+    ...Array.from(latestUnreadMessagesByMatch.values()).map((message) => {
+      const otherUser = message.match.user1Id === userId ? message.match.user2 : message.match.user1;
+
+      return {
+        id: `message-${message.id}`,
+        type: "new_message" as const,
+        createdAt: message.createdAt,
+        title: `Новое сообщение от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`,
+        description: message.text.length > 120 ? `${message.text.slice(0, 117)}...` : message.text,
+        href: `/inbox/${message.matchId}`
+      };
+    }),
     ...incomingLikes
       .filter((like) => !respondedIds.has(like.fromUserId))
       .map((like) => ({

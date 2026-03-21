@@ -93,6 +93,15 @@ enum GameSearchResponseStatus {
   withdrawn
 }
 
+enum PushPlatform {
+  ios
+}
+
+enum PushEnvironment {
+  development
+  production
+}
+
 model District {
   id          String  @id @default(cuid())
   code        String  @unique
@@ -164,6 +173,7 @@ model User {
   gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
   gameSearches         GameSearch[]
   gameSearchResponses  GameSearchResponse[]
+  pushDevices          PushDevice[]
   blockedUsers         Block[]       @relation("BlockerUser")
   blockingUsers        Block[]       @relation("BlockedUser")
 }
@@ -346,4 +356,25 @@ model AuthCode {
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([email, createdAt])
+}
+
+model PushDevice {
+  id               String          @id @default(cuid())
+  userId           String
+  platform         PushPlatform    @default(ios)
+  environment      PushEnvironment @default(development)
+  token            String          @unique
+  bundleId         String
+  deviceName       String?
+  isActive         Boolean         @default(true)
+  lastRegisteredAt DateTime        @default(now())
+  lastDeliveredAt  DateTime?
+  lastFailureAt    DateTime?
+  lastFailureReason String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, platform, isActive])
+  @@index([environment, isActive])
 }
