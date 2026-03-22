@@ -1,6 +1,7 @@
 "use client";
 
 import { getMapProvider } from "@/lib/maps/config";
+import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 import { YandexSearchAreaMap } from "@/components/maps/yandex-search-area-map";
 
@@ -10,7 +11,8 @@ export function SearchAreaMap({
   radiusKm,
   city,
   district,
-  isApproximate = false
+  isApproximate = false,
+  className
 }: {
   centerLat?: number | null;
   centerLng?: number | null;
@@ -18,6 +20,7 @@ export function SearchAreaMap({
   city: string;
   district?: string | null;
   isApproximate?: boolean;
+  className?: string;
 }) {
   const provider = getMapProvider();
 
@@ -30,12 +33,13 @@ export function SearchAreaMap({
           city={city}
           district={district}
           isApproximate={isApproximate}
+          className={className}
         />
       );
   }
 
   return (
-    <Panel className="text-sm leading-6 text-ink/70">
+    <Panel className={cn("text-sm leading-6 text-ink/70", className)}>
       Карта района отключена. Укажи `NEXT_PUBLIC_MAP_PROVIDER=yandex` и `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`,
       чтобы видеть радиус поиска на карте.
     </Panel>

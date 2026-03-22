@@ -20,6 +20,7 @@ import {
 } from "@/lib/constants";
 import { getPrimarySportLevel, normalizeSportLevels, normalizeSports, syncSportLevels } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
+import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
 import { SportLevelsEditor } from "@/components/forms/sport-levels-editor";
 import { SearchAreaMap } from "@/components/maps/search-area-map";
@@ -543,14 +544,9 @@ export function ProfileForm({
                 />
               </Field>
               <Field label="Возраст">
-                <input
-                  required
-                  type="number"
-                  min={18}
-                  max={70}
+                <AgeRibbonPicker
                   value={form.age ?? 18}
-                  onChange={(event) => setField("age", Number(event.target.value))}
-                  className="input"
+                  onChange={(age) => setField("age", age)}
                 />
               </Field>
             </div>

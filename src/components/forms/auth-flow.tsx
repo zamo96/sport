@@ -21,12 +21,12 @@ import {
 } from "@/lib/constants";
 import { getPrimarySportLevel, normalizeSportLevels } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
+import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SearchAreaMap } from "@/components/maps/search-area-map";
 import { YandexAuthDemoMap } from "@/components/maps/yandex-auth-demo-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportLevelBadge } from "@/components/ui/sport-level-badge";
-import { SportLevelsEditor } from "@/components/forms/sport-levels-editor";
 import { SportPicker } from "@/components/forms/sport-picker";
 
 type AuthFlowProps = {
@@ -287,7 +287,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           <Panel className="border-white/70 bg-white/56 p-2.5 backdrop-blur-2xl">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Следующий шаг</div>
             <div className="mt-0.5 text-[15px] font-bold text-ink">Сначала соберём твой игровой профиль</div>
-            <div className="mt-1 text-[12px] leading-4.5 text-ink/65">
+            <div className="mt-1 text-[12px] leading-[1.15rem] text-ink/65">
               Ты укажешь вид спорта, уровень, район и удобное время. Email понадобится только в самом конце.
             </div>
             <Button type="button" fullWidth className="mt-2 min-h-10 rounded-[22px] text-[14px]" onClick={() => setStep("profile")}>
@@ -299,14 +299,14 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
       {step === "profile" ? (
         <>
-          <Panel className="space-y-5 border-white/70 bg-white/56 p-4 backdrop-blur-2xl">
+          <Panel className="space-y-4 border-white/70 bg-white/56 p-3.5 backdrop-blur-2xl">
             <StepHeader
               step="Шаг 1 из 3"
               title="Соберём профиль игрока"
               subtitle="Эти данные нужны, чтобы сразу показать тебе релевантных людей и события."
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <Field label="Имя">
                 <input
                   required
@@ -317,14 +317,9 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 />
               </Field>
               <Field label="Возраст">
-                <input
-                  required
-                  type="number"
-                  min={18}
-                  max={70}
+                <AgeRibbonPicker
                   value={draft.age}
-                  onChange={(event) => setDraftField("age", Number(event.target.value))}
-                  className="input border-white/80 bg-white/78"
+                  onChange={(age) => setDraftField("age", age)}
                 />
               </Field>
             </div>
@@ -351,14 +346,8 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 multiple
                 value={draft.preferredSports}
                 onChange={(value) => setPreferredSports(value as Sport[])}
-              />
-            </Field>
-
-            <Field label="Уровень по каждому спорту">
-              <SportLevelsEditor
-                sports={draft.preferredSports}
-                values={draft.sportLevels}
-                onChange={(sport, level) => setSportLevel(sport, level)}
+                levels={draft.sportLevels}
+                onLevelChange={(sport, level) => setSportLevel(sport, level)}
               />
             </Field>
 
@@ -369,7 +358,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 max={100}
                 value={draft.searchRadiusKm}
                 onChange={(event) => setDraftField("searchRadiusKm", Number(event.target.value))}
-                className="mt-3 w-full accent-court"
+                className="mt-2 w-full accent-court"
               />
             </Field>
 
@@ -381,13 +370,14 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 city={draft.city}
                 district={draft.district}
                 isApproximate={false}
+                className="max-h-[180px]"
               />
-              <div className="mt-2 text-xs leading-5 text-ink/55">
+              <div className="mt-1.5 text-[11px] leading-[1.1rem] text-ink/55">
                 {`Сейчас показываем радиус ${draft.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[draft.district]}.`}
               </div>
             </Field>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <Field label="Формат игры">
                 <select
                   value={draft.preferredPlayFormat}
@@ -416,11 +406,11 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               </Field>
             </div>
 
-            <div className="rounded-[24px] bg-white/72 p-4">
+            <div className="rounded-[22px] bg-white/72 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-ink">Ищу игру сейчас</div>
-                  <div className="mt-1 text-xs leading-5 text-ink/60">
+                  <div className="mt-1 text-[11px] leading-[1.1rem] text-ink/60">
                     Ты появишься в списке игроков, которые сейчас открыты к игре.
                   </div>
                 </div>
@@ -438,10 +428,10 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           </Panel>
 
           <div className="flex gap-3">
-            <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("intro")}>
+            <Button type="button" fullWidth variant="ghost" className="min-h-11 rounded-[22px]" onClick={() => setStep("intro")}>
               Назад
             </Button>
-            <Button type="button" fullWidth className="min-h-12 rounded-[24px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
+            <Button type="button" fullWidth className="min-h-11 rounded-[22px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
               Дальше
             </Button>
           </div>

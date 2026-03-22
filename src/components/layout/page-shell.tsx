@@ -9,7 +9,7 @@ export function PageShell({
 }) {
   return (
     <main
-      className={`mx-auto min-h-screen w-full max-w-md bg-court bg-court bg-[length:100%_100%] px-4 ${
+      className={`mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-court bg-court bg-[length:100%_100%] px-4 ${
         withNav ? "pb-28 pt-5" : "pb-5 pt-3"
       }`}
     >

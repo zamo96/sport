@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES, DISTRICT_LABELS, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
+import { cn } from "@/lib/utils";
 import { loadYandexMaps } from "@/lib/maps/yandex";
 import { Panel } from "@/components/ui/panel";
 
@@ -13,7 +14,8 @@ export function YandexSearchAreaMap({
   radiusKm,
   city = DEFAULT_CITY,
   district,
-  isApproximate = false
+  isApproximate = false,
+  className
 }: {
   centerLat?: number | null;
   centerLng?: number | null;
@@ -21,6 +23,7 @@ export function YandexSearchAreaMap({
   city?: string;
   district?: string | null;
   isApproximate?: boolean;
+  className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,10 +147,10 @@ export function YandexSearchAreaMap({
   }, [apiKey, center, city, district, initialLocation, isApproximate, radiusKm]);
 
   if (error) {
-    return <Panel className="text-sm leading-6 text-ink/70">{error}</Panel>;
+    return <Panel className={cn("text-sm leading-6 text-ink/70", className)}>{error}</Panel>;
   }
 
-  return <div ref={containerRef} className="h-[240px] w-full overflow-hidden rounded-[28px]" />;
+  return <div ref={containerRef} className={cn("h-[240px] w-full overflow-hidden rounded-[28px]", className)} />;
 }
 
 function hexToRgba(hex: string, alpha: number) {
