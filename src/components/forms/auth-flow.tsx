@@ -233,50 +233,50 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   }
 
   return (
-    <div className="relative space-y-3 overflow-hidden">
+    <div className="relative space-y-2 overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-48 rounded-[36px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.68),rgba(255,255,255,0.1)_42%,transparent_72%)] blur-2xl" />
       <div className="pointer-events-none absolute -right-10 top-20 -z-10 h-44 w-44 rounded-full bg-[rgba(201,109,66,0.18)] blur-3xl" />
       <div className="pointer-events-none absolute -left-8 top-36 -z-10 h-36 w-36 rounded-full bg-[rgba(95,165,139,0.16)] blur-3xl" />
 
       {step === "intro" ? (
-        <div className="flex min-h-[calc(100svh-5.75rem)] flex-col gap-2.5">
-          <section className="relative overflow-hidden rounded-[34px] border border-white/70 bg-white/38 p-3.5 shadow-[0_24px_70px_rgba(17,38,29,0.12)] backdrop-blur-2xl">
+        <div className="flex min-h-[calc(100svh-4.75rem)] flex-col gap-2">
+          <section className="relative overflow-hidden rounded-[32px] border border-white/70 bg-white/38 p-3 shadow-[0_24px_70px_rgba(17,38,29,0.12)] backdrop-blur-2xl">
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.2))]" />
-            <div className="relative space-y-2.5">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/65 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-ink/80">
-                <Sparkles className="h-3.5 w-3.5 text-clay" />
+            <div className="relative space-y-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/65 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ink/80">
+                <Sparkles className="h-3 w-3 text-clay" />
                 Быстрый старт
               </div>
 
               <div>
-                <div className="max-w-sm font-[var(--font-heading)] text-[1.95rem] font-bold leading-[0.98] text-ink">
+                <div className="max-w-sm font-[var(--font-heading)] text-[1.72rem] font-bold leading-[0.98] text-ink">
                   Найди партнёра по{" "}
-                  <span className="inline-flex min-h-[1.3em] min-w-[10.5ch] items-center justify-center rounded-[18px] bg-white/72 px-3 py-1 text-center text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
-                    <span className="inline-block w-[8.5ch] text-left">{typedSport || "\u00A0"}</span>
-                    <span className="ml-0.5 inline-block h-7 w-[2px] animate-pulse rounded-full bg-clay/80" />
+                  <span className="inline-flex min-h-[1.2em] min-w-[10.2ch] items-center justify-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-center text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
+                    <span className="inline-block w-[8.4ch] text-left">{typedSport || "\u00A0"}</span>
+                    <span className="ml-0.5 inline-block h-6 w-[2px] animate-pulse rounded-full bg-clay/80" />
                   </span>
                 </div>
-                <p className="mt-2 max-w-sm text-[13px] leading-5 text-ink/70">
+                <p className="mt-1.5 max-w-sm text-[12px] leading-5 text-ink/70">
                   Подбор по спорту, уровню, району и времени. Срочные события, готовые поиски и быстрый выход в чат без лишних шагов.
                 </p>
               </div>
 
-              <div className="flex items-center justify-between rounded-[22px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.5))] px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
+              <div className="flex items-center justify-between rounded-[20px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.5))] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-court">
-                    <span className="relative flex h-2.5 w-2.5">
+                    <span className="relative flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
                     Сейчас в приложении
                   </div>
-                  <div className="mt-1 flex items-baseline gap-1.5">
-                    <span className="text-lg font-bold text-ink">{activePlayersCount}</span>
+                  <div className="mt-0.5 flex items-baseline gap-1.5">
+                    <span className="text-[1.05rem] font-bold text-ink">{activePlayersCount}</span>
                     <span className="text-[11px] text-ink/60">игроков ищут игру</span>
                   </div>
                 </div>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[16px] bg-white/90 shadow-[0_10px_22px_rgba(17,38,29,0.08)]">
-                  <Users className="h-4 w-4 text-court" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px] bg-white/90 shadow-[0_10px_22px_rgba(17,38,29,0.08)]">
+                  <Users className="h-3.5 w-3.5 text-court" />
                 </div>
               </div>
 
@@ -284,13 +284,13 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
             </div>
           </section>
 
-          <Panel className="border-white/70 bg-white/56 p-3 backdrop-blur-2xl">
+          <Panel className="border-white/70 bg-white/56 p-2.5 backdrop-blur-2xl">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Следующий шаг</div>
-            <div className="mt-1 text-base font-bold text-ink">Сначала соберём твой игровой профиль</div>
-            <div className="mt-1 text-[13px] leading-5 text-ink/65">
+            <div className="mt-0.5 text-[15px] font-bold text-ink">Сначала соберём твой игровой профиль</div>
+            <div className="mt-1 text-[12px] leading-4.5 text-ink/65">
               Ты укажешь вид спорта, уровень, район и удобное время. Email понадобится только в самом конце.
             </div>
-            <Button type="button" fullWidth className="mt-2.5 min-h-11 rounded-[24px] text-[15px]" onClick={() => setStep("profile")}>
+            <Button type="button" fullWidth className="mt-2 min-h-10 rounded-[22px] text-[14px]" onClick={() => setStep("profile")}>
               Собрать профиль игрока
             </Button>
           </Panel>
@@ -590,20 +590,8 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
 function DemoDiscoveryMap() {
   return (
-    <div className="rounded-[30px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.44))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Поиск по району и клубу</div>
-          <div className="mt-1 text-base font-bold text-ink">Сразу видно, где игроки и какой клуб им удобен</div>
-        </div>
-        <div className="rounded-full bg-white/88 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/60">
-          Демо-карта
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <YandexAuthDemoMap />
-      </div>
+    <div className="rounded-[28px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.44))] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
+      <YandexAuthDemoMap />
     </div>
   );
 }
