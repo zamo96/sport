@@ -239,7 +239,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
       <div className="pointer-events-none absolute -left-8 top-36 -z-10 h-36 w-36 rounded-full bg-[rgba(95,165,139,0.16)] blur-3xl" />
 
       {step === "intro" ? (
-        <div className="flex min-h-[calc(100svh-5.75rem)] flex-col justify-between gap-3">
+        <div className="flex min-h-[calc(100svh-5.75rem)] flex-col gap-2.5">
           <section className="relative overflow-hidden rounded-[34px] border border-white/70 bg-white/38 p-3.5 shadow-[0_24px_70px_rgba(17,38,29,0.12)] backdrop-blur-2xl">
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.2))]" />
             <div className="relative space-y-2.5">
@@ -263,7 +263,13 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
               <div className="flex items-center justify-between rounded-[22px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.5))] px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court">Сейчас в приложении</div>
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-court">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    </span>
+                    Сейчас в приложении
+                  </div>
                   <div className="mt-1 flex items-baseline gap-1.5">
                     <span className="text-lg font-bold text-ink">{activePlayersCount}</span>
                     <span className="text-[11px] text-ink/60">игроков ищут игру</span>

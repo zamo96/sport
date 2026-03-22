@@ -25,20 +25,20 @@ const demoClubs = [
     emoji: "🥎"
   },
   {
-    name: "Racket Hall",
+    name: "Football Arena",
     district: "petrogradsky",
-    lat: 59.9728,
-    lng: 30.2864,
+    lat: 59.9715,
+    lng: 30.2978,
     color: "#2F7A65",
-    emoji: "🏓"
+    emoji: "⚽"
   }
 ] as const;
 
 const demoPlayers = [
   {
-    name: "Анна",
-    initials: "АВ",
-    hint: "рядом с центром",
+    name: "Максим",
+    initials: "МК",
+    hint: "удобен Tennis Club",
     lat: 59.9294,
     lng: 30.3172
   },
@@ -48,13 +48,6 @@ const demoPlayers = [
     hint: "удобен Padel Club",
     lat: 59.9876,
     lng: 30.2642
-  },
-  {
-    name: "София",
-    initials: "СП",
-    hint: "вечером у клуба",
-    lat: 59.9585,
-    lng: 30.3176
   }
 ] as const;
 
@@ -214,12 +207,6 @@ export function YandexAuthDemoMap() {
   return (
     <div className="relative">
       <div ref={containerRef} className="h-[304px] w-full overflow-hidden rounded-[28px]" />
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-[20px] bg-white/88 px-4 py-3 shadow-[0_12px_28px_rgba(17,38,29,0.14)] backdrop-blur">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court">Санкт-Петербург</div>
-        <div className="mt-1 text-xs leading-5 text-ink/68">
-          Районы, удобные клубы и активные игроки видны сразу на карте.
-        </div>
-      </div>
     </div>
   );
 }
