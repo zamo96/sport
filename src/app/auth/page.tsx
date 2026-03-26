@@ -5,11 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { AuthFlow } from "@/components/forms/auth-flow";
 import { PageShell } from "@/components/layout/page-shell";
 
-export default async function AuthPage() {
+export default async function AuthPage({
+  searchParams
+}: {
+  searchParams?: { continue?: string };
+}) {
   const user = await getSessionUser();
+  const continueHref = searchParams?.continue || "/discover";
 
   if (user) {
-    redirect(user.onboardingCompleted ? "/discover" : "/onboarding");
+    redirect(user.onboardingCompleted ? continueHref : "/onboarding");
   }
 
   const activePlayersCount = await prisma.user.count({
@@ -33,7 +38,7 @@ export default async function AuthPage() {
 
   return (
     <PageShell withNav={false}>
-      <div className="pt-4">
+      <div className="pt-1">
         <AuthFlow activePlayersCount={activePlayersCount} />
       </div>
     </PageShell>

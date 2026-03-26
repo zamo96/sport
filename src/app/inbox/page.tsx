@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
@@ -14,7 +15,7 @@ export default async function InboxPage() {
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/inbox"));
   }
 
   if (!user.onboardingCompleted) {

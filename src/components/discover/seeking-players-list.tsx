@@ -37,6 +37,10 @@ type SeekingUser = {
     durationMinutes?: number | null;
     hasCourtBooked: boolean;
     sport: Sport;
+    selfLevel?: number | null;
+    selfLevelUnknown?: boolean;
+    desiredLevelMin?: number | null;
+    desiredLevelMax?: number | null;
     format: "singles" | "doubles" | "both";
     playersNeeded?: number | null;
     comment: string | null;
@@ -52,10 +56,12 @@ type SeekingUser = {
 
 export function SeekingPlayersList({
   users,
-  variant = "seeking"
+  variant = "seeking",
+  authRequiredHref
 }: {
   users: SeekingUser[];
   variant?: "seeking" | "hot";
+  authRequiredHref?: string;
 }) {
   if (users.length === 0) {
     return (
@@ -170,7 +176,12 @@ export function SeekingPlayersList({
                     className="bg-white text-ink"
                   />
                   <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
-                    Уровень {getSportLevel(user.sportLevels, latestSearch.sport, user.tennisLevel ?? 5)}
+                    {latestSearch.selfLevelUnknown
+                      ? "Свой уровень: не знаю"
+                      : `Свой уровень: ${latestSearch.selfLevel ?? getSportLevel(user.sportLevels, latestSearch.sport, user.tennisLevel ?? 5)}`}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
+                    Ищу уровень {latestSearch.desiredLevelMin ?? 1}–{latestSearch.desiredLevelMax ?? 10}
                   </span>
                   <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
                     {PLAY_FORMAT_LABELS[latestSearch.format]}
@@ -223,7 +234,11 @@ export function SeekingPlayersList({
             ) : null}
 
             {latestSearch ? (
-              <RespondToSearchButton gameSearchId={latestSearch.id} existingStatus={myResponseStatus} />
+              <RespondToSearchButton
+                gameSearchId={latestSearch.id}
+                existingStatus={myResponseStatus}
+                authRequiredHref={authRequiredHref}
+              />
             ) : null}
           </Panel>
         );

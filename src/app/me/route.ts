@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const currentUser = await requireSessionUser();
     const body = updateMeSchema.parse(await request.json());
-    const location = resolveLocationFromDistrict(body.district) ?? (await resolveLocationFromCity(body.city));
+    const location = (body.district ? resolveLocationFromDistrict(body.district) : null) ?? (await resolveLocationFromCity(body.city));
     const preferredSports = normalizeSports(body.preferredSports);
     const sportLevels = normalizeSportLevels(body.sportLevels, preferredSports, body.tennisLevel);
     const primarySportLevel = getPrimarySportLevel(preferredSports, sportLevels, body.tennisLevel);
@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest) {
         age: body.age,
         gender: body.gender ?? null,
         city: body.city,
-        district: body.district,
+        district: body.district ?? null,
         homeLat: location?.lat ?? currentUser.homeLat,
         homeLng: location?.lng ?? currentUser.homeLng,
         tennisLevel: primarySportLevel,

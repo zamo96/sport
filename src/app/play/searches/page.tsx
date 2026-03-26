@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Flame } from "lucide-react";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { GameSearchesList } from "@/components/forms/game-searches-list";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ export default async function GameSearchesPage() {
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/play/searches"));
   }
 
   const searches = await getGameSearchesForUser(user.id);
@@ -50,6 +51,10 @@ export default async function GameSearchesPage() {
           durationMinutes: search.durationMinutes,
           hasCourtBooked: search.hasCourtBooked,
           sport: search.sport,
+          selfLevel: search.selfLevel ?? null,
+          selfLevelUnknown: search.selfLevelUnknown,
+          desiredLevelMin: search.desiredLevelMin ?? 1,
+          desiredLevelMax: search.desiredLevelMax ?? 10,
           playersNeeded: search.playersNeeded,
           preferredDays: search.preferredDays,
           preferredTimeRanges: search.preferredTimeRanges,

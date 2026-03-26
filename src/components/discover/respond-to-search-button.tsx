@@ -4,19 +4,28 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiFetch } from "@/lib/client-api";
+import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import { Button } from "@/components/ui/button";
 
 export function RespondToSearchButton({
   gameSearchId,
-  existingStatus
+  existingStatus,
+  authRequiredHref
 }: {
   gameSearchId: string;
   existingStatus?: "pending" | "approved" | "rejected" | "withdrawn";
+  authRequiredHref?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
 
   async function respond() {
+    if (authRequiredHref) {
+      setAuthPromptOpen(true);
+      return;
+    }
+
     setLoading(true);
     try {
       await apiFetch(`/game-searches/${gameSearchId}/respond`, {
@@ -46,8 +55,17 @@ export function RespondToSearchButton({
   }
 
   return (
-    <Button fullWidth variant="secondary" onClick={respond} disabled={loading}>
-      {loading ? "Отправляем..." : "Откликнуться"}
-    </Button>
+    <>
+      <Button fullWidth variant="secondary" onClick={respond} disabled={loading}>
+        {loading ? "Отправляем..." : "Откликнуться"}
+      </Button>
+      <AuthRequiredSheet
+        open={authPromptOpen}
+        onClose={() => setAuthPromptOpen(false)}
+        href={authRequiredHref ?? "/auth"}
+        title="Подтверди email, чтобы откликнуться"
+        description="Так мы сможем показать организатору твой отклик, а тебе прислать ответ и открыть чат, если тебя выберут."
+      />
+    </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HotSearchWindow, PlayFormat, type GameSearchType, type Sport } from "@prisma/client";
@@ -25,20 +25,25 @@ type CourtOption = {
   supportedSports?: Sport[];
 };
 
+type AvailabilityByDay = Partial<Record<string, string[]>>;
+
 export function GameSearchForm({
   courts,
   initialMode = "regular",
   availableSports,
   profileSports,
-  sportLevels
+  sportLevels,
+  authRequiredHref
 }: {
   courts: CourtOption[];
   initialMode?: GameSearchType;
   availableSports: Sport[];
   profileSports: Sport[];
   sportLevels?: unknown;
+  authRequiredHref?: string;
 }) {
   const router = useRouter();
+  const storageKey = useMemo(() => `game-search-form-draft:${initialMode}`, [initialMode]);
   const [searchType, setSearchType] = useState<GameSearchType>(initialMode);
   const [hotWindow, setHotWindow] = useState<HotSearchWindow>(HotSearchWindow.today);
   const [hotStartTime, setHotStartTime] = useState("19:00");
@@ -46,8 +51,14 @@ export function GameSearchForm({
   const [hasCourtBooked, setHasCourtBooked] = useState(false);
   const [sport, setSport] = useState<Sport>(availableSports[0] ?? "tennis");
   const [preferredCourtId, setPreferredCourtId] = useState("");
-  const [preferredDays, setPreferredDays] = useState<string[]>(["wednesday", "saturday"]);
-  const [preferredTimeRanges, setPreferredTimeRanges] = useState<string[]>(["evening"]);
+  const [availabilityByDay, setAvailabilityByDay] = useState<AvailabilityByDay>({
+    wednesday: ["evening"],
+    saturday: ["day", "evening"]
+  });
+  const [selfLevel, setSelfLevel] = useState<number | null>(null);
+  const [selfLevelUnknown, setSelfLevelUnknown] = useState(false);
+  const [desiredLevelMin, setDesiredLevelMin] = useState(1);
+  const [desiredLevelMax, setDesiredLevelMax] = useState(10);
   const [format, setFormat] = useState<PlayFormat>(PlayFormat.singles);
   const [playersNeeded, setPlayersNeeded] = useState(1);
   const [comment, setComment] = useState("");
@@ -66,6 +77,21 @@ export function GameSearchForm({
     () => visibleCourts.find((court) => court.id === preferredCourtId) ?? null,
     [preferredCourtId, visibleCourts]
   );
+  const preferredDays = useMemo(
+    () => Object.entries(availabilityByDay).filter(([, ranges]) => Array.isArray(ranges) && ranges.length > 0).map(([day]) => day),
+    [availabilityByDay]
+  );
+  const preferredTimeRanges = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(availabilityByDay)
+            .flatMap((ranges) => (Array.isArray(ranges) ? ranges : []))
+            .filter(Boolean)
+        )
+      ),
+    [availabilityByDay]
+  );
 
   const disabled = useMemo(() => {
     if (preferredTimeRanges.length === 0) {
@@ -76,11 +102,137 @@ export function GameSearchForm({
       return preferredDays.length === 0 || !hasSportInProfile;
     }
 
-    return !hotStartTime || !durationMinutes || !hasSportInProfile;
-  }, [durationMinutes, hasSportInProfile, hotStartTime, preferredDays, preferredTimeRanges, searchType]);
+    if (!hasSportInProfile && !selfLevelUnknown && selfLevel == null) {
+      return true;
+    }
+
+    if (desiredLevelMin > desiredLevelMax) {
+      return true;
+    }
+
+    return !hotStartTime || !durationMinutes;
+  }, [
+    desiredLevelMax,
+    desiredLevelMin,
+    durationMinutes,
+    hasSportInProfile,
+    hotStartTime,
+    preferredDays,
+    preferredTimeRanges,
+    searchType,
+    selfLevel,
+    selfLevelUnknown
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const rawDraft = window.localStorage.getItem(storageKey);
+
+    if (!rawDraft) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawDraft) as Partial<{
+        searchType: GameSearchType;
+        hotWindow: HotSearchWindow;
+        hotStartTime: string;
+        durationMinutes: number;
+        hasCourtBooked: boolean;
+        sport: Sport;
+        preferredCourtId: string;
+        availabilityByDay: AvailabilityByDay;
+        selfLevel: number | null;
+        selfLevelUnknown: boolean;
+        desiredLevelMin: number;
+        desiredLevelMax: number;
+        format: PlayFormat;
+        playersNeeded: number;
+        comment: string;
+      }>;
+
+      setSearchType(parsed.searchType ?? initialMode);
+      setHotWindow(parsed.hotWindow ?? HotSearchWindow.today);
+      setHotStartTime(parsed.hotStartTime ?? "19:00");
+      setDurationMinutes(parsed.durationMinutes ?? 90);
+      setHasCourtBooked(parsed.hasCourtBooked ?? false);
+      setSport(parsed.sport ?? availableSports[0] ?? "tennis");
+      setPreferredCourtId(parsed.preferredCourtId ?? "");
+      setAvailabilityByDay(
+        parsed.availabilityByDay && typeof parsed.availabilityByDay === "object" && !Array.isArray(parsed.availabilityByDay)
+          ? normalizeAvailabilityByDay(parsed.availabilityByDay)
+          : {
+              wednesday: ["evening"],
+              saturday: ["day", "evening"]
+            }
+      );
+      setSelfLevel(typeof parsed.selfLevel === "number" ? parsed.selfLevel : null);
+      setSelfLevelUnknown(parsed.selfLevelUnknown ?? false);
+      setDesiredLevelMin(parsed.desiredLevelMin ?? 1);
+      setDesiredLevelMax(parsed.desiredLevelMax ?? 10);
+      setFormat(parsed.format ?? PlayFormat.singles);
+      setPlayersNeeded(parsed.playersNeeded ?? 1);
+      setComment(parsed.comment ?? "");
+    } catch {
+      window.localStorage.removeItem(storageKey);
+    }
+  }, [availableSports, initialMode, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        searchType,
+        hotWindow,
+        hotStartTime,
+        durationMinutes,
+        hasCourtBooked,
+        sport,
+        preferredCourtId,
+        availabilityByDay,
+        selfLevel,
+        selfLevelUnknown,
+        desiredLevelMin,
+        desiredLevelMax,
+        format,
+        playersNeeded,
+        comment
+      })
+    );
+  }, [
+    comment,
+    durationMinutes,
+    format,
+    hasCourtBooked,
+    hotStartTime,
+    hotWindow,
+    playersNeeded,
+    preferredCourtId,
+    availabilityByDay,
+    selfLevel,
+    selfLevelUnknown,
+    desiredLevelMin,
+    desiredLevelMax,
+    searchType,
+    sport,
+    storageKey
+  ]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+
+    if (authRequiredHref) {
+      router.push(authRequiredHref);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -97,11 +249,18 @@ export function GameSearchForm({
           durationMinutes: searchType === "hot" ? durationMinutes : null,
           hasCourtBooked,
           sport,
+          selfLevel: hasSportInProfile ? null : selfLevel,
+          selfLevelUnknown: hasSportInProfile ? false : selfLevelUnknown,
+          desiredLevelMin,
+          desiredLevelMax,
           format,
           playersNeeded,
           comment
         })
       });
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(storageKey);
+      }
       router.push(searchType === "hot" ? "/discover?view=hot" : "/discover?view=seeking");
       router.refresh();
     } catch (requestError) {
@@ -132,13 +291,81 @@ export function GameSearchForm({
         </Panel>
 
         {!hasSportInProfile ? (
-          <Panel className="bg-red-50 text-sm leading-6 text-red-700">
-            Для поиска по этому виду спорта сначала добавь его в профиль и укажи уровень.
-            <Link href="/profile" className="ml-1 font-semibold underline underline-offset-2">
-              Открыть профиль
-            </Link>
+          <Panel className="space-y-3 bg-red-50 text-sm leading-6 text-red-700">
+            <div>
+              Этого спорта пока нет в твоём профиле. Укажи свой уровень прямо здесь, чтобы можно было опубликовать поиск.
+            </div>
+            <div className="grid grid-cols-[1fr,auto] gap-3">
+              <label className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-red-700/80">Твой уровень</div>
+                <select
+                  className="input bg-white"
+                  value={selfLevelUnknown ? "unknown" : selfLevel ?? ""}
+                  onChange={(event) => {
+                    if (event.target.value === "unknown") {
+                      setSelfLevel(null);
+                      setSelfLevelUnknown(true);
+                      return;
+                    }
+
+                    if (!event.target.value) {
+                      setSelfLevel(null);
+                      setSelfLevelUnknown(false);
+                      return;
+                    }
+
+                    setSelfLevel(Number(event.target.value));
+                    setSelfLevelUnknown(false);
+                  }}
+                >
+                  <option value="">Выбери уровень</option>
+                  <option value="unknown">Не знаю</option>
+                  {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Link href="/profile" className="self-end text-sm font-semibold underline underline-offset-2">
+                Профиль
+              </Link>
+            </div>
           </Panel>
         ) : null}
+
+        <Field label="Какой уровень партнёра подходит">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-ink/55">От</div>
+              <select
+                className="input"
+                value={desiredLevelMin}
+                onChange={(event) => setDesiredLevelMin(Number(event.target.value))}
+              >
+                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-ink/55">До</div>
+              <select
+                className="input"
+                value={desiredLevelMax}
+                onChange={(event) => setDesiredLevelMax(Number(event.target.value))}
+              >
+                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </Field>
 
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -169,10 +396,8 @@ export function GameSearchForm({
         {searchType === "regular" ? (
           <Field label="Дни и время">
             <AvailabilityPicker
-              days={preferredDays}
-              timeRanges={preferredTimeRanges}
-              onDaysChange={setPreferredDays}
-              onTimeRangesChange={setPreferredTimeRanges}
+              availabilityByDay={availabilityByDay}
+              onAvailabilityByDayChange={setAvailabilityByDay}
             />
           </Field>
         ) : (
@@ -330,6 +555,16 @@ export function GameSearchForm({
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </form>
   );
+}
+
+function normalizeAvailabilityByDay(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(([, ranges]) => Array.isArray(ranges) && ranges.length > 0)
+  ) as AvailabilityByDay;
 }
 
 function getTimeRangeFromTime(value: string) {

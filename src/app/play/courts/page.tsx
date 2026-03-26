@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { CourtsBrowser } from "@/components/courts/courts-browser";
@@ -18,7 +19,7 @@ export default async function CourtsPage({
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/play/courts"));
   }
 
   const query = courtsQuerySchema.parse(

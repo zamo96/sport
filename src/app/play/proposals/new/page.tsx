@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { type Sport } from "@prisma/client";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { GameRequestForm } from "@/components/forms/game-request-form";
 import { SectionTitle } from "@/components/ui/section-title";
@@ -15,7 +16,7 @@ export default async function NewProposalPage({
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/play/proposals/new"));
   }
 
   const [matches, courts] = await Promise.all([getMatchesForUser(user.id), getCourtsForUser(user.id)]);

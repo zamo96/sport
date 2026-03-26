@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, MapPin, MessageCircleQuestion, Star, X } from "lucide-react";
+import { MapPin, MessageCircleQuestion, Star, X } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
+import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import { DAY_LABELS, PLAY_FORMAT_LABELS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import { getSportLevelEntries } from "@/lib/sport-levels";
 import { Avatar } from "@/components/ui/avatar";
@@ -34,16 +35,19 @@ type DiscoverUser = {
 
 export function SwipeDeck({
   initialUsers,
-  profileSports
+  profileSports,
+  authRequiredHref
 }: {
   initialUsers: DiscoverUser[];
   profileSports: Sport[];
+  authRequiredHref?: string;
 }) {
   const router = useRouter();
   const [users, setUsers] = useState(initialUsers);
   const [busy, setBusy] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(null);
   const [matchName, setMatchName] = useState<string | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
 
   useEffect(() => {
     setUsers(initialUsers);
@@ -54,6 +58,16 @@ export function SwipeDeck({
 
   async function submitSwipe(action: "like" | "dislike") {
     if (!activeUser || busy) return;
+
+    if (authRequiredHref && action === "like") {
+      setAuthPromptOpen(true);
+      return;
+    }
+
+    if (authRequiredHref && action === "dislike") {
+      setUsers((current) => current.slice(1));
+      return;
+    }
 
     setBusy(true);
     try {
@@ -67,23 +81,6 @@ export function SwipeDeck({
         setMatchName(activeUser.name ?? "игрок");
       }
 
-      setUsers((current) => current.slice(1));
-      router.refresh();
-    } catch {
-      return;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function blockUser() {
-    if (!activeUser || busy) return;
-
-    setBusy(true);
-    try {
-      await apiFetch(`/users/${activeUser.id}/block`, {
-        method: "POST"
-      });
       setUsers((current) => current.slice(1));
       router.refresh();
     } catch {
@@ -123,22 +120,20 @@ export function SwipeDeck({
 
   return (
     <div className="space-y-3">
-      <Panel className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Быстрый подбор</div>
-            <div className="mt-1 text-sm text-ink/70">
-              Сейчас ищем по видам спорта из твоего профиля: {profileSports.length > 0 ? profileSports.length : 0}
-            </div>
-          </div>
-          <div className="rounded-[22px] bg-cream px-3 py-2 text-right">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-court">Осталось</div>
-            <div className="mt-1 font-bold text-ink">{Math.max(remaining, 0)}</div>
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Быстрый подбор</div>
+          <div className="mt-1 text-sm text-ink/70">
+            По видам спорта из профиля: {profileSports.length > 0 ? profileSports.length : 0}
           </div>
         </div>
-      </Panel>
+        <div className="rounded-[22px] bg-white/80 px-3 py-2 text-right shadow-card">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-court">Осталось</div>
+          <div className="mt-1 font-bold text-ink">{Math.max(remaining, 0)}</div>
+        </div>
+      </div>
 
-      <div className="relative min-h-[62vh]">
+      <div className="relative min-h-[54vh]">
         {stack
           .map((user, index) => (
             <div
@@ -209,15 +204,6 @@ export function SwipeDeck({
         </Button>
       </div>
 
-      <button
-        type="button"
-        onClick={blockUser}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-semibold text-ink/70"
-      >
-        <Ban className="h-4 w-4" />
-        Заблокировать пользователя
-      </button>
-
       {matchId && matchName ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 px-4 pb-6">
           <Panel className="w-full max-w-md space-y-3 rounded-[32px] bg-cream">
@@ -244,6 +230,14 @@ export function SwipeDeck({
           </Panel>
         </div>
       ) : null}
+
+      <AuthRequiredSheet
+        open={authPromptOpen}
+        onClose={() => setAuthPromptOpen(false)}
+        href={authRequiredHref ?? "/auth"}
+        title="Подтверди email, чтобы отправить интерес"
+        description="Профиль уже собран. После подтверждения почты ты сможешь лайкать, открывать чат и получать ответ от игрока."
+      />
     </div>
   );
 }

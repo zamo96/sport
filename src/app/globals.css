@@ -12,11 +12,16 @@
 
 html {
   background: #f4efe6;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top, rgba(201, 109, 66, 0.18), transparent 38%),
     linear-gradient(180deg, #fff9f1 0%, #f4efe6 52%, #e5f3ec 100%);
@@ -31,7 +36,7 @@ button {
 }
 
 .input {
-  @apply h-12 w-full rounded-[22px] border border-white/70 bg-white px-4 text-ink outline-none shadow-[0_10px_24px_rgba(17,38,29,0.06)] transition focus:border-court;
+  @apply h-12 w-full rounded-[22px] border border-white/70 bg-white px-4 text-base text-ink outline-none shadow-[0_10px_24px_rgba(17,38,29,0.06)] transition focus:border-court;
 }
 
 select.input {

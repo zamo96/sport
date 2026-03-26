@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 
 export default async function HomePage() {
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/discover"));
   }
 
   if (!user.onboardingCompleted) {
@@ -15,4 +16,3 @@ export default async function HomePage() {
 
   redirect("/discover");
 }
-

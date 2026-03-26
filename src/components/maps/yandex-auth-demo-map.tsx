@@ -205,8 +205,8 @@ export function YandexAuthDemoMap() {
   }
 
   return (
-    <div className="relative">
-      <div ref={containerRef} className="h-[216px] w-full overflow-hidden rounded-[24px]" />
+    <div className="relative max-w-full overflow-hidden [contain:layout_paint]">
+      <div ref={containerRef} className="h-[216px] w-full max-w-full overflow-hidden rounded-[24px]" />
       <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink/65 shadow-[0_8px_18px_rgba(17,38,29,0.1)] backdrop-blur">
         Санкт-Петербург
       </div>

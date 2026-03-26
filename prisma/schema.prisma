@@ -291,6 +291,10 @@ model GameSearch {
   durationMinutes     Int?
   hasCourtBooked      Boolean              @default(false)
   sport               Sport                @default(tennis)
+  selfLevel           Int?
+  selfLevelUnknown    Boolean              @default(false)
+  desiredLevelMin     Int                  @default(1)
+  desiredLevelMax     Int                  @default(10)
   format              PlayFormat
   playersNeeded       Int                  @default(1)
   comment             String?

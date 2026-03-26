@@ -1,58 +1,39 @@
 "use client";
 
-import { type ReactNode, FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { PlayFormat, Surface, type Sport } from "@prisma/client";
+import { type ReactNode, FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { type Gender, type Sport } from "@prisma/client";
 import { ShieldCheck, Sparkles, Users } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
+import { DAY_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import {
-  DAY_LABELS,
-  DEFAULT_CITY,
-  type DistrictOption,
-  DISTRICT_LABELS,
-  DISTRICT_MAP_AREAS,
-  DISTRICT_OPTIONS,
-  PLAY_FORMAT_LABELS,
-  SPORT_LABELS,
-  SPORT_OPTIONS,
-  SURFACE_LABELS,
-  TIME_RANGE_LABELS
-} from "@/lib/constants";
+  clearGuestOnboardingDraft,
+  createDefaultGuestOnboardingDraft,
+  guestDraftHasProfileBasics,
+  loadGuestOnboardingDraft,
+  saveGuestOnboardingDraft,
+  type GuestOnboardingDraft
+} from "@/lib/guest-draft";
 import { getPrimarySportLevel, normalizeSportLevels } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
-import { SearchAreaMap } from "@/components/maps/search-area-map";
 import { YandexAuthDemoMap } from "@/components/maps/yandex-auth-demo-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { SportLevelBadge } from "@/components/ui/sport-level-badge";
 import { SportPicker } from "@/components/forms/sport-picker";
 
 type AuthFlowProps = {
   activePlayersCount: number;
 };
 
-type DraftProfile = {
-  name: string;
-  age: number;
-  city: string;
-  district: DistrictOption;
-  preferredSports: Sport[];
-  sportLevels: Partial<Record<Sport, number>>;
-  preferredPlayFormat: PlayFormat;
-  preferredSurface: Surface;
-  searchRadiusKm: number;
-  isLookingForGame: boolean;
-  availableDays: string[];
-  availableTimeRanges: string[];
-  availabilityByDay: Partial<Record<string, string[]>>;
-};
+type DraftProfile = GuestOnboardingDraft;
 
 const ROTATING_SPORT_TEXTS = ["теннису", "футболу", "паделу", "волейболу", "боксу"] as const;
 
 export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<"intro" | "profile" | "availability" | "email" | "code">("intro");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -62,21 +43,10 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   const [activeSportIndex, setActiveSportIndex] = useState(0);
   const [typedSport, setTypedSport] = useState("");
   const [isDeletingSport, setIsDeletingSport] = useState(false);
-  const [draft, setDraft] = useState<DraftProfile>({
-    name: "",
-    age: 28,
-    city: DEFAULT_CITY,
-    district: "central",
-    preferredSports: ["tennis"],
-    sportLevels: { tennis: 5 },
-    preferredPlayFormat: PlayFormat.both,
-    preferredSurface: Surface.any,
-    searchRadiusKm: 20,
-    isLookingForGame: true,
-    availableDays: [],
-    availableTimeRanges: [],
-    availabilityByDay: {}
-  });
+  const [draft, setDraft] = useState<DraftProfile>(createDefaultGuestOnboardingDraft());
+  const [draftHydrated, setDraftHydrated] = useState(false);
+
+  const continueHref = searchParams.get("continue") || "/discover";
 
   useEffect(() => {
     const currentText = ROTATING_SPORT_TEXTS[activeSportIndex];
@@ -106,18 +76,37 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
     return () => window.clearTimeout(timeout);
   }, [activeSportIndex, isDeletingSport, typedSport]);
-  const districtCenter = DISTRICT_MAP_AREAS[draft.district].center;
-  const hasProfileBasics = draft.name.trim().length >= 2 && draft.age >= 18 && draft.preferredSports.length > 0;
-  const hasAvailability = Object.keys(draft.availabilityByDay).length > 0;
 
-  const selectedSportsSummary = useMemo(
-    () =>
-      draft.preferredSports.map((sport) => ({
-        sport,
-        level: draft.sportLevels[sport] ?? 5
-      })),
-    [draft.preferredSports, draft.sportLevels]
-  );
+  useEffect(() => {
+    const savedDraft = loadGuestOnboardingDraft();
+
+    if (savedDraft) {
+      setDraft(savedDraft);
+    }
+
+    setDraftHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated) {
+      return;
+    }
+
+    saveGuestOnboardingDraft(draft);
+  }, [draft, draftHydrated]);
+
+  useEffect(() => {
+    if (!draftHydrated) {
+      return;
+    }
+
+    if (searchParams.get("step") === "email") {
+      setStep("email");
+    }
+  }, [draftHydrated, searchParams]);
+
+  const hasProfileBasics = guestDraftHasProfileBasics(draft);
+  const hasAvailability = Object.keys(draft.availabilityByDay).length > 0;
 
   function setDraftField<Key extends keyof DraftProfile>(key: Key, value: DraftProfile[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -194,15 +183,15 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
         body: JSON.stringify({ email, code })
       });
 
-      if (!data.user.onboardingCompleted) {
+      if (!data.user.onboardingCompleted && guestDraftHasProfileBasics(draft)) {
         await apiFetch("/me", {
           method: "PATCH",
           body: JSON.stringify({
             name: draft.name.trim(),
             age: draft.age,
-            gender: null,
+            gender: draft.gender ?? null,
             city: draft.city,
-            district: draft.district,
+            district: draft.district ?? null,
             tennisLevel: getPrimarySportLevel(draft.preferredSports, draft.sportLevels, draft.sportLevels[draft.preferredSports[0]] ?? 5),
             preferredSports: draft.preferredSports,
             sportLevels: draft.sportLevels,
@@ -223,7 +212,8 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
         });
       }
 
-      router.push("/discover");
+      clearGuestOnboardingDraft();
+      router.push(continueHref);
       router.refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось завершить вход");
@@ -233,7 +223,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   }
 
   return (
-    <div className="relative space-y-2 overflow-hidden">
+    <div className="relative max-w-full space-y-2 overflow-x-clip overflow-y-visible">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-48 rounded-[36px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.68),rgba(255,255,255,0.1)_42%,transparent_72%)] blur-2xl" />
       <div className="pointer-events-none absolute -right-10 top-20 -z-10 h-44 w-44 rounded-full bg-[rgba(201,109,66,0.18)] blur-3xl" />
       <div className="pointer-events-none absolute -left-8 top-36 -z-10 h-36 w-36 rounded-full bg-[rgba(95,165,139,0.16)] blur-3xl" />
@@ -249,11 +239,14 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               </div>
 
               <div>
-                <div className="max-w-sm font-[var(--font-heading)] text-[1.72rem] font-bold leading-[0.98] text-ink">
-                  Найди партнёра по{" "}
-                  <span className="inline-flex min-h-[1.2em] min-w-[10.2ch] items-center justify-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-center text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
-                    <span className="inline-block w-[8.4ch] text-left">{typedSport || "\u00A0"}</span>
-                    <span className="ml-0.5 inline-block h-6 w-[2px] animate-pulse rounded-full bg-clay/80" />
+                <div className="max-w-[15rem] font-[var(--font-heading)] text-[1.72rem] font-bold leading-[0.98] text-ink">
+                  <span className="block">Найди партнёра</span>
+                  <span className="mt-1 block">
+                    по{" "}
+                    <span className="inline-flex min-h-[1.2em] w-[11ch] max-w-full items-center justify-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-center text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
+                      <span className="inline-block w-[9.2ch] overflow-hidden text-left">{typedSport || "\u00A0"}</span>
+                      <span className="ml-0.5 inline-block h-6 w-[2px] animate-pulse rounded-full bg-clay/80" />
+                    </span>
                   </span>
                 </div>
                 <p className="mt-1.5 max-w-sm text-[12px] leading-5 text-ink/70">
@@ -286,11 +279,11 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
           <Panel className="border-white/70 bg-white/56 p-2.5 backdrop-blur-2xl">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Следующий шаг</div>
-            <div className="mt-0.5 text-[15px] font-bold text-ink">Сначала соберём твой игровой профиль</div>
-            <div className="mt-1 text-[12px] leading-[1.15rem] text-ink/65">
-              Ты укажешь вид спорта, уровень, район и удобное время. Email понадобится только в самом конце.
-            </div>
-            <Button type="button" fullWidth className="mt-2 min-h-10 rounded-[22px] text-[14px]" onClick={() => setStep("profile")}>
+              <div className="mt-0.5 text-[15px] font-bold text-ink">Сначала соберём твой игровой профиль</div>
+              <div className="mt-1 text-[12px] leading-[1.15rem] text-ink/65">
+              Ты укажешь вид спорта, уровень и удобное время. Email понадобится только когда захочешь реально связаться с другим игроком.
+              </div>
+              <Button type="button" fullWidth className="mt-2 min-h-10 rounded-[22px] text-[14px]" onClick={() => setStep("profile")}>
               Собрать профиль игрока
             </Button>
           </Panel>
@@ -299,14 +292,14 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
       {step === "profile" ? (
         <>
-          <Panel className="space-y-4 border-white/70 bg-white/56 p-3.5 backdrop-blur-2xl">
+          <Panel className="space-y-3 border-white/70 bg-white/56 p-3 backdrop-blur-2xl">
             <StepHeader
-              step="Шаг 1 из 3"
+              step="Шаг 1 из 2"
               title="Соберём профиль игрока"
-              subtitle="Эти данные нужны, чтобы сразу показать тебе релевантных людей и события."
+              subtitle="Начнём с базового профиля. Район и игровые детали можно спокойно настроить позже."
             />
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2">
               <Field label="Имя">
                 <input
                   required
@@ -316,7 +309,18 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                   placeholder="Анна"
                 />
               </Field>
-              <Field label="Возраст">
+              <Field label="Пол">
+                <select
+                  value={draft.gender ?? ""}
+                  onChange={(event) => setDraftField("gender", (event.target.value || null) as Gender | null)}
+                  className="input border-white/80 bg-white/78"
+                >
+                  <option value="">Не указывать</option>
+                  <option value="male">Мужской</option>
+                  <option value="female">Женский</option>
+                </select>
+              </Field>
+              <Field label="Возраст" className="col-span-2">
                 <AgeRibbonPicker
                   value={draft.age}
                   onChange={(age) => setDraftField("age", age)}
@@ -324,26 +328,10 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               </Field>
             </div>
 
-            <Field label="Район">
-              <div className="grid grid-cols-2 gap-2">
-                {DISTRICT_OPTIONS.map((district) => (
-                  <button
-                    key={district}
-                    type="button"
-                    onClick={() => setDraftField("district", district)}
-                    className={`rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition ${
-                      draft.district === district ? "border-ink bg-ink text-white" : "border-white/60 bg-white/72 text-ink"
-                    }`}
-                  >
-                    {DISTRICT_LABELS[district]}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
             <Field label="Виды спорта">
               <SportPicker
                 multiple
+                layout="carousel"
                 value={draft.preferredSports}
                 onChange={(value) => setPreferredSports(value as Sport[])}
                 levels={draft.sportLevels}
@@ -351,68 +339,11 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               />
             </Field>
 
-            <Field label={`Радиус ${draft.searchRadiusKm} км`}>
-              <input
-                type="range"
-                min={1}
-                max={100}
-                value={draft.searchRadiusKm}
-                onChange={(event) => setDraftField("searchRadiusKm", Number(event.target.value))}
-                className="mt-2 w-full accent-court"
-              />
-            </Field>
-
-            <Field label="Район и радиус поиска">
-              <SearchAreaMap
-                centerLat={districtCenter.lat}
-                centerLng={districtCenter.lng}
-                radiusKm={draft.searchRadiusKm}
-                city={draft.city}
-                district={draft.district}
-                isApproximate={false}
-                className="max-h-[180px]"
-              />
-              <div className="mt-1.5 text-[11px] leading-[1.1rem] text-ink/55">
-                {`Сейчас показываем радиус ${draft.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[draft.district]}.`}
-              </div>
-            </Field>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <Field label="Формат игры">
-                <select
-                  value={draft.preferredPlayFormat}
-                  onChange={(event) => setDraftField("preferredPlayFormat", event.target.value as PlayFormat)}
-                  className="input border-white/80 bg-white/78"
-                >
-                  {Object.entries(PLAY_FORMAT_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Покрытие">
-                <select
-                  value={draft.preferredSurface}
-                  onChange={(event) => setDraftField("preferredSurface", event.target.value as Surface)}
-                  className="input border-white/80 bg-white/78"
-                >
-                  {Object.entries(SURFACE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <div className="rounded-[22px] bg-white/72 p-3">
+            <div className="rounded-[20px] bg-white/72 p-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-ink">Ищу игру сейчас</div>
-                  <div className="mt-1 text-[11px] leading-[1.1rem] text-ink/60">
-                    Ты появишься в списке игроков, которые сейчас открыты к игре.
-                  </div>
+                  <div className="mt-1 text-[11px] leading-[1.1rem] text-ink/60">Показывать меня в активном поиске.</div>
                 </div>
                 <button
                   type="button"
@@ -428,10 +359,10 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           </Panel>
 
           <div className="flex gap-3">
-            <Button type="button" fullWidth variant="ghost" className="min-h-11 rounded-[22px]" onClick={() => setStep("intro")}>
+            <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("intro")}>
               Назад
             </Button>
-            <Button type="button" fullWidth className="min-h-11 rounded-[22px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
+            <Button type="button" fullWidth className="min-h-10 rounded-[20px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
               Дальше
             </Button>
           </div>
@@ -440,9 +371,9 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
 
       {step === "availability" ? (
         <>
-          <Panel className="space-y-5 border-white/70 bg-white/56 p-4 backdrop-blur-2xl">
+          <Panel className="space-y-3 border-white/70 bg-white/56 p-3 backdrop-blur-2xl">
             <StepHeader
-              step="Шаг 2 из 3"
+              step="Шаг 2 из 2"
               title="Когда тебе удобно играть"
               subtitle="Это можно указать сразу, чтобы подбор был точнее. Если не знаешь точно, этот шаг необязательный."
             />
@@ -454,49 +385,45 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               />
             </Field>
 
-            <div className="rounded-[24px] bg-white/72 p-4">
+            <div className="rounded-[20px] bg-white/72 p-2.5">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
                 {hasAvailability ? "Выбрано" : "Можно заполнить позже"}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <div className="mt-1.5 flex flex-wrap gap-2 text-[11px]">
                 {hasAvailability ? (
                   Object.entries(draft.availabilityByDay).map(([day, ranges]) => (
-                    <span key={day} className="rounded-full bg-cream px-3 py-2 font-semibold text-ink">
+                    <span key={day} className="rounded-full bg-cream px-2.5 py-1.5 font-semibold text-ink">
                       {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? [])
                         .map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS])
                         .join(", ")}
                     </span>
                   ))
                 ) : (
-                  <span className="rounded-full bg-cream px-3 py-2 font-semibold text-ink">Укажешь позже в профиле</span>
+                  <span className="rounded-full bg-cream px-2.5 py-1.5 font-semibold text-ink">Укажешь позже в профиле</span>
                 )}
-              </div>
-            </div>
-
-            <div className="rounded-[24px] bg-white/72 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Твой профиль</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedSportsSummary.map(({ sport, level }) => (
-                  <SportLevelBadge
-                    key={sport}
-                    sport={sport}
-                    level={level}
-                    badgeClassName="bg-cream text-ink"
-                    levelClassName="bg-cream text-ink"
-                  />
-                ))}
               </div>
             </div>
           </Panel>
 
           <div className="flex gap-3">
-            <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("profile")}>
+            <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("profile")}>
               Назад
             </Button>
-            <Button type="button" fullWidth className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
-              Перейти к входу
+            <Button
+              type="button"
+              fullWidth
+              className="min-h-10 rounded-[20px]"
+              onClick={() => {
+                saveGuestOnboardingDraft(draft);
+                router.push("/discover");
+              }}
+            >
+              Смотреть игроков
             </Button>
           </div>
+          <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("email")}>
+            Подтвердить email сейчас
+          </Button>
         </>
       ) : null}
 
@@ -505,7 +432,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-                {step === "email" ? "Шаг 3 из 3" : "Подтверждение"}
+                {step === "email" ? "Подтверждение почты" : "Подтверждение"}
               </div>
               <div className="mt-1 text-xl font-bold text-ink">
                 {step === "email" ? "Осталось только подтвердить email" : "Введи код из письма"}
@@ -520,7 +447,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           {step === "email" ? (
             <form className="space-y-4" onSubmit={requestCode}>
               <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">
-                Профиль уже собран. После подтверждения почты мы сразу сохраним его и откроем поиск игроков.
+                Профиль уже собран. После подтверждения почты мы сразу сохраним его и вернём тебя к действию без повторного онбординга.
               </div>
               <label className="block">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">Почта</div>
@@ -534,8 +461,8 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 />
               </label>
               <div className="flex gap-3">
-                <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("availability")}>
-                  Назад
+                <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
+                  Позже
                 </Button>
                 <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
                   {loading ? "Отправляем..." : "Получить код"}
@@ -606,13 +533,15 @@ function StepHeader({
 
 function Field({
   label,
-  children
+  children,
+  className
 }: {
   label: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="block">
+    <label className={className ?? "block"}>
       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">{label}</div>
       {children}
     </label>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
 import { DAY_LABELS, PLAY_FORMAT_LABELS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
@@ -92,20 +92,6 @@ function IncomingLikeCard({
     }
   }
 
-  async function block() {
-    setBusy(true);
-
-    try {
-      await apiFetch(`/users/${user.id}/block`, {
-        method: "POST"
-      });
-      onResolved();
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <Panel className="space-y-4">
       <div className="flex items-start gap-3">
@@ -168,15 +154,6 @@ function IncomingLikeCard({
           Можно поиграть
         </Button>
       </div>
-
-      <button
-        type="button"
-        onClick={block}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-semibold text-ink/70"
-      >
-        <Ban className="h-4 w-4" />
-        Заблокировать пользователя
-      </button>
     </Panel>
   );
 }

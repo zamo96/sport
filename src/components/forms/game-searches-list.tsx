@@ -37,6 +37,10 @@ type SearchItem = {
   durationMinutes?: number | null;
   hasCourtBooked: boolean;
   sport: Sport;
+  selfLevel?: number | null;
+  selfLevelUnknown?: boolean;
+  desiredLevelMin?: number | null;
+  desiredLevelMax?: number | null;
   playersNeeded?: number | null;
   preferredDays: unknown;
   preferredTimeRanges: unknown;
@@ -145,6 +149,12 @@ function GameSearchCard({ search }: { search: SearchItem }) {
           Нужно игроков: {playersNeeded}
         </span>
         <SportBadge sport={search.sport} className="bg-cream text-ink" />
+        <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
+          {search.selfLevelUnknown ? "Свой уровень: не знаю" : `Свой уровень: ${search.selfLevel ?? "из профиля"}`}
+        </span>
+        <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
+          Ищу уровень {search.desiredLevelMin ?? 1}–{search.desiredLevelMax ?? 10}
+        </span>
         {search.hotWindow ? (
           <span className="rounded-full bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
             {HOT_SEARCH_WINDOW_LABELS[search.hotWindow]}

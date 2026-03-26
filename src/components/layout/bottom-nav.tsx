@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Compass, MessageCircle, Settings2, Trophy, User2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
+import { buildGuestAuthHref, loadGuestOnboardingDraft, guestDraftHasProfileBasics } from "@/lib/guest-draft";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -20,6 +21,7 @@ const hiddenRoutes = ["/auth", "/onboarding", "/offline"];
 
 export function BottomNav() {
   const pathname = usePathname();
+  const [hasGuestDraft, setHasGuestDraft] = useState(false);
   const [inboxBadgeCount, setInboxBadgeCount] = useState(0);
   const [discoverBadgeCount, setDiscoverBadgeCount] = useState(0);
   const lastBadgeRef = useRef(0);
@@ -54,6 +56,11 @@ export function BottomNav() {
     window.addEventListener("pointerdown", unlockAudio, { once: true });
     return () => window.removeEventListener("pointerdown", unlockAudio);
   }, []);
+
+  useEffect(() => {
+    const draft = loadGuestOnboardingDraft();
+    setHasGuestDraft(Boolean(draft && guestDraftHasProfileBasics(draft)));
+  }, [pathname]);
 
   useEffect(() => {
     if (isHidden) {
@@ -124,6 +131,7 @@ export function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md border-t border-white/60 bg-white/90 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur">
       <div className="grid grid-cols-5 gap-2">
         {items.map((item) => {
+          const href = hasGuestDraft && item.href !== "/discover" ? buildGuestAuthHref(item.href) : item.href;
           const isActive =
             pathname === item.href ||
             (item.href !== "/discover" && pathname.startsWith(item.href));
@@ -132,7 +140,7 @@ export function BottomNav() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={cn(
                 "relative flex min-h-14 flex-col items-center justify-center rounded-2xl text-[11px] font-semibold transition",
                 isActive ? "bg-ink text-white shadow-glow" : "text-ink/60"

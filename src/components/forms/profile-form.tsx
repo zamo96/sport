@@ -1,14 +1,16 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlayFormat, Surface, type Gender, type Sport, type User } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
+import { saveGuestOnboardingDraft, type GuestOnboardingDraft } from "@/lib/guest-draft";
 import {
   AVAILABLE_CITIES,
   DAY_LABELS,
   DEFAULT_CITY,
+  DEFAULT_CITY_COORDINATES,
   type DistrictOption,
   DISTRICT_LABELS,
   DISTRICT_MAP_AREAS,
@@ -22,7 +24,6 @@ import { getPrimarySportLevel, normalizeSportLevels, normalizeSports, syncSportL
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
-import { SportLevelsEditor } from "@/components/forms/sport-levels-editor";
 import { SearchAreaMap } from "@/components/maps/search-area-map";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,7 @@ type ProfilePayload = Pick<
   | "notificationMatches"
   | "notificationMessages"
 > & {
-  district: DistrictOption;
+  district: DistrictOption | null;
   preferredSports: SportOption[];
   sportLevels: Partial<Record<SportOption, number>>;
   availableDays: string[];
@@ -58,7 +59,8 @@ type SportOption = (typeof SPORT_OPTIONS)[number];
 
 export function ProfileForm({
   user,
-  mode = "profile"
+  mode = "profile",
+  authRequiredHref
 }: {
   user: Partial<User> & {
     availableDays?: unknown;
@@ -67,10 +69,12 @@ export function ProfileForm({
     preferredSports?: unknown;
     sportLevels?: unknown;
   };
-  mode?: "onboarding" | "profile";
+  mode?: "onboarding" | "profile" | "guest";
+  authRequiredHref?: string;
 }) {
   const router = useRouter();
   const isOnboarding = mode === "onboarding";
+  const isGuest = mode === "guest";
   const initialPreferredSports = normalizeSports(user.preferredSports) as SportOption[];
   const initialSportLevels = normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5) as Partial<
     Record<SportOption, number>
@@ -81,7 +85,7 @@ export function ProfileForm({
     age: user.age ?? 28,
     gender: (user.gender as Gender | null | undefined) ?? null,
     city: DEFAULT_CITY,
-    district: (user.district as ProfilePayload["district"]) ?? "central",
+    district: (user.district as ProfilePayload["district"]) ?? null,
     tennisLevel: getPrimarySportLevel(initialPreferredSports, initialSportLevels, user.tennisLevel ?? 5),
     preferredSports: initialPreferredSports,
     sportLevels: initialSportLevels,
@@ -106,14 +110,22 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedDistrictCenter = DISTRICT_MAP_AREAS[form.district].center;
+  const selectedDistrictCenter = form.district ? DISTRICT_MAP_AREAS[form.district].center : DEFAULT_CITY_COORDINATES;
   const searchCenterLat = selectedDistrictCenter.lat;
   const searchCenterLng = selectedDistrictCenter.lng;
-  const isApproximateSearchArea = false;
+  const isApproximateSearchArea = !form.district;
 
   function setField<Key extends keyof ProfilePayload>(key: Key, value: ProfilePayload[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
+
+  useEffect(() => {
+    if (!isGuest) {
+      return;
+    }
+
+    saveGuestOnboardingDraft(toGuestDraft(form));
+  }, [form, isGuest]);
 
   function setAvailabilityByDay(nextAvailabilityByDay: ProfilePayload["availabilityByDay"]) {
     const normalized = Object.fromEntries(
@@ -235,6 +247,12 @@ export function ProfileForm({
       return;
     }
 
+    if (isGuest) {
+      saveGuestOnboardingDraft(toGuestDraft(form));
+      router.push(authRequiredHref ?? "/auth?step=email&continue=/profile");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -299,16 +317,19 @@ export function ProfileForm({
                     placeholder="Анна"
                   />
                 </Field>
-                <Field label="Возраст">
-                  <input
-                    required
-                    type="number"
-                    min={18}
-                    max={70}
-                    value={form.age ?? 18}
-                    onChange={(event) => setField("age", Number(event.target.value))}
+                <Field label="Пол">
+                  <select
+                    value={form.gender ?? ""}
+                    onChange={(event) => setField("gender", (event.target.value || null) as ProfilePayload["gender"])}
                     className="input"
-                  />
+                  >
+                    <option value="">Не указывать</option>
+                    <option value="male">Мужской</option>
+                    <option value="female">Женский</option>
+                  </select>
+                </Field>
+                <Field label="Возраст">
+                  <AgeRibbonPicker value={form.age ?? 18} onChange={(age) => setField("age", age)} />
                 </Field>
                 <Field label="Город" className="col-span-2">
                   <select
@@ -328,6 +349,15 @@ export function ProfileForm({
                 </Field>
                 <Field label="Район" className="col-span-2">
                   <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setField("district", null)}
+                      className={`rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition ${
+                        !form.district ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
+                      }`}
+                    >
+                      Не выбран
+                    </button>
                     {DISTRICT_OPTIONS.map((district) => (
                       <button
                         key={district}
@@ -341,7 +371,7 @@ export function ProfileForm({
                       </button>
                     ))}
                   </div>
-                  <div className="mt-2 text-xs leading-5 text-ink/55">Сначала выбери район, а уже потом радиус поиска вокруг него.</div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">Необязательно. Если район не выбран, будем искать шире по Санкт-Петербургу.</div>
                 </Field>
               </div>
             ) : null}
@@ -357,11 +387,14 @@ export function ProfileForm({
                   </Field>
 
                 <div className="grid grid-cols-1 gap-3">
-                  <Field label="Уровень по каждому спорту">
-                    <SportLevelsEditor
-                      sports={form.preferredSports as Sport[]}
-                      values={form.sportLevels as Partial<Record<Sport, number>>}
-                      onChange={(sport, level) => setSportLevel(sport as SportOption, level)}
+                  <Field label="Виды спорта">
+                    <SportPicker
+                      multiple
+                      value={form.preferredSports}
+                      onChange={(value) => setPreferredSports(value as ProfilePayload["preferredSports"])}
+                      levels={form.sportLevels}
+                      onLevelChange={(sport, level) => setSportLevel(sport as SportOption, level)}
+                      layout="grid"
                     />
                   </Field>
                 </div>
@@ -380,51 +413,26 @@ export function ProfileForm({
                 </div>
 
                 <Field label="Район и радиус поиска">
-                  <SearchAreaMap
-                    centerLat={searchCenterLat}
-                    centerLng={searchCenterLng}
-                    radiusKm={form.searchRadiusKm}
-                    city={form.city ?? DEFAULT_CITY}
-                    district={form.district}
-                    isApproximate={isApproximateSearchArea}
-                  />
-                  <div className="mt-2 text-xs leading-5 text-ink/55">
-                    {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
-                  </div>
+                  {form.district ? (
+                    <>
+                      <SearchAreaMap
+                        centerLat={searchCenterLat}
+                        centerLng={searchCenterLng}
+                        radiusKm={form.searchRadiusKm}
+                        city={form.city ?? DEFAULT_CITY}
+                        district={form.district}
+                        isApproximate={isApproximateSearchArea}
+                      />
+                      <div className="mt-2 text-xs leading-5 text-ink/55">
+                        {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-[20px] bg-cream p-4 text-sm leading-6 text-ink/65">
+                      Район пока не выбран. Это нормально: подбор будет шире по Санкт-Петербургу. Если хочешь видеть круг поиска на карте, выбери район.
+                    </div>
+                  )}
                 </Field>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Формат игры">
-                    <select
-                      value={form.preferredPlayFormat}
-                      onChange={(event) =>
-                        setField("preferredPlayFormat", event.target.value as ProfilePayload["preferredPlayFormat"])
-                      }
-                      className="input"
-                    >
-                      {Object.entries(PLAY_FORMAT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Покрытие">
-                    <select
-                      value={form.preferredSurface}
-                      onChange={(event) =>
-                        setField("preferredSurface", event.target.value as ProfilePayload["preferredSurface"])
-                      }
-                      className="input"
-                    >
-                      {Object.entries(SURFACE_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
 
                 <div className="rounded-[24px] bg-cream p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -520,16 +528,29 @@ export function ProfileForm({
         </>
       ) : (
         <>
+          {isGuest ? (
+            <Panel className="bg-cream text-sm leading-6 text-ink/68">
+              Профиль уже заполнен как черновик. Можно спокойно поправить данные, а когда захочешь сохранить его в аккаунт и получать отклики, просто подтверди email.
+            </Panel>
+          ) : null}
           <Panel>
             <div className="mb-5 flex items-center gap-4">
               <Avatar src={form.avatarUrl} alt={form.name || "Игрок"} size="xl" />
               <div className="flex-1">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">Фото</div>
-                <div className="mt-1 text-lg font-bold text-ink">Редактирование карточки игрока</div>
-                <label className="mt-3 inline-flex cursor-pointer rounded-2xl bg-mint px-4 py-3 text-sm font-semibold text-ink">
-                  {uploading ? "Загрузка..." : "Загрузить фото"}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-                </label>
+                <div className="mt-1 text-lg font-bold text-ink">
+                  {isGuest ? "Черновик карточки игрока" : "Редактирование карточки игрока"}
+                </div>
+                {!isGuest ? (
+                  <label className="mt-3 inline-flex cursor-pointer rounded-2xl bg-mint px-4 py-3 text-sm font-semibold text-ink">
+                    {uploading ? "Загрузка..." : "Загрузить фото"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                  </label>
+                ) : (
+                  <div className="mt-3 text-xs leading-5 text-ink/55">
+                    Фото можно будет добавить сразу после подтверждения email.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -552,6 +573,19 @@ export function ProfileForm({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field label="Пол">
+                <select
+                  value={form.gender ?? ""}
+                  onChange={(event) =>
+                    setField("gender", (event.target.value || null) as ProfilePayload["gender"])
+                  }
+                  className="input"
+                >
+                  <option value="">Не указывать</option>
+                  <option value="male">Мужской</option>
+                  <option value="female">Женский</option>
+                </select>
+              </Field>
               <Field label="Город">
                 <select
                   required
@@ -570,10 +604,11 @@ export function ProfileForm({
               </Field>
               <Field label="Район">
                 <select
-                  value={form.district}
-                  onChange={(event) => setField("district", event.target.value as ProfilePayload["district"])}
+                  value={form.district ?? ""}
+                  onChange={(event) => setField("district", (event.target.value || null) as ProfilePayload["district"])}
                   className="input"
                 >
+                  <option value="">Не выбран</option>
                   {DISTRICT_OPTIONS.map((district) => (
                     <option key={district} value={district}>
                       {DISTRICT_LABELS[district]}
@@ -584,30 +619,6 @@ export function ProfileForm({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Пол">
-                <select
-                  value={form.gender ?? ""}
-                  onChange={(event) =>
-                    setField("gender", (event.target.value || null) as ProfilePayload["gender"])
-                  }
-                  className="input"
-                >
-                  <option value="">Не указывать</option>
-                  <option value="male">Мужской</option>
-                  <option value="female">Женский</option>
-                  <option value="other">Другой</option>
-                </select>
-              </Field>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Виды спорта" className="col-span-2">
-                <SportPicker
-                  multiple
-                  value={form.preferredSports}
-                  onChange={(value) => setPreferredSports(value as ProfilePayload["preferredSports"])}
-                />
-              </Field>
               <Field label={`Радиус ${form.searchRadiusKm} км`}>
                 <input
                   type="range"
@@ -620,60 +631,38 @@ export function ProfileForm({
               </Field>
             </div>
 
+            <Field label="Виды спорта" className="mt-3">
+              <SportPicker
+                multiple
+                value={form.preferredSports}
+                onChange={(value) => setPreferredSports(value as ProfilePayload["preferredSports"])}
+                levels={form.sportLevels}
+                onLevelChange={(sport, level) => setSportLevel(sport as SportOption, level)}
+                layout="grid"
+              />
+            </Field>
+
             <Field label="Район и радиус поиска" className="mt-3">
-              <SearchAreaMap
-                centerLat={searchCenterLat}
-                centerLng={searchCenterLng}
-                radiusKm={form.searchRadiusKm}
-                city={form.city ?? DEFAULT_CITY}
-                district={form.district}
-                isApproximate={isApproximateSearchArea}
-              />
-              <div className="mt-2 text-xs leading-5 text-ink/55">
-                {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
-              </div>
+              {form.district ? (
+                <>
+                  <SearchAreaMap
+                    centerLat={searchCenterLat}
+                    centerLng={searchCenterLng}
+                    radiusKm={form.searchRadiusKm}
+                    city={form.city ?? DEFAULT_CITY}
+                    district={form.district}
+                    isApproximate={isApproximateSearchArea}
+                  />
+                  <div className="mt-2 text-xs leading-5 text-ink/55">
+                    {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-[20px] bg-cream p-4 text-sm leading-6 text-ink/65">
+                  Район не выбран. Это нормально: поиск будет шире по Санкт-Петербургу. Выбери район, если хочешь точнее настроить локацию и увидеть круг на карте.
+                </div>
+              )}
             </Field>
-
-            <Field label="Уровни по видам спорта" className="mt-3">
-              <SportLevelsEditor
-                sports={form.preferredSports as Sport[]}
-                values={form.sportLevels as Partial<Record<Sport, number>>}
-                onChange={(sport, level) => setSportLevel(sport as SportOption, level)}
-              />
-            </Field>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Формат игры">
-                <select
-                  value={form.preferredPlayFormat}
-                  onChange={(event) =>
-                    setField("preferredPlayFormat", event.target.value as ProfilePayload["preferredPlayFormat"])
-                  }
-                  className="input"
-                >
-                  {Object.entries(PLAY_FORMAT_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Покрытие">
-                <select
-                  value={form.preferredSurface}
-                  onChange={(event) =>
-                    setField("preferredSurface", event.target.value as ProfilePayload["preferredSurface"])
-                  }
-                  className="input"
-                >
-                  {Object.entries(SURFACE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
 
             <Field label="Доступность" className="mt-3">
               <AvailabilityPicker
@@ -736,7 +725,7 @@ export function ProfileForm({
           </Panel>
 
           <Button type="submit" fullWidth disabled={loading || uploading}>
-            {loading ? "Сохраняем..." : "Сохранить профиль"}
+            {loading ? "Сохраняем..." : isGuest ? "Подтвердить email и сохранить" : "Сохранить профиль"}
           </Button>
         </>
       )}
@@ -744,6 +733,25 @@ export function ProfileForm({
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </form>
   );
+}
+
+function toGuestDraft(form: ProfilePayload): GuestOnboardingDraft {
+  return {
+    name: form.name ?? "",
+    age: form.age ?? 28,
+    gender: form.gender ?? null,
+    city: form.city ?? DEFAULT_CITY,
+    district: form.district,
+    preferredSports: form.preferredSports,
+    sportLevels: form.sportLevels,
+    preferredPlayFormat: form.preferredPlayFormat,
+    preferredSurface: form.preferredSurface,
+    searchRadiusKm: form.searchRadiusKm,
+    isLookingForGame: form.isLookingForGame,
+    availableDays: form.availableDays,
+    availableTimeRanges: form.availableTimeRanges,
+    availabilityByDay: form.availabilityByDay
+  };
 }
 
 function normalizeAvailabilityByDay(availabilityByDay: unknown, availableDays: unknown, availableTimeRanges: unknown) {

@@ -20,7 +20,8 @@ export function SportPicker({
   multiple = false,
   options = SPORT_OPTIONS,
   levels,
-  onLevelChange
+  onLevelChange,
+  layout = "grid"
 }: {
   value: Sport[];
   onChange: (value: Sport[]) => void;
@@ -28,6 +29,7 @@ export function SportPicker({
   options?: readonly Sport[];
   levels?: Partial<Record<Sport, number>>;
   onLevelChange?: (sport: Sport, level: number) => void;
+  layout?: "grid" | "carousel";
 }) {
   function toggle(sport: Sport) {
     if (multiple) {
@@ -39,7 +41,13 @@ export function SportPicker({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2.5">
+    <div
+      className={cn(
+        layout === "carousel"
+          ? "flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          : "grid grid-cols-2 gap-2.5"
+      )}
+    >
       {options.map((sport) => {
         const active = value.includes(sport);
         const level = levels?.[sport] ?? 5;
@@ -48,7 +56,8 @@ export function SportPicker({
           <div
             key={sport}
             className={cn(
-              "rounded-[22px] border px-3 py-3 text-left transition-all duration-300 ease-out will-change-transform",
+              "rounded-[22px] border px-3 py-3 text-left transition-all duration-300 ease-out will-change-transform transform-gpu",
+              layout === "carousel" && "min-w-[10.25rem] snap-center",
               active
                 ? "translate-y-[-2px] border-court/35 bg-[linear-gradient(180deg,rgba(58,134,109,0.96),rgba(23,56,46,0.92))] text-white shadow-[0_20px_44px_rgba(20,47,38,0.22)] ring-1 ring-white/18"
                 : "border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,243,233,0.96))] text-ink hover:translate-y-[-1px] hover:shadow-[0_14px_30px_rgba(20,47,38,0.08)]"
@@ -73,13 +82,18 @@ export function SportPicker({
 
             <div
               className={cn(
-                "grid origin-top transition-all duration-300 ease-out",
-                active && levels && onLevelChange ? "mt-3 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"
+                "overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out",
+                active && levels && onLevelChange ? "mt-3 max-h-44 translate-y-0 opacity-100" : "mt-0 max-h-0 -translate-y-1 opacity-0"
               )}
             >
-              <div className="min-h-0 overflow-hidden">
+              <div>
                 {levels && onLevelChange ? (
-                  <div className={cn("rounded-[18px] bg-white/12 px-2.5 py-2.5 transition-all duration-300", active ? "scale-100" : "scale-95")}>
+                  <div
+                    className={cn(
+                      "rounded-[18px] bg-white/12 px-2.5 py-2.5 transition-[transform,opacity] duration-300 ease-out",
+                      active ? "scale-100 opacity-100" : "scale-[0.985] opacity-0"
+                    )}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">Уровень</span>
                       <span className={cn("rounded-full px-2 py-1 text-[11px] font-semibold", levelVisual.badgeClassName)}>

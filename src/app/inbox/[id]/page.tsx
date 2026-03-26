@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { ChatRoom } from "@/components/chat/chat-room";
 import { SectionTitle } from "@/components/ui/section-title";
@@ -10,7 +11,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref(`/inbox/${params.id}`));
   }
 
   const match = await getMatchDetail(params.id, user.id);

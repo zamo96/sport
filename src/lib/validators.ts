@@ -74,7 +74,7 @@ export const updateMeSchema = z.object({
   age: z.number().int().min(18).max(70),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: z.literal(DEFAULT_CITY),
-  district: z.enum(DISTRICT_OPTIONS),
+  district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   tennisLevel: z.number().int().min(1).max(10),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
   sportLevels: z
@@ -110,6 +110,40 @@ export const updateMeSchema = z.object({
   notificationSound: z.boolean().optional()
 });
 
+export const guestOnboardingDraftSchema = z.object({
+  name: z.string().min(2).max(40),
+  age: z.number().int().min(18).max(70),
+  gender: z.enum(["male", "female", "other"]).nullable().optional(),
+  city: z.literal(DEFAULT_CITY),
+  district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
+  preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
+  sportLevels: z
+    .preprocess(
+      (value) => parseSportLevelsValue(value),
+      z.record(z.string(), z.number().int().min(1).max(10))
+    )
+    .refine(
+      (value) => Object.keys(value).every((key) => SPORT_OPTIONS.includes(key as (typeof SPORT_OPTIONS)[number])),
+      "Некорректные виды спорта в уровнях"
+    ),
+  preferredPlayFormat: z.nativeEnum(PlayFormat),
+  preferredSurface: z.nativeEnum(Surface),
+  searchRadiusKm: z.number().int().min(1).max(100),
+  isLookingForGame: z.boolean().default(true),
+  availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
+  availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).default([]),
+  availabilityByDay: z
+    .preprocess(
+      (value) => parseAvailabilityByDayValue(value),
+      z.record(z.string(), z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length))
+    )
+    .refine(
+      (value) => Object.keys(value).every((key) => DAY_OPTIONS.includes(key as (typeof DAY_OPTIONS)[number])),
+      "Некорректные дни в доступности"
+    )
+    .default({})
+});
+
 export const discoverFiltersSchema = z.object({
   levelMin: z.coerce.number().int().min(1).max(10).optional(),
   levelMax: z.coerce.number().int().min(1).max(10).optional(),
@@ -122,6 +156,18 @@ export const discoverFiltersSchema = z.object({
   day: z.preprocess((value) => parseMultiValue(value), z.array(dayEnum).default([])),
   timeRange: z.preprocess((value) => parseMultiValue(value), z.array(timeRangeEnum).default([])),
   view: z.enum(["swipe", "likes", "seeking", "hot"]).optional()
+});
+
+export const guestDiscoverSchema = z.object({
+  draft: guestOnboardingDraftSchema,
+  filters: discoverFiltersSchema.default(() => ({
+    gender: [],
+    sport: [],
+    format: [],
+    surface: [],
+    day: [],
+    timeRange: []
+  }))
 });
 
 export const swipeSchema = z.object({
@@ -177,6 +223,10 @@ export const createGameSearchSchema = z
     durationMinutes: z.number().int().min(30).max(240).optional().nullable(),
     hasCourtBooked: z.boolean().optional().default(false),
     sport: z.nativeEnum(Sport),
+    selfLevel: z.number().int().min(1).max(10).optional().nullable(),
+    selfLevelUnknown: z.boolean().optional().default(false),
+    desiredLevelMin: z.number().int().min(1).max(10).optional().default(1),
+    desiredLevelMax: z.number().int().min(1).max(10).optional().default(10),
     format: z.nativeEnum(PlayFormat),
     playersNeeded: z.number().int().min(1).max(30).optional().default(1),
     comment: z.string().max(240).optional().default("")
@@ -211,6 +261,14 @@ export const createGameSearchSchema = z
         code: z.ZodIssueCode.custom,
         path: ["durationMinutes"],
         message: "Для горячего поиска укажи длительность"
+      });
+    }
+
+    if (value.desiredLevelMin > value.desiredLevelMax) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["desiredLevelMin"],
+        message: "Минимальный уровень не может быть выше максимального"
       });
     }
   });

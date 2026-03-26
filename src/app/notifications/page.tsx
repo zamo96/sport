@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { LiveRefresh } from "@/components/ui/live-refresh";
 import { Panel } from "@/components/ui/panel";
@@ -12,7 +13,7 @@ export default async function NotificationsPage() {
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref("/notifications"));
   }
 
   const notifications = await getNotificationsForUser(user.id);

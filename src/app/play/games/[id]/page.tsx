@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
+import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { GameRequestChatRoom } from "@/components/chat/game-request-chat-room";
 import { GameRequestCard } from "@/components/chat/game-request-card";
@@ -13,7 +14,7 @@ export default async function GameRequestDetailPage({ params }: { params: { id: 
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect(buildGuestAuthHref(`/play/games/${params.id}`));
   }
 
   const gameRequest = await getGameRequestDetail(params.id, user.id);

@@ -3,7 +3,7 @@ import { Gender, PlayFormat, Sport, Surface, type User } from "@prisma/client";
 import { haversineDistanceKm } from "@/lib/geo";
 import { getSharedSports, getSportLevel, normalizeSports } from "@/lib/sport-levels";
 
-type CandidateUser = Pick<
+export type CandidateUser = Pick<
   User,
   | "id"
   | "name"
@@ -146,10 +146,6 @@ export function scoreCandidate<T extends CandidateUser>(
     !filters.timeRange.some((timeRange) => candidateTimeRanges.includes(timeRange))
   ) {
     return null;
-  }
-
-  if (filters.view === "seeking" && !candidate.isLookingForGame) {
-      return null;
   }
 
   const sportsOverlapCount = relevantSports.length;

@@ -12,8 +12,10 @@ export async function POST(request: NextRequest) {
     const user = await requireSessionUser();
     const body = createGameSearchSchema.parse(await request.json());
 
-    if (!hasExplicitSportProfile(user.preferredSports, user.sportLevels, body.sport)) {
-      return fail("Сначала добавь этот вид спорта в профиль и укажи по нему уровень");
+    const hasSportProfile = hasExplicitSportProfile(user.preferredSports, user.sportLevels, body.sport);
+
+    if (!hasSportProfile && !body.selfLevelUnknown && body.selfLevel == null) {
+      return fail("Укажи свой уровень по этому виду спорта или выбери «Не знаю»");
     }
 
     const preferredDays = resolveSearchDays(body.searchType, body.preferredDays, body.hotWindow);
@@ -31,17 +33,6 @@ export async function POST(request: NextRequest) {
     }
 
     const gameSearch = await prisma.$transaction(async (tx) => {
-      await tx.gameSearch.updateMany({
-        where: {
-          createdByUserId: user.id,
-          isActive: true,
-          searchType: body.searchType
-        },
-        data: {
-          isActive: false
-        }
-      });
-
       const created = await tx.gameSearch.create({
         data: {
           createdByUserId: user.id,
@@ -54,6 +45,10 @@ export async function POST(request: NextRequest) {
           durationMinutes: body.searchType === "hot" ? body.durationMinutes ?? null : null,
           hasCourtBooked: body.hasCourtBooked ?? false,
           sport: body.sport,
+          selfLevel: hasSportProfile ? null : body.selfLevel ?? null,
+          selfLevelUnknown: hasSportProfile ? false : (body.selfLevelUnknown ?? false),
+          desiredLevelMin: body.desiredLevelMin ?? 1,
+          desiredLevelMax: body.desiredLevelMax ?? 10,
           format: body.format,
           playersNeeded: body.playersNeeded ?? 1,
           comment: body.comment,
