@@ -15,9 +15,10 @@ import {
   saveGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
-import { getPrimarySportLevel, normalizeSportLevels } from "@/lib/sport-levels";
+import { getPrimarySportLevel, type SportLevelValue } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
+import { SportLevelGuideSheet } from "@/components/forms/sport-level-guide-sheet";
 import { YandexAuthDemoMap } from "@/components/maps/yandex-auth-demo-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -25,16 +26,17 @@ import { SportPicker } from "@/components/forms/sport-picker";
 
 type AuthFlowProps = {
   activePlayersCount: number;
+  initialStep?: "intro" | "email";
 };
 
 type DraftProfile = GuestOnboardingDraft;
 
 const ROTATING_SPORT_TEXTS = ["теннису", "футболу", "паделу", "волейболу", "боксу"] as const;
 
-export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
+export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlowProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [step, setStep] = useState<"intro" | "profile" | "availability" | "email" | "code">("intro");
+  const [step, setStep] = useState<"intro" | "profile" | "availability" | "email" | "code">(initialStep);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   const [isDeletingSport, setIsDeletingSport] = useState(false);
   const [draft, setDraft] = useState<DraftProfile>(createDefaultGuestOnboardingDraft());
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [levelGuideOpen, setLevelGuideOpen] = useState(false);
 
   const continueHref = searchParams.get("continue") || "/discover";
 
@@ -113,7 +116,16 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
   }
 
   function setPreferredSports(nextSports: Sport[]) {
-    const normalizedLevels = normalizeSportLevels(draft.sportLevels, nextSports, 5) as Partial<Record<Sport, number>>;
+    const currentLevels = draft.sportLevels;
+    const normalizedLevels = Object.fromEntries(
+      nextSports.map((sport) => {
+        if (Object.prototype.hasOwnProperty.call(currentLevels, sport)) {
+          return [sport, currentLevels[sport] ?? null];
+        }
+
+        return [sport, 5];
+      })
+    ) as Partial<Record<Sport, SportLevelValue>>;
 
     setDraft((current) => ({
       ...current,
@@ -122,7 +134,7 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
     }));
   }
 
-  function setSportLevel(sport: Sport, level: number) {
+  function setSportLevel(sport: Sport, level: SportLevelValue) {
     setDraft((current) => ({
       ...current,
       sportLevels: {
@@ -243,9 +255,11 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                   <span className="block">Найди партнёра</span>
                   <span className="mt-1 block">
                     по{" "}
-                    <span className="inline-flex min-h-[1.2em] w-[11ch] max-w-full items-center justify-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-center text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
-                      <span className="inline-block w-[9.2ch] overflow-hidden text-left">{typedSport || "\u00A0"}</span>
-                      <span className="ml-0.5 inline-block h-6 w-[2px] animate-pulse rounded-full bg-clay/80" />
+                    <span className="inline-flex min-h-[1.2em] w-[11ch] max-w-full items-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
+                      <span className="inline-flex max-w-full items-center overflow-hidden whitespace-nowrap">
+                        <span className="text-left">{typedSport || "\u00A0"}</span>
+                        <span className="ml-0.5 inline-block h-6 w-[2px] animate-pulse rounded-full bg-clay/80" />
+                      </span>
                     </span>
                   </span>
                 </div>
@@ -328,7 +342,18 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
               </Field>
             </div>
 
-            <Field label="Виды спорта">
+            <Field
+              label="Виды спорта"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setLevelGuideOpen(true)}
+                  className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold text-court shadow-[0_8px_20px_rgba(17,38,29,0.06)] transition hover:bg-white"
+                >
+                  Как понять уровень?
+                </button>
+              }
+            >
               <SportPicker
                 multiple
                 layout="carousel"
@@ -336,6 +361,8 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
                 onChange={(value) => setPreferredSports(value as Sport[])}
                 levels={draft.sportLevels}
                 onLevelChange={(sport, level) => setSportLevel(sport, level)}
+                showLevelHint
+                showCarouselHint
               />
             </Field>
 
@@ -368,6 +395,12 @@ export function AuthFlow({ activePlayersCount }: AuthFlowProps) {
           </div>
         </>
       ) : null}
+
+      <SportLevelGuideSheet
+        open={levelGuideOpen}
+        onClose={() => setLevelGuideOpen(false)}
+        sports={draft.preferredSports}
+      />
 
       {step === "availability" ? (
         <>
@@ -533,17 +566,22 @@ function StepHeader({
 
 function Field({
   label,
+  action,
   children,
   className
 }: {
   label: string;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <label className={className ?? "block"}>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">{label}</div>
+    <div className={className ?? "block"}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">{label}</div>
+        {action}
+      </div>
       {children}
-    </label>
+    </div>
   );
 }

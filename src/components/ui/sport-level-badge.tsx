@@ -12,7 +12,7 @@ export function SportLevelBadge({
   iconClassName
 }: {
   sport: Sport;
-  level: number;
+  level: number | null;
   className?: string;
   badgeClassName?: string;
   levelClassName?: string;
@@ -21,7 +21,9 @@ export function SportLevelBadge({
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
       <SportBadge sport={sport} className={badgeClassName} iconClassName={iconClassName} />
-      <span className={cn("rounded-full px-3 py-2 text-xs font-semibold", levelClassName)}>Уровень {level}</span>
+      <span className={cn("rounded-full px-3 py-2 text-xs font-semibold", levelClassName)}>
+        {level === null ? "Уровень не указан" : `Уровень ${level}`}
+      </span>
     </span>
   );
 }

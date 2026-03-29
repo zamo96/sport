@@ -59,3 +59,16 @@ select.input {
 .safe-pb {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+@keyframes swipe-hand {
+  0%,
+  100% {
+    transform: translateX(-5px);
+    opacity: 0.28;
+  }
+
+  50% {
+    transform: translateX(5px);
+    opacity: 0.68;
+  }
+}

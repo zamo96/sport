@@ -2,7 +2,8 @@ import { type Sport } from "@prisma/client";
 
 import { SPORT_OPTIONS } from "@/lib/constants";
 
-export type SportLevels = Partial<Record<Sport, number>>;
+export type SportLevelValue = number | null;
+export type SportLevels = Partial<Record<Sport, SportLevelValue>>;
 
 const DEFAULT_SPORT_LEVEL = 5;
 
@@ -32,6 +33,11 @@ export function normalizeSportLevels(
 
   for (const sport of sports) {
     const rawLevel = source[sport];
+    if (rawLevel === null) {
+      normalized[sport] = null;
+      continue;
+    }
+
     const parsedLevel =
       typeof rawLevel === "number" && Number.isInteger(rawLevel) && rawLevel >= 1 && rawLevel <= 10
         ? rawLevel
@@ -59,7 +65,8 @@ export function getSportLevel(
   fallbackLevel = DEFAULT_SPORT_LEVEL
 ) {
   const levels = normalizeSportLevels(sportLevels, [sport], fallbackLevel);
-  return levels[sport] ?? fallbackLevel;
+  const level = levels[sport];
+  return typeof level === "number" ? level : fallbackLevel;
 }
 
 export function getSportLevelEntries(
@@ -72,7 +79,7 @@ export function getSportLevelEntries(
 
   return sports.map((sport) => ({
     sport,
-    level: levels[sport] ?? fallbackLevel
+    level: typeof levels[sport] === "number" ? levels[sport] : fallbackLevel
   }));
 }
 

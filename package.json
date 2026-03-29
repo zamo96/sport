@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
+    "clubs:import": "tsx prisma/import-clubs.ts",
     "db:setup": "npm run prisma:generate && npm run prisma:push && npm run prisma:seed",
     "db:start": "docker compose up -d db",
     "dev:local": "npm run db:start && npm run db:setup && next dev",
@@ -30,6 +31,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.3.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {

@@ -31,7 +31,7 @@ export function SettingsForm({ user }: { user: User }) {
         age: user.age,
         gender: user.gender,
         city: DEFAULT_CITY,
-        district: user.district ?? "central",
+        district: user.district ?? null,
         tennisLevel: user.tennisLevel,
         preferredSports,
         sportLevels,

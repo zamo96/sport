@@ -16,6 +16,7 @@ import { DAY_OPTIONS, DEFAULT_CITY, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_
 
 const dayEnum = z.enum(DAY_OPTIONS);
 const timeRangeEnum = z.enum(TIME_RANGE_OPTIONS);
+const sportLevelValueSchema = z.union([z.number().int().min(1).max(10), z.null()]);
 
 function parseMultiValue(value: unknown) {
   if (Array.isArray(value)) {
@@ -80,7 +81,7 @@ export const updateMeSchema = z.object({
   sportLevels: z
     .preprocess(
       (value) => parseSportLevelsValue(value),
-      z.record(z.string(), z.number().int().min(1).max(10))
+      z.record(z.string(), sportLevelValueSchema)
     )
     .refine(
       (value) => Object.keys(value).every((key) => SPORT_OPTIONS.includes(key as (typeof SPORT_OPTIONS)[number])),
@@ -120,7 +121,7 @@ export const guestOnboardingDraftSchema = z.object({
   sportLevels: z
     .preprocess(
       (value) => parseSportLevelsValue(value),
-      z.record(z.string(), z.number().int().min(1).max(10))
+      z.record(z.string(), sportLevelValueSchema)
     )
     .refine(
       (value) => Object.keys(value).every((key) => SPORT_OPTIONS.includes(key as (typeof SPORT_OPTIONS)[number])),

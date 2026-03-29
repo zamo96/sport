@@ -15,6 +15,7 @@ import {
 
 import { DEFAULT_CITY, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { importClubsFromWorkbook } from "./import-clubs";
 
 async function main() {
   await prisma.chatMessage.deleteMany();
@@ -579,6 +580,11 @@ async function main() {
       outcomeUpdatedAt: null
     }
   });
+
+  const clubsImportFile = process.env.CLUBS_IMPORT_FILE?.trim();
+  if (clubsImportFile) {
+    await importClubsFromWorkbook(clubsImportFile);
+  }
 
   console.log("Сиды загружены");
   console.log("Демо-пользователи:", users.map((user) => user.email).join(", "));

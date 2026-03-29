@@ -12,15 +12,20 @@ import {
   DEFAULT_CITY,
   DEFAULT_CITY_COORDINATES,
   type DistrictOption,
-  DISTRICT_LABELS,
-  DISTRICT_MAP_AREAS,
   DISTRICT_OPTIONS,
+  getDistrictArea,
+  getDistrictLabel,
   PLAY_FORMAT_LABELS,
   SPORT_OPTIONS,
   SURFACE_LABELS,
   TIME_RANGE_LABELS
 } from "@/lib/constants";
-import { getPrimarySportLevel, normalizeSportLevels, normalizeSports, syncSportLevels } from "@/lib/sport-levels";
+import {
+  getPrimarySportLevel,
+  normalizeSportLevels,
+  normalizeSports,
+  type SportLevelValue
+} from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
@@ -49,7 +54,7 @@ type ProfilePayload = Pick<
 > & {
   district: DistrictOption | null;
   preferredSports: SportOption[];
-  sportLevels: Partial<Record<SportOption, number>>;
+  sportLevels: Partial<Record<SportOption, SportLevelValue>>;
   availableDays: string[];
   availableTimeRanges: string[];
   availabilityByDay: Partial<Record<string, string[]>>;
@@ -77,7 +82,7 @@ export function ProfileForm({
   const isGuest = mode === "guest";
   const initialPreferredSports = normalizeSports(user.preferredSports) as SportOption[];
   const initialSportLevels = normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5) as Partial<
-    Record<SportOption, number>
+    Record<SportOption, SportLevelValue>
   >;
   const initialAvailabilityByDay = normalizeAvailabilityByDay(user.availabilityByDay, user.availableDays, user.availableTimeRanges);
   const [form, setForm] = useState<ProfilePayload>({
@@ -110,7 +115,7 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedDistrictCenter = form.district ? DISTRICT_MAP_AREAS[form.district].center : DEFAULT_CITY_COORDINATES;
+  const selectedDistrictCenter = getDistrictArea(form.district)?.center ?? DEFAULT_CITY_COORDINATES;
   const searchCenterLat = selectedDistrictCenter.lat;
   const searchCenterLng = selectedDistrictCenter.lng;
   const isApproximateSearchArea = !form.district;
@@ -150,9 +155,15 @@ export function ProfileForm({
       return;
     }
 
-    const nextSportLevels = syncSportLevels(nextSports as Sport[], form.sportLevels, form.tennisLevel ?? 5) as Partial<
-      Record<SportOption, number>
-    >;
+    const nextSportLevels = Object.fromEntries(
+      nextSports.map((sport) => {
+        if (Object.prototype.hasOwnProperty.call(form.sportLevels, sport)) {
+          return [sport, form.sportLevels[sport] ?? null];
+        }
+
+        return [sport, null];
+      })
+    ) as Partial<Record<SportOption, SportLevelValue>>;
 
     setForm((current) => ({
       ...current,
@@ -162,7 +173,7 @@ export function ProfileForm({
     }));
   }
 
-  function setSportLevel(sport: SportOption, level: number) {
+  function setSportLevel(sport: SportOption, level: SportLevelValue) {
     setForm((current) => {
       const nextSportLevels = {
         ...current.sportLevels,
@@ -172,7 +183,11 @@ export function ProfileForm({
       return {
         ...current,
         sportLevels: nextSportLevels,
-        tennisLevel: getPrimarySportLevel(current.preferredSports, nextSportLevels, level)
+        tennisLevel: getPrimarySportLevel(
+          current.preferredSports,
+          nextSportLevels,
+          typeof level === "number" ? level : current.tennisLevel ?? 5
+        )
       };
     });
   }
@@ -367,7 +382,7 @@ export function ProfileForm({
                           form.district === district ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
                         }`}
                       >
-                        {DISTRICT_LABELS[district]}
+                        {getDistrictLabel(district) ?? district}
                       </button>
                     ))}
                   </div>
@@ -424,7 +439,7 @@ export function ProfileForm({
                         isApproximate={isApproximateSearchArea}
                       />
                       <div className="mt-2 text-xs leading-5 text-ink/55">
-                        {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
+                        {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${getDistrictLabel(form.district) ?? DEFAULT_CITY}.`}
                       </div>
                     </>
                   ) : (
@@ -611,7 +626,7 @@ export function ProfileForm({
                   <option value="">Не выбран</option>
                   {DISTRICT_OPTIONS.map((district) => (
                     <option key={district} value={district}>
-                      {DISTRICT_LABELS[district]}
+                      {getDistrictLabel(district) ?? district}
                     </option>
                   ))}
                 </select>
@@ -654,7 +669,7 @@ export function ProfileForm({
                     isApproximate={isApproximateSearchArea}
                   />
                   <div className="mt-2 text-xs leading-5 text-ink/55">
-                    {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${DISTRICT_LABELS[form.district]}.`}
+                    {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${getDistrictLabel(form.district) ?? DEFAULT_CITY}.`}
                   </div>
                 </>
               ) : (
@@ -694,7 +709,7 @@ export function ProfileForm({
                   <SportLevelBadge
                     key={sport}
                     sport={sport as Sport}
-                    level={form.sportLevels[sport] ?? form.tennisLevel ?? 5}
+                    level={form.sportLevels[sport] ?? null}
                     badgeClassName="bg-white text-ink"
                     levelClassName="bg-white text-ink"
                   />

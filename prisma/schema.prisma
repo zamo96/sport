@@ -190,6 +190,11 @@ model Court {
   surface         Surface
   setting         CourtSetting
   supportedSports Json?
+  phone           String?
+  workingHours    String?
+  yandexMapsUrl   String?
+  websiteUrl      String?
+  photoUrl        String?
   priceRange      String
   rating          Float?
   sourceType      String

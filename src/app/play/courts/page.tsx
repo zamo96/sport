@@ -28,8 +28,7 @@ export default async function CourtsPage({
     )
   );
   const courts = await getCourtsForUser(user.id, {
-    city: DEFAULT_CITY,
-    maxDistanceKm: user.searchRadiusKm
+    city: DEFAULT_CITY
   });
 
   return (

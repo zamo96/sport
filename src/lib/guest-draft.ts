@@ -1,6 +1,7 @@
 import { PlayFormat, Surface, type Gender, type Sport } from "@prisma/client";
 
 import { DEFAULT_CITY, type DistrictOption } from "@/lib/constants";
+import { type SportLevelValue } from "@/lib/sport-levels";
 
 export const GUEST_ONBOARDING_DRAFT_KEY = "guest-onboarding-draft:v1";
 
@@ -11,7 +12,7 @@ export type GuestOnboardingDraft = {
   city: string;
   district: DistrictOption | null;
   preferredSports: Sport[];
-  sportLevels: Partial<Record<Sport, number>>;
+  sportLevels: Partial<Record<Sport, SportLevelValue>>;
   preferredPlayFormat: PlayFormat;
   preferredSurface: Surface;
   searchRadiusKm: number;

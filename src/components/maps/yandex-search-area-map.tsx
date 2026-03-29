@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES, DISTRICT_LABELS, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
+import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES, DISTRICT_MAP_AREAS, getDistrictArea, getDistrictLabel } from "@/lib/constants";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { cn } from "@/lib/utils";
 import { loadYandexMaps } from "@/lib/maps/yandex";
@@ -31,8 +31,8 @@ export function YandexSearchAreaMap({
   const center = useMemo(
     () =>
       [
-        centerLng ?? DISTRICT_MAP_AREAS[district as DistrictOption]?.center.lng ?? DEFAULT_CITY_COORDINATES.lng,
-        centerLat ?? DISTRICT_MAP_AREAS[district as DistrictOption]?.center.lat ?? DEFAULT_CITY_COORDINATES.lat
+        centerLng ?? getDistrictArea(district)?.center.lng ?? DEFAULT_CITY_COORDINATES.lng,
+        centerLat ?? getDistrictArea(district)?.center.lat ?? DEFAULT_CITY_COORDINATES.lat
       ] as [number, number],
     [centerLat, centerLng, district]
   );
@@ -113,7 +113,7 @@ export function YandexSearchAreaMap({
             <span style="font-size:18px;line-height:1">📍</span>
           </span>
           <span class="mt-2 rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-[#142F26] shadow-md">
-            ${escapeHtml(district ? DISTRICT_LABELS[district as DistrictOption] : city)} · ${radiusKm} км
+            ${escapeHtml(getDistrictLabel(district) ?? city)} · ${radiusKm} км
           </span>
         `;
         markerElement.title = isApproximate

@@ -5,10 +5,19 @@ type YandexMapsApi = {
   YMapDefaultFeaturesLayer: new (props?: Record<string, unknown>) => unknown;
   YMapMarker: new (props: Record<string, unknown>, element?: HTMLElement) => unknown;
   YMapFeature?: new (props: Record<string, unknown>) => unknown;
+  YMapListener?: new (props: {
+    onUpdate?: (event: {
+      location?: {
+        center?: [number, number];
+        zoom?: number;
+      };
+    }) => void;
+  }) => unknown;
 };
 
 type YMapInstance = {
   addChild: (child: unknown) => YMapInstance;
+  removeChild?: (child: unknown) => YMapInstance;
   destroy: () => void;
 };
 
