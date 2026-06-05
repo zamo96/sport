@@ -86,6 +86,40 @@ describe("scoring", () => {
     expect(overlapSlots(["monday-evening", "wednesday-day"], ["monday-evening"])).toBe(1);
   });
 
+  it("prioritizes preferred district overlap over raw distance", () => {
+    const ranked = scoreCandidates(
+      {
+        ...viewer,
+        district: "primorsky",
+        preferredDistricts: ["primorsky"],
+        homeLat: 59.993,
+        homeLng: 30.2398
+      },
+      [
+        {
+          ...viewer,
+          id: "near-outside-district",
+          name: "Near Outside",
+          district: "central",
+          preferredDistricts: ["central"],
+          homeLat: 59.994,
+          homeLng: 30.241
+        },
+        {
+          ...viewer,
+          id: "preferred-district",
+          name: "Preferred District",
+          district: "primorsky",
+          preferredDistricts: ["primorsky"],
+          homeLat: 60.03,
+          homeLng: 30.31
+        }
+      ]
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["preferred-district", "near-outside-district"]);
+  });
+
   it("supports multi-select filters for sport, day and time", () => {
     const candidates = [
       {

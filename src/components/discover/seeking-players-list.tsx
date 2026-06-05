@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { CalendarDays, Clock3, Flame, MapPin, Target, Trophy, Users2 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
-import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
-import { formatTimeUntilHotSearch } from "@/lib/game-search";
+import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, SPORT_SEARCH_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { formatTimeUntilHotSearch, resolveSearchLifecycleStatus } from "@/lib/game-search";
 import { getSportLevel, getSportLevelEntries } from "@/lib/sport-levels";
+import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
@@ -17,6 +19,8 @@ type SeekingUser = {
   name: string | null;
   age: number | null;
   city: string | null;
+  district?: string | null;
+  districtLabel?: string | null;
   bio: string | null;
   avatarUrl: string | null;
   tennisLevel: number | null;
@@ -27,8 +31,10 @@ type SeekingUser = {
   score: number | null;
   availableDays?: unknown;
   availableTimeRanges?: unknown;
+  explainabilityReasons?: string[] | null;
   gameSearches?: Array<{
     id: string;
+    status: "active" | "in_review" | "matched" | "closed";
     preferredDays: unknown;
     preferredTimeRanges: unknown;
     searchType: "regular" | "hot";
@@ -46,6 +52,7 @@ type SeekingUser = {
     comment: string | null;
     responses?: Array<{
       id: string;
+      responderUserId?: string;
       status: "pending" | "approved" | "rejected" | "withdrawn";
     }>;
     preferredCourt?: {
@@ -56,13 +63,32 @@ type SeekingUser = {
 
 export function SeekingPlayersList({
   users,
+  currentUserId,
   variant = "seeking",
+  highlightSearchId,
   authRequiredHref
 }: {
   users: SeekingUser[];
+  currentUserId?: string;
   variant?: "seeking" | "hot";
+  highlightSearchId?: string;
   authRequiredHref?: string;
 }) {
+  useEffect(() => {
+    if (!highlightSearchId) {
+      return;
+    }
+
+    const target = document.getElementById(`game-search-${highlightSearchId}`);
+    if (!target) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }, [highlightSearchId]);
+
   if (users.length === 0) {
     return (
       <Panel className="text-center">
@@ -84,6 +110,7 @@ export function SeekingPlayersList({
         const days = Array.isArray(user.availableDays) ? user.availableDays : [];
         const timeRanges = Array.isArray(user.availableTimeRanges) ? user.availableTimeRanges : [];
         const latestSearch = Array.isArray(user.gameSearches) ? user.gameSearches[0] : null;
+        const searchLabels = latestSearch ? SPORT_SEARCH_LABELS[latestSearch.sport] : null;
         const searchDays = latestSearch && Array.isArray(latestSearch.preferredDays) ? latestSearch.preferredDays : [];
         const searchTimeRanges =
           latestSearch && Array.isArray(latestSearch.preferredTimeRanges) ? latestSearch.preferredTimeRanges : [];
@@ -98,7 +125,10 @@ export function SeekingPlayersList({
             : null;
         const hotCountdownLabel =
           latestSearch?.searchType === "hot" ? formatTimeUntilHotSearch(latestSearch.hotStartsAt) : null;
-        const myResponseStatus = latestSearch?.responses?.[0]?.status;
+        const myResponse = currentUserId
+          ? latestSearch?.responses?.find((response) => response.responderUserId === currentUserId)
+          : undefined;
+        const myResponseStatus = myResponse?.status;
         const sports = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
         const scheduleLabel = latestSearch
           ? buildScheduleLabel({
@@ -111,6 +141,15 @@ export function SeekingPlayersList({
           : buildAvailabilityLabel(days, timeRanges);
         const approvedResponses = latestSearch?.responses?.filter((response) => response.status === "approved").length ?? 0;
         const playersNeeded = Math.max(latestSearch?.playersNeeded ?? 1, 1);
+        const lifecycleStatus = latestSearch
+          ? resolveSearchLifecycleStatus({
+              status: latestSearch.status,
+              approvedCount: approvedResponses,
+              playersNeeded,
+              startAt: latestSearch.hotStartsAt,
+              durationMinutes: latestSearch.durationMinutes
+            })
+          : "Поиск";
         const rosterLabel =
           playersNeeded > 1 ? `Собрано ${approvedResponses} из ${playersNeeded}` : approvedResponses > 0 ? "Игрок уже подтверждён" : "Нужен 1 игрок";
         const detailsTitle =
@@ -130,15 +169,24 @@ export function SeekingPlayersList({
               ? null
               : (latestSearch.selfLevel ?? getSportLevel(user.sportLevels, primarySport, user.tennisLevel ?? 5))
             : null;
+        const explainabilityReasons = Array.isArray(user.explainabilityReasons)
+          ? user.explainabilityReasons.filter(
+              (reason): reason is string => typeof reason === "string" && reason.trim().length > 0
+            )
+          : [];
 
         return (
-          <Panel key={user.id} className="overflow-hidden p-2">
+          <div
+            key={user.id}
+            id={latestSearch ? `game-search-${latestSearch.id}` : undefined}
+          >
+            <Panel className={`overflow-hidden p-2 ${highlightSearchId && latestSearch?.id === highlightSearchId ? "ring-2 ring-red-400 shadow-[0_0_0_6px_rgba(239,68,68,0.08)]" : ""}`}>
             <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-b from-court via-court to-ink p-3 text-white shadow-[0_18px_40px_rgba(17,38,29,0.18)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_42%)]" />
 
               <div className="relative flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
-                  <Avatar src={user.avatarUrl} alt={user.name ?? "Игрок"} size="md" className="ring-4 ring-white/12" />
+                  <Avatar src={user.avatarUrl} alt={user.name ?? "Игрок"} size="md" className="shrink-0 ring-4 ring-white/12" />
                   <div className="min-w-0">
                     <div className="text-[1.05rem] font-bold leading-5 text-white">
                       {user.name} {user.age ? `, ${user.age}` : ""}
@@ -146,14 +194,14 @@ export function SeekingPlayersList({
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <SearchPill
                         icon={MapPin}
-                        label={`${user.city ?? "Город"} · ${user.distanceLabel}`}
+                        label={`${user.city ?? "Город"}${user.districtLabel ? ` · ${user.districtLabel}` : ""}`}
                         className="max-w-full bg-white/12 text-white/82"
                       />
                       {latestSearch ? (
                         <>
                           <SearchPill
                             icon={latestSearch.searchType === "hot" ? Flame : CalendarDays}
-                            label={latestSearch.searchType === "hot" ? "Быстрая игра" : "Регулярный поиск"}
+                            label={lifecycleStatus}
                             className={latestSearch.searchType === "hot" ? "bg-red-500/90 text-white" : "bg-white/14 text-white"}
                           />
                           {primarySport ? <SportBadge sport={primarySport} className="bg-white/14 text-white" /> : null}
@@ -182,17 +230,28 @@ export function SeekingPlayersList({
                   <div className="mt-1 text-[13px] leading-5 text-white/78 line-clamp-2">{detailText}</div>
                 </div>
 
+                {explainabilityReasons.length > 0 ? (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/62">Почему в подборе</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {explainabilityReasons.slice(0, 2).map((reason) => (
+                        <SearchPill key={reason} label={reason} className="max-w-full bg-white/12 text-white/82" />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="grid grid-cols-2 gap-2">
                   <InfoCard icon={Clock3} label="Когда" value={scheduleLabel} />
                   <InfoCard
                     icon={Trophy}
-                    label="Клуб"
+                    label={searchLabels?.centerLabel ?? "Место"}
                     value={
                       latestSearch?.preferredCourt?.name
                         ? latestSearch.preferredCourt.name
                         : latestSearch?.hasCourtBooked
-                          ? "Площадка уже есть"
-                          : "Клуб подберут позже"
+                          ? searchLabels?.bookedTitle ?? "Место уже выбрано"
+                          : "Место подберут позже"
                     }
                   />
                   <InfoCard icon={Users2} label="Состав" value={rosterLabel} />
@@ -204,7 +263,11 @@ export function SeekingPlayersList({
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
-                  <SearchPill label={PLAY_FORMAT_LABELS[latestSearch?.format ?? user.preferredPlayFormat]} />
+                  <SearchPill
+                    label={getSportPlayFormatLabelRu(latestSearch?.sport, latestSearch?.format ?? user.preferredPlayFormat, {
+                      playersNeeded: latestSearch?.playersNeeded ?? null
+                    })}
+                  />
                   {latestSearch && primarySport ? (
                     <SearchPill
                       label={primaryLevel === null ? "Свой уровень: не знаю" : `Свой уровень: ${primaryLevel}`}
@@ -247,12 +310,15 @@ export function SeekingPlayersList({
               <div className="mt-2.5">
                 <RespondToSearchButton
                   gameSearchId={latestSearch.id}
+                  responseId={myResponse?.id}
                   existingStatus={myResponseStatus}
+                  searchMatched={latestSearch.status === "matched"}
                   authRequiredHref={authRequiredHref}
                 />
               </div>
             ) : null}
-          </Panel>
+            </Panel>
+          </div>
         );
       })}
     </div>

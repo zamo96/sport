@@ -53,6 +53,7 @@ type ProfilePayload = Pick<
   | "notificationMessages"
 > & {
   district: DistrictOption | null;
+  preferredDistricts: DistrictOption[];
   preferredSports: SportOption[];
   sportLevels: Partial<Record<SportOption, SportLevelValue>>;
   availableDays: string[];
@@ -73,6 +74,7 @@ export function ProfileForm({
     availabilityByDay?: unknown;
     preferredSports?: unknown;
     sportLevels?: unknown;
+    preferredDistricts?: unknown;
   };
   mode?: "onboarding" | "profile" | "guest";
   authRequiredHref?: string;
@@ -84,13 +86,15 @@ export function ProfileForm({
   const initialSportLevels = normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5) as Partial<
     Record<SportOption, SportLevelValue>
   >;
+  const initialPreferredDistricts = normalizeDistricts(user.preferredDistricts, user.district);
   const initialAvailabilityByDay = normalizeAvailabilityByDay(user.availabilityByDay, user.availableDays, user.availableTimeRanges);
   const [form, setForm] = useState<ProfilePayload>({
     name: user.name ?? "",
     age: user.age ?? 28,
     gender: (user.gender as Gender | null | undefined) ?? null,
     city: DEFAULT_CITY,
-    district: (user.district as ProfilePayload["district"]) ?? null,
+    district: initialPreferredDistricts[0] ?? (user.district as ProfilePayload["district"]) ?? null,
+    preferredDistricts: initialPreferredDistricts,
     tennisLevel: getPrimarySportLevel(initialPreferredSports, initialSportLevels, user.tennisLevel ?? 5),
     preferredSports: initialPreferredSports,
     sportLevels: initialSportLevels,
@@ -115,10 +119,11 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedDistrictCenter = getDistrictArea(form.district)?.center ?? DEFAULT_CITY_COORDINATES;
+  const primaryDistrict = form.preferredDistricts[0] ?? form.district ?? null;
+  const selectedDistrictCenter = getDistrictArea(primaryDistrict)?.center ?? DEFAULT_CITY_COORDINATES;
   const searchCenterLat = selectedDistrictCenter.lat;
   const searchCenterLng = selectedDistrictCenter.lng;
-  const isApproximateSearchArea = !form.district;
+  const isApproximateSearchArea = form.preferredDistricts.length === 0;
 
   function setField<Key extends keyof ProfilePayload>(key: Key, value: ProfilePayload[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -143,6 +148,20 @@ export function ProfileForm({
       availableDays: Object.keys(normalized),
       availableTimeRanges: Array.from(new Set(Object.values(normalized).flat()))
     }));
+  }
+
+  function toggleDistrict(district: DistrictOption) {
+    setForm((current) => {
+      const nextDistricts = current.preferredDistricts.includes(district)
+        ? current.preferredDistricts.filter((item) => item !== district)
+        : [...current.preferredDistricts, district];
+
+      return {
+        ...current,
+        preferredDistricts: nextDistricts,
+        district: nextDistricts[0] ?? null
+      };
+    });
   }
 
   function setPreferredSports(nextSports: SportOption[]) {
@@ -362,45 +381,11 @@ export function ProfileForm({
                   </select>
                   <div className="mt-2 text-xs leading-5 text-ink/55">Пока запускаемся только в Санкт-Петербурге.</div>
                 </Field>
-                <Field label="Район" className="col-span-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setField("district", null)}
-                      className={`rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition ${
-                        !form.district ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
-                      }`}
-                    >
-                      Не выбран
-                    </button>
-                    {DISTRICT_OPTIONS.map((district) => (
-                      <button
-                        key={district}
-                        type="button"
-                        onClick={() => setField("district", district)}
-                        className={`rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition ${
-                          form.district === district ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
-                        }`}
-                      >
-                        {getDistrictLabel(district) ?? district}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-2 text-xs leading-5 text-ink/55">Необязательно. Если район не выбран, будем искать шире по Санкт-Петербургу.</div>
-                </Field>
               </div>
             ) : null}
 
             {step === 2 ? (
               <div className="space-y-4">
-                  <Field label="Виды спорта">
-                    <SportPicker
-                      multiple
-                      value={form.preferredSports}
-                      onChange={(value) => setPreferredSports(value as ProfilePayload["preferredSports"])}
-                    />
-                  </Field>
-
                 <div className="grid grid-cols-1 gap-3">
                   <Field label="Виды спорта">
                     <SportPicker
@@ -414,39 +399,27 @@ export function ProfileForm({
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
-                  <Field label={`Радиус ${form.searchRadiusKm} км`}>
-                    <input
-                      type="range"
-                      min={1}
-                      max={100}
-                      value={form.searchRadiusKm}
-                      onChange={(event) => setField("searchRadiusKm", Number(event.target.value))}
-                      className="mt-3 w-full accent-court"
-                    />
-                  </Field>
-                </div>
-
-                <Field label="Район и радиус поиска">
-                  {form.district ? (
-                    <>
-                      <SearchAreaMap
-                        centerLat={searchCenterLat}
-                        centerLng={searchCenterLng}
-                        radiusKm={form.searchRadiusKm}
-                        city={form.city ?? DEFAULT_CITY}
-                        district={form.district}
-                        isApproximate={isApproximateSearchArea}
-                      />
-                      <div className="mt-2 text-xs leading-5 text-ink/55">
-                        {`Текущий круг поиска: ${form.searchRadiusKm} км вокруг района ${getDistrictLabel(form.district) ?? DEFAULT_CITY}.`}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-[20px] bg-cream p-4 text-sm leading-6 text-ink/65">
-                      Район пока не выбран. Это нормально: подбор будет шире по Санкт-Петербургу. Если хочешь видеть круг поиска на карте, выбери район.
-                    </div>
-                  )}
+                <Field label="Удобные районы">
+                  <div className="flex flex-wrap gap-2">
+                    {DISTRICT_OPTIONS.map((district) => {
+                      const active = form.preferredDistricts.includes(district);
+                      return (
+                        <button
+                          key={district}
+                          type="button"
+                          onClick={() => toggleDistrict(district)}
+                          className={`rounded-[18px] border px-3 py-2 text-left text-sm font-semibold transition ${
+                            active ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
+                          }`}
+                        >
+                          {getDistrictLabel(district) ?? district}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">
+                    Можно выбрать несколько районов. Если не выбирать ничего, покажем игроков шире по Санкт-Петербургу.
+                  </div>
                 </Field>
 
                 <div className="rounded-[24px] bg-cream p-4">
@@ -612,37 +585,10 @@ export function ProfileForm({
                   {AVAILABLE_CITIES.map((city) => (
                     <option key={city} value={city}>
                       {city}
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-2 text-xs leading-5 text-ink/55">Пока только Санкт-Петербург.</div>
-              </Field>
-              <Field label="Район">
-                <select
-                  value={form.district ?? ""}
-                  onChange={(event) => setField("district", (event.target.value || null) as ProfilePayload["district"])}
-                  className="input"
-                >
-                  <option value="">Не выбран</option>
-                  {DISTRICT_OPTIONS.map((district) => (
-                    <option key={district} value={district}>
-                      {getDistrictLabel(district) ?? district}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label={`Радиус ${form.searchRadiusKm} км`}>
-                <input
-                  type="range"
-                  min={1}
-                  max={100}
-                  value={form.searchRadiusKm}
-                  onChange={(event) => setField("searchRadiusKm", Number(event.target.value))}
-                  className="mt-3 w-full accent-court"
-                />
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2 text-xs leading-5 text-ink/55">Пока только Санкт-Петербург.</div>
               </Field>
             </div>
 
@@ -657,24 +603,46 @@ export function ProfileForm({
               />
             </Field>
 
-            <Field label="Район и радиус поиска" className="mt-3">
-              {form.district ? (
+            <Field label="Удобные районы" className="mt-3">
+              <div className="flex flex-wrap gap-2">
+                {DISTRICT_OPTIONS.map((district) => {
+                  const active = form.preferredDistricts.includes(district);
+                  return (
+                    <button
+                      key={district}
+                      type="button"
+                      onClick={() => toggleDistrict(district)}
+                      className={`rounded-[18px] border px-3 py-2 text-left text-sm font-semibold transition ${
+                        active ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"
+                      }`}
+                    >
+                      {getDistrictLabel(district) ?? district}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 text-xs leading-5 text-ink/55">
+                Можно выбрать несколько районов, где тебе удобно играть.
+              </div>
+            </Field>
+
+            <Field label="Районы на карте" className="mt-3">
+              {form.preferredDistricts.length > 0 ? (
                 <>
                   <SearchAreaMap
                     centerLat={searchCenterLat}
                     centerLng={searchCenterLng}
-                    radiusKm={form.searchRadiusKm}
                     city={form.city ?? DEFAULT_CITY}
-                    district={form.district}
+                    districts={form.preferredDistricts}
                     isApproximate={isApproximateSearchArea}
                   />
                   <div className="mt-2 text-xs leading-5 text-ink/55">
-                    {`Сейчас показываем радиус ${form.searchRadiusKm} км вокруг района ${getDistrictLabel(form.district) ?? DEFAULT_CITY}.`}
+                    Выделили районы, где тебе удобно играть. Подбор будет учитывать их в первую очередь.
                   </div>
                 </>
               ) : (
                 <div className="rounded-[20px] bg-cream p-4 text-sm leading-6 text-ink/65">
-                  Район не выбран. Это нормально: поиск будет шире по Санкт-Петербургу. Выбери район, если хочешь точнее настроить локацию и увидеть круг на карте.
+                  Районы пока не выбраны. Это нормально: поиск будет шире по Санкт-Петербургу.
                 </div>
               )}
             </Field>
@@ -756,7 +724,8 @@ function toGuestDraft(form: ProfilePayload): GuestOnboardingDraft {
     age: form.age ?? 28,
     gender: form.gender ?? null,
     city: form.city ?? DEFAULT_CITY,
-    district: form.district,
+    district: form.preferredDistricts[0] ?? form.district,
+    preferredDistricts: form.preferredDistricts,
     preferredSports: form.preferredSports,
     sportLevels: form.sportLevels,
     preferredPlayFormat: form.preferredPlayFormat,
@@ -767,6 +736,22 @@ function toGuestDraft(form: ProfilePayload): GuestOnboardingDraft {
     availableTimeRanges: form.availableTimeRanges,
     availabilityByDay: form.availabilityByDay
   };
+}
+
+function normalizeDistricts(value: unknown, fallbackDistrict?: string | null) {
+  const districts = Array.isArray(value)
+    ? value.filter((district): district is DistrictOption => typeof district === "string" && DISTRICT_OPTIONS.includes(district as DistrictOption))
+    : [];
+
+  if (districts.length > 0) {
+    return districts;
+  }
+
+  if (fallbackDistrict && DISTRICT_OPTIONS.includes(fallbackDistrict as DistrictOption)) {
+    return [fallbackDistrict as DistrictOption];
+  }
+
+  return [];
 }
 
 function normalizeAvailabilityByDay(availabilityByDay: unknown, availableDays: unknown, availableTimeRanges: unknown) {

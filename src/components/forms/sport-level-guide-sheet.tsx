@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { type Sport } from "@prisma/client";
 import { Info, X } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportIcon } from "@/components/ui/sport-icon";
+import { useLockBodyScroll } from "@/components/ui/use-lock-body-scroll";
 
 export function SportLevelGuideSheet({
   open,
@@ -22,6 +23,17 @@ export function SportLevelGuideSheet({
 }) {
   const availableSports = useMemo(() => getSportLevelGuideSports(sports), [sports]);
   const [activeSport, setActiveSport] = useState<Sport>(availableSports[0] ?? "tennis");
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useLockBodyScroll(open);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    closeButtonRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!availableSports.includes(activeSport)) {
@@ -36,7 +48,18 @@ export function SportLevelGuideSheet({
   const guide = SPORT_LEVEL_GUIDES[activeSport];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 px-3 pb-4 pt-10 backdrop-blur-[2px]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 px-3 pb-4 pt-10 backdrop-blur-[2px]"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
       <Panel className="flex max-h-[84svh] w-full max-w-lg flex-col overflow-hidden rounded-[32px] border-white/70 bg-cream p-0 shadow-[0_28px_80px_rgba(17,38,29,0.18)]">
         <div className="border-b border-line/80 px-4 pb-3 pt-4">
           <div className="flex items-start justify-between gap-3">
@@ -45,7 +68,9 @@ export function SportLevelGuideSheet({
                 <Info className="h-3.5 w-3.5" />
                 Подсказка по уровням
               </div>
-              <div className="text-xl font-bold text-ink">Как выбрать уровень</div>
+              <div id={titleId} className="text-xl font-bold text-ink">
+                Как выбрать уровень
+              </div>
               <div className="text-sm leading-6 text-ink/65">
                 Выбери вид спорта и ориентируйся по ближайшему описанию. Если сомневаешься, можно оставить вариант
                 `Не знаю`.
@@ -54,6 +79,7 @@ export function SportLevelGuideSheet({
             <button
               type="button"
               onClick={onClose}
+              ref={closeButtonRef}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink/60"
               aria-label="Закрыть"
             >

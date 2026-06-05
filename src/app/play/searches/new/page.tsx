@@ -51,6 +51,7 @@ export default async function NewGameSearchPage({
             name: court.name,
             address: court.address,
             district: court.district,
+            nearestMetroName: (court as { nearestMetro?: { name?: string | null } }).nearestMetro?.name ?? null,
             locationLat: court.locationLat,
             locationLng: court.locationLng,
             supportedSports: Array.isArray(court.supportedSports)
@@ -67,6 +68,7 @@ export default async function NewGameSearchPage({
             name: court.name,
             address: court.address,
             district: court.district,
+            nearestMetroName: (court as { nearestMetro?: { name?: string | null } }).nearestMetro?.name ?? null,
             locationLat: court.locationLat,
             locationLng: court.locationLng,
             supportedSports: Array.isArray(court.supportedSports)

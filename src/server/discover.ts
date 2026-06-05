@@ -3,7 +3,13 @@ import { Prisma } from "@prisma/client";
 import { resolveLocationFromCity, resolveLocationFromDistrict } from "@/lib/geo";
 import { prisma } from "@/lib/prisma";
 import { getPrimarySportLevel, normalizeSportLevels } from "@/lib/sport-levels";
-import { parseSports, type CandidateUser, type DiscoverFilters, scoreCandidates } from "@/lib/scoring";
+import {
+  buildDiscoverExplainabilityReasons,
+  parseSports,
+  type CandidateUser,
+  type DiscoverFilters,
+  scoreCandidates
+} from "@/lib/scoring";
 import type { GuestOnboardingDraft } from "@/lib/guest-draft";
 
 const candidateBaseSelect = {
@@ -12,6 +18,8 @@ const candidateBaseSelect = {
   age: true,
   gender: true,
   city: true,
+  district: true,
+  preferredDistricts: true,
   bio: true,
   avatarUrl: true,
   homeLat: true,
@@ -29,7 +37,8 @@ const candidateBaseSelect = {
 } satisfies Prisma.UserSelect;
 
 async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilters = {}) {
-  return prisma.user.findMany({
+  const keepsSearchCandidatesVisible = filters.view === "seeking" || filters.view === "hot";
+  const candidates = await prisma.user.findMany({
     where: {
       ...(viewerId ? { id: { not: viewerId } } : {}),
       onboardingCompleted: true,
@@ -46,11 +55,15 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
                 blockerUserId: viewerId
               }
             },
-            swipesReceived: {
-              none: {
-                fromUserId: viewerId
-              }
-            }
+            ...(!keepsSearchCandidatesVisible
+              ? {
+                  swipesReceived: {
+                    none: {
+                      fromUserId: viewerId
+                    }
+                  }
+                }
+              : {})
           }
         : {}),
       ...(filters.view === "hot"
@@ -67,16 +80,12 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
           }
         : filters.view === "seeking"
           ? {
-              OR: [
-                { isLookingForGame: true },
-                {
-                  gameSearches: {
-                    some: {
-                      isActive: true
-                    }
-                  }
+              gameSearches: {
+                some: {
+                  isActive: true,
+                  searchType: "regular"
                 }
-              ]
+              }
             }
         : {})
     },
@@ -92,14 +101,31 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
                   gt: new Date()
                 }
               }
+            : filters.view === "seeking"
+              ? {
+                  searchType: "regular"
+                }
             : {})
         },
         include: {
           preferredCourt: true,
+          regularPair: {
+            include: {
+              partnerUser: true,
+              preferredCourt: true
+            }
+          },
           responses: viewerId
             ? {
                 where: {
-                  responderUserId: viewerId
+                  OR: [
+                    {
+                      responderUserId: viewerId
+                    },
+                    {
+                      status: "approved"
+                    }
+                  ]
                 },
                 include: {
                   responderUser: true
@@ -118,6 +144,25 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
       }
     }
   });
+
+  if (!viewerId) {
+    return candidates;
+  }
+
+  return candidates.map((candidate) => ({
+    ...candidate,
+    gameSearches: candidate.gameSearches.map((search) => ({
+      ...search,
+      responses: [...search.responses].sort((left, right) => {
+        const leftIsViewer = left.responderUserId === viewerId;
+        const rightIsViewer = right.responderUserId === viewerId;
+        if (leftIsViewer == rightIsViewer) {
+          return 0;
+        }
+        return leftIsViewer ? -1 : 1;
+      })
+    }))
+  }));
 }
 
 type DiscoverCandidateRecord = Awaited<ReturnType<typeof fetchCandidatePool>>[number];
@@ -155,6 +200,8 @@ function toCandidateViewer(viewer: CandidateUser) {
     age: viewer.age,
     gender: viewer.gender,
     city: viewer.city,
+    district: viewer.district,
+    preferredDistricts: viewer.preferredDistricts,
     bio: viewer.bio,
     avatarUrl: viewer.avatarUrl,
     homeLat: viewer.homeLat,
@@ -176,7 +223,13 @@ async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string 
   const candidates = await fetchCandidatePool(viewerId, filters);
   const filteredCandidates = filterCandidatesForView(viewer, candidates, filters);
 
-  return scoreCandidates(toCandidateViewer(viewer), filteredCandidates, filters);
+  const viewerProfile = toCandidateViewer(viewer);
+  const scored = scoreCandidates(viewerProfile, filteredCandidates, filters);
+
+  return scored.map((candidate) => ({
+    ...candidate,
+    explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
+  }));
 }
 
 export async function getDiscoverCandidates(userId: string, filters: DiscoverFilters = {}) {
@@ -192,7 +245,8 @@ export async function getDiscoverCandidates(userId: string, filters: DiscoverFil
 }
 
 export async function getDiscoverCandidatesForGuestDraft(draft: GuestOnboardingDraft, filters: DiscoverFilters = {}) {
-  const location = resolveLocationFromDistrict(draft.district) ?? (await resolveLocationFromCity(draft.city));
+  const primaryDistrict = draft.preferredDistricts[0] ?? draft.district ?? null;
+  const location = resolveLocationFromDistrict(primaryDistrict) ?? (await resolveLocationFromCity(draft.city));
   const sportLevels = normalizeSportLevels(draft.sportLevels, draft.preferredSports, 5);
   const tennisLevel = getPrimarySportLevel(draft.preferredSports, sportLevels, 5);
   const availabilityByDay = Object.fromEntries(
@@ -212,6 +266,8 @@ export async function getDiscoverCandidatesForGuestDraft(draft: GuestOnboardingD
     age: draft.age,
     gender: draft.gender ?? null,
     city: draft.city,
+    district: primaryDistrict,
+    preferredDistricts: draft.preferredDistricts,
     bio: null,
     avatarUrl: null,
     homeLat: location?.lat ?? null,

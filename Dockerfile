@@ -33,7 +33,7 @@ ARG NEXT_PUBLIC_YANDEX_MAPS_API_KEY
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+ENV PORT=3002
 ENV NEXT_PUBLIC_MAP_PROVIDER=$NEXT_PUBLIC_MAP_PROVIDER
 ENV NEXT_PUBLIC_YANDEX_MAPS_API_KEY=$NEXT_PUBLIC_YANDEX_MAPS_API_KEY
 
@@ -45,6 +45,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
-EXPOSE 3000
+EXPOSE 3002
 
 CMD ["npm", "run", "start"]

@@ -1,7 +1,16 @@
 import { GameRequestOutcome, GameRequestStatus } from "@prisma/client";
 
+export { translateGameRequestStatus } from "./status-map";
+
 export function isPastGameRequest(proposedDatetime: string | Date) {
   return new Date(proposedDatetime).getTime() < Date.now();
+}
+
+export function isAcceptedUpcomingGameRequest(
+  status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled",
+  proposedDatetime: string | Date
+) {
+  return status === "accepted" && !isPastGameRequest(proposedDatetime);
 }
 
 export function needsGameRequestOutcome(
@@ -10,23 +19,6 @@ export function needsGameRequestOutcome(
   outcome?: GameRequestOutcome | "played" | "not_played" | null
 ) {
   return status === "accepted" && isPastGameRequest(proposedDatetime) && !outcome;
-}
-
-export function translateGameRequestStatus(
-  status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled"
-) {
-  switch (status) {
-    case "pending":
-      return "Ожидает ответа";
-    case "accepted":
-      return "Игра подтверждена";
-    case "declined":
-      return "Отклонено";
-    case "canceled":
-      return "Отменено";
-    default:
-      return status;
-  }
 }
 
 export function translateGameRequestOutcome(
@@ -46,8 +38,9 @@ export function getGameRequestTone(options: {
   status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled";
   proposedDatetime: string | Date;
   outcome?: GameRequestOutcome | "played" | "not_played" | null;
+  isCreator?: boolean;
 }) {
-  const { status, proposedDatetime, outcome } = options;
+  const { status, proposedDatetime, outcome, isCreator } = options;
 
   if (outcome === "played") {
     return {
@@ -97,7 +90,76 @@ export function getGameRequestTone(options: {
       return {
         panelClassName: "bg-cream",
         badgeClassName: "bg-mint text-court",
-        badgeLabel: "Ожидает"
+        badgeLabel: isCreator ? "Ждём ответ" : "Нужно решение"
       };
   }
+}
+
+export function getGameRequestHeading(options: {
+  status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled";
+  proposedDatetime: string | Date;
+  isRegularOccurrence?: boolean;
+}) {
+  const { status, proposedDatetime, isRegularOccurrence } = options;
+
+  if (isRegularOccurrence && isAcceptedUpcomingGameRequest(status, proposedDatetime)) {
+    return "Подтвержденная игра";
+  }
+
+  if (isAcceptedUpcomingGameRequest(status, proposedDatetime)) {
+    return "Подтвержденная игра";
+  }
+
+  return "Предложение игры";
+}
+
+export function getGameRequestNextStep(options: {
+  status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled";
+  proposedDatetime: string | Date;
+  outcome?: GameRequestOutcome | "played" | "not_played" | null;
+  isCreator?: boolean;
+  isRegularOccurrence?: boolean;
+}) {
+  const { status, proposedDatetime, outcome, isCreator, isRegularOccurrence } = options;
+
+  if (isRegularOccurrence && isAcceptedUpcomingGameRequest(status, proposedDatetime)) {
+    return "Ближайшая игра по регулярной паре подтверждена. Если нужно поменять следующий слот, открой регулярную пару.";
+  }
+
+  if (needsGameRequestOutcome(status, proposedDatetime, outcome)) {
+    return "Игра уже должна была пройти. Подтверди, удалось ли сыграть, чтобы состояние договоренности стало понятным обоим.";
+  }
+
+  switch (status) {
+    case "pending":
+      return isCreator
+        ? "Ждём подтверждение второго игрока. Как только он ответит, игра перейдёт в подтвержденные."
+        : "Тебя пригласили на игру. Подтверди, если время и место подходят, чтобы сразу зафиксировать встречу.";
+    case "accepted":
+      return "Игра подтверждена. Следующий шаг: открой детали игры и обсуди только финальные нюансы.";
+    case "declined":
+      return "Эта договоренность не состоялась. Если всё ещё хочешь сыграть, создай новую игру или вернись в общий чат.";
+    case "canceled":
+      return "Эта договоренность отменена. Если планы изменились, начни новую договоренность из мэтча или поиска.";
+    default:
+      return null;
+  }
+}
+
+export function getGameRequestDetailsLabel(options: {
+  status: GameRequestStatus | "pending" | "accepted" | "declined" | "canceled";
+  proposedDatetime: string | Date;
+  isRegularOccurrence?: boolean;
+}) {
+  const { status, proposedDatetime, isRegularOccurrence } = options;
+
+  if (isRegularOccurrence && isAcceptedUpcomingGameRequest(status, proposedDatetime)) {
+    return "Открыть регулярную пару";
+  }
+
+  if (isAcceptedUpcomingGameRequest(status, proposedDatetime)) {
+    return "Открыть подтвержденную игру";
+  }
+
+  return "Открыть детали игры";
 }

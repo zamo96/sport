@@ -1,0 +1,561 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000101 /* TennisSearchIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000201 /* TennisSearchIOSApp.swift */; };
+		A10000000000000000000102 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000202 /* AppModel.swift */; };
+		A10000000000000000000103 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000203 /* AppModels.swift */; };
+		A10000000000000000000104 /* TennisRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000204 /* TennisRepository.swift */; };
+		A10000000000000000000105 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000205 /* APIClient.swift */; };
+		A10000000000000000000106 /* MockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000206 /* MockRepository.swift */; };
+		A10000000000000000000107 /* UIComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000207 /* UIComponents.swift */; };
+		A10000000000000000000108 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000208 /* ContentView.swift */; };
+		A10000000000000000000109 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000209 /* AuthView.swift */; };
+		A1000000000000000000010A /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020A /* DiscoverView.swift */; };
+		A1000000000000000000010B /* MatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020B /* MatchesView.swift */; };
+		A1000000000000000000010C /* SearchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020C /* SearchesView.swift */; };
+		A1000000000000000000010D /* CourtsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020D /* CourtsView.swift */; };
+		A1000000000000000000010E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020E /* ProfileView.swift */; };
+		A1000000000000000000010F /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000213 /* NotificationManager.swift */; };
+		A10000000000000000000110 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000214 /* NotificationsView.swift */; };
+		A10000000000000000000111 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000215 /* AppDelegate.swift */; };
+		A10000000000000000000112 /* upcoming-game-hero.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000217 /* upcoming-game-hero.jpg */; };
+		A10000000000000000000113 /* hero-tennis.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000218 /* hero-tennis.jpg */; };
+		A10000000000000000000114 /* hero-padel.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000219 /* hero-padel.jpg */; };
+		A10000000000000000000115 /* hero-squash.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021A /* hero-squash.jpg */; };
+		A10000000000000000000116 /* hero-table-tennis.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021B /* hero-table-tennis.jpg */; };
+		A10000000000000000000117 /* hero-volleyball.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021C /* hero-volleyball.jpg */; };
+		A10000000000000000000118 /* hero-fitness.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021D /* hero-fitness.jpg */; };
+		A10000000000000000000119 /* hero-boxing.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021E /* hero-boxing.jpg */; };
+		A1000000000000000000011A /* hero-yoga.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000021F /* hero-yoga.jpg */; };
+		A1000000000000000000011B /* hero-football.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000220 /* hero-football.jpg */; };
+		A1000000000000000000011C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000221 /* Assets.xcassets */; };
+		A1000000000000000000011D /* UpcomingGamesWidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */; };
+		A20000000000000000000101 /* UpcomingGamesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000201 /* UpcomingGamesWidget.swift */; };
+		A20000000000000000000102 /* UpcomingGamesWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000203 /* UpcomingGamesWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A20000000000000000000801 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000502 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A20000000000000000000501;
+			remoteInfo = UpcomingGamesWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A20000000000000000000304 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A20000000000000000000102 /* UpcomingGamesWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000201 /* TennisSearchIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TennisSearchIOSApp.swift; sourceTree = "<group>"; };
+		A10000000000000000000202 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		A10000000000000000000203 /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
+		A10000000000000000000204 /* TennisRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TennisRepository.swift; sourceTree = "<group>"; };
+		A10000000000000000000205 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		A10000000000000000000206 /* MockRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRepository.swift; sourceTree = "<group>"; };
+		A10000000000000000000207 /* UIComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIComponents.swift; sourceTree = "<group>"; };
+		A10000000000000000000208 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A10000000000000000000209 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020A /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020B /* MatchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchesView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020C /* SearchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchesView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020D /* CourtsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtsView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020E /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A1000000000000000000020F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000210 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		A10000000000000000000211 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		A10000000000000000000212 /* SportSearch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SportSearch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000213 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		A10000000000000000000214 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		A10000000000000000000215 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A10000000000000000000216 /* TennisSearchIOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TennisSearchIOS.entitlements; sourceTree = "<group>"; };
+		A10000000000000000000217 /* upcoming-game-hero.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "upcoming-game-hero.jpg"; sourceTree = "<group>"; };
+		A10000000000000000000218 /* hero-tennis.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-tennis.jpg"; sourceTree = "<group>"; };
+		A10000000000000000000219 /* hero-padel.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-padel.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021A /* hero-squash.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-squash.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021B /* hero-table-tennis.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-table-tennis.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021C /* hero-volleyball.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-volleyball.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021D /* hero-fitness.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-fitness.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021E /* hero-boxing.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-boxing.jpg"; sourceTree = "<group>"; };
+		A1000000000000000000021F /* hero-yoga.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-yoga.jpg"; sourceTree = "<group>"; };
+		A10000000000000000000220 /* hero-football.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-football.jpg"; sourceTree = "<group>"; };
+		A10000000000000000000221 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingGamesWidgetStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000201 /* UpcomingGamesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingGamesWidget.swift; sourceTree = "<group>"; };
+		A20000000000000000000202 /* TennisSearchUpcomingWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TennisSearchUpcomingWidget.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000203 /* UpcomingGamesWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpcomingGamesWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000204 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000301 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A20000000000000000000301 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000401 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000402 /* TennisSearchIOS */,
+				A20000000000000000000410 /* TennisSearchUpcomingWidget */,
+				A10000000000000000000403 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000402 /* TennisSearchIOS */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000404 /* App */,
+				A10000000000000000000405 /* Core */,
+				A10000000000000000000406 /* Services */,
+				A10000000000000000000407 /* Views */,
+				A10000000000000000000409 /* Resources */,
+				A10000000000000000000408 /* Configs */,
+				A1000000000000000000020F /* Info.plist */,
+				A10000000000000000000216 /* TennisSearchIOS.entitlements */,
+			);
+			path = TennisSearchIOS;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000403 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000212 /* SportSearch.app */,
+				A20000000000000000000203 /* UpcomingGamesWidget.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000404 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000201 /* TennisSearchIOSApp.swift */,
+				A10000000000000000000215 /* AppDelegate.swift */,
+				A10000000000000000000202 /* AppModel.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000405 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000203 /* AppModels.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000406 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000204 /* TennisRepository.swift */,
+				A10000000000000000000205 /* APIClient.swift */,
+				A10000000000000000000206 /* MockRepository.swift */,
+				A10000000000000000000213 /* NotificationManager.swift */,
+				A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A20000000000000000000410 /* TennisSearchUpcomingWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000201 /* UpcomingGamesWidget.swift */,
+				A20000000000000000000204 /* Info.plist */,
+				A20000000000000000000202 /* TennisSearchUpcomingWidget.entitlements */,
+			);
+			path = TennisSearchUpcomingWidget;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000407 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000207 /* UIComponents.swift */,
+				A10000000000000000000208 /* ContentView.swift */,
+				A10000000000000000000209 /* AuthView.swift */,
+				A1000000000000000000020A /* DiscoverView.swift */,
+				A1000000000000000000020B /* MatchesView.swift */,
+				A1000000000000000000020C /* SearchesView.swift */,
+				A1000000000000000000020D /* CourtsView.swift */,
+				A1000000000000000000020E /* ProfileView.swift */,
+				A10000000000000000000214 /* NotificationsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000408 /* Configs */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000210 /* Debug.xcconfig */,
+				A10000000000000000000211 /* Release.xcconfig */,
+			);
+			path = Configs;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000409 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000221 /* Assets.xcassets */,
+				A10000000000000000000217 /* upcoming-game-hero.jpg */,
+				A10000000000000000000218 /* hero-tennis.jpg */,
+				A10000000000000000000219 /* hero-padel.jpg */,
+				A1000000000000000000021A /* hero-squash.jpg */,
+				A1000000000000000000021B /* hero-table-tennis.jpg */,
+				A1000000000000000000021C /* hero-volleyball.jpg */,
+				A1000000000000000000021D /* hero-fitness.jpg */,
+				A1000000000000000000021E /* hero-boxing.jpg */,
+				A1000000000000000000021F /* hero-yoga.jpg */,
+				A10000000000000000000220 /* hero-football.jpg */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000501 /* TennisSearchIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000601 /* Build configuration list for PBXNativeTarget "TennisSearchIOS" */;
+			buildPhases = (
+				A10000000000000000000302 /* Sources */,
+				A10000000000000000000301 /* Frameworks */,
+				A10000000000000000000303 /* Resources */,
+				A20000000000000000000304 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A20000000000000000000802 /* PBXTargetDependency */,
+			);
+			name = TennisSearchIOS;
+			productName = TennisSearchIOS;
+			productReference = A10000000000000000000212 /* SportSearch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A20000000000000000000501 /* UpcomingGamesWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A20000000000000000000601 /* Build configuration list for PBXNativeTarget "UpcomingGamesWidget" */;
+			buildPhases = (
+				A20000000000000000000302 /* Sources */,
+				A20000000000000000000301 /* Frameworks */,
+				A20000000000000000000303 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UpcomingGamesWidget;
+			productName = UpcomingGamesWidget;
+			productReference = A20000000000000000000203 /* UpcomingGamesWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000502 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A10000000000000000000501 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A20000000000000000000501 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A10000000000000000000602 /* Build configuration list for PBXProject "TennisSearchIOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000401;
+			productRefGroup = A10000000000000000000403 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000501 /* TennisSearchIOS */,
+				A20000000000000000000501 /* UpcomingGamesWidget */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000303 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000011C /* Assets.xcassets in Resources */,
+				A10000000000000000000112 /* upcoming-game-hero.jpg in Resources */,
+				A10000000000000000000113 /* hero-tennis.jpg in Resources */,
+				A10000000000000000000114 /* hero-padel.jpg in Resources */,
+				A10000000000000000000115 /* hero-squash.jpg in Resources */,
+				A10000000000000000000116 /* hero-table-tennis.jpg in Resources */,
+				A10000000000000000000117 /* hero-volleyball.jpg in Resources */,
+				A10000000000000000000118 /* hero-fitness.jpg in Resources */,
+				A10000000000000000000119 /* hero-boxing.jpg in Resources */,
+				A1000000000000000000011A /* hero-yoga.jpg in Resources */,
+				A1000000000000000000011B /* hero-football.jpg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A20000000000000000000303 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000302 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000101 /* TennisSearchIOSApp.swift in Sources */,
+				A10000000000000000000102 /* AppModel.swift in Sources */,
+				A10000000000000000000103 /* AppModels.swift in Sources */,
+				A10000000000000000000104 /* TennisRepository.swift in Sources */,
+				A10000000000000000000105 /* APIClient.swift in Sources */,
+				A10000000000000000000106 /* MockRepository.swift in Sources */,
+				A10000000000000000000107 /* UIComponents.swift in Sources */,
+				A10000000000000000000108 /* ContentView.swift in Sources */,
+				A10000000000000000000109 /* AuthView.swift in Sources */,
+				A1000000000000000000010A /* DiscoverView.swift in Sources */,
+				A1000000000000000000010B /* MatchesView.swift in Sources */,
+				A1000000000000000000010C /* SearchesView.swift in Sources */,
+				A1000000000000000000010D /* CourtsView.swift in Sources */,
+				A1000000000000000000010E /* ProfileView.swift in Sources */,
+				A1000000000000000000010F /* NotificationManager.swift in Sources */,
+				A10000000000000000000110 /* NotificationsView.swift in Sources */,
+				A10000000000000000000111 /* AppDelegate.swift in Sources */,
+				A1000000000000000000011D /* UpcomingGamesWidgetStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A20000000000000000000302 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A20000000000000000000101 /* UpcomingGamesWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A20000000000000000000802 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A20000000000000000000501 /* UpcomingGamesWidget */;
+			targetProxy = A20000000000000000000801 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000701 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000210 /* Debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		A10000000000000000000702 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000211 /* Release.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A10000000000000000000703 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000210 /* Debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TennisSearchIOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
+				PRODUCT_NAME = SportSearch;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A10000000000000000000704 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000211 /* Release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TennisSearchIOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
+				PRODUCT_NAME = SportSearch;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A20000000000000000000701 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000210 /* Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
+				PRODUCT_NAME = UpcomingGamesWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A20000000000000000000702 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000211 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
+				PRODUCT_NAME = UpcomingGamesWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000601 /* Build configuration list for PBXNativeTarget "TennisSearchIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000703 /* Debug */,
+				A10000000000000000000704 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000602 /* Build configuration list for PBXProject "TennisSearchIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000701 /* Debug */,
+				A10000000000000000000702 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A20000000000000000000601 /* Build configuration list for PBXNativeTarget "UpcomingGamesWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A20000000000000000000701 /* Debug */,
+				A20000000000000000000702 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000502 /* Project object */;
+}

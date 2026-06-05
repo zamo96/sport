@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PlayFormat, type Sport } from "@prisma/client";
-import { CalendarDays, Flame, Search } from "lucide-react";
+import { CalendarDays, Flame } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "@/lib/client-api";
@@ -13,20 +13,23 @@ import {
   loadGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
-import { PLAY_FORMAT_LABELS } from "@/lib/constants";
 import { getSportLevelEntries, normalizeSports } from "@/lib/sport-levels";
+import { DiscoverIntroSheet } from "@/components/discover/discover-intro-sheet";
 import { DiscoverTabs } from "@/components/discover/discover-tabs";
 import { FiltersBar } from "@/components/discover/filters-bar";
 import { SeekingPlayersList } from "@/components/discover/seeking-players-list";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
 import { PageShell } from "@/components/layout/page-shell";
 import { Panel } from "@/components/ui/panel";
+import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 
 type GuestDiscoverUser = {
   id: string;
   name: string | null;
   age: number | null;
   city: string | null;
+  district?: string | null;
+  districtLabel?: string | null;
   bio: string | null;
   avatarUrl: string | null;
   tennisLevel: number | null;
@@ -40,6 +43,7 @@ type GuestDiscoverUser = {
   availableTimeRanges?: unknown;
   gameSearches?: Array<{
     id: string;
+    status: "active" | "in_review" | "matched" | "closed";
     preferredDays: unknown;
     preferredTimeRanges: unknown;
     searchType: "regular" | "hot";
@@ -91,7 +95,7 @@ export function GuestDiscoverScreen() {
   }, [router]);
 
   useEffect(() => {
-    if (searchParams.get("view") === "likes") {
+    if (searchParams.get("view") === "likes" || searchParams.get("view") === "upcoming") {
       const params = new URLSearchParams(searchParams.toString());
       params.delete("view");
       router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname);
@@ -155,7 +159,7 @@ export function GuestDiscoverScreen() {
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">Гостевой режим</div>
             <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">Игроки рядом</h1>
             <div className="mt-1 text-sm text-ink/62">
-              {draft?.name || "Твой профиль"} · {draft ? PLAY_FORMAT_LABELS[draft.preferredPlayFormat] : "Формат по умолчанию"}
+              {draft?.name || "Твой профиль"} · {draft ? getSportPlayFormatLabelRu(profileSports[0] ?? null, draft.preferredPlayFormat) : "Формат по умолчанию"}
             </div>
           </div>
         </div>
@@ -167,8 +171,7 @@ export function GuestDiscoverScreen() {
         ) : null}
 
         <DiscoverTabs guestMode />
-
-        <GuestDiscoverViewHint view={currentView} />
+        <DiscoverIntroSheet incomingLikesCount={0} />
 
         {currentView === "seeking" || currentView === "hot" ? (
           <Link href={currentView === "hot" ? "/play/searches/new?mode=hot" : "/play/searches/new"} className="block">
@@ -200,42 +203,5 @@ export function GuestDiscoverScreen() {
         )}
       </div>
     </PageShell>
-  );
-}
-
-function GuestDiscoverViewHint({ view }: { view: "swipe" | "seeking" | "hot" }) {
-  const config =
-    view === "hot"
-      ? {
-          icon: Flame,
-          title: "Быстрые игры на ближайшие часы",
-          text: "Срочный режим нужен для игры сегодня или завтра, когда нужно быстро найти человека."
-        }
-      : view === "seeking"
-        ? {
-            icon: CalendarDays,
-            title: "Регулярный поиск партнёра",
-            text: "Здесь игроки, которые ищут партнёра заранее по дням и времени. Можно спокойно выбрать подходящий вариант."
-          }
-        : {
-            icon: Search,
-            title: "Похожие игроки по профилю",
-            text: "Карточки уже отобраны по спорту, уровню, расстоянию и доступности из твоего черновика."
-          };
-
-  const Icon = config.icon;
-
-  return (
-    <div className="rounded-[24px] bg-white/72 px-4 py-3 shadow-card">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cream text-court">
-          <Icon className="h-4.5 w-4.5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-ink">{config.title}</div>
-          <div className="mt-1 text-xs leading-5 text-ink/62">{config.text}</div>
-        </div>
-      </div>
-    </div>
   );
 }

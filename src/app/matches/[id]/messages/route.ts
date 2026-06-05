@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
+import { touchUserActivity } from "@/server/user-activity";
 
 async function getMatchForUser(matchId: string, userId: string) {
   return prisma.match.findFirst({
@@ -18,6 +19,7 @@ async function getMatchForUser(matchId: string, userId: string) {
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await requireSessionUser();
+    await touchUserActivity(user.id);
     const match = await getMatchForUser(params.id, user.id);
 
     if (!match) {
@@ -55,6 +57,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await requireSessionUser();
+    await touchUserActivity(user.id);
     const body = messageSchema.parse(await request.json());
     const match = await getMatchForUser(params.id, user.id);
 

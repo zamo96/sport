@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { CourtSetting, Sport, Surface } from "@prisma/client";
@@ -27,6 +27,7 @@ type CsvRow = Record<string, string>;
 
 const DISTRICTS_REFERENCE_PATH = path.join(process.cwd(), "docs/import/districts-reference.csv");
 const METROS_REFERENCE_PATH = path.join(process.cwd(), "docs/import/metros-spb.reference.csv");
+const DEFAULT_CLUBS_XLSX_PATH = path.join(process.cwd(), "docs/import/clubs.xlsx");
 const IMPORT_SOURCE_TYPE = "xlsx-import";
 const VALID_SPORTS = new Set(Object.values(Sport));
 
@@ -176,6 +177,21 @@ export async function importClubsFromWorkbook(filePath: string) {
   }
 }
 
+export async function resolveClubsImportFile(preferredPath?: string | null) {
+  const candidates = [preferredPath?.trim() || "", DEFAULT_CLUBS_XLSX_PATH].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 type NormalizedClubRow = {
   name: string;
   address: string;
@@ -293,10 +309,10 @@ async function loadReferenceRows(filePath: string) {
 }
 
 async function main() {
-  const filePath = process.argv[2];
+  const filePath = await resolveClubsImportFile(process.argv[2]);
 
   if (!filePath) {
-    throw new Error("Передай путь до .xlsx файла. Пример: npm run clubs:import -- \"/path/file.xlsx\"");
+    throw new Error("Не найден файл клубов. Передай путь до .xlsx или положи его в docs/import/clubs.xlsx");
   }
 
   await importClubsFromWorkbook(filePath);

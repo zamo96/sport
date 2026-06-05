@@ -33,10 +33,13 @@ export async function POST(request: NextRequest) {
     }
 
     const gameSearch = await prisma.$transaction(async (tx) => {
+      const preferredDistricts = body.preferredDistricts ?? [];
       const created = await tx.gameSearch.create({
         data: {
+          inviteSlug: body.inviteSlug ?? null,
           createdByUserId: user.id,
           preferredCourtId: body.preferredCourtId ?? null,
+          preferredDistricts,
           preferredDays,
           preferredTimeRanges: body.preferredTimeRanges,
           searchType: body.searchType,

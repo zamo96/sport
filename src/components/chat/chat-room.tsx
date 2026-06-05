@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { SendHorizonal } from "lucide-react";
+import { Clock3, SendHorizonal } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
@@ -31,6 +31,7 @@ type ChatRoomProps = {
   otherUser: {
     name: string | null;
     avatarUrl: string | null;
+    lastActiveAt?: string | null;
     tennisLevel: number | null;
     preferredSports?: unknown;
     sportLevels?: unknown;
@@ -115,23 +116,33 @@ export function ChatRoom({
 
   return (
     <div className="space-y-4">
-      <Panel className="flex items-center gap-3">
-        <Avatar src={otherUser.avatarUrl} alt={otherUser.name ?? "Партнер"} />
-        <div className="flex-1">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Партнер</div>
-          <div className="mt-1 text-xl font-bold text-ink">{otherUser.name}</div>
-          <div className="mt-2">
+      <Panel className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar src={otherUser.avatarUrl} alt={otherUser.name ?? "Партнер"} />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Партнер</div>
+              <div className="mt-1 truncate text-xl font-bold text-ink">{otherUser.name}</div>
+              <div className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-ink/55">
+                <Clock3 className="h-3.5 w-3.5 text-court/80" />
+                {formatPresence(otherUser.lastActiveAt)}
+              </div>
+            </div>
+          </div>
+          <Link href={`/play/proposals/new?matchId=${matchId}`} className="sm:ml-auto">
+            <Button variant="secondary" className="w-full sm:w-auto">Предложить игру</Button>
+          </Link>
+        </div>
+        <div className="rounded-[18px] bg-cream/80 px-3 py-2.5">
+          <div className="flex flex-wrap gap-2">
             <SportLevelBadge
               sport={primarySport}
               level={primarySportLevel}
-              badgeClassName="bg-cream text-ink"
-              levelClassName="bg-cream text-ink"
+              badgeClassName="bg-white text-ink"
+              levelClassName="bg-white text-ink"
             />
           </div>
         </div>
-        <Link href={`/play/proposals/new?matchId=${matchId}`}>
-          <Button variant="secondary">Предложить игру</Button>
-        </Link>
       </Panel>
 
       {upcomingBookedGames.length > 0 ? (
@@ -185,8 +196,8 @@ export function ChatRoom({
             rows={2}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            className="input min-h-[52px] flex-1 resize-none py-3"
-            placeholder="Коротко договоритесь об игре..."
+            className="input min-h-[52px] min-w-0 flex-1 resize-none py-3 text-sm placeholder:text-sm"
+            placeholder="Напиши сообщение..."
           />
           <button
             type="submit"
@@ -199,4 +210,28 @@ export function ChatRoom({
       </Panel>
     </div>
   );
+}
+
+function formatPresence(lastActiveAt?: string | null) {
+  if (!lastActiveAt) {
+    return "Редко заходит";
+  }
+
+  const date = new Date(lastActiveAt);
+  const diffMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+
+  if (diffMinutes <= 5) {
+    return "Сейчас онлайн";
+  }
+
+  if (diffMinutes < 60) {
+    return `Был ${diffMinutes} мин назад`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `Был ${diffHours} ч назад`;
+  }
+
+  return `Был ${date.toLocaleDateString("ru-RU")}`;
 }

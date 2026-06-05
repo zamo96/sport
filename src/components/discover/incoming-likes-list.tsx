@@ -5,18 +5,21 @@ import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
-import { DAY_LABELS, PLAY_FORMAT_LABELS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SURFACE_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import { getSportLevelEntries } from "@/lib/sport-levels";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportLevelBadge } from "@/components/ui/sport-level-badge";
+import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 
 type IncomingLikeUser = {
   id: string;
   name: string | null;
   age: number | null;
   city: string | null;
+  district?: string | null;
+  districtLabel?: string | null;
   bio: string | null;
   avatarUrl: string | null;
   tennisLevel: number | null;
@@ -28,6 +31,7 @@ type IncomingLikeUser = {
   availableTimeRanges?: unknown;
   distanceLabel: string;
   score: number | null;
+  explainabilityReasons?: string[] | null;
 };
 
 export function IncomingLikesList({ users }: { users: IncomingLikeUser[] }) {
@@ -69,6 +73,11 @@ function IncomingLikeCard({
   const sports = getSportLevelEntries(user.preferredSports, user.sportLevels, user.tennisLevel ?? 5);
   const day = Array.isArray(user.availableDays) ? user.availableDays[0] : null;
   const timeRange = Array.isArray(user.availableTimeRanges) ? user.availableTimeRanges[0] : null;
+  const explainabilityReasons = Array.isArray(user.explainabilityReasons)
+    ? user.explainabilityReasons.filter(
+        (reason): reason is string => typeof reason === "string" && reason.trim().length > 0
+      )
+    : [];
 
   async function answer(action: "like" | "dislike") {
     setBusy(true);
@@ -105,7 +114,8 @@ function IncomingLikeCard({
               </div>
               <div className="mt-1 flex items-center gap-2 text-sm text-ink/60">
                 <MapPin className="h-4 w-4" />
-                {user.city ?? "Город"} · {user.distanceLabel}
+                {user.city ?? "Город"}
+                {user.districtLabel ? ` · ${user.districtLabel}` : ""}
               </div>
             </div>
             <div className="rounded-full bg-mint px-3 py-2 text-xs font-semibold text-court">
@@ -123,7 +133,7 @@ function IncomingLikeCard({
               />
             ))}
             <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
-              {PLAY_FORMAT_LABELS[user.preferredPlayFormat]}
+              {getSportPlayFormatLabelRu(sports[0]?.sport ?? null, user.preferredPlayFormat)}
             </span>
             <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
               {SURFACE_LABELS[user.preferredSurface]}
@@ -139,6 +149,22 @@ function IncomingLikeCard({
               </span>
             ) : null}
           </div>
+
+          {explainabilityReasons.length > 0 ? (
+            <div className="mt-3 rounded-[18px] bg-mint/35 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-court/80">
+                Почему в подборе
+              </div>
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-ink/70">
+                {explainabilityReasons.slice(0, 2).map((reason) => (
+                  <li key={reason} className="flex items-start gap-2">
+                    <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-court/60" />
+                    <span>{reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
 

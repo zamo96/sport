@@ -35,6 +35,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
         otherUser={{
           name: otherUser.name,
           avatarUrl: otherUser.avatarUrl,
+          lastActiveAt: otherUser.lastActiveAt?.toISOString() ?? null,
           tennisLevel: otherUser.tennisLevel,
           preferredSports: otherUser.preferredSports,
           sportLevels: otherUser.sportLevels

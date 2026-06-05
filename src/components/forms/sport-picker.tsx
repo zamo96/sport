@@ -64,15 +64,24 @@ export function SportPicker({
           return (
             <div
               key={sport}
+              role="button"
+              tabIndex={0}
+              onClick={() => toggle(sport)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  toggle(sport);
+                }
+              }}
               className={cn(
-                "rounded-[22px] border px-3 py-3 text-left transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu",
+                "cursor-pointer rounded-[22px] border px-3 py-3 text-left transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu",
                 layout === "carousel" && "min-w-[11.25rem] snap-center",
                 active
                   ? "translate-y-[-2px] border-court/35 bg-[linear-gradient(180deg,rgba(58,134,109,0.96),rgba(23,56,46,0.92))] text-white shadow-[0_20px_44px_rgba(20,47,38,0.22)] ring-1 ring-white/18"
                   : "border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,243,233,0.96))] text-ink hover:translate-y-[-1px] hover:shadow-[0_14px_30px_rgba(20,47,38,0.08)]"
               )}
             >
-              <button type="button" onClick={() => toggle(sport)} className="w-full text-left">
+              <div className="w-full text-left">
                 <div className="inline-flex items-center gap-2 text-sm font-bold">
                   <span
                     className={cn(
@@ -87,7 +96,7 @@ export function SportPicker({
                 <div className={cn("mt-1 text-[11px] leading-[1.1rem]", active ? "text-white/78" : "text-ink/60")}>
                   {multiple ? "Добавь в свои виды спорта" : "Выбери спорт для этой игры"}
                 </div>
-              </button>
+              </div>
 
               <div
                 className={cn(

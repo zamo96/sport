@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 
+import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -86,6 +87,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       return created;
     });
+
+    const recipientUserId = gameRequest.createdByUserId === user.id ? gameRequest.matchedUserId : gameRequest.createdByUserId;
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientUserId },
+      select: {
+        id: true,
+        notificationMessages: true,
+        notificationSound: true
+      }
+    });
+
+    if (recipient?.notificationMessages) {
+      await sendPushToUser({
+        userId: recipient.id,
+        title: `Сообщение по игре от ${user.name ?? "игрока"}`,
+        body: body.text.length > 120 ? `${body.text.slice(0, 117)}...` : body.text,
+        href: `/play/games/${gameRequest.id}`,
+        sound: recipient.notificationSound ?? true
+      });
+    }
 
     return ok({
       message: {

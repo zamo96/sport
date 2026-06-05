@@ -15,7 +15,8 @@ import {
 
 import { DEFAULT_CITY, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
-import { importClubsFromWorkbook } from "./import-clubs";
+import { buildGeneratedDemoUsers, GENERATED_DEMO_USER_COUNT, runDemoActivitySimulation } from "./demo-simulator";
+import { importClubsFromWorkbook, resolveClubsImportFile } from "./import-clubs";
 
 async function main() {
   await prisma.chatMessage.deleteMany();
@@ -233,6 +234,11 @@ async function main() {
     )
   );
 
+  const generatedUsers = buildGeneratedDemoUsers(GENERATED_DEMO_USER_COUNT);
+  await prisma.user.createMany({
+    data: generatedUsers
+  });
+
   const courts = await Promise.all(
     [
       {
@@ -248,6 +254,9 @@ async function main() {
         supportedSports: [Sport.tennis, Sport.padel, Sport.table_tennis],
         priceRange: "$$",
         rating: 4.8,
+        phone: "+7 (812) 555-11-21",
+        workingHours: "07:00-23:00",
+        websiteUrl: "https://example.com/krestovsky-tennis",
         sourceType: "manual",
         bookingUrl: "https://example.com/krestovsky-tennis"
       },
@@ -264,6 +273,9 @@ async function main() {
         supportedSports: [Sport.badminton, Sport.squash, Sport.table_tennis],
         priceRange: "$$$",
         rating: 4.7,
+        phone: "+7 (812) 555-98-98",
+        workingHours: "08:00-22:00",
+        websiteUrl: "https://example.com/petrograd-arena",
         sourceType: "manual",
         bookingUrl: "https://example.com/petrograd-arena"
       },
@@ -280,6 +292,9 @@ async function main() {
         supportedSports: [Sport.football, Sport.volleyball, Sport.fitness, Sport.yoga],
         priceRange: "$$",
         rating: 4.6,
+        phone: "+7 (812) 555-72-72",
+        workingHours: "06:30-23:30",
+        websiteUrl: "https://example.com/primorsky-multisport",
         sourceType: "manual",
         bookingUrl: "https://example.com/primorsky-multisport"
       },
@@ -296,6 +311,9 @@ async function main() {
         supportedSports: [Sport.tennis, Sport.badminton, Sport.boxing, Sport.fitness],
         priceRange: "$$",
         rating: 4.5,
+        phone: "+7 (812) 555-50-50",
+        workingHours: "07:00-23:00",
+        websiteUrl: "https://example.com/nevsky-court-house",
         sourceType: "manual",
         bookingUrl: "https://example.com/nevsky-court-house"
       },
@@ -312,6 +330,9 @@ async function main() {
         supportedSports: [Sport.football, Sport.volleyball],
         priceRange: "$$$",
         rating: 4.7,
+        phone: "+7 (812) 555-18-30",
+        workingHours: "08:00-00:00",
+        websiteUrl: "https://example.com/moskovsky-football-hub",
         sourceType: "manual",
         bookingUrl: "https://example.com/moskovsky-football-hub"
       },
@@ -328,6 +349,9 @@ async function main() {
         supportedSports: [Sport.table_tennis, Sport.badminton, Sport.squash],
         priceRange: "$$",
         rating: 4.6,
+        phone: "+7 (812) 555-18-18",
+        workingHours: "09:00-22:00",
+        websiteUrl: "https://example.com/nevsky-racket-lab",
         sourceType: "manual",
         bookingUrl: "https://example.com/nevsky-racket-lab"
       },
@@ -344,6 +368,9 @@ async function main() {
         supportedSports: [Sport.padel, Sport.tennis],
         priceRange: "$$$",
         rating: 4.8,
+        phone: "+7 (812) 555-64-64",
+        workingHours: "07:00-23:00",
+        websiteUrl: "https://example.com/padel-yard",
         sourceType: "manual",
         bookingUrl: "https://example.com/padel-yard"
       },
@@ -360,6 +387,9 @@ async function main() {
         supportedSports: [Sport.yoga, Sport.fitness, Sport.boxing],
         priceRange: "$$",
         rating: 4.4,
+        phone: "+7 (812) 555-01-18",
+        workingHours: "08:00-22:00",
+        websiteUrl: "https://example.com/balance-yoga",
         sourceType: "manual",
         bookingUrl: "https://example.com/balance-yoga"
       },
@@ -376,6 +406,9 @@ async function main() {
         supportedSports: [Sport.volleyball, Sport.badminton, Sport.fitness],
         priceRange: "$",
         rating: 4.3,
+        phone: "+7 (812) 555-84-84",
+        workingHours: "09:00-21:00",
+        websiteUrl: "https://example.com/kalininsky-hall",
         sourceType: "manual",
         bookingUrl: "https://example.com/kalininsky-hall"
       }
@@ -581,13 +614,16 @@ async function main() {
     }
   });
 
-  const clubsImportFile = process.env.CLUBS_IMPORT_FILE?.trim();
+  const clubsImportFile = await resolveClubsImportFile(process.env.CLUBS_IMPORT_FILE);
   if (clubsImportFile) {
     await importClubsFromWorkbook(clubsImportFile);
   }
 
+  await runDemoActivitySimulation(prisma, { resetExisting: true });
+
   console.log("Сиды загружены");
   console.log("Демо-пользователи:", users.map((user) => user.email).join(", "));
+  console.log("Сгенерировано пользователей:", generatedUsers.length);
 }
 
 main()

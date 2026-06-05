@@ -58,6 +58,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         }
       });
 
+      await tx.gameSearchMessage.create({
+        data: {
+          gameSearchId: gameSearch.id,
+          senderUserId: user.id,
+          text: body.message.trim()
+            ? `Откликнулся(ась) на поиск: ${body.message.trim()}`
+            : "Откликнулся(ась) на поиск."
+        }
+      });
+
       return created;
     });
 

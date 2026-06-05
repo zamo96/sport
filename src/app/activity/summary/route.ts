@@ -2,10 +2,12 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { getHotNotificationsCount, getIncomingLikesCount } from "@/server/app-data";
+import { touchUserActivity } from "@/server/user-activity";
 
 export async function GET() {
   try {
     const user = await requireSessionUser();
+    await touchUserActivity(user.id);
     const seenAt = user.lastInboxSeenAt ?? new Date(0);
     const matchWhere = {
       status: "active" as const,
@@ -35,7 +37,8 @@ export async function GET() {
           match: matchWhere
         },
         select: {
-          matchId: true
+          matchId: true,
+          gameRequestId: true
         }
       }),
       getIncomingLikesCount(user.id),
@@ -49,7 +52,7 @@ export async function GET() {
     }
 
     for (const message of unreadMessages) {
-      unreadMatchIds.add(message.matchId);
+      unreadMatchIds.add(message.gameRequestId ?? message.matchId);
     }
 
     return ok({

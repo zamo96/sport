@@ -1,5 +1,6 @@
 import { Gender, PlayFormat, Sport, Surface, type User } from "@prisma/client";
 
+import { SPORT_LABELS } from "@/lib/constants";
 import { haversineDistanceKm } from "@/lib/geo";
 import { getSharedSports, getSportLevel, normalizeSports } from "@/lib/sport-levels";
 
@@ -24,7 +25,10 @@ export type CandidateUser = Pick<
   | "availableTimeSlots"
   | "searchRadiusKm"
   | "isLookingForGame"
->;
+> & {
+  district?: User["district"] | null;
+  preferredDistricts?: User["preferredDistricts"] | null;
+};
 
 export type DiscoverFilters = {
   levelMin?: number;
@@ -37,7 +41,7 @@ export type DiscoverFilters = {
   surface?: Surface[];
   day?: string[];
   timeRange?: string[];
-  view?: "swipe" | "likes" | "seeking" | "hot";
+  view?: "upcoming" | "swipe" | "likes" | "seeking" | "hot";
 };
 
 export type ScoredCandidate = CandidateUser & {
@@ -47,6 +51,102 @@ export type ScoredCandidate = CandidateUser & {
   dayOverlapCount: number;
   timeOverlapCount: number;
 };
+
+function isSport(value: unknown): value is Sport {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(SPORT_LABELS, value)
+  );
+}
+
+function resolveExplainabilitySport(
+  sharedSports: Sport[],
+  candidate: unknown,
+  filters: DiscoverFilters
+) {
+  const primarySearchSport =
+    filters.view === "seeking" || filters.view === "hot"
+      ? (() => {
+          if (!candidate || typeof candidate !== "object") {
+            return null;
+          }
+
+          const gameSearches = (candidate as { gameSearches?: unknown }).gameSearches;
+          if (!Array.isArray(gameSearches)) {
+            return null;
+          }
+
+          const sport = (gameSearches[0] as { sport?: unknown } | undefined)?.sport;
+          return isSport(sport) ? sport : null;
+        })()
+      : null;
+
+  if (primarySearchSport && sharedSports.includes(primarySearchSport)) {
+    return primarySearchSport;
+  }
+
+  return sharedSports[0] ?? "tennis";
+}
+
+function formatExplainabilityDistance(distanceKm: number) {
+  if (distanceKm < 1) {
+    return `${Math.round(distanceKm * 1000)} м`;
+  }
+
+  return `${distanceKm.toFixed(1)} км`;
+}
+
+function resolveUserDistricts(preferredDistricts: unknown, district?: string | null) {
+  const preferred = parseStringArray(preferredDistricts);
+  if (preferred.length > 0) {
+    return preferred;
+  }
+
+  return district ? [district] : [];
+}
+
+export function buildDiscoverExplainabilityReasons<T extends CandidateUser>(
+  viewer: CandidateUser,
+  candidate: T & { distanceKm?: number | null; gameSearches?: unknown },
+  filters: DiscoverFilters = {}
+): string[] {
+  const viewerSports = normalizeSports(viewer.preferredSports);
+  const candidateSports = normalizeSports(candidate.preferredSports);
+  const sharedSports = getSharedSports(viewerSports, candidateSports, filters.sport);
+  const sport = resolveExplainabilitySport(sharedSports, candidate, filters);
+  const reasons: string[] = [`Совпадает спорт: ${SPORT_LABELS[sport] ?? sport}`];
+
+  const viewerLevel = getSportLevel(viewer.sportLevels, sport, viewer.tennisLevel ?? 5);
+  const candidateLevel = getSportLevel(candidate.sportLevels, sport, candidate.tennisLevel ?? 5);
+  const minLevel = Math.min(viewerLevel, candidateLevel);
+  const maxLevel = Math.max(viewerLevel, candidateLevel);
+  reasons.push(`Уровень рядом: ${minLevel === maxLevel ? `${minLevel}` : `${minLevel}–${maxLevel}`}`);
+
+  const viewerDistricts = resolveUserDistricts(viewer.preferredDistricts, viewer.district);
+  const candidateDistricts = resolveUserDistricts(candidate.preferredDistricts, candidate.district);
+  const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
+  const computedDistanceKm =
+    typeof candidate.distanceKm === "number"
+      ? candidate.distanceKm
+      : haversineDistanceKm(
+          viewer.homeLat != null && viewer.homeLng != null ? { lat: viewer.homeLat, lng: viewer.homeLng } : null,
+          candidate.homeLat != null && candidate.homeLng != null ? { lat: candidate.homeLat, lng: candidate.homeLng } : null
+        );
+
+  if (computedDistanceKm != null && !Number.isNaN(computedDistanceKm)) {
+    reasons.push(`Недалеко: ${formatExplainabilityDistance(computedDistanceKm)}`);
+  } else if (districtOverlapCount > 0) {
+    reasons.push("Рядом по району");
+  }
+
+  const dayOverlapCount = overlapStrings(viewer.availableDays, candidate.availableDays);
+  const timeOverlapCount = overlapStrings(viewer.availableTimeRanges, candidate.availableTimeRanges);
+  if (dayOverlapCount > 0 || timeOverlapCount > 0) {
+    reasons.push("Пересекается расписание");
+  }
+
+  return reasons.slice(0, 4);
+}
 
 export function scoreCandidates<T extends CandidateUser>(
   viewer: CandidateUser,
@@ -162,8 +262,20 @@ export function scoreCandidate<T extends CandidateUser>(
   const surfaceScore = surfaceCompatible(viewer.preferredSurface, candidate.preferredSurface) ? 18 : 0;
   const sportScore = Math.min(24, sportsOverlapCount * 12);
   const levelScore = Math.max(0, 28 - levelGap * 7);
+  const viewerDistricts = resolveUserDistricts(viewer.preferredDistricts, viewer.district);
+  const candidateDistricts = resolveUserDistricts(candidate.preferredDistricts, candidate.district);
+  const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
+  const hasDistrictPreference = viewerDistricts.length > 0 || candidateDistricts.length > 0;
   const distanceScore =
-    distanceKm == null ? 8 : Math.max(0, 20 - Math.min(distanceKm, viewer.searchRadiusKm || 20));
+    districtOverlapCount > 0
+      ? 28 + Math.min(6, districtOverlapCount * 2)
+      : hasDistrictPreference
+        ? distanceKm == null
+          ? 4
+          : Math.max(1, 6 - Math.min(distanceKm, 25) / 6)
+        : distanceKm == null
+          ? 8
+          : Math.max(2, 12 - Math.min(distanceKm, 25) / 3);
   const dayOverlapCount = overlapStrings(viewer.availableDays, candidate.availableDays);
   const timeOverlapCount = overlapStrings(viewer.availableTimeRanges, candidate.availableTimeRanges);
   const availabilityScore = Math.min(12, dayOverlapCount * 2 + timeOverlapCount * 4);

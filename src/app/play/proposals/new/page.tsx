@@ -11,7 +11,7 @@ import { getCourtsForUser, getMatchesForUser } from "@/server/app-data";
 export default async function NewProposalPage({
   searchParams
 }: {
-  searchParams: { matchId?: string; courtId?: string };
+  searchParams: { matchId?: string; courtId?: string; sport?: string };
 }) {
   const user = await getSessionUser();
 
@@ -23,6 +23,10 @@ export default async function NewProposalPage({
   const availableSports = Array.isArray(user.preferredSports)
     ? user.preferredSports.filter((sport): sport is string => typeof sport === "string")
     : ["tennis"];
+  const defaultSport =
+    searchParams.sport && availableSports.includes(searchParams.sport)
+      ? (searchParams.sport as Sport)
+      : undefined;
 
   return (
     <PageShell>
@@ -50,6 +54,7 @@ export default async function NewProposalPage({
         }))}
         defaultMatchId={searchParams.matchId}
         defaultCourtId={searchParams.courtId}
+        defaultSport={defaultSport}
       />
     </PageShell>
   );

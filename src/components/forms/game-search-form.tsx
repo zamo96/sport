@@ -7,10 +7,20 @@ import { HotSearchWindow, PlayFormat, type GameSearchType, type Sport } from "@p
 import { Flame } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
-import { HOT_SEARCH_WINDOW_LABELS, PLAY_FORMAT_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
+import { getDistrictLabel, HOT_SEARCH_WINDOW_LABELS, SPORT_SEARCH_LABELS } from "@/lib/constants";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
+import {
+  getDefaultDurationMinutes,
+  getDefaultPlayersNeeded,
+  getMaxPlayersNeeded,
+  getSportFormatOptions,
+  getSportPlaybook,
+  resolveFormatForSport
+} from "@/lib/sport-playbook";
+import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { SportPicker } from "@/components/forms/sport-picker";
+import { CourtSmartPicker } from "@/components/forms/court-smart-picker";
 import { CourtsMap } from "@/components/maps/courts-map";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -20,6 +30,7 @@ type CourtOption = {
   name: string;
   address: string;
   district?: string | null;
+  nearestMetroName?: string | null;
   locationLat: number;
   locationLng: number;
   supportedSports?: Sport[];
@@ -43,14 +54,17 @@ export function GameSearchForm({
   authRequiredHref?: string;
 }) {
   const router = useRouter();
+  const initialSport = availableSports[0] ?? "tennis";
+  const initialFormat = getSportPlaybook(initialSport).defaultFormat;
   const storageKey = useMemo(() => `game-search-form-draft:${initialMode}`, [initialMode]);
   const [searchType, setSearchType] = useState<GameSearchType>(initialMode);
   const [hotWindow, setHotWindow] = useState<HotSearchWindow>(HotSearchWindow.today);
   const [hotStartTime, setHotStartTime] = useState("19:00");
-  const [durationMinutes, setDurationMinutes] = useState(90);
+  const [durationMinutes, setDurationMinutes] = useState(() => getDefaultDurationMinutes(initialSport));
   const [hasCourtBooked, setHasCourtBooked] = useState(false);
-  const [sport, setSport] = useState<Sport>(availableSports[0] ?? "tennis");
+  const [sport, setSport] = useState<Sport>(initialSport);
   const [preferredCourtId, setPreferredCourtId] = useState("");
+  const [preferredDistricts, setPreferredDistricts] = useState<string[]>([]);
   const [availabilityByDay, setAvailabilityByDay] = useState<AvailabilityByDay>({
     wednesday: ["evening"],
     saturday: ["day", "evening"]
@@ -59,12 +73,13 @@ export function GameSearchForm({
   const [selfLevelUnknown, setSelfLevelUnknown] = useState(false);
   const [desiredLevelMin, setDesiredLevelMin] = useState(1);
   const [desiredLevelMax, setDesiredLevelMax] = useState(10);
-  const [format, setFormat] = useState<PlayFormat>(PlayFormat.singles);
-  const [playersNeeded, setPlayersNeeded] = useState(1);
+  const [format, setFormat] = useState<PlayFormat>(initialFormat);
+  const [playersNeeded, setPlayersNeeded] = useState(() => getDefaultPlayersNeeded(initialSport, initialFormat));
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchLabels = SPORT_SEARCH_LABELS[sport];
+  const formatOptions = useMemo(() => getSportFormatOptions(sport), [sport]);
   const hasSportInProfile = useMemo(
     () => hasExplicitSportProfile(profileSports, sportLevels, sport),
     [profileSports, sport, sportLevels]
@@ -76,6 +91,18 @@ export function GameSearchForm({
   const selectedCourt = useMemo(
     () => visibleCourts.find((court) => court.id === preferredCourtId) ?? null,
     [preferredCourtId, visibleCourts]
+  );
+  const availableDistricts = useMemo(
+    () =>
+      Array.from(new Set(visibleCourts.map((court) => court.district).filter((district): district is string => Boolean(district)))).sort(
+        (left, right) => (getDistrictLabel(left) ?? left).localeCompare(getDistrictLabel(right) ?? right, "ru", { sensitivity: "base" })
+      ),
+    [visibleCourts]
+  );
+  const filteredCourts = useMemo(
+    () =>
+      visibleCourts.filter((court) => preferredDistricts.length === 0 || (court.district != null && preferredDistricts.includes(court.district))),
+    [preferredDistricts, visibleCourts]
   );
   const preferredDays = useMemo(
     () => Object.entries(availabilityByDay).filter(([, ranges]) => Array.isArray(ranges) && ranges.length > 0).map(([day]) => day),
@@ -144,6 +171,7 @@ export function GameSearchForm({
         hasCourtBooked: boolean;
         sport: Sport;
         preferredCourtId: string;
+        preferredDistricts: string[];
         availabilityByDay: AvailabilityByDay;
         selfLevel: number | null;
         selfLevelUnknown: boolean;
@@ -154,13 +182,21 @@ export function GameSearchForm({
         comment: string;
       }>;
 
-      setSearchType(parsed.searchType ?? initialMode);
+      const nextSearchType = parsed.searchType ?? initialMode;
+      const nextSport = parsed.sport ?? availableSports[0] ?? "tennis";
+      const nextFormat = resolveFormatForSport(
+        nextSport,
+        parsed.format ?? getSportPlaybook(nextSport).defaultFormat
+      );
+
+      setSearchType(nextSearchType);
       setHotWindow(parsed.hotWindow ?? HotSearchWindow.today);
       setHotStartTime(parsed.hotStartTime ?? "19:00");
-      setDurationMinutes(parsed.durationMinutes ?? 90);
+      setDurationMinutes(parsed.durationMinutes ?? getDefaultDurationMinutes(nextSport));
       setHasCourtBooked(parsed.hasCourtBooked ?? false);
-      setSport(parsed.sport ?? availableSports[0] ?? "tennis");
+      setSport(nextSport);
       setPreferredCourtId(parsed.preferredCourtId ?? "");
+      setPreferredDistricts(Array.isArray(parsed.preferredDistricts) ? parsed.preferredDistricts.filter((item): item is string => typeof item === "string") : []);
       setAvailabilityByDay(
         parsed.availabilityByDay && typeof parsed.availabilityByDay === "object" && !Array.isArray(parsed.availabilityByDay)
           ? normalizeAvailabilityByDay(parsed.availabilityByDay)
@@ -173,8 +209,8 @@ export function GameSearchForm({
       setSelfLevelUnknown(parsed.selfLevelUnknown ?? false);
       setDesiredLevelMin(parsed.desiredLevelMin ?? 1);
       setDesiredLevelMax(parsed.desiredLevelMax ?? 10);
-      setFormat(parsed.format ?? PlayFormat.singles);
-      setPlayersNeeded(parsed.playersNeeded ?? 1);
+      setFormat(nextFormat);
+      setPlayersNeeded(parsed.playersNeeded ?? getDefaultPlayersNeeded(nextSport, nextFormat));
       setComment(parsed.comment ?? "");
     } catch {
       window.localStorage.removeItem(storageKey);
@@ -196,6 +232,7 @@ export function GameSearchForm({
         hasCourtBooked,
         sport,
         preferredCourtId,
+        preferredDistricts,
         availabilityByDay,
         selfLevel,
         selfLevelUnknown,
@@ -215,6 +252,7 @@ export function GameSearchForm({
     hotWindow,
     playersNeeded,
     preferredCourtId,
+    preferredDistricts,
     availabilityByDay,
     selfLevel,
     selfLevelUnknown,
@@ -241,6 +279,7 @@ export function GameSearchForm({
         method: "POST",
         body: JSON.stringify({
           preferredCourtId: preferredCourtId || null,
+          preferredDistricts,
           preferredDays,
           preferredTimeRanges: searchType === "hot" ? [getTimeRangeFromTime(hotStartTime)] : preferredTimeRanges,
           searchType,
@@ -279,9 +318,13 @@ export function GameSearchForm({
             options={availableSports}
             onChange={(value) => {
               const nextSport = (value[0] as Sport | undefined) ?? "tennis";
+              const nextFormat = resolveFormatForSport(nextSport, format);
               setSport(nextSport);
               setPreferredCourtId("");
-              setPlayersNeeded(getDefaultPlayersNeeded(nextSport, format));
+              setPreferredDistricts([]);
+              setFormat(nextFormat);
+              setPlayersNeeded(getDefaultPlayersNeeded(nextSport, nextFormat));
+              setDurationMinutes(getDefaultDurationMinutes(nextSport));
             }}
           />
         </Field>
@@ -477,9 +520,9 @@ export function GameSearchForm({
               setPlayersNeeded(getDefaultPlayersNeeded(sport, nextFormat));
             }}
           >
-            {Object.entries(PLAY_FORMAT_LABELS).map(([value, label]) => (
+            {formatOptions.map((value) => (
               <option key={value} value={value}>
-                {label}
+                {getSportPlayFormatLabelRu(sport, value, { playersNeeded: getDefaultPlayersNeeded(sport, value) })}
               </option>
             ))}
           </select>
@@ -491,7 +534,7 @@ export function GameSearchForm({
             value={playersNeeded}
             onChange={(event) => setPlayersNeeded(Number(event.target.value))}
           >
-            {Array.from({ length: sport === "football" ? 12 : 8 }, (_, index) => index + 1).map((count) => (
+            {Array.from({ length: getMaxPlayersNeeded(sport) }, (_, index) => index + 1).map((count) => (
               <option key={count} value={count}>
                 {count} {pluralizePlayers(count)}
               </option>
@@ -504,20 +547,67 @@ export function GameSearchForm({
           </div>
         </Field>
 
+        <Field label="Удобные районы">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPreferredDistricts([])}
+              className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
+                preferredDistricts.length === 0 ? "bg-court text-white" : "bg-cream text-ink"
+              }`}
+            >
+              Любой район
+            </button>
+            {availableDistricts.map((district) => {
+              const active = preferredDistricts.includes(district);
+              return (
+                <button
+                  key={district}
+                  type="button"
+                  onClick={() =>
+                    setPreferredDistricts((current) =>
+                      active ? current.filter((item) => item !== district) : [...current, district]
+                    )
+                  }
+                  className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
+                    active ? "bg-court text-white" : "bg-cream text-ink"
+                  }`}
+                >
+                  {getDistrictLabel(district) ?? district}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-xs leading-5 text-ink/55">
+            Показываем районы из базы клубов по выбранному виду спорта.
+          </div>
+        </Field>
+
         <Field label={searchType === "hot" ? searchLabels.centerLabel : `Предпочтительный ${searchLabels.centerLabel.toLowerCase()}`}>
-          <select className="input" value={preferredCourtId} onChange={(event) => setPreferredCourtId(event.target.value)}>
-            <option value="">{searchLabels.anyCenterLabel}</option>
-            {visibleCourts.map((court) => (
-              <option key={court.id} value={court.id}>
-                {court.name} · {court.address}
-              </option>
-            ))}
-          </select>
+          <CourtSmartPicker
+            courts={filteredCourts}
+            selectedCourtId={preferredCourtId}
+            onSelect={(courtId) => {
+              setPreferredCourtId(courtId);
+              if (!courtId) {
+                return;
+              }
+
+              const selected = visibleCourts.find((court) => court.id === courtId);
+              if (selected?.district && !preferredDistricts.includes(selected.district)) {
+                setPreferredDistricts((current) => [selected.district as string, ...current.filter((item) => item !== selected.district)]);
+              }
+            }}
+            emptyLabel={searchLabels.anyCenterLabel}
+            emptyDescription="Оставить поиск без конкретного клуба"
+          />
           {selectedCourt ? (
             <div className="mt-3 space-y-2">
               <div className="rounded-[24px] bg-cream/80 p-3">
                 <div className="text-sm font-semibold text-ink">{selectedCourt.name}</div>
-                <div className="mt-1 text-xs leading-5 text-ink/60">{selectedCourt.address}</div>
+                <div className="mt-1 text-xs leading-5 text-ink/60">
+                  {[selectedCourt.nearestMetroName, getDistrictLabel(selectedCourt.district), selectedCourt.address].filter(Boolean).join(" · ")}
+                </div>
               </div>
               <CourtsMap courts={[selectedCourt]} compact />
             </div>
@@ -583,13 +673,6 @@ function getTimeRangeFromTime(value: string) {
 
 function needsLobbyCounter(sport: Sport, format: PlayFormat) {
   return sport === "football" || sport === "volleyball" || format === PlayFormat.doubles;
-}
-
-function getDefaultPlayersNeeded(sport: Sport, format: PlayFormat) {
-  if (sport === "football") return 9;
-  if (sport === "volleyball") return 5;
-  if (format === PlayFormat.doubles) return 3;
-  return 1;
 }
 
 function pluralizePlayers(value: number) {

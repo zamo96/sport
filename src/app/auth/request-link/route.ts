@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { createAuthCode } from "@/lib/auth";
+import { sendOtpEmail } from "@/lib/email";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { requestLinkSchema } from "@/lib/validators";
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
     });
     const code = await createAuthCode(body.email, existingUser?.id);
 
-    console.log(`[auth] OTP for ${body.email}: ${code}`);
+    await sendOtpEmail({ to: body.email, code });
 
     return ok({
       ok: true,

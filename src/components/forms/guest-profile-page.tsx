@@ -41,7 +41,7 @@ export function GuestProfilePage() {
       <SectionTitle
         eyebrow="Профиль"
         title="Черновик профиля уже заполнен."
-        subtitle="Можно изменить спорт, уровень, радиус и доступность. Когда захочешь сохранить всё в аккаунт и получать отклики, подтверди email."
+        subtitle="Можно изменить спорт, районы и доступность. Когда захочешь сохранить всё в аккаунт и получать отклики, подтверди email."
       />
       <ProfileForm user={draft} mode="guest" authRequiredHref={buildGuestAuthHref("/profile")} />
     </div>

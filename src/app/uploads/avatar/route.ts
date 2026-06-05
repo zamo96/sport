@@ -1,10 +1,7 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
-import { randomUUID } from "crypto";
-
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { uploadAvatar } from "@/lib/uploads";
 
 export async function POST(request: Request) {
   try {
@@ -12,20 +9,28 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
 
-    if (!(file instanceof File)) {
+    if (
+      !file ||
+      typeof file === "string" ||
+      typeof (file as { arrayBuffer?: unknown }).arrayBuffer !== "function"
+    ) {
       return fail("Нужно выбрать файл");
     }
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const extension = file.name.split(".").pop() || "png";
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    const fileName = `${randomUUID()}.${extension}`;
-    const filePath = path.join(uploadsDir, fileName);
+    const uploadedFile = file as {
+      arrayBuffer: () => Promise<ArrayBuffer>;
+      name?: string;
+      type?: string;
+    };
 
-    await mkdir(uploadsDir, { recursive: true });
-    await writeFile(filePath, bytes);
-
-    const avatarUrl = `/uploads/${fileName}`;
+    const bytes = Buffer.from(await uploadedFile.arrayBuffer());
+    const originalName = uploadedFile.name || "avatar.png";
+    const avatarUrl = await uploadAvatar({
+      bytes,
+      originalName,
+      contentType: uploadedFile.type,
+      userId: user.id
+    });
 
     await prisma.user.update({
       where: { id: user.id },

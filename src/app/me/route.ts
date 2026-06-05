@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { getSessionUser, requireSessionUser } from "@/lib/auth";
+import { destroySession, getSessionUser, requireSessionUser } from "@/lib/auth";
 import { resolveLocationFromCity, resolveLocationFromDistrict } from "@/lib/geo";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +21,9 @@ export async function PATCH(request: NextRequest) {
   try {
     const currentUser = await requireSessionUser();
     const body = updateMeSchema.parse(await request.json());
-    const location = (body.district ? resolveLocationFromDistrict(body.district) : null) ?? (await resolveLocationFromCity(body.city));
+    const preferredDistricts = body.preferredDistricts ?? [];
+    const primaryDistrict = preferredDistricts[0] ?? body.district ?? null;
+    const location = (primaryDistrict ? resolveLocationFromDistrict(primaryDistrict) : null) ?? (await resolveLocationFromCity(body.city));
     const preferredSports = normalizeSports(body.preferredSports);
     const sportLevels = normalizeSportLevels(body.sportLevels, preferredSports, body.tennisLevel);
     const primarySportLevel = getPrimarySportLevel(preferredSports, sportLevels, body.tennisLevel);
@@ -42,7 +44,8 @@ export async function PATCH(request: NextRequest) {
         age: body.age,
         gender: body.gender ?? null,
         city: body.city,
-        district: body.district ?? null,
+        district: primaryDistrict,
+        preferredDistricts,
         homeLat: location?.lat ?? currentUser.homeLat,
         homeLng: location?.lng ?? currentUser.homeLng,
         tennisLevel: primarySportLevel,
@@ -52,7 +55,7 @@ export async function PATCH(request: NextRequest) {
         preferredSurface: body.preferredSurface,
         bio: body.bio,
         avatarUrl: body.avatarUrl ?? currentUser.avatarUrl,
-        searchRadiusKm: body.searchRadiusKm,
+        searchRadiusKm: body.searchRadiusKm ?? currentUser.searchRadiusKm,
         availableDays,
         availableTimeRanges,
         availabilityByDay,
@@ -69,6 +72,26 @@ export async function PATCH(request: NextRequest) {
     });
 
     return ok({ user });
+  } catch (error) {
+    if (getErrorMessage(error) === "UNAUTHORIZED") {
+      return fail("Требуется авторизация", 401);
+    }
+
+    return fail(getErrorMessage(error));
+  }
+}
+
+export async function DELETE() {
+  try {
+    const currentUser = await requireSessionUser();
+
+    await prisma.user.delete({
+      where: { id: currentUser.id }
+    });
+
+    await destroySession();
+
+    return ok({ success: true });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);

@@ -20,6 +20,7 @@ import {
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
+import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 
 export function FiltersBar({ profileSports }: { profileSports: Sport[] }) {
   const router = useRouter();
@@ -42,6 +43,11 @@ export function FiltersBar({ profileSports }: { profileSports: Sport[] }) {
     }),
     [searchParams]
   );
+
+  const singleSelectedSport =
+    filters.sport.length === 1 && SPORT_OPTIONS.includes(filters.sport[0] as Sport)
+      ? (filters.sport[0] as Sport)
+      : null;
 
   function update(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -167,7 +173,7 @@ export function FiltersBar({ profileSports }: { profileSports: Sport[] }) {
       <div className="flex flex-wrap gap-2">
         {(["singles", "doubles", "both"] as const).map((format) => (
           <Chip key={format} active={filters.format.includes(format)} onClick={() => toggleMulti("format", format)}>
-            {PLAY_FORMAT_LABELS[format]}
+            {singleSelectedSport ? getSportPlayFormatLabelRu(singleSelectedSport, format) : PLAY_FORMAT_LABELS[format]}
           </Chip>
         ))}
       </div>

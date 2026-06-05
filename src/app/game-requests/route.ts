@@ -1,13 +1,16 @@
 import { NextRequest } from "next/server";
 
+import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameRequestSchema } from "@/lib/validators";
+import { touchUserActivity } from "@/server/user-activity";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireSessionUser();
+    await touchUserActivity(user.id);
     const body = createGameRequestSchema.parse(await request.json());
     const match = await prisma.match.findFirst({
       where: {
@@ -73,6 +76,25 @@ export async function POST(request: NextRequest) {
 
       return created;
     });
+
+    const recipient = await prisma.user.findUnique({
+      where: { id: matchedUserId },
+      select: {
+        id: true,
+        notificationGames: true,
+        notificationSound: true
+      }
+    });
+
+    if (recipient?.notificationGames) {
+      await sendPushToUser({
+        userId: recipient.id,
+        title: `Новое предложение игры от ${user.name ?? "игрока"}`,
+        body: `${gameRequest.proposedCourt.name} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
+        href: `/play/games/${gameRequest.id}`,
+        sound: recipient.notificationSound ?? true
+      });
+    }
 
     return ok({
       gameRequest: {

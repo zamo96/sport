@@ -1,9 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
-import { scoreCandidates, type DiscoverFilters } from "@/lib/scoring";
+import {
+  buildDiscoverExplainabilityReasons,
+  type CandidateUser,
+  scoreCandidates,
+  type DiscoverFilters
+} from "@/lib/scoring";
 import { courtSupportsSport } from "@/lib/courts";
+import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import { getDiscoverCandidates } from "@/server/discover";
+import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { normalizeSports } from "@/lib/sport-levels";
+import { serializeUserPreview } from "@/server/serializers";
 
 async function closeExpiredHotSearches() {
   await prisma.gameSearch.updateMany({
@@ -44,6 +52,29 @@ export async function getSeekingPlayers(userId: string, filters: DiscoverFilters
   return getDiscoverCandidates(userId, {
     ...filters,
     view: "seeking"
+  });
+}
+
+export async function getMyGameSearchResponses(userId: string) {
+  await closeExpiredHotSearches();
+
+  return prisma.gameSearchResponse.findMany({
+    where: {
+      responderUserId: userId
+    },
+    include: {
+      gameSearch: {
+        include: {
+          createdByUser: true,
+          preferredCourt: true,
+          regularPair: true
+        }
+      }
+    },
+    orderBy: {
+      updatedAt: "desc"
+    },
+    take: 30
   });
 }
 
@@ -136,12 +167,47 @@ export async function getHotPlayers(userId: string, filters: DiscoverFilters = {
 
 export async function getGameSearchesForUser(userId: string) {
   await closeExpiredHotSearches();
+  const pairIds = await prisma.regularPair.findMany({
+    where: {
+      OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+    },
+    select: {
+      id: true
+    }
+  });
+  await Promise.all(pairIds.map((pair) => syncRegularPairOccurrences(prisma, pair.id)));
+
   return prisma.gameSearch.findMany({
     where: {
       createdByUserId: userId
     },
     include: {
       preferredCourt: true,
+      regularPair: {
+        include: {
+          partnerUser: true,
+          match: true,
+          preferredCourt: true,
+          occurrences: {
+            include: {
+              proposedCourt: true,
+              gameRequest: {
+                include: {
+                  proposedCourt: true
+                }
+              },
+              confirmations: {
+                include: {
+                  user: true
+                }
+              }
+            },
+            orderBy: {
+              scheduledAt: "asc"
+            }
+          }
+        }
+      },
       responses: {
         include: {
           responderUser: true
@@ -154,6 +220,105 @@ export async function getGameSearchesForUser(userId: string) {
     },
     orderBy: {
       createdAt: "desc"
+    }
+  });
+}
+
+export async function getRegularPairForUser(userId: string, regularPairId: string) {
+  await closeExpiredHotSearches();
+  await syncRegularPairOccurrences(prisma, regularPairId);
+
+  return prisma.regularPair.findFirst({
+    where: {
+      id: regularPairId,
+      OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+    },
+    include: {
+      preferredCourt: true,
+      createdByUser: true,
+      partnerUser: true,
+      match: true,
+      occurrences: {
+        include: {
+          proposedCourt: true,
+          gameRequest: {
+            include: {
+              proposedCourt: true
+            }
+          },
+          confirmations: {
+            include: {
+              user: true
+            }
+          }
+        },
+        orderBy: {
+          scheduledAt: "asc"
+        }
+      },
+      gameSearch: {
+        include: {
+          responses: {
+            include: {
+              responderUser: true
+            },
+            orderBy: [{ status: "asc" }, { createdAt: "asc" }]
+          }
+        }
+      }
+    }
+  });
+}
+
+export async function getActiveRegularPairsForUser(userId: string) {
+  const pairIds = await prisma.regularPair.findMany({
+    where: {
+      status: "active",
+      OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+    },
+    select: {
+      id: true
+    }
+  });
+
+  await Promise.all(pairIds.map((pair) => syncRegularPairOccurrences(prisma, pair.id)));
+
+  return prisma.regularPair.findMany({
+    where: {
+      status: "active",
+      OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+    },
+    include: {
+      preferredCourt: true,
+      createdByUser: true,
+      partnerUser: true,
+      occurrences: {
+        where: {
+          scheduledAt: {
+            gt: new Date()
+          }
+        },
+        include: {
+          proposedCourt: true,
+          gameRequest: {
+            include: {
+              proposedCourt: true
+            }
+          },
+          confirmations: {
+            include: {
+              user: true
+            }
+          }
+        },
+        orderBy: {
+          scheduledAt: "asc"
+        },
+        take: 3
+      }
+    },
+    orderBy: {
+      updatedAt: "desc"
     }
   });
 }
@@ -223,7 +388,8 @@ export async function getHotNotificationsCount(userId: string) {
   const viewer = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      preferredSports: true
+      preferredSports: true,
+      lastNotificationsSeenAt: true
     }
   });
 
@@ -232,9 +398,13 @@ export async function getHotNotificationsCount(userId: string) {
   }
 
   const viewerSports = normalizeSports(viewer.preferredSports);
+  const seenAt = viewer.lastNotificationsSeenAt ?? new Date(0);
 
   return prisma.gameSearch.count({
     where: {
+      createdAt: {
+        gt: seenAt
+      },
       isActive: true,
       searchType: "hot",
       hotStartsAt: {
@@ -263,6 +433,7 @@ export async function getNotificationsForUser(userId: string) {
     select: {
       preferredSports: true,
       lastInboxSeenAt: true,
+      lastNotificationsSeenAt: true,
       notificationMatches: true,
       notificationMessages: true
     }
@@ -273,6 +444,7 @@ export async function getNotificationsForUser(userId: string) {
   }
 
   const seenAt = viewer.lastInboxSeenAt ?? new Date(0);
+  const notificationsSeenAt = viewer.lastNotificationsSeenAt ?? new Date(0);
   const viewerSports = normalizeSports(viewer.preferredSports);
 
   const [incomingLikes, searchResponsesToMySearches, myApplicationUpdates, hotEvents, newMatches, unreadMessages] = await Promise.all([
@@ -298,7 +470,11 @@ export async function getNotificationsForUser(userId: string) {
     prisma.gameSearchResponse.findMany({
       where: {
         gameSearch: {
-          createdByUserId: userId
+          createdByUserId: userId,
+          isActive: true,
+          status: {
+            in: ["active", "in_review"]
+          }
         },
         status: "pending"
       },
@@ -321,7 +497,9 @@ export async function getNotificationsForUser(userId: string) {
       include: {
         gameSearch: {
           include: {
-            createdByUser: true
+            createdByUser: true,
+            preferredCourt: true,
+            regularPair: true
           }
         }
       },
@@ -332,6 +510,9 @@ export async function getNotificationsForUser(userId: string) {
     }),
     prisma.gameSearch.findMany({
       where: {
+        createdAt: {
+          gt: notificationsSeenAt
+        },
         isActive: true,
         searchType: "hot",
         hotStartsAt: {
@@ -383,7 +564,6 @@ export async function getNotificationsForUser(userId: string) {
             createdAt: {
               gt: seenAt
             },
-            gameRequestId: null,
             senderUserId: {
               not: userId
             },
@@ -419,11 +599,13 @@ export async function getNotificationsForUser(userId: string) {
   });
 
   const respondedIds = new Set(outgoingSwipes.map((swipe) => swipe.toUserId));
-  const latestUnreadMessagesByMatch = new Map<string, (typeof unreadMessages)[number]>();
+  const latestUnreadMessagesByConversation = new Map<string, (typeof unreadMessages)[number]>();
 
   for (const message of unreadMessages) {
-    if (!latestUnreadMessagesByMatch.has(message.matchId)) {
-      latestUnreadMessagesByMatch.set(message.matchId, message);
+    const conversationKey = message.gameRequestId ?? `match:${message.matchId}`;
+
+    if (!latestUnreadMessagesByConversation.has(conversationKey)) {
+      latestUnreadMessagesByConversation.set(conversationKey, message);
     }
   }
 
@@ -440,16 +622,18 @@ export async function getNotificationsForUser(userId: string) {
         href: `/inbox/${match.id}`
       };
     }),
-    ...Array.from(latestUnreadMessagesByMatch.values()).map((message) => {
+    ...Array.from(latestUnreadMessagesByConversation.values()).map((message) => {
       const otherUser = message.match.user1Id === userId ? message.match.user2 : message.match.user1;
 
       return {
         id: `message-${message.id}`,
         type: "new_message" as const,
         createdAt: message.createdAt,
-        title: `Новое сообщение от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`,
+        title: message.gameRequestId
+          ? `Обновление по игре от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`
+          : `Новое сообщение от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`,
         description: message.text.length > 120 ? `${message.text.slice(0, 117)}...` : message.text,
-        href: `/inbox/${message.matchId}`
+        href: message.gameRequestId ? `/play/games/${message.gameRequestId}` : `/inbox/${message.matchId}`
       };
     }),
     ...incomingLikes
@@ -460,7 +644,7 @@ export async function getNotificationsForUser(userId: string) {
         createdAt: like.createdAt,
         title: `${like.fromUser.name ?? "Игрок"} хочет с тобой сыграть`,
         description: "Открой вкладку «Хотят с тобой», чтобы ответить лайком или пропустить.",
-        href: "/discover?view=likes"
+        href: `/discover?view=likes&highlight=${like.fromUserId}`
       })),
     ...searchResponsesToMySearches.map((response) => ({
       id: `response-${response.id}`,
@@ -474,51 +658,228 @@ export async function getNotificationsForUser(userId: string) {
       id: `application-${response.id}`,
       type: "application_result" as const,
       createdAt: response.updatedAt,
+      status: response.status,
       title:
         response.status === "approved"
           ? `Твой отклик одобрен: ${response.gameSearch.createdByUser.name ?? "организатор"}`
           : `Твой отклик отклонён: ${response.gameSearch.createdByUser.name ?? "организатор"}`,
       description:
         response.status === "approved"
-          ? "Проверь чат или страницу игры: организатор подтвердил участие."
-          : "Можешь открыть поиск и откликнуться на другие активности.",
-      href: response.status === "approved" ? "/inbox" : "/discover?view=seeking"
+          ? `${SPORT_LABELS[response.gameSearch.sport]} · ${
+              response.gameSearch.preferredCourt?.name ?? "клуб подберут позже"
+            } · ${buildNotificationSearchTime(response.gameSearch)}`
+          : `${SPORT_LABELS[response.gameSearch.sport]} · ${
+              response.gameSearch.preferredCourt?.name ?? "клуб не указан"
+            } · ${buildNotificationSearchTime(response.gameSearch)}`,
+      href:
+        response.status === "approved"
+          ? response.gameSearch.regularPair?.matchId
+            ? `/inbox/${response.gameSearch.regularPair.matchId}`
+            : `/discover?view=seeking&highlight=${response.gameSearch.id}`
+          : `/discover?view=seeking&highlight=${response.gameSearch.id}`
     })),
     ...hotEvents.map((search) => ({
       id: `hot-${search.id}`,
       type: "hot_event" as const,
       createdAt: search.createdAt,
-      title: `${search.createdByUser.name ?? "Игрок"} ищет срочно ${search.sport}`,
+      title: `${search.createdByUser.name ?? "Игрок"} ищет срочно ${SPORT_LABELS[search.sport]}`,
       description: search.preferredCourt
         ? `Есть площадка: ${search.preferredCourt.name}. Проверь вкладку «Срочно».`
         : "Новое срочное событие по одному из твоих видов спорта.",
-      href: "/discover?view=hot"
+      href: `/discover?view=hot&highlight=${search.id}`
     }))
   ];
 
   return notifications.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()).slice(0, 30);
 }
 
+function buildNotificationSearchTime(search: {
+  searchType: "regular" | "hot";
+  hotStartsAt?: Date | null;
+  preferredDays?: unknown;
+  preferredTimeRanges?: unknown;
+}) {
+  if (search.searchType === "hot" && search.hotStartsAt) {
+    return search.hotStartsAt.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+
+  const days = Array.isArray(search.preferredDays) ? search.preferredDays.filter((item): item is string => typeof item === "string") : [];
+  const ranges = Array.isArray(search.preferredTimeRanges)
+    ? search.preferredTimeRanges.filter((item): item is string => typeof item === "string")
+    : [];
+
+  const dayLabel = days
+    .slice(0, 2)
+    .map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS] ?? day)
+    .join(", ");
+  const rangeLabel = ranges
+    .slice(0, 2)
+    .map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS] ?? range)
+    .join(", ");
+
+  return [dayLabel, rangeLabel].filter(Boolean).join(" · ") || "время уточняется";
+}
+
 export async function getUpcomingGamesForUser(userId: string) {
-  return prisma.gameRequest.findMany({
+  const pairIds = await prisma.regularPair.findMany({
     where: {
-      status: "accepted",
-      proposedDatetime: {
-        gte: new Date()
-      },
-      OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+      status: "active",
+      OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
     },
-    include: {
-      proposedCourt: true,
-      createdByUser: true,
-      matchedUser: true,
-      match: true
-    },
-    orderBy: {
-      proposedDatetime: "asc"
-    },
-    take: 5
+    select: {
+      id: true
+    }
   });
+
+  await Promise.all(pairIds.map((pair) => syncRegularPairOccurrences(prisma, pair.id)));
+
+  const [gameRequests, regularOccurrences] = await Promise.all([
+    prisma.gameRequest.findMany({
+      where: {
+        status: "accepted",
+        proposedDatetime: {
+          gte: new Date()
+        },
+        OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+      },
+      include: {
+        proposedCourt: true,
+        createdByUser: true,
+        matchedUser: true,
+        match: true,
+        sharedInvites: {
+          where: {
+            status: "accepted"
+          },
+          include: {
+            matchedUser: true
+          }
+        }
+      },
+      orderBy: {
+        proposedDatetime: "asc"
+      },
+      take: 5
+    }),
+    prisma.regularPairOccurrence.findMany({
+      where: {
+        status: "confirmed",
+        gameRequest: null,
+        scheduledAt: {
+          gte: new Date()
+        },
+        regularPair: {
+          status: "active",
+          OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+        }
+      },
+      include: {
+        proposedCourt: true,
+        regularPair: {
+          include: {
+            preferredCourt: true,
+            createdByUser: true,
+            partnerUser: true,
+            match: true
+          }
+        }
+      },
+      orderBy: {
+        scheduledAt: "asc"
+      },
+      take: 5
+    })
+  ]);
+
+  const normalizedOccurrences = regularOccurrences.map((occurrence) => ({
+    id: occurrence.id,
+    matchId: occurrence.regularPair.matchId,
+    status: "accepted" as const,
+    outcome: null,
+    outcomeUpdatedAt: null,
+    proposedDatetime: occurrence.scheduledAt,
+    durationMinutes: occurrence.durationMinutes ?? 90,
+    comment: occurrence.regularPair.comment ?? "Слот регулярной игры подтверждён обеими сторонами.",
+    sport: occurrence.sport,
+    format: occurrence.format,
+    createdByUserId: occurrence.regularPair.createdByUserId,
+    matchedUserId: occurrence.regularPair.partnerUserId,
+    proposedCourt: occurrence.proposedCourt ??
+      occurrence.regularPair.preferredCourt ?? {
+        name: "Клуб уточняется",
+        address: "Подберите удобный клуб в чате"
+      },
+    createdByUser: occurrence.regularPair.createdByUser,
+    matchedUser: occurrence.regularPair.partnerUser,
+    participants: [
+      serializeUserPreview(occurrence.regularPair.createdByUser),
+      serializeUserPreview(occurrence.regularPair.partnerUser)
+    ],
+    match: occurrence.regularPair.match,
+    regularPairId: occurrence.regularPairId,
+    sourceType: "regular_occurrence" as const
+  }));
+
+  const searchLobbyIdsByRequestId = await resolveUpcomingSearchLobbyIds(gameRequests);
+
+  const normalizedRequests = gameRequests.map((request) => ({
+    ...request,
+    searchLobbyId: searchLobbyIdsByRequestId.get(request.id) ?? null,
+    participants: [
+      serializeUserPreview(request.createdByUser),
+      serializeUserPreview(request.matchedUser),
+      ...request.sharedInvites.map((invite) => serializeUserPreview(invite.matchedUser))
+    ].filter((participant, index, array) => array.findIndex((candidate) => candidate.id === participant.id) === index)
+  }));
+
+  return [...normalizedRequests, ...normalizedOccurrences]
+    .sort((left, right) => left.proposedDatetime.getTime() - right.proposedDatetime.getTime())
+    .slice(0, 5);
+}
+
+async function resolveUpcomingSearchLobbyIds(
+  requests: Array<
+    Awaited<ReturnType<typeof prisma.gameRequest.findMany>>[number] & {
+      sharedInvites: Array<{ matchedUser: Parameters<typeof serializeUserPreview>[0] }>;
+    }
+  >
+) {
+  const result = new Map<string, string>();
+  const groupRequests = requests.filter((request) => request.sharedInvites.length > 0);
+
+  await Promise.all(
+    groupRequests.map(async (request) => {
+      const linkedSearch = await prisma.gameSearch.findFirst({
+        where: {
+          createdByUserId: request.createdByUserId,
+          scheduledAt: request.proposedDatetime,
+          scheduledCourtId: request.proposedCourtId,
+          sport: request.sport,
+          format: request.format,
+          playersNeeded: {
+            gt: 1
+          }
+        },
+        select: {
+          id: true
+        },
+        orderBy: {
+          updatedAt: "desc"
+        }
+      });
+
+      if (linkedSearch?.id) {
+        result.set(request.id, linkedSearch.id);
+      }
+    })
+  );
+
+  return result;
 }
 
 export async function getMatchesForUser(userId: string) {
@@ -664,6 +1025,8 @@ export async function getCourtsForUser(
     return [];
   }
 
+  const preferredDistricts = resolvePreferredDistricts(user.preferredDistricts, user.district);
+
   const courts = await prisma.court.findMany({
     where: {
       city: filters.city,
@@ -715,6 +1078,13 @@ export async function getCourtsForUser(
       )
     )
     .sort((first, second) => {
+      const firstDistrictRank = districtRank(preferredDistricts, first.district);
+      const secondDistrictRank = districtRank(preferredDistricts, second.district);
+
+      if (firstDistrictRank !== secondDistrictRank) {
+        return firstDistrictRank - secondDistrictRank;
+      }
+
       const firstDistance = first.distanceKm ?? Number.POSITIVE_INFINITY;
       const secondDistance = second.distanceKm ?? Number.POSITIVE_INFINITY;
 
@@ -724,6 +1094,27 @@ export async function getCourtsForUser(
 
       return (second.rating ?? 0) - (first.rating ?? 0);
     });
+}
+
+function resolvePreferredDistricts(preferredDistricts: unknown, fallbackDistrict?: string | null) {
+  const districts = Array.isArray(preferredDistricts)
+    ? preferredDistricts.filter((district): district is string => typeof district === "string" && district.trim().length > 0)
+    : [];
+
+  if (districts.length > 0) {
+    return Array.from(new Set(districts));
+  }
+
+  return fallbackDistrict ? [fallbackDistrict] : [];
+}
+
+function districtRank(preferredDistricts: string[], district?: string | null) {
+  if (!district) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const index = preferredDistricts.indexOf(district);
+  return index === -1 ? Number.POSITIVE_INFINITY : index;
 }
 
 function getDiscoverCandidatesFromUsers(
@@ -756,29 +1147,34 @@ function getDiscoverCandidatesFromUsers(
     return [];
   }
 
-  return scoreCandidates(
-    {
-      id: viewer.id,
-      name: viewer.name,
-      age: viewer.age,
-      gender: viewer.gender,
-      city: viewer.city,
-      bio: viewer.bio,
-      avatarUrl: viewer.avatarUrl,
-      homeLat: viewer.homeLat,
-      homeLng: viewer.homeLng,
-      tennisLevel: viewer.tennisLevel,
-      preferredSports: viewer.preferredSports,
-      sportLevels: viewer.sportLevels,
-      preferredPlayFormat: viewer.preferredPlayFormat,
-      preferredSurface: viewer.preferredSurface,
-      availableDays: viewer.availableDays,
-      availableTimeRanges: viewer.availableTimeRanges,
-      availableTimeSlots: viewer.availableTimeSlots,
-      searchRadiusKm: viewer.searchRadiusKm,
-      isLookingForGame: viewer.isLookingForGame
-    },
-    users as Array<any>,
-    filters
-  );
+  const viewerProfile = {
+    id: viewer.id,
+    name: viewer.name,
+    age: viewer.age,
+    gender: viewer.gender,
+    city: viewer.city,
+    district: viewer.district,
+    preferredDistricts: viewer.preferredDistricts,
+    bio: viewer.bio,
+    avatarUrl: viewer.avatarUrl,
+    homeLat: viewer.homeLat,
+    homeLng: viewer.homeLng,
+    tennisLevel: viewer.tennisLevel,
+    preferredSports: viewer.preferredSports,
+    sportLevels: viewer.sportLevels,
+    preferredPlayFormat: viewer.preferredPlayFormat,
+    preferredSurface: viewer.preferredSurface,
+    availableDays: viewer.availableDays,
+    availableTimeRanges: viewer.availableTimeRanges,
+    availableTimeSlots: viewer.availableTimeSlots,
+    searchRadiusKm: viewer.searchRadiusKm,
+    isLookingForGame: viewer.isLookingForGame
+  } satisfies CandidateUser;
+
+  const scored = scoreCandidates(viewerProfile, users as Array<any>, filters);
+
+  return scored.map((candidate) => ({
+    ...candidate,
+    explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
+  }));
 }

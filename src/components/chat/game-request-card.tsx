@@ -6,12 +6,16 @@ import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import {
+  getGameRequestDetailsLabel,
+  getGameRequestHeading,
+  getGameRequestNextStep,
   getGameRequestTone,
   isPastGameRequest,
   needsGameRequestOutcome,
   translateGameRequestOutcome,
   translateGameRequestStatus
 } from "@/lib/game-requests";
+import { resolveScheduledGameStatus } from "@/lib/game-search";
 import { SportBadge } from "@/components/ui/sport-badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -19,6 +23,8 @@ import { Panel } from "@/components/ui/panel";
 type GameRequestCardProps = {
   gameRequest: {
     id: string;
+    sourceType?: "game_request" | "regular_occurrence";
+    regularPairId?: string | null;
     status: "pending" | "accepted" | "declined" | "canceled";
     outcome?: "played" | "not_played" | null;
     outcomeUpdatedAt?: string | null;
@@ -40,25 +46,53 @@ type GameRequestCardProps = {
 
 export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: GameRequestCardProps) {
   const router = useRouter();
+  const isRegularOccurrence = gameRequest.sourceType === "regular_occurrence";
+  const isCreator = gameRequest.createdByUserId === currentUserId;
   const isRecipient = gameRequest.matchedUserId === currentUserId;
   const isPending = gameRequest.status === "pending";
   const isAcceptedUpcoming = gameRequest.status === "accepted" && !isPastGameRequest(gameRequest.proposedDatetime);
   const tone = getGameRequestTone({
     status: gameRequest.status,
     proposedDatetime: gameRequest.proposedDatetime,
-    outcome: gameRequest.outcome
+    outcome: gameRequest.outcome,
+    isCreator
   });
   const outcomeLabel = translateGameRequestOutcome(gameRequest.outcome);
+  const scheduledStatusLabel =
+    gameRequest.status === "accepted"
+      ? resolveScheduledGameStatus(gameRequest.proposedDatetime, gameRequest.durationMinutes)
+      : null;
   const isAwaitingOutcome = needsGameRequestOutcome(
     gameRequest.status,
     gameRequest.proposedDatetime,
     gameRequest.outcome
   );
+  const heading = getGameRequestHeading({
+    status: gameRequest.status,
+    proposedDatetime: gameRequest.proposedDatetime,
+    isRegularOccurrence
+  });
+  const nextStep = getGameRequestNextStep({
+    status: gameRequest.status,
+    proposedDatetime: gameRequest.proposedDatetime,
+    outcome: gameRequest.outcome,
+    isCreator,
+    isRegularOccurrence
+  });
+  const detailsLabel = getGameRequestDetailsLabel({
+    status: gameRequest.status,
+    proposedDatetime: gameRequest.proposedDatetime,
+    isRegularOccurrence
+  });
 
   async function updateRequest(body: {
     status?: "accepted" | "declined" | "canceled";
     outcome?: "played" | "not_played" | null;
   }) {
+    if (isRegularOccurrence) {
+      return;
+    }
+
     await apiFetch(`/game-requests/${gameRequest.id}`, {
       method: "PATCH",
       body: JSON.stringify(body)
@@ -70,7 +104,7 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
     <Panel className={`space-y-3 ${tone.panelClassName}`}>
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Предложение игры</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">{heading}</div>
           <div className="mt-1 text-lg font-bold text-ink">{new Date(gameRequest.proposedDatetime).toLocaleString()}</div>
         </div>
         <span className={`rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${tone.badgeClassName}`}>
@@ -88,8 +122,11 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
             {gameRequest.durationMinutes} мин
           </span>
         ) : null}
+        {scheduledStatusLabel ? (
+          <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">{scheduledStatusLabel}</span>
+        ) : null}
         <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">
-          {translateGameRequestStatus(gameRequest.status)}
+          {translateGameRequestStatus(gameRequest.status, { isCreator })}
         </span>
         {outcomeLabel ? (
           <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-ink">{outcomeLabel}</span>
@@ -100,32 +137,32 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
           </span>
         ) : null}
       </div>
-      {isAwaitingOutcome ? (
+      {nextStep ? (
         <div className="rounded-2xl bg-white/85 px-4 py-3 text-sm text-ink/70">
-          Игра уже должна была пройти. Подтверди, удалось ли сыграть.
+          {nextStep}
         </div>
       ) : null}
-      {isPending && isRecipient ? (
+      {isPending && isRecipient && !isRegularOccurrence ? (
         <div className="grid grid-cols-2 gap-3">
           <Button fullWidth onClick={() => updateRequest({ status: "accepted" })}>
-            Принять
+            Подтвердить
           </Button>
           <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "declined" })}>
             Отклонить
           </Button>
         </div>
       ) : null}
-      {isPending && !isRecipient ? (
+      {isPending && isCreator && !isRegularOccurrence ? (
         <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
           Отменить предложение
         </Button>
       ) : null}
-      {isAcceptedUpcoming ? (
+      {isAcceptedUpcoming && !isRegularOccurrence ? (
         <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
           Отменить подтвержденную игру
         </Button>
       ) : null}
-      {isAwaitingOutcome ? (
+      {isAwaitingOutcome && !isRegularOccurrence ? (
         <div className="grid grid-cols-2 gap-3">
           <Button fullWidth onClick={() => updateRequest({ outcome: "played" })}>
             Да, сыграли
@@ -138,7 +175,7 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
       {detailsHref ? (
         <Link href={detailsHref} className="block">
           <div className="rounded-2xl bg-white/80 px-4 py-3 text-center text-sm font-semibold text-ink">
-            Открыть детали и чат
+            {detailsLabel}
           </div>
         </Link>
       ) : null}

@@ -33,18 +33,22 @@ export default async function InboxPage() {
         subtitle="На карточке видны последнее сообщение и текущий статус договоренности."
       />
       <div className="space-y-4">
-        <Panel className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Поиск игры</div>
-            <div className="mt-1 text-lg font-bold text-ink">Опубликуй свой поиск игры</div>
-            <div className="mt-1 text-sm text-ink/60">Выбери спорт, дни и интервал времени, чтобы появиться в списке активных игроков.</div>
+        <Panel className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Поиск игры</div>
+              <div className="mt-1 text-base font-bold text-ink">Создай свой поиск и дождись откликов</div>
+              <div className="mt-1 text-sm leading-6 text-ink/60">
+                Выбери спорт, дни и время. Активные поиски и отклики будут в одном месте.
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Link href="/play/searches" className="rounded-2xl bg-cream px-4 py-3 text-sm font-semibold text-ink">
-              Статус
+          <div className="grid grid-cols-2 gap-2">
+            <Link href="/play/searches" className="rounded-2xl bg-cream px-4 py-3 text-center text-sm font-semibold text-ink">
+              Мои поиски
             </Link>
-            <Link href="/play/searches/new" className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white">
-              Создать
+            <Link href="/play/searches/new" className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
+              Создать поиск
             </Link>
           </div>
         </Panel>
@@ -72,6 +76,7 @@ export default async function InboxPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Игрок</div>
                     <div className="mt-1 truncate text-xl font-bold text-ink">{otherUser.name}</div>
+                    <div className="mt-1 text-xs font-medium text-ink/55">{formatPresence(otherUser.lastActiveAt)}</div>
                     <div className="truncate text-sm text-ink/60">
                       {match.messages[0]?.text ?? "Сообщений пока нет. Предложи игру."}
                     </div>
@@ -97,4 +102,27 @@ export default async function InboxPage() {
       </div>
     </PageShell>
   );
+}
+
+function formatPresence(lastActiveAt?: Date | null) {
+  if (!lastActiveAt) {
+    return "Редко заходит";
+  }
+
+  const diffMinutes = Math.max(0, Math.round((Date.now() - lastActiveAt.getTime()) / 60000));
+
+  if (diffMinutes <= 5) {
+    return "Сейчас онлайн";
+  }
+
+  if (diffMinutes < 60) {
+    return `Был ${diffMinutes} мин назад`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `Был ${diffHours} ч назад`;
+  }
+
+  return `Был ${lastActiveAt.toLocaleDateString("ru-RU")}`;
 }

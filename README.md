@@ -60,7 +60,7 @@ npm run dev:local
 - загрузит сиды
 - запустит Next.js dev server
 
-Открой [http://localhost:3000](http://localhost:3000).
+Открой [http://localhost:3002](http://localhost:3002).
 
 ## Демо-сценарий
 
@@ -102,6 +102,13 @@ npm run dev:local
 - [sports-reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/sports-reference.csv)
 - [districts-reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/districts-reference.csv)
 - [metros-spb.reference.csv](/Users/matvey/Desktop/TennisSearch/docs/import/metros-spb.reference.csv)
+
+Для автозагрузки клубов при `npm run prisma:seed` можно:
+
+- либо положить Excel в [docs/import/clubs.xlsx](/Users/matvey/Desktop/TennisSearch/docs/import/clubs.xlsx)
+- либо указать `CLUBS_IMPORT_FILE` в `.env`
+
+Если файл лежит в `docs/import/clubs.xlsx`, локально и на Railway дополнительных действий не нужно: сид сам подхватит его.
 
 ## API
 

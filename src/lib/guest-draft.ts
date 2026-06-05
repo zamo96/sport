@@ -11,6 +11,7 @@ export type GuestOnboardingDraft = {
   gender: Gender | null;
   city: string;
   district: DistrictOption | null;
+  preferredDistricts: DistrictOption[];
   preferredSports: Sport[];
   sportLevels: Partial<Record<Sport, SportLevelValue>>;
   preferredPlayFormat: PlayFormat;
@@ -29,6 +30,7 @@ export function createDefaultGuestOnboardingDraft(): GuestOnboardingDraft {
     gender: null,
     city: DEFAULT_CITY,
     district: null,
+    preferredDistricts: [],
     preferredSports: [],
     sportLevels: {},
     preferredPlayFormat: PlayFormat.both,
@@ -61,7 +63,18 @@ export function loadGuestOnboardingDraft() {
   }
 
   try {
-    return JSON.parse(raw) as GuestOnboardingDraft;
+    const parsed = JSON.parse(raw) as Partial<GuestOnboardingDraft>;
+    const fallbackDistrict = parsed.district && typeof parsed.district === "string" ? parsed.district : null;
+
+    return {
+      ...createDefaultGuestOnboardingDraft(),
+      ...parsed,
+      preferredDistricts: Array.isArray(parsed.preferredDistricts)
+        ? parsed.preferredDistricts.filter((district): district is DistrictOption => typeof district === "string")
+        : fallbackDistrict
+          ? [fallbackDistrict]
+          : []
+    };
   } catch {
     return null;
   }

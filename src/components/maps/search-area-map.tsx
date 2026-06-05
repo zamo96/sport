@@ -8,17 +8,15 @@ import { YandexSearchAreaMap } from "@/components/maps/yandex-search-area-map";
 export function SearchAreaMap({
   centerLat,
   centerLng,
-  radiusKm,
   city,
-  district,
+  districts = [],
   isApproximate = false,
   className
 }: {
   centerLat?: number | null;
   centerLng?: number | null;
-  radiusKm: number;
   city: string;
-  district?: string | null;
+  districts?: string[];
   isApproximate?: boolean;
   className?: string;
 }) {
@@ -29,9 +27,8 @@ export function SearchAreaMap({
         <YandexSearchAreaMap
           centerLat={centerLat}
           centerLng={centerLng}
-          radiusKm={radiusKm}
           city={city}
-          district={district}
+          districts={districts}
           isApproximate={isApproximate}
           className={className}
         />
@@ -40,8 +37,8 @@ export function SearchAreaMap({
 
   return (
     <Panel className={cn("text-sm leading-6 text-ink/70", className)}>
-      Карта района отключена. Укажи `NEXT_PUBLIC_MAP_PROVIDER=yandex` и `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`,
-      чтобы видеть радиус поиска на карте.
+      Карта районов отключена. Укажи `NEXT_PUBLIC_MAP_PROVIDER=yandex` и `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`,
+      чтобы видеть удобные районы на карте.
     </Panel>
   );
 }

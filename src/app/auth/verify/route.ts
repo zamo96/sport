@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { createSession, verifyAuthCode } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
+import { prisma } from "@/lib/prisma";
 import { verifySchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
@@ -13,7 +14,13 @@ export async function POST(request: NextRequest) {
       return fail("Неверный или просроченный код", 401);
     }
 
-    await createSession(user.id);
+    const sessionToken = await createSession(user.id);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastActiveAt: new Date()
+      }
+    });
 
     return ok({
       ok: true,
@@ -21,7 +28,8 @@ export async function POST(request: NextRequest) {
         id: user.id,
         email: user.email,
         onboardingCompleted: user.onboardingCompleted
-      }
+      },
+      sessionToken
     });
   } catch (error) {
     return fail(getErrorMessage(error));

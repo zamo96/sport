@@ -32,6 +32,11 @@ export function SettingsForm({ user }: { user: User }) {
         gender: user.gender,
         city: DEFAULT_CITY,
         district: user.district ?? null,
+        preferredDistricts: Array.isArray((user as User & { preferredDistricts?: unknown }).preferredDistricts)
+          ? (user as User & { preferredDistricts?: string[] }).preferredDistricts
+          : user.district
+            ? [user.district]
+            : [],
         tennisLevel: user.tennisLevel,
         preferredSports,
         sportLevels,
@@ -39,7 +44,7 @@ export function SettingsForm({ user }: { user: User }) {
         preferredSurface: user.preferredSurface,
         bio: user.bio ?? "",
         avatarUrl: user.avatarUrl,
-        searchRadiusKm: user.searchRadiusKm,
+        searchRadiusKm: user.searchRadiusKm ?? 20,
         availableDays: Array.isArray(user.availableDays) && user.availableDays.length > 0 ? user.availableDays : [DAY_OPTIONS[0]],
         availableTimeRanges:
           Array.isArray(user.availableTimeRanges) && user.availableTimeRanges.length > 0

@@ -405,7 +405,9 @@ export function CourtsBrowser({
               ) : null}
             </div>
 
-            <Link href={`/play/proposals/new?courtId=${court.id}`}>
+            <Link
+              href={`/play/proposals/new?courtId=${court.id}${selectedSport ? `&sport=${selectedSport}` : ""}`}
+            >
               <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
                 Выбрать этот центр
               </div>
