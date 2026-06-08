@@ -385,6 +385,47 @@ enum TimeRange: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+func localizedTimePreferenceTitle(_ value: String) -> String {
+    if let paired = localizedPairedTimePreference(value) {
+        return paired
+    }
+
+    if let range = TimeRange(rawValue: value) {
+        return range.title
+    }
+
+    return value
+}
+
+func localizedTimePreferenceDetailTitle(_ value: String) -> String {
+    if let paired = localizedPairedTimePreference(value) {
+        return paired
+    }
+
+    if let range = TimeRange(rawValue: value) {
+        switch range {
+        case .morning:
+            return "Утро"
+        case .day:
+            return "День"
+        case .evening:
+            return "Вечер (после 18:00)"
+        }
+    }
+
+    return value
+}
+
+private func localizedPairedTimePreference(_ value: String) -> String? {
+    let parts = value.split(separator: "@", maxSplits: 1).map(String.init)
+    guard parts.count == 2,
+          let day = DayOfWeek(rawValue: parts[0]) else {
+        return nil
+    }
+
+    return "\(day.shortTitle) \(parts[1])"
+}
+
 enum DayOfWeek: String, Codable, CaseIterable, Identifiable {
     case monday
     case tuesday
@@ -1353,6 +1394,119 @@ struct GameSearch: Codable, Identifiable {
     }
 }
 
+extension SearchResponse {
+    func applying(responseUpdate result: SearchResponseUpdateResult) -> SearchResponse {
+        guard id == result.response.id else {
+            return self
+        }
+
+        return SearchResponse(
+            id: result.response.id,
+            status: result.response.status,
+            responderUser: result.response.responderUser,
+            matchId: result.response.matchId ?? result.matchId ?? matchId
+        )
+    }
+}
+
+extension Array where Element == GameSearch {
+    func applying(responseUpdate result: SearchResponseUpdateResult) -> [GameSearch] {
+        map { $0.applying(responseUpdate: result) }
+    }
+}
+
+extension GameSearch {
+    func applying(responseUpdate result: SearchResponseUpdateResult) -> GameSearch {
+        guard responses.contains(where: { $0.id == result.response.id }) || result.gameSearch?.id == id else {
+            return self
+        }
+
+        let nextResponses = responses.map { $0.applying(responseUpdate: result) }
+        let nextStatus: String
+        let nextIsActive: Bool?
+        if let searchUpdate = result.gameSearch, searchUpdate.id == id {
+            nextStatus = searchUpdate.status
+            nextIsActive = searchUpdate.isActive ?? isActive
+        } else {
+            nextStatus = status
+            nextIsActive = isActive
+        }
+
+        return GameSearch(
+            id: id,
+            inviteSlug: inviteSlug,
+            status: nextStatus,
+            searchType: searchType,
+            hotWindow: hotWindow,
+            hotStartsAt: hotStartsAt,
+            durationMinutes: durationMinutes,
+            hasCourtBooked: hasCourtBooked,
+            sport: sport,
+            selfLevel: selfLevel,
+            selfLevelUnknown: selfLevelUnknown,
+            desiredLevelMin: desiredLevelMin,
+            desiredLevelMax: desiredLevelMax,
+            format: format,
+            playersNeeded: playersNeeded,
+            preferredDays: preferredDays,
+            preferredTimeRanges: preferredTimeRanges,
+            comment: comment,
+            isActive: nextIsActive,
+            isExpired: isExpired,
+            preferredCourt: preferredCourt,
+            preferredDistricts: preferredDistricts,
+            activeSlotProposal: activeSlotProposal,
+            regularPair: regularPair,
+            responses: nextResponses
+        )
+    }
+}
+
+extension SearchLobbyGameSearch {
+    func applying(responseUpdate result: SearchResponseUpdateResult) -> SearchLobbyGameSearch {
+        guard responses.contains(where: { $0.id == result.response.id }) || result.gameSearch?.id == id else {
+            return self
+        }
+
+        let nextResponses = responses.map { $0.applying(responseUpdate: result) }
+        let nextStatus: String
+        let nextIsActive: Bool
+        if let searchUpdate = result.gameSearch, searchUpdate.id == id {
+            nextStatus = searchUpdate.status
+            nextIsActive = searchUpdate.isActive ?? isActive
+        } else {
+            nextStatus = status
+            nextIsActive = isActive
+        }
+
+        return SearchLobbyGameSearch(
+            id: id,
+            createdByUserId: createdByUserId,
+            searchType: searchType,
+            status: nextStatus,
+            isActive: nextIsActive,
+            sport: sport,
+            format: format,
+            preferredDistricts: preferredDistricts,
+            preferredDays: preferredDays,
+            preferredTimeRanges: preferredTimeRanges,
+            hotStartsAt: hotStartsAt,
+            durationMinutes: durationMinutes,
+            playersNeeded: playersNeeded,
+            desiredLevelMin: desiredLevelMin,
+            desiredLevelMax: desiredLevelMax,
+            comment: comment,
+            scheduledAt: scheduledAt,
+            scheduledDurationMinutes: scheduledDurationMinutes,
+            preferredCourt: preferredCourt,
+            scheduledCourt: scheduledCourt,
+            activeSlotProposal: activeSlotProposal,
+            responses: nextResponses,
+            messages: messages
+        )
+    }
+}
+
 struct Court: Codable, Identifiable {
     let id: String
     let name: String
@@ -1591,7 +1745,7 @@ extension GameSearch {
         }
 
         let days = preferredDays.prefix(2).map { DayOfWeek(rawValue: $0)?.shortTitle ?? $0.capitalized }
-        let times = preferredTimeRanges.prefix(2).map { TimeRange(rawValue: $0)?.title ?? $0.capitalized }
+        let times = preferredTimeRanges.prefix(2).map(localizedTimePreferenceTitle)
         return (days + times).joined(separator: " • ")
     }
 
@@ -1770,7 +1924,7 @@ extension MatchGameRequest {
                 return "Подбор игроков"
             }
             if matchedUserId != nil {
-                return "Ждём подтверждение"
+                return "Игра назначается"
             }
             return "Поиск"
         case "accepted", "approved":
@@ -1810,7 +1964,7 @@ extension MatchGameRequest {
         switch rawStatus {
         case "pending", "proposed":
             if matchedUserId != nil {
-                return "Ждём подтверждение второго игрока, чтобы игра перешла в подтвержденные."
+                return "Игра создана. Открой чат и уточни детали, если что-то нужно поменять."
             }
             return "Нужно собрать состав и перевести поиск в конкретную игру."
         case "accepted", "approved":
@@ -1828,7 +1982,7 @@ extension MatchGameRequest {
             return Color(red: 0.34, green: 0.47, blue: 0.68)
         case "В процессе набора", "В процессе набора людей", "Подбор игроков":
             return Color(red: 0.72, green: 0.48, blue: 0.18)
-        case "В ожидании принятия", "Ждём подтверждение":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается":
             return Color(red: 0.49, green: 0.45, blue: 0.78)
         case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
             return Color(red: 0.16, green: 0.58, blue: 0.33)
@@ -1855,7 +2009,7 @@ extension MatchGameRequest {
             return Color(red: 0.88, green: 0.92, blue: 0.98)
         case "В процессе набора", "В процессе набора людей", "Подбор игроков":
             return Color(red: 0.98, green: 0.93, blue: 0.84)
-        case "В ожидании принятия", "Ждём подтверждение":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается":
             return Color(red: 0.91, green: 0.90, blue: 0.99)
         case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
             return Color(red: 0.86, green: 0.95, blue: 0.89)

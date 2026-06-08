@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { LiveRefresh } from "@/components/ui/live-refresh";
 import { SectionTitle } from "@/components/ui/section-title";
 import { Panel } from "@/components/ui/panel";
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { translateGameSearchResponseStatus } from "@/lib/status-map";
 import { getGameSearchesForUser, getMyGameSearchResponses } from "@/server/app-data";
 
@@ -137,7 +137,7 @@ export default async function GameSearchesPage() {
                 </div>
                 <div className="text-sm text-ink/68">
                   {response.gameSearch.preferredCourt?.name ?? "Клуб не указан"} ·{" "}
-                  {[days.map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]).join(", "), ranges.map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")]
+                  {[days.map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]).join(", "), ranges.map(getTimePreferenceLabel).join(", ")]
                     .filter(Boolean)
                     .join(" · ")}
                 </div>

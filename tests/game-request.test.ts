@@ -43,7 +43,7 @@ describe("game request helpers", () => {
         proposedDatetime: "2026-04-20T19:00:00.000Z",
         isCreator: true
       })
-    ).toContain("Ждём подтверждение");
+    ).toContain("Игра создана");
 
     expect(
       getGameRequestNextStep({

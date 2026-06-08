@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { GameRequestStatus } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
@@ -103,14 +104,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             levelRangeMax: sourceRequest.levelRangeMax ?? null,
             sport: sourceRequest.sport,
             format: sourceRequest.format,
-            comment: sourceRequest.comment
+            comment: sourceRequest.comment,
+            status: GameRequestStatus.accepted
           },
           include: {
             proposedCourt: true
           }
         });
 
-        const summaryText = `Предложение игры: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+        const summaryText = `Игра назначена: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
           created.comment?.trim() ? created.comment : "Открой детали, чтобы обсудить игру отдельно."
         }`;
 
@@ -128,7 +130,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             matchId: targetMatch.id,
             gameRequestId: created.id,
             senderUserId: user.id,
-            text: "Отправил(а) уже созданную игру и жду подтверждения приглашения."
+            text: "Добавил(а) тебя в уже созданную игру. Здесь можно обсудить детали."
           }
         });
 

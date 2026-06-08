@@ -5,15 +5,25 @@ import UIKit
 struct CourtsView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.openURL) private var openURL
+    private let initialSport: Sport?
     @State private var courts: [Court] = []
     @State private var query = ""
     @State private var selectedCourtId: String?
     @State private var selectedSport: Sport?
     @State private var isLoadingCourts = false
     @State private var selectedCourtForDetail: Court?
+    @State private var selectedCourtForSearch: Court?
+    @State private var focusedDistrictId: String?
+    @State private var mapFocusRevision = 0
+    @State private var isMapScrolledAway = false
     @State private var showFavoritesOnly = false
     @AppStorage("savedCourtIDs") private var savedCourtIDsRaw = ""
     @FocusState private var isSearchFocused: Bool
+
+    init(initialSport: Sport? = nil) {
+        self.initialSport = initialSport
+        _selectedSport = State(initialValue: initialSport)
+    }
 
     private var sortedCourts: [Court] {
         let preferredDistricts = preferredDistrictIDs
@@ -87,15 +97,7 @@ struct CourtsView: View {
         }
 
         return sportFilteredCourts.filter { court in
-            [
-                court.name,
-                court.address,
-                court.nearestMetroName,
-                localizedDistrictName(court.district)
-            ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-            .contains(normalizedQuery)
+            searchableText(for: court).contains(normalizedQuery)
         }
     }
 
@@ -125,7 +127,11 @@ struct CourtsView: View {
            let selectedCourt = filteredCourts.first(where: { $0.id == selectedCourtId }) {
             return selectedCourt
         }
-        return suggestedCourts.first ?? filteredCourts.first
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return suggestedCourts.first
+        }
+
+        return nil
     }
 
     private var mapPreviewCourts: [Court] {
@@ -149,9 +155,15 @@ struct CourtsView: View {
         Set(savedCourtIDsRaw.split(separator: ",").map(String.init))
     }
 
+    private var preferredDistrictId: String? {
+        preferredDistrictIDs.first { districtAreasByID[$0.lowercased()] != nil }
+    }
+
     private var darkStroke: Color {
         Color.white.opacity(0.1)
     }
+
+    private let centersMapScrollID = "centers-map-card"
 
     var body: some View {
         ZStack {
@@ -170,38 +182,63 @@ struct CourtsView: View {
                 TennisBallsLoader(title: "Загружаем центры")
             } else {
                 ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 18) {
-                            headerSection
-                            searchField
-                            suggestionsRail { court in
-                                selectedCourtId = court.id
-                                isSearchFocused = false
-                                AppHaptics.selection()
-                                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                    proxy.scrollTo("centers-map", anchor: .center)
+                    ZStack(alignment: .bottomTrailing) {
+                        ScrollView(showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 18) {
+                                headerSection
+                                searchField {
+                                    focusPreferredDistrict(on: proxy)
+                                }
+                                suggestionsRail { court in
+                                    focusCourtOnMap(court, proxy: proxy)
+                                }
+                                sportFilterRail
+                                mapSummaryCard
+                                    .id(centersMapScrollID)
+                                    .background(
+                                        GeometryReader { geometry in
+                                            Color.clear.preference(
+                                                key: CentersMapOffsetPreferenceKey.self,
+                                                value: geometry.frame(in: .named("centers-scroll")).maxY
+                                            )
+                                        }
+                                    )
+                                courtsListSection { court in
+                                    focusCourtOnMap(court, proxy: proxy)
                                 }
                             }
-                            sportFilterRail
-                            mapSummaryCard
-                                .id("centers-map")
-                            courtsListSection { court in
-                                selectedCourtId = court.id
-                                isSearchFocused = false
-                                AppHaptics.selection()
-                                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                                    proxy.scrollTo("centers-map", anchor: .center)
-                                }
-                            }
+                            .padding(.horizontal, 18)
+                            .padding(.top, 16)
+                            .padding(.bottom, 116)
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 16)
-                        .padding(.bottom, 116)
+                        .coordinateSpace(name: "centers-scroll")
+                        .onPreferenceChange(CentersMapOffsetPreferenceKey.self) { maxY in
+                            isMapScrolledAway = maxY < 72
+                        }
+                        .refreshable {
+                            await loadCourts(forceRefresh: true)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+
+                        if isMapScrolledAway {
+                            Button {
+                                AppHaptics.selection()
+                                scrollToCentersMap(on: proxy)
+                            } label: {
+                                Label("К карте", systemImage: "map.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .padding(.horizontal, 16)
+                                    .frame(height: 46)
+                                    .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255), in: Capsule())
+                                    .shadow(color: .black.opacity(0.26), radius: 16, x: 0, y: 8)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 18)
+                            .padding(.bottom, 22)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
-                    .refreshable {
-                        await loadCourts(forceRefresh: true)
-                    }
-                    .scrollDismissesKeyboard(.interactively)
                 }
             }
         }
@@ -213,6 +250,7 @@ struct CourtsView: View {
         }
         .onAppear {
             isSearchFocused = false
+            selectedSport = initialSport
         }
         .sheet(item: $selectedCourtForDetail) { court in
             CourtDetailSheet(
@@ -220,10 +258,22 @@ struct CourtsView: View {
                 isSaved: savedCourtIDs.contains(court.id),
                 onToggleSave: {
                     toggleSavedCourt(court)
+                },
+                onProposeGame: {
+                    presentSearchComposer(for: court)
                 }
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedCourtForSearch) { court in
+            SearchComposerView(initialCourt: court, initialSport: selectedSport ?? court.primarySport) { search in
+                selectedCourtForSearch = nil
+                appModel.navigate(to: .discover(search.searchType == .hot ? .hot : .seeking, highlightedSearchID: search.id))
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
         }
     }
 
@@ -240,36 +290,17 @@ struct CourtsView: View {
             }
 
             Spacer()
-
-            Button {
-                AppHaptics.selection()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "slider.horizontal.3")
-                    Text("Фильтры")
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .frame(height: 48)
-                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(darkStroke, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
         }
     }
 
-    private var searchField: some View {
+    private func searchField(onLocate: @escaping () -> Void) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.44))
             ZStack(alignment: .leading) {
                 if query.isEmpty {
-                    Text("Клуб, метро или район")
+                    Text("Клуб, метро, район или спорт")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.32))
                 }
@@ -291,11 +322,17 @@ struct CourtsView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
-                    .frame(width: 34, height: 34)
-                    .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.13), in: Circle())
+                Button {
+                    onLocate()
+                } label: {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                        .frame(width: 34, height: 34)
+                        .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.13), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Показать мой район на карте")
             }
         }
         .padding(.horizontal, 16)
@@ -305,6 +342,69 @@ struct CourtsView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(darkStroke, lineWidth: 1)
         )
+    }
+
+    private func focusPreferredDistrict(on proxy: ScrollViewProxy) {
+        isSearchFocused = false
+
+        if let preferredDistrictId {
+            selectedCourtId = nil
+            focusedDistrictId = preferredDistrictId
+            mapFocusRevision += 1
+        }
+
+        AppHaptics.selection()
+        scrollToCentersMap(on: proxy)
+    }
+
+    private func focusCourtOnMap(_ court: Court, proxy: ScrollViewProxy) {
+        selectedCourtId = court.id
+        focusedDistrictId = nil
+        mapFocusRevision += 1
+        isSearchFocused = false
+        AppHaptics.selection()
+        scrollToCentersMap(on: proxy)
+    }
+
+    private func scrollToCentersMap(on proxy: ScrollViewProxy) {
+        let delays: [Double] = [0, 0.08, 0.22]
+
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    proxy.scrollTo(centersMapScrollID, anchor: .top)
+                }
+            }
+        }
+    }
+
+    private func openCourtDetail(_ court: Court) {
+        selectedCourtId = court.id
+        focusedDistrictId = nil
+        mapFocusRevision += 1
+        isSearchFocused = false
+        selectedCourtForDetail = court
+        AppHaptics.impact(.light)
+    }
+
+    private func presentSearchComposer(for court: Court) {
+        selectedCourtForDetail = nil
+        AppHaptics.impact(.medium)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            selectedCourtForSearch = court
+        }
+    }
+
+    private func searchableText(for court: Court) -> String {
+        [
+            court.name,
+            court.address,
+            court.nearestMetroName,
+            localizedDistrictName(court.district),
+            court.supportedSports?.map { [$0.title, $0.rawValue] }.flatMap { $0 }.joined(separator: " ")
+        ]
+        .compactMap { $0?.lowercased() }
+        .joined(separator: " ")
     }
 
     @ViewBuilder
@@ -413,8 +513,12 @@ struct CourtsView: View {
                 SearchClubPickerMapView(
                     courts: mapPreviewCourts,
                     focusedCourt: focusedCourt,
+                    focusedDistrictID: focusedDistrictId,
+                    focusRevision: mapFocusRevision,
                     onSelectCourt: { courtId in
                         selectedCourtId = courtId
+                        focusedDistrictId = nil
+                        mapFocusRevision += 1
                         AppHaptics.selection()
                     }
                 )
@@ -436,7 +540,7 @@ struct CourtsView: View {
                     Text("\(filteredCourts.count) центров")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(focusedCourt?.name ?? "Санкт-Петербург")
+                    Text(mapFocusSubtitle)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(1)
@@ -444,33 +548,45 @@ struct CourtsView: View {
                 .padding(20)
                 .allowsHitTesting(false)
 
-                Button {
-                    if let focusedCourt {
+                if let focusedCourt {
+                    Button {
                         selectedCourtForDetail = focusedCourt
                         AppHaptics.impact(.light)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Открыть карточку")
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                        .padding(.horizontal, 16)
+                        .frame(height: 46)
+                        .background(Color.black.opacity(0.48), in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
                     }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("Открыть")
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
-                    .padding(.horizontal, 16)
-                    .frame(height: 46)
-                    .background(Color.black.opacity(0.48), in: Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+                    .buttonStyle(.plain)
+                    .padding(18)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
-                .buttonStyle(.plain)
-                .padding(18)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .disabled(focusedCourt == nil)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(darkStroke, lineWidth: 1)
             )
         }
+    }
+
+    private var mapFocusSubtitle: String {
+        if let focusedCourt {
+            return focusedCourt.name
+        }
+
+        if let focusedDistrictId,
+           let area = districtAreasByID[focusedDistrictId.lowercased()] {
+            return area.label
+        }
+
+        return "Санкт-Петербург"
     }
 
     private func courtsListSection(onFocusMap: @escaping (Court) -> Void) -> some View {
@@ -576,11 +692,9 @@ struct CourtsView: View {
 
                 HStack(spacing: 8) {
                     Button {
-                        selectedCourtId = court.id
-                        selectedCourtForDetail = court
-                        AppHaptics.impact(.light)
+                        onFocusMap(court)
                     } label: {
-                        Text("Подробнее")
+                        Label("На карте", systemImage: "map.fill")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
                             .padding(.horizontal, 12)
@@ -589,11 +703,6 @@ struct CourtsView: View {
                             .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-
-                    Text("Тап по карточке покажет на карте")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.38))
-                        .lineLimit(1)
                 }
             }
         }
@@ -610,6 +719,13 @@ struct CourtsView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(selectedCourtId == court.id ? Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.48) : darkStroke, lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .gesture(
+            TapGesture().onEnded {
+                openCourtDetail(court)
+            },
+            including: .gesture
+        )
         .overlay(alignment: .topLeading) {
             Button {
                 toggleSavedCourt(court)
@@ -623,10 +739,6 @@ struct CourtsView: View {
             }
             .buttonStyle(.plain)
             .padding(20)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture {
-            onFocusMap(court)
         }
     }
 
@@ -706,6 +818,14 @@ struct CourtsView: View {
 @MainActor
 private enum CourtsViewCache {
     static var courts: [Court] = []
+}
+
+private struct CentersMapOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }
 
 private struct TennisBallsLoader: View {
@@ -814,6 +934,7 @@ private struct CourtDetailSheet: View {
     let court: Court
     let isSaved: Bool
     let onToggleSave: () -> Void
+    let onProposeGame: () -> Void
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -1014,7 +1135,7 @@ private struct CourtDetailSheet: View {
 
     private var proposeButton: some View {
         Button {
-            AppHaptics.impact(.medium)
+            onProposeGame()
         } label: {
             VStack(spacing: 4) {
                 Text("Предложить игру здесь")
@@ -1503,7 +1624,7 @@ private func sportUIColor(for sport: Sport?) -> UIColor {
     }
 }
 
-private extension Court {
+extension Court {
     var primarySport: Sport? {
         supportedSports?.first
     }

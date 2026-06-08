@@ -51,6 +51,7 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
   const isRecipient = gameRequest.matchedUserId === currentUserId;
   const isPending = gameRequest.status === "pending";
   const isAcceptedUpcoming = gameRequest.status === "accepted" && !isPastGameRequest(gameRequest.proposedDatetime);
+  const canEdit = !isRegularOccurrence && (isCreator || isRecipient) && (isPending || isAcceptedUpcoming);
   const tone = getGameRequestTone({
     status: gameRequest.status,
     proposedDatetime: gameRequest.proposedDatetime,
@@ -142,16 +143,6 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
           {nextStep}
         </div>
       ) : null}
-      {isPending && isRecipient && !isRegularOccurrence ? (
-        <div className="grid grid-cols-2 gap-3">
-          <Button fullWidth onClick={() => updateRequest({ status: "accepted" })}>
-            Подтвердить
-          </Button>
-          <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "declined" })}>
-            Отклонить
-          </Button>
-        </div>
-      ) : null}
       {isPending && isCreator && !isRegularOccurrence ? (
         <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
           Отменить предложение
@@ -172,12 +163,23 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
           </Button>
         </div>
       ) : null}
-      {detailsHref ? (
-        <Link href={detailsHref} className="block">
-          <div className="rounded-2xl bg-white/80 px-4 py-3 text-center text-sm font-semibold text-ink">
-            {detailsLabel}
-          </div>
-        </Link>
+      {canEdit || detailsHref ? (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {canEdit ? (
+            <Link href={`/play/proposals/new?gameRequestId=${gameRequest.id}`} className="block">
+              <div className="rounded-2xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white">
+                Изменить игру
+              </div>
+            </Link>
+          ) : null}
+          {detailsHref ? (
+            <Link href={detailsHref} className="block">
+              <div className="rounded-2xl bg-white/80 px-4 py-3 text-center text-sm font-semibold text-ink">
+                {detailsLabel}
+              </div>
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </Panel>
   );

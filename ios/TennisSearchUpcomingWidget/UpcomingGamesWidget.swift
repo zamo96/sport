@@ -18,6 +18,7 @@ struct UpcomingGamesWidgetGame: Codable, Identifiable {
     let dateText: String
     let timeText: String
     let courtName: String
+    let courtAddress: String?
     let statusLabel: String
 }
 
@@ -40,6 +41,7 @@ struct UpcomingGamesProvider: TimelineProvider {
                         dateText: "Сегодня",
                         timeText: "19:30",
                         courtName: "Крестовский корт",
+                        courtAddress: "Крестовский проспект, 21",
                         statusLabel: "Игра подтверждена"
                     )
                 ]
@@ -151,6 +153,7 @@ private struct WidgetGameRequest: Decodable {
 
 private struct WidgetCourt: Decodable {
     let name: String?
+    let address: String?
 }
 
 private struct WidgetUser: Decodable, Identifiable {
@@ -176,6 +179,7 @@ private extension Array where Element == WidgetGameRequest {
                     dateText: request.widgetDateText,
                     timeText: request.widgetTimeText,
                     courtName: request.proposedCourt?.name ?? request.venuePendingTitle,
+                    courtAddress: request.proposedCourt?.address,
                     statusLabel: request.statusLabel
                 )
             }
@@ -410,6 +414,13 @@ struct UpcomingGamesWidgetEntryView: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(family == .systemSmall ? 1 : 2)
+
+                if let courtAddress = game.courtAddress?.trimmingCharacters(in: .whitespacesAndNewlines), !courtAddress.isEmpty {
+                    Text(courtAddress)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .lineLimit(1)
+                }
             }
 
             Text(game.statusLabel)

@@ -416,7 +416,7 @@ export function GameSearchForm({
             onClick={() => setSearchType("regular")}
             className={`rounded-[24px] border px-4 py-4 text-left ${searchType === "regular" ? "border-ink bg-ink text-white" : "border-white/60 bg-cream text-ink"}`}
           >
-            <div className="text-sm font-bold">Обычный поиск</div>
+            <div className="text-sm font-bold">Регулярный поиск</div>
             <div className={`mt-1 text-xs leading-5 ${searchType === "regular" ? "text-white/80" : "text-ink/60"}`}>
               Несколько дней и спокойный поиск партнера.
             </div>

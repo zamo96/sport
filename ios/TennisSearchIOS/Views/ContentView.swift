@@ -133,6 +133,7 @@ private struct MainTabView: View {
     @State private var discoverHighlightedUserID: String?
     @State private var discoverHighlightedSearchID: String?
     @State private var discoverHighlightedGameRequestID: String?
+    @State private var courtsInitialSport: Sport?
     @State private var discoverViewIdentity = UUID()
     @State private var isSlidingTabs = false
     @State private var tabDragLocationX: CGFloat?
@@ -217,7 +218,7 @@ private struct MainTabView: View {
             }
         case .courts:
             tabNavigation(id: courtsStackID) {
-                CourtsView()
+                CourtsView(initialSport: courtsInitialSport)
             }
         case .profile:
             tabNavigation(id: profileStackID) {
@@ -419,6 +420,10 @@ private struct MainTabView: View {
         case .searches:
             searchesStackID = UUID()
             selectedTab = .searches
+        case .courts(let sport):
+            courtsInitialSport = sport
+            courtsStackID = UUID()
+            selectedTab = .courts
         case .chat(let matchId):
             appModel.pendingChatMatchID = matchId
             matchesStackID = UUID()
@@ -446,6 +451,7 @@ private struct MainTabView: View {
         case .searches:
             searchesStackID = UUID()
         case .courts:
+            courtsInitialSport = nil
             courtsStackID = UUID()
         case .profile:
             profileStackID = UUID()

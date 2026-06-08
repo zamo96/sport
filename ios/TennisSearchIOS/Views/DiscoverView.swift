@@ -17,7 +17,6 @@ struct DiscoverView: View {
     @State private var selectedNextProposalMatch: MatchSummary?
     @State private var isUpcomingChatPresented = false
     @State private var mySearches: [GameSearch] = []
-    @State private var mySearchesCount = 0
     @State private var selectedTab: DiscoverTab = .swipe
     @State private var isLoading = false
     @State private var matchMessage: String?
@@ -415,10 +414,13 @@ struct DiscoverView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 12) {
                     if appModel.isAuthenticated {
-                        NavigationLink {
-                            SearchesView(openedFromDiscover: true)
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                selectedTab = .hot
+                            }
+                            markHotEventsSeenIfNeeded()
                         } label: {
-                            MyEventsToolbarButton(count: mySearchesCount)
+                            UrgentGamesToolbarButton(count: notificationManager.summary.hotBadgeCount)
                         }
                         .buttonStyle(.plain)
 
@@ -446,7 +448,7 @@ struct DiscoverView: View {
                         Button {
                             appModel.presentAuth(step: .email)
                         } label: {
-                            MyEventsToolbarButton(count: 0)
+                            UrgentGamesToolbarButton(count: 0)
                         }
                         .buttonStyle(.plain)
 
@@ -1435,7 +1437,6 @@ struct DiscoverView: View {
                 upcomingMatches = matches
                 upcomingGameRequests = reorderedGameRequests(gameRequests)
                 mySearches = searches
-                mySearchesCount = searches.filter(isSearchCountedInMyEvents).count
                 appModel.hasActiveUpcomingGameRequests = !activeUpcomingGameRequests.isEmpty
                 UpcomingGamesWidgetStore.save(
                     gameRequests: activeUpcomingGameRequests,
@@ -1463,7 +1464,6 @@ struct DiscoverView: View {
                 mySearches = []
                 let fetchedUsers = try await appModel.repository.fetchGuestDiscoverUsers(draft: appModel.guestDraft, view: selectedTab)
                 users = reorderedUsers(fetchedUsers)
-                mySearchesCount = 0
             }
         } catch {
             guard !error.isCancellationLike else {
@@ -2547,16 +2547,16 @@ private struct RefreshProgressObserver: UIViewRepresentable {
 }
 
 
-private struct MyEventsToolbarButton: View {
+private struct UrgentGamesToolbarButton: View {
     let count: Int
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "list.bullet.rectangle")
+            Image(systemName: "flame.fill")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(AppTheme.court)
 
-            Text("Мои")
+            Text("Срочно")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
@@ -3552,9 +3552,11 @@ private struct UpcomingGameDetailsSheet: View {
         defer { updatingResponseID = nil }
 
         do {
-            _ = try await appModel.repository.updateSearchResponseStatus(responseId: response.id, status: status)
+            let result = try await appModel.repository.updateSearchResponseStatus(responseId: response.id, status: status)
+            lobby = lobby?.applying(responseUpdate: result)
             AppHaptics.notification(status == "approved" ? .success : .warning)
             await loadSearchLobbyIfNeeded()
+            lobby = lobby?.applying(responseUpdate: result)
             await onParticipantsChanged()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {

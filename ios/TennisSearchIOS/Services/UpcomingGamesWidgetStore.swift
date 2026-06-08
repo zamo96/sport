@@ -20,6 +20,7 @@ enum UpcomingGamesWidgetStore {
                     dateText: widgetDateText(for: request.proposedDate),
                     timeText: widgetTimeText(for: request.proposedDate),
                     courtName: request.proposedCourt?.name ?? request.sport.venuePendingTitle,
+                    courtAddress: request.proposedCourt?.address,
                     statusLabel: request.statusLabel
                 )
             }
@@ -88,5 +89,6 @@ private struct UpcomingGamesWidgetGame: Codable {
     let dateText: String
     let timeText: String
     let courtName: String
+    let courtAddress: String?
     let statusLabel: String
 }

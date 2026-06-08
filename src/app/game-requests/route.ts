@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { GameRequestStatus } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
@@ -38,14 +39,15 @@ export async function POST(request: NextRequest) {
           levelRangeMax: body.levelRangeMax ?? null,
           sport: body.sport,
           format: body.format,
-          comment: body.comment
+          comment: body.comment,
+          status: GameRequestStatus.accepted
         },
         include: {
           proposedCourt: true
         }
       });
 
-      const summaryText = `Предложение игры: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+      const summaryText = `Игра назначена: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
         created.comment?.trim() ? created.comment : "Открой детали, чтобы обсудить игру отдельно."
       }`;
 
@@ -64,8 +66,8 @@ export async function POST(request: NextRequest) {
           gameRequestId: created.id,
           senderUserId: user.id,
           text: created.comment?.trim()
-            ? `Создал(а) отдельный чат по этой игре. ${created.comment}`
-            : "Создал(а) отдельный чат по этой игре. Тут можно обсуждать только эту договоренность."
+            ? `Создал(а) игру и отдельный чат по ней. ${created.comment}`
+            : "Создал(а) игру и отдельный чат по ней. Тут можно обсуждать только эту договоренность."
         }
       });
 
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (recipient?.notificationGames) {
       await sendPushToUser({
         userId: recipient.id,
-        title: `Новое предложение игры от ${user.name ?? "игрока"}`,
+        title: `Новая игра от ${user.name ?? "игрока"}`,
         body: `${gameRequest.proposedCourt.name} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true

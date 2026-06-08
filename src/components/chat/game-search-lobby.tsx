@@ -5,7 +5,7 @@ import { CalendarDays, MessageCircleMore, Users2 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { resolveSearchNextStep } from "@/lib/game-search";
 import { CourtSmartPicker } from "@/components/forms/court-smart-picker";
 import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
@@ -90,6 +90,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
   const [scheduledDurationMinutes, setScheduledDurationMinutes] = useState(search.scheduledDurationMinutes ?? 90);
   const [loadingMessage, setLoadingMessage] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const isCreator = search.createdByUserId === currentUserId;
   const approvedResponses = search.responses.filter((response) => response.status === "approved");
   const participantResponses = search.responses.filter(
@@ -98,7 +99,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
   const days = normalizeStringArray(search.preferredDays);
   const timeRanges = normalizeStringArray(search.preferredTimeRanges);
   const scheduleLabel = `${days.map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]).join(", ")} · ${timeRanges
-    .map((timeRange) => TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS])
+    .map(getTimePreferenceLabel)
     .join(", ")}`.trim();
   const assignedGameLabel = search.scheduledAt
     ? `${new Date(search.scheduledAt).toLocaleString("ru-RU", {
@@ -110,7 +111,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
     : null;
   const canAssignGame = isCreator && approvedResponses.length > 0;
   const usesFixedHotSettings = search.searchType === "hot" && Boolean(search.hotStartsAt) && Boolean(search.preferredCourt?.id);
-  const shouldWaitForConfirmation =
+  const shouldCreateRegularPairGame =
     search.searchType === "regular" &&
     Math.max(search.playersNeeded, 1) === 1 &&
     approvedResponses.length === 1 &&
@@ -154,6 +155,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
     if (!text.trim()) return;
 
     setLoadingMessage(true);
+    setMessageError(null);
     try {
       const data = await apiFetch<{ message: LobbyMessage }>(`/game-searches/${search.id}/messages`, {
         method: "POST",
@@ -161,6 +163,8 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
       });
       setMessages((current) => [...current, data.message]);
       setText("");
+    } catch (requestError) {
+      setMessageError(requestError instanceof Error ? requestError.message : "Не удалось отправить сообщение");
     } finally {
       setLoadingMessage(false);
     }
@@ -184,7 +188,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
         minute: "2-digit"
       })} · ${finalDurationMinutes} мин.`;
 
-      if (shouldWaitForConfirmation && search.regularPairMatchId) {
+      if (shouldCreateRegularPairGame && search.regularPairMatchId) {
         await apiFetch("/game-requests", {
           method: "POST",
           body: JSON.stringify({
@@ -203,7 +207,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
         await apiFetch(`/game-searches/${search.id}/messages`, {
           method: "POST",
           body: JSON.stringify({
-            text: `Организатор предложил ближайшую игру: ${scheduledText}. Теперь ждём подтверждения от партнёра.`
+            text: `Организатор создал ближайшую игру: ${scheduledText}. Детали можно обсудить в чате игры.`
           })
         });
 
@@ -294,8 +298,8 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
         {canAssignGame ? (
           <div className="rounded-[24px] border border-mint/70 bg-white/75 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-              {shouldWaitForConfirmation
-                ? "Предложить игру партнёру"
+              {shouldCreateRegularPairGame
+                ? "Создать игру пары"
                 : usesFixedHotSettings
                   ? "Подтвердить срочное событие"
                   : "Закрыть набор и назначить игру"}
@@ -355,11 +359,11 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
                 }
               >
                 {loadingSchedule
-                  ? shouldWaitForConfirmation
+                  ? shouldCreateRegularPairGame
                     ? "Отправляем..."
                     : "Назначаем..."
-                  : shouldWaitForConfirmation
-                    ? "Предложить и ждать подтверждение"
+                  : shouldCreateRegularPairGame
+                    ? "Создать ближайшую игру"
                     : usesFixedHotSettings
                       ? "Подтвердить событие по этим условиям"
                       : "Закрыть набор и назначить игру"}
@@ -414,6 +418,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
             {loadingMessage ? "..." : "Отправить"}
           </Button>
         </form>
+        {messageError ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{messageError}</div> : null}
       </Panel>
     </div>
   );

@@ -5,7 +5,7 @@ import { RegularPairOccurrenceConfirmationStatus } from "@prisma/client";
 
 import { getSessionUser } from "@/lib/auth";
 import { buildGuestAuthHref } from "@/lib/guest-draft";
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { PageShell } from "@/components/layout/page-shell";
 import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
@@ -133,7 +133,7 @@ export default async function RegularPairPage({
           ))}
           {timeRanges.map((timeRange) => (
             <span key={timeRange} className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
-              {TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]}
+              {getTimePreferenceLabel(timeRange)}
             </span>
           ))}
           {regularPair.preferredCourt ? (

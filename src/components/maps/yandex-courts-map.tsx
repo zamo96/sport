@@ -39,6 +39,7 @@ export function YandexCourtsMap({
   focus?:
     | {
         type: "metro" | "club";
+        courtId?: string | null;
         label?: string | null;
         center: { lat: number; lng: number };
         radiusKm: number;
@@ -201,6 +202,7 @@ export function YandexCourtsMap({
           for (const court of visibleCourts) {
             const primarySport = getPrimaryCourtSport(court.supportedSports) ?? "tennis";
             const sportEmoji = SPORT_EMOJIS[primarySport];
+            const isFocusedCourt = focus?.type === "club" && focus.courtId === court.id;
             const sportLabels = normalizeCourtSports(court.supportedSports)
               .map((sport) => SPORT_LABELS[sport as Sport])
               .join(" · ");
@@ -209,11 +211,11 @@ export function YandexCourtsMap({
             markerElement.className = "group flex -translate-y-full flex-col items-center text-center no-underline";
             const showLabel = zoom >= 13.2 || visibleCourts.length <= 6;
             markerElement.innerHTML = `
-              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#C96D42] text-white shadow-lg ring-4 ring-white/90 transition group-hover:scale-105">
+              <span class="flex ${isFocusedCourt ? "h-11 w-11 bg-[#142F26] ring-[6px]" : "h-9 w-9 bg-[#C96D42] ring-4"} items-center justify-center rounded-full text-white shadow-lg ring-white/90 transition group-hover:scale-105">
                 <span style="display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;width:100%;height:100%;">${sportEmoji}</span>
               </span>
               ${
-                showLabel
+                showLabel || isFocusedCourt
                   ? `<span class="mt-1.5 max-w-[132px] rounded-full bg-white/96 px-2.5 py-1.5 text-[10px] font-semibold leading-4 text-[#142F26] shadow-md">
                       ${escapeHtml(court.name)}
                     </span>`
@@ -279,6 +281,7 @@ function getVisibleCourtsForZoom(
   focus?:
     | {
         type: "metro" | "club";
+        courtId?: string | null;
         label?: string | null;
         center: { lat: number; lng: number };
         radiusKm: number;

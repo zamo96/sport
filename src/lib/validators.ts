@@ -17,6 +17,11 @@ import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 
 const dayEnum = z.enum(DAY_OPTIONS);
 const timeRangeEnum = z.enum(TIME_RANGE_OPTIONS);
+const exactTimeSlotSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Укажи время в формате ЧЧ:ММ");
+const pairedTimeSlotSchema = z
+  .string()
+  .regex(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)@([01]\d|2[0-3]):[0-5]\d$/, "Укажи день и время в формате day@ЧЧ:ММ");
+const timePreferenceSchema = z.union([timeRangeEnum, exactTimeSlotSchema, pairedTimeSlotSchema]);
 
 function isFutureDateTime(value: string) {
   return new Date(value).getTime() > Date.now();
@@ -310,7 +315,7 @@ export const createGameSearchSchema = z
     preferredCourtId: z.string().min(1).optional().nullable(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
-    preferredTimeRanges: z.array(timeRangeEnum).min(1),
+    preferredTimeRanges: z.array(timePreferenceSchema).min(1),
     searchType: z.nativeEnum(GameSearchType).default(GameSearchType.regular),
     hotWindow: z.nativeEnum(HotSearchWindow).optional().nullable(),
     hotStartTime: z
@@ -389,7 +394,7 @@ export const updateGameSearchSchema = z
     preferredCourtId: z.string().min(1).nullable().optional(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).optional()),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).optional(),
-    preferredTimeRanges: z.array(timeRangeEnum).min(1).optional(),
+    preferredTimeRanges: z.array(timePreferenceSchema).min(1).optional(),
     searchType: z.nativeEnum(GameSearchType).optional(),
     hotWindow: z.nativeEnum(HotSearchWindow).nullable().optional(),
     hotStartTime: z

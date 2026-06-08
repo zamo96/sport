@@ -13,6 +13,7 @@ import {
   HOT_SEARCH_WINDOW_LABELS,
   SPORT_SEARCH_LABELS,
   TIME_RANGE_LABELS,
+  getTimePreferenceLabel,
   getDistrictLabel
 } from "@/lib/constants";
 import { formatTimeUntilHotSearch, resolveSearchLifecycleStatus, resolveSearchNextStep } from "@/lib/game-search";
@@ -259,7 +260,7 @@ function GameSearchCard({ search }: { search: SearchItem }) {
         ))}
         {timeRanges.map((timeRange) => (
           <span key={String(timeRange)} className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
-            {TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]}
+            {getTimePreferenceLabel(String(timeRange))}
           </span>
         ))}
         {search.preferredCourt?.name ? (

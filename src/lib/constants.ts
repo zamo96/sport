@@ -330,6 +330,15 @@ export const TIME_RANGE_LABELS = {
   evening: "Вечер"
 } as const;
 
+export function getTimePreferenceLabel(value: string) {
+  const [day, time] = value.split("@");
+  if (day && time && day in DAY_LABELS) {
+    return `${DAY_LABELS[day as keyof typeof DAY_LABELS]} ${time}`;
+  }
+
+  return TIME_RANGE_LABELS[value as keyof typeof TIME_RANGE_LABELS] ?? value;
+}
+
 export const GENDER_LABELS = {
   male: "Мужской",
   female: "Женский",
@@ -487,7 +496,7 @@ export const SPORT_SEARCH_LABELS: Record<
 };
 
 export const GAME_SEARCH_TYPE_LABELS = {
-  regular: "Обычный поиск",
+  regular: "Регулярный поиск",
   hot: "Горячий поиск"
 } as const;
 

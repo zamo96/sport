@@ -62,12 +62,6 @@ struct MatchesView: View {
                         onProposeGame: {
                             presentProposal(for: match)
                         },
-                        onAcceptRequest: {
-                            await updateGameRequest(match: match, status: "accepted")
-                        },
-                        onDeclineRequest: {
-                            await updateGameRequest(match: match, status: "declined")
-                        },
                         onCancelRequest: {
                             await updateGameRequest(match: match, status: "canceled")
                         }
@@ -336,16 +330,10 @@ private struct MatchInboxCard: View {
     let onOpenProfile: () -> Void
     let onOpenChat: () -> Void
     let onProposeGame: () -> Void
-    let onAcceptRequest: () async -> Void
-    let onDeclineRequest: () async -> Void
     let onCancelRequest: () async -> Void
 
     private var latestRequest: MatchGameRequest? {
         match.latestGameRequest
-    }
-
-    private var canAcceptOrDecline: Bool {
-        latestRequest?.isPendingForRecipient(currentUserId: currentUserId) == true
     }
 
     private var canCancelPending: Bool {
@@ -429,7 +417,8 @@ private struct MatchInboxCard: View {
                             Text(latestRequest?.comment ?? "Совпадение по ключевым параметрам")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.78))
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), alignment: .leading, spacing: 8) {
                                 matchReasonPill(systemImage: "tennis.racket", text: matchReasonItems[0])
@@ -457,12 +446,14 @@ private struct MatchInboxCard: View {
                         Text(request.proposedCourt?.name ?? request.sport.venueUnspecifiedTitle)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.9))
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         Text(request.nextStepLabel)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.55))
-                            .lineLimit(2)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer(minLength: 8)
@@ -478,12 +469,7 @@ private struct MatchInboxCard: View {
                 .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
-            if canAcceptOrDecline {
-                HStack(spacing: 10) {
-                    matchActionButton(title: "Чат", systemImage: "message", tint: Color.white.opacity(0.08), foreground: .white.opacity(0.92), action: onOpenChat)
-                    asyncMatchActionButton(title: "Подтвердить", systemImage: "checkmark.circle", tint: AppTheme.court, foreground: .white, isUpdating: isUpdating, action: onAcceptRequest)
-                }
-            } else if canCancelPending {
+            if canCancelPending {
                 HStack(spacing: 10) {
                     matchActionButton(title: "Чат", systemImage: "message", tint: Color.white.opacity(0.08), foreground: .white.opacity(0.92), action: onOpenChat)
                     asyncMatchActionButton(title: "Отменить", systemImage: "xmark.circle", tint: Color(red: 0.32, green: 0.12, blue: 0.12), foreground: Color(red: 1.0, green: 0.47, blue: 0.43), isUpdating: isUpdating, action: onCancelRequest)
@@ -787,7 +773,8 @@ struct ChatView: View {
                     Text(request.nextStepLabel)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 10)
@@ -810,7 +797,8 @@ struct ChatView: View {
                     Text(request.proposedCourt?.name ?? request.sport.venueUnspecifiedTitle)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.68))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 10)
@@ -980,7 +968,8 @@ struct ChatView: View {
                 Text(subtitle)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 8)
@@ -990,7 +979,7 @@ struct ChatView: View {
                 .foregroundStyle(.white.opacity(0.28))
         }
         .padding(.horizontal, 14)
-        .frame(height: 62)
+        .frame(minHeight: 62)
         .background((isEmphasized ? AppTheme.court.opacity(0.28) : Color.white.opacity(0.05)), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -1518,6 +1507,7 @@ enum ProposalSheetContext {
 
 struct GameProposalSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var appModel: AppModel
 
     let match: MatchSummary
@@ -1528,6 +1518,7 @@ struct GameProposalSheet: View {
     @State private var courts: [Court] = []
     @State private var isLoadingCourts = false
     @State private var isSubmitting = false
+    @State private var isClubPickerPresented = false
     @State private var localError: String?
     @State private var draft: GameProposalDraft
 
@@ -1633,6 +1624,23 @@ struct GameProposalSheet: View {
         .toolbar(.hidden, for: .navigationBar)
         .task {
             await loadCourtsIfNeeded()
+        }
+        .sheet(isPresented: $isClubPickerPresented) {
+            SearchClubPickerSheet(
+                sport: draft.sport,
+                courts: filteredCourts,
+                selectedCourtId: draft.proposedCourtId.isEmpty ? nil : draft.proposedCourtId,
+                selectsImmediately: false,
+                allowsNoCourt: false,
+                onSelect: { court in
+                    guard let court else {
+                        return
+                    }
+                    selectCourt(court)
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
         }
     }
 
@@ -1901,17 +1909,15 @@ struct GameProposalSheet: View {
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
                 if !filteredCourts.isEmpty {
-                    Menu {
-                        ForEach(filteredCourts, id: \.id) { court in
-                            Button(court.name) {
-                                selectCourt(court)
-                            }
-                        }
+                    Button {
+                        AppHaptics.selection()
+                        isClubPickerPresented = true
                     } label: {
-                        Label("Все места", systemImage: "chevron.down")
+                        Label("Все места", systemImage: "magnifyingglass")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.court)
                     }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -1950,32 +1956,48 @@ struct GameProposalSheet: View {
     private var selectedCourtCard: some View {
         let court = selectedCourt
 
-        return HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.mint)
-                    .frame(width: 46, height: 46)
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(AppTheme.court)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.mint)
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(AppTheme.court)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(court?.name ?? "Выбери клуб")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(2)
+                    Text(courtSubtitle(court))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppTheme.ink.opacity(0.55))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(court == nil ? AppTheme.ink.opacity(0.18) : AppTheme.court)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(court?.name ?? "Выбери клуб")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(2)
-                Text(courtSubtitle(court))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppTheme.ink.opacity(0.55))
-                    .lineLimit(2)
+            if let phoneURL = bookingPhoneURL(for: court) {
+                Button {
+                    openURL(phoneURL)
+                } label: {
+                    Label("Позвонить забронировать", systemImage: "phone.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(AppTheme.court, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
-
-            Spacer()
-
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(court == nil ? AppTheme.ink.opacity(0.18) : AppTheme.court)
         }
         .padding(16)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -2261,6 +2283,19 @@ struct GameProposalSheet: View {
             .joined(separator: " · ")
 
         return subtitle.isEmpty ? court.address : subtitle
+    }
+
+    private func bookingPhoneURL(for court: Court?) -> URL? {
+        guard let phone = court?.phone else {
+            return nil
+        }
+
+        let normalized = phone.filter { $0.isNumber || $0 == "+" }
+        guard !normalized.isEmpty else {
+            return nil
+        }
+
+        return URL(string: "tel://\(normalized)")
     }
 
     private func proposalDateTimeText(for date: Date) -> String {

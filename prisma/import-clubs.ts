@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 
 import { DEFAULT_CITY } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { resolveUploadedObjectUrl, uploadCourtPhoto } from "@/lib/uploads";
 
 type ClubRow = {
   name?: string;
@@ -16,6 +17,9 @@ type ClubRow = {
   yandex_maps_url?: string;
   website_url?: string;
   photo_url?: string;
+  photo_file?: string;
+  photo_path?: string;
+  photo_s3_key?: string;
   metro?: string;
   district?: string;
   district_label?: string;
@@ -127,6 +131,9 @@ export async function importClubsFromWorkbook(filePath: string) {
       ])
     ).values()
   );
+  const rowsWithPhotos = await Promise.all(
+    dedupedRows.map((row) => resolveImportedPhoto(row, path.dirname(filePath)))
+  );
 
   await prisma.court.deleteMany({
     where: {
@@ -135,7 +142,7 @@ export async function importClubsFromWorkbook(filePath: string) {
   });
 
   await prisma.court.createMany({
-    data: dedupedRows.map((row) => ({
+    data: rowsWithPhotos.map((row) => ({
       name: row.name,
       address: row.address,
       city: DEFAULT_CITY,
@@ -201,6 +208,8 @@ type NormalizedClubRow = {
   yandexMapsUrl: string | null;
   websiteUrl: string | null;
   photoUrl: string | null;
+  photoFile: string | null;
+  photoS3Key: string | null;
   metro: string | null;
   district: string | null;
   districtLabel: string | null;
@@ -228,12 +237,84 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
     yandexMapsUrl: normalizeUrl(row.yandex_maps_url),
     websiteUrl: normalizeUrl(row.website_url),
     photoUrl: normalizeUrl(row.photo_url),
+    photoFile: normalizeText(row.photo_file) ?? normalizeText(row.photo_path),
+    photoS3Key: normalizeS3Key(row.photo_s3_key),
     metro: normalizeText(row.metro),
     district: normalizeDistrictCode(row.district),
     districtLabel: normalizeText(row.district_label),
     lat,
     lng
   };
+}
+
+async function resolveImportedPhoto(row: NormalizedClubRow, workbookDir: string): Promise<NormalizedClubRow> {
+  if (row.photoUrl) {
+    return row;
+  }
+
+  if (row.photoFile) {
+    const filePath = resolveImportAssetPath(row.photoFile, workbookDir);
+    const bytes = await readFile(filePath);
+    const objectKey = row.photoS3Key ?? defaultCourtPhotoObjectKey(row, filePath);
+    const photoUrl = await uploadCourtPhoto({
+      bytes,
+      originalName: path.basename(filePath),
+      contentType: inferImageContentType(filePath),
+      objectKey
+    });
+
+    return {
+      ...row,
+      photoUrl
+    };
+  }
+
+  if (row.photoS3Key) {
+    return {
+      ...row,
+      photoUrl: resolveUploadedObjectUrl(row.photoS3Key)
+    };
+  }
+
+  return row;
+}
+
+function resolveImportAssetPath(value: string, workbookDir: string) {
+  if (path.isAbsolute(value)) {
+    return value;
+  }
+
+  return path.resolve(workbookDir, value);
+}
+
+function defaultCourtPhotoObjectKey(row: NormalizedClubRow, filePath: string) {
+  const extension = path.extname(filePath).toLowerCase() || ".jpg";
+  return `courts/import/${slugifyForObjectKey(row.name)}-${slugifyForObjectKey(row.address).slice(0, 36)}${extension}`;
+}
+
+function slugifyForObjectKey(value: string) {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72) || "club";
+}
+
+function inferImageContentType(filePath: string) {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    default:
+      return undefined;
+  }
 }
 
 function normalizeText(value: unknown) {
@@ -248,6 +329,22 @@ function normalizeText(value: unknown) {
 function normalizeUrl(value: unknown) {
   const text = normalizeText(value);
   return text && /^https?:\/\//i.test(text) ? text : null;
+}
+
+function normalizeS3Key(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return null;
+  }
+
+  const withoutScheme = text.replace(/^s3:\/\//i, "").replace(/^\/+/, "");
+  const bucket = process.env.S3_BUCKET?.trim();
+
+  if (bucket && withoutScheme.startsWith(`${bucket}/`)) {
+    return withoutScheme.slice(bucket.length + 1);
+  }
+
+  return withoutScheme;
 }
 
 function normalizeAddress(value: unknown) {

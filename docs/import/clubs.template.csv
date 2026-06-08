@@ -1,4 +1,4 @@
-name,address,sports,phone,working_hours,yandex_maps_url,website_url,photo_url,metro,district,lat,lng
-Теннисный клуб Пример,Санкт-Петербург; Крестовский проспект 21,tennis|padel,+7 (812) 000-00-00,"Пн-Вс 07:00-23:00",https://yandex.ru/maps/,https://example.com,https://example.com/photo.jpg,Крестовский остров,petrogradsky,59.9710,30.2590
-Сквош и бадминтон Пример,Санкт-Петербург; Левашовский проспект 13,squash|badminton,+7 (812) 111-11-11,"Пн-Пт 08:00-22:00; Сб-Вс 09:00-21:00",https://yandex.ru/maps/,https://example.com,https://example.com/photo-2.jpg,Чкаловская,petrogradsky,59.9615,30.2938
-Футбольный центр Пример,Санкт-Петербург; Витебский проспект 19,football|fitness,,,"https://yandex.ru/maps/",,,Московская,moskovsky,59.8492,30.3228
+name,address,sports,phone,working_hours,yandex_maps_url,website_url,photo_url,photo_file,photo_s3_key,metro,district,lat,lng
+Теннисный клуб Пример,Санкт-Петербург; Крестовский проспект 21,tennis|padel,+7 (812) 000-00-00,"Пн-Вс 07:00-23:00",https://yandex.ru/maps/,https://example.com,https://example.com/photo.jpg,,,Крестовский остров,petrogradsky,59.9710,30.2590
+Сквош и бадминтон Пример,Санкт-Петербург; Левашовский проспект 13,squash|badminton,+7 (812) 111-11-11,"Пн-Пт 08:00-22:00; Сб-Вс 09:00-21:00",https://yandex.ru/maps/,https://example.com,,photos/squash-example.jpg,courts/spb/squash-example.jpg,Чкаловская,petrogradsky,59.9615,30.2938
+Футбольный центр Пример,Санкт-Петербург; Витебский проспект 19,football|fitness,,,"https://yandex.ru/maps/",,,,,Московская,moskovsky,59.8492,30.3228

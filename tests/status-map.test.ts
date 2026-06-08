@@ -25,8 +25,8 @@ describe("canonical status map", () => {
   });
 
   it("translates game request statuses with role awareness", () => {
-    expect(translateGameRequestStatus("pending", { isCreator: true })).toBe("Ожидает подтверждения");
-    expect(translateGameRequestStatus("pending", { isCreator: false })).toBe("Ждёт твоего решения");
+    expect(translateGameRequestStatus("pending", { isCreator: true })).toBe("Игра создана");
+    expect(translateGameRequestStatus("pending", { isCreator: false })).toBe("Тебя добавили");
     expect(translateGameRequestStatus("accepted")).toBe("Игра подтверждена");
     expect(translateGameRequestStatus("declined")).toBe("Отклонено");
     expect(translateGameRequestStatus("canceled")).toBe("Отменено");

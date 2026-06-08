@@ -569,7 +569,7 @@ private struct SearchOverviewCard: View {
 
         let parts = [
             search.preferredDays.compactMap { DayOfWeek(rawValue: $0)?.shortTitle }.prefix(2).joined(separator: ", "),
-            search.preferredTimeRanges.compactMap { TimeRange(rawValue: $0)?.title }.prefix(2).joined(separator: ", ")
+            search.preferredTimeRanges.map(localizedTimePreferenceTitle).prefix(2).joined(separator: ", ")
         ]
         .filter { !$0.isEmpty }
 
@@ -721,7 +721,7 @@ private struct SearchOverviewCard: View {
                 } else {
                     HStack(spacing: 12) {
                         cardMeta(systemImage: "calendar", text: search.preferredDays.compactMap { DayOfWeek(rawValue: $0)?.shortTitle }.prefix(2).joined(separator: ", "))
-                        cardMeta(systemImage: "clock", text: search.preferredTimeRanges.compactMap { TimeRange(rawValue: $0)?.title }.prefix(1).joined(separator: ", "))
+                        cardMeta(systemImage: "clock", text: search.preferredTimeRanges.map(localizedTimePreferenceTitle).prefix(1).joined(separator: ", "))
                     }
                 }
                 HStack(spacing: 12) {
@@ -984,6 +984,20 @@ private struct SearchDetailSheet: View {
         search.playersNeeded > 1 && !approvedResponses.isEmpty
     }
 
+    private var lobbyActionTitle: String {
+        search.searchType == .regular ? "Предложите время для игры" : "Состав и чат игры"
+    }
+
+    private var lobbyActionSubtitle: String {
+        search.searchType == .regular
+            ? "Открой общий состав, чтобы предложить слоты и обсудить детали игры."
+            : "Открой общий чат состава, чтобы уточнить детали без опроса по слотам."
+    }
+
+    private var lobbyActionButtonTitle: String {
+        search.searchType == .regular ? "Предложить слоты" : "Открыть состав"
+    }
+
     private var parameterRows: [(icon: String, title: String, value: String)] {
         var rows: [(String, String, String)] = []
 
@@ -1005,7 +1019,7 @@ private struct SearchDetailSheet: View {
         } else {
             schedule = [
                 search.preferredDays.compactMap { DayOfWeek(rawValue: $0)?.shortTitle }.joined(separator: ", "),
-                search.preferredTimeRanges.compactMap { TimeRange(rawValue: $0)?.title }.joined(separator: ", ")
+                search.preferredTimeRanges.map(localizedTimePreferenceTitle).joined(separator: ", ")
             ]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -1189,7 +1203,7 @@ private struct SearchDetailSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     detailMetaRow(icon: "calendar", text: search.preferredDays.compactMap { DayOfWeek(rawValue: $0)?.shortTitle }.joined(separator: ", "))
-                    detailMetaRow(icon: "clock", text: search.preferredTimeRanges.compactMap { TimeRange(rawValue: $0)?.detailTitle }.joined(separator: " · "))
+                    detailMetaRow(icon: "clock", text: search.preferredTimeRanges.map(localizedTimePreferenceDetailTitle).joined(separator: " · "))
                 }
                 HStack(spacing: 12) {
                     detailMetaRow(icon: "map", text: search.preferredDistricts.compactMap(localizedDistrictName).joined(separator: ", "))
@@ -1403,14 +1417,14 @@ private struct SearchDetailSheet: View {
     private var lobbyActionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "calendar.badge.plus")
+                Image(systemName: search.searchType == .regular ? "calendar.badge.plus" : "person.3.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(AppTheme.court)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Предложите время для игры")
+                    Text(lobbyActionTitle)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("Открой общий состав, чтобы отправить слоты на подтверждение и обсудить детали игры.")
+                    Text(lobbyActionSubtitle)
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.ink.opacity(0.62))
                 }
@@ -1419,7 +1433,7 @@ private struct SearchDetailSheet: View {
             Button {
                 onOpenLobby(search.id)
             } label: {
-                Text("Предложить слоты")
+                Text(lobbyActionButtonTitle)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
@@ -1601,6 +1615,10 @@ private struct SearchResponsesSheet: View {
         }
     }
 
+    private var canApproveMoreResponses: Bool {
+        search.status != "matched" && search.responses.filter { $0.status == "approved" }.count < max(search.playersNeeded, 1)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
@@ -1611,6 +1629,7 @@ private struct SearchResponsesSheet: View {
                     ForEach(filteredResponses) { response in
                         SearchResponseActionRow(
                             response: response,
+                            canApprove: canApproveMoreResponses,
                             updatingResponseID: updatingResponseID,
                             onUpdateResponseStatus: onUpdateResponseStatus
                         )
@@ -1675,7 +1694,7 @@ private struct SearchResponsesSheet: View {
 
             HStack(spacing: 16) {
                 compactMetaRow(icon: "calendar", text: search.preferredDays.compactMap { DayOfWeek(rawValue: $0)?.shortTitle }.joined(separator: ", "))
-                compactMetaRow(icon: "clock", text: search.preferredTimeRanges.compactMap { TimeRange(rawValue: $0)?.detailTitle }.joined(separator: " · "))
+                compactMetaRow(icon: "clock", text: search.preferredTimeRanges.map(localizedTimePreferenceDetailTitle).joined(separator: " · "))
             }
 
             compactMetaRow(icon: "building.2", text: [search.preferredDistricts.compactMap(localizedDistrictName).joined(separator: ", "), search.preferredCourt?.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
@@ -1734,6 +1753,7 @@ private struct SearchResponsesSheet: View {
 
 private struct SearchResponseActionRow: View {
     let response: SearchResponse
+    let canApprove: Bool
     let updatingResponseID: String?
     let onUpdateResponseStatus: (String, String) async -> Void
 
@@ -1776,7 +1796,16 @@ private struct SearchResponseActionRow: View {
 
             if response.status == "pending" {
                 HStack(spacing: 10) {
-                    circleAction(systemImage: "checkmark", tint: AppTheme.court, foreground: .white, status: "approved")
+                    if canApprove {
+                        circleAction(systemImage: "checkmark", tint: AppTheme.court, foreground: .white, status: "approved")
+                    } else {
+                        Text("Состав собран")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.ink.opacity(0.54))
+                            .padding(.horizontal, 10)
+                            .frame(height: 44)
+                            .background(Color.black.opacity(0.05), in: Capsule())
+                    }
                     circleAction(systemImage: "xmark", tint: Color.black.opacity(0.06), foreground: AppTheme.ink, status: "rejected")
                 }
             } else {
@@ -1856,67 +1885,6 @@ private extension String {
     }
 }
 
-private extension Array where Element == GameSearch {
-    func applying(responseUpdate result: SearchResponseUpdateResult) -> [GameSearch] {
-        map { $0.applying(responseUpdate: result) }
-    }
-}
-
-private extension GameSearch {
-    func applying(responseUpdate result: SearchResponseUpdateResult) -> GameSearch {
-        guard responses.contains(where: { $0.id == result.response.id }) || result.gameSearch?.id == id else {
-            return self
-        }
-
-        let patchedResponse = SearchResponse(
-            id: result.response.id,
-            status: result.response.status,
-            responderUser: result.response.responderUser,
-            matchId: result.response.matchId ?? result.matchId
-        )
-        let nextResponses = responses.map { response in
-            response.id == patchedResponse.id ? patchedResponse : response
-        }
-        let nextStatus: String
-        let nextIsActive: Bool?
-        if let searchUpdate = result.gameSearch, searchUpdate.id == id {
-            nextStatus = searchUpdate.status
-            nextIsActive = searchUpdate.isActive == nil ? isActive : searchUpdate.isActive
-        } else {
-            nextStatus = status
-            nextIsActive = isActive
-        }
-
-        return GameSearch(
-            id: id,
-            inviteSlug: inviteSlug,
-            status: nextStatus,
-            searchType: searchType,
-            hotWindow: hotWindow,
-            hotStartsAt: hotStartsAt,
-            durationMinutes: durationMinutes,
-            hasCourtBooked: hasCourtBooked,
-            sport: sport,
-            selfLevel: selfLevel,
-            selfLevelUnknown: selfLevelUnknown,
-            desiredLevelMin: desiredLevelMin,
-            desiredLevelMax: desiredLevelMax,
-            format: format,
-            playersNeeded: playersNeeded,
-            preferredDays: preferredDays,
-            preferredTimeRanges: preferredTimeRanges,
-            comment: comment,
-            isActive: nextIsActive,
-            isExpired: isExpired,
-            preferredCourt: preferredCourt,
-            preferredDistricts: preferredDistricts,
-            activeSlotProposal: activeSlotProposal,
-            regularPair: regularPair,
-            responses: nextResponses
-        )
-    }
-}
-
 private extension Date {
     func formattedShortRelative() -> String {
         if Calendar.current.isDateInToday(self) {
@@ -1975,6 +1943,7 @@ struct SearchLobbySheet: View {
     @State private var proposedCourtId = ""
     @State private var courtQuery = ""
     @State private var proposedAt = Date().addingTimeInterval(24 * 60 * 60)
+    @State private var selectedSlotDateKeys: Set<String> = []
     @State private var durationMinutes = 90
     @State private var slotComment = ""
     @State private var selectedSlotTimeRange: TimeRange = .evening
@@ -1985,6 +1954,8 @@ struct SearchLobbySheet: View {
     @State private var isSendingMessage = false
     @State private var isScheduling = false
     @State private var isVotingOnSlots = false
+    @State private var isSimulatingRegularFlow = false
+    @State private var simulationMessage: String?
 
     private var approvedResponses: [SearchResponse] {
         lobby?.responses.filter { $0.status == "approved" } ?? []
@@ -1996,6 +1967,27 @@ struct SearchLobbySheet: View {
 
     private var isCreator: Bool {
         lobby?.createdByUserId == appModel.currentUser?.id
+    }
+
+    private var canProposeSlotsInLobby: Bool {
+        guard let lobby else {
+            return false
+        }
+        return isCreator && lobby.searchType == .regular && !approvedResponses.isEmpty
+    }
+
+    private var canVoteForSlotsInLobby: Bool {
+        guard let lobby else {
+            return false
+        }
+        return lobby.searchType == .regular && lobby.activeSlotProposal != nil
+    }
+
+    private var canSimulateRegularFlow: Bool {
+        guard let lobby else {
+            return false
+        }
+        return isCreator && lobby.searchType == .regular
     }
 
     private var availableCourts: [Court] {
@@ -2032,16 +2024,29 @@ struct SearchLobbySheet: View {
         Calendar.current.startOfDay(for: proposedAt)
     }
 
+    private var selectedSlotDates: [Date] {
+        var selected = dateOptions.filter { selectedSlotDateKeys.contains(dateKey(for: $0)) }
+        let currentKey = dateKey(for: selectedDay)
+        if selectedSlotDateKeys.contains(currentKey),
+           !selected.contains(where: { Calendar.current.isDate($0, inSameDayAs: selectedDay) }) {
+            selected.append(selectedDay)
+        }
+        return selected.isEmpty ? [selectedDay] : selected
+    }
+
     private var dateOptions: [Date] {
         let calendar = Calendar.current
         let preferred = (lobby?.preferredDays ?? []).compactMap(DayOfWeek.init(rawValue:))
         var dates: [Date] = []
-        for offset in 0 ..< 10 {
+        var seenWeekdays = Set<DayOfWeek>()
+        for offset in 0 ..< 14 {
             guard let date = calendar.date(byAdding: .day, value: offset, to: Date()) else { continue }
-            if preferred.isEmpty || preferred.contains(dayOfWeek(for: date)) {
+            let weekday = dayOfWeek(for: date)
+            if (preferred.isEmpty || preferred.contains(weekday)), !seenWeekdays.contains(weekday) {
                 dates.append(calendar.startOfDay(for: date))
+                seenWeekdays.insert(weekday)
             }
-            if dates.count == 5 {
+            if dates.count == max(preferred.count, preferred.isEmpty ? 5 : preferred.count) {
                 break
             }
         }
@@ -2057,7 +2062,7 @@ struct SearchLobbySheet: View {
     }
 
     private var selectedSlotCount: Int {
-        selectedSlotTimes.count
+        selectedSlotDates.count * selectedSlotTimes.count
     }
 
     var body: some View {
@@ -2091,6 +2096,44 @@ struct SearchLobbySheet: View {
                                         .font(.footnote)
                                         .foregroundStyle(AppTheme.ink.opacity(0.72))
                                 }
+
+                                if canSimulateRegularFlow {
+                                    Button {
+                                        Task { await simulateRegularFlow() }
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            if isSimulatingRegularFlow {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                                    .tint(AppTheme.court)
+                                            } else {
+                                                Image(systemName: "wand.and.stars")
+                                                    .font(.system(size: 14, weight: .bold))
+                                            }
+                                            Text("Симулировать отклики и слоты")
+                                                .font(.subheadline.weight(.semibold))
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption.weight(.bold))
+                                                .opacity(0.55)
+                                        }
+                                        .foregroundStyle(AppTheme.court)
+                                        .padding(.horizontal, 12)
+                                        .frame(height: 44)
+                                        .background(AppTheme.mint.opacity(0.5), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isSimulatingRegularFlow)
+                                }
+
+                                if let simulationMessage {
+                                    Text(simulationMessage)
+                                        .font(.footnote.weight(.medium))
+                                        .foregroundStyle(AppTheme.court)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 9)
+                                        .background(AppTheme.mint.opacity(0.36), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
                             }
 
                             SectionCard(
@@ -2108,9 +2151,9 @@ struct SearchLobbySheet: View {
                                 }
                             }
 
-                            if isCreator, !approvedResponses.isEmpty {
+                            if canProposeSlotsInLobby {
                                 slotProposalSection(lobby: lobby)
-                            } else if let activeSlotProposal = lobby.activeSlotProposal {
+                            } else if canVoteForSlotsInLobby, let activeSlotProposal = lobby.activeSlotProposal {
                                 slotVotingSection(activeSlotProposal)
                             }
 
@@ -2210,7 +2253,10 @@ struct SearchLobbySheet: View {
                             "Дата игры",
                             selection: Binding(
                                 get: { proposedAt },
-                                set: { proposedAt = $0 }
+                                set: { date in
+                                    proposedAt = date
+                                    selectedSlotDateKeys.insert(dateKey(for: date))
+                                }
                             ),
                             in: Date()...,
                             displayedComponents: [.date]
@@ -2275,12 +2321,26 @@ struct SearchLobbySheet: View {
         if let preferredRange = summary.gameSearch.preferredTimeRanges.compactMap(TimeRange.init(rawValue:)).first {
             selectedSlotTimeRange = preferredRange
         }
-        let proposedTime = proposedAt.formattedHourMinute()
-        selectedSlotTimes = [
-            Self.timeOptions(for: selectedSlotTimeRange).contains(proposedTime)
-                ? proposedTime
+        let exactTimes = summary.gameSearch.preferredTimeRanges.compactMap(Self.timeValue(from:))
+        if !exactTimes.isEmpty {
+            selectedSlotTimes = Set(exactTimes)
+            if let firstExactTime = exactTimes.first,
+               let inferredRange = Self.inferredTimeRange(for: firstExactTime) {
+                selectedSlotTimeRange = inferredRange
+            }
+        } else {
+            let proposedTime = proposedAt.formattedHourMinute()
+            selectedSlotTimes = [
+                Self.timeOptions(for: selectedSlotTimeRange).contains(proposedTime)
+                    ? proposedTime
                 : (Self.timeOptions(for: selectedSlotTimeRange).first ?? "19:00")
-        ]
+            ]
+        }
+        let pairedDays = Set(summary.gameSearch.preferredTimeRanges.compactMap(Self.dayValue(from:)))
+        let selectedKeys = Set(dateOptions.filter { date in
+            pairedDays.isEmpty || pairedDays.contains(dayOfWeek(for: date).rawValue)
+        }.map(dateKey(for:)))
+        selectedSlotDateKeys = selectedKeys.isEmpty ? [dateKey(for: selectedDay)] : selectedKeys
         if let activeSlotProposal = summary.gameSearch.activeSlotProposal {
             selectedVoteOptionIDs = activeSlotProposal.selectedOptionIDs(for: appModel.currentUser?.id)
         } else {
@@ -2439,15 +2499,17 @@ struct SearchLobbySheet: View {
     }
 
     private func selectedSlotDraftOptions() -> [SearchSlotProposalDraftOption] {
-        selectedSlotTimes
-            .sorted()
-            .compactMap { scheduledDate(for: $0) }
-            .map {
-                SearchSlotProposalDraftOption(
-                    scheduledAt: $0,
-                    proposedCourtId: proposedCourtId.isEmpty ? nil : proposedCourtId,
-                    durationMinutes: durationMinutes
-                )
+        selectedSlotDates.flatMap { date in
+            selectedSlotTimes
+                .sorted()
+                .compactMap { scheduledDate(for: $0, on: date) }
+                .map {
+                    SearchSlotProposalDraftOption(
+                        scheduledAt: $0,
+                        proposedCourtId: proposedCourtId.isEmpty ? nil : proposedCourtId,
+                        durationMinutes: durationMinutes
+                    )
+                }
             }
     }
 
@@ -2475,13 +2537,34 @@ struct SearchLobbySheet: View {
         }
     }
 
-    private func scheduledDate(for label: String) -> Date? {
+    private func simulateRegularFlow() async {
+        guard !isSimulatingRegularFlow else {
+            return
+        }
+
+        isSimulatingRegularFlow = true
+        defer { isSimulatingRegularFlow = false }
+
+        do {
+            let result = try await appModel.repository.simulateRegularSearchActivity(searchId: searchId)
+            simulationMessage = result.message
+            await appModel.notificationManager.manualRefresh(repository: appModel.repository)
+            await loadLobby()
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
+    }
+
+    private func scheduledDate(for label: String, on date: Date) -> Date? {
         let components = label.split(separator: ":").compactMap { Int($0) }
         return Calendar.current.date(
             bySettingHour: components.first ?? 19,
             minute: components.last ?? 0,
             second: 0,
-            of: selectedDay
+            of: date
         )
     }
 
@@ -2545,10 +2628,10 @@ struct SearchLobbySheet: View {
     private func slotProposalSection(lobby: SearchLobbyGameSearch) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .center, spacing: 4) {
-                Text("Предложить слоты")
+                Text("Регулярное расписание")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Выберите удобный вариант для подтвержденного состава")
+                Text("Выберите дни и время, которые будут повторяться каждую неделю")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -2621,7 +2704,8 @@ struct SearchLobbySheet: View {
     }
 
     private func dateOptionButton(for date: Date) -> some View {
-        let selected = Calendar.current.isDate(date, inSameDayAs: selectedDay)
+        let key = dateKey(for: date)
+        let selected = selectedSlotDateKeys.contains(key)
 
         return Button {
             updateSelectedDate(date)
@@ -2671,7 +2755,7 @@ struct SearchLobbySheet: View {
                 }
             }
 
-            Text("Можно выбрать несколько вариантов")
+            Text("Можно выбрать несколько дней и несколько времен")
                 .font(.footnote)
                 .foregroundStyle(AppTheme.ink.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -2729,7 +2813,7 @@ struct SearchLobbySheet: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                AppInlineChip(text: "\(proposal.options.count) слота", tint: AppTheme.mint, foreground: AppTheme.court)
+                AppInlineChip(text: "\(proposal.options.count) регулярных", tint: AppTheme.mint, foreground: AppTheme.court)
             }
 
             if let comment = proposal.comment?.trimmingCharacters(in: .whitespacesAndNewlines), !comment.isEmpty {
@@ -2754,7 +2838,8 @@ struct SearchLobbySheet: View {
                             Text(option.proposedCourt?.name ?? selectedCourtName)
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.ink.opacity(0.56))
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         Spacer()
@@ -2782,10 +2867,10 @@ struct SearchLobbySheet: View {
     private func slotVotingSection(_ proposal: SearchSlotProposalSummary) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Выберите слоты")
+                Text("Выберите регулярные слоты")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Можно отметить несколько вариантов")
+                Text("Отметь дни и время, которые реально подходят каждую неделю")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -2947,9 +3032,9 @@ struct SearchLobbySheet: View {
                 }
             }
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
-            .disabled(isScheduling || proposedCourtId.isEmpty || selectedSlotTimes.isEmpty)
+            .disabled(isScheduling || proposedCourtId.isEmpty || selectedSlotTimes.isEmpty || selectedSlotDates.isEmpty)
 
-            Text("Игроки смогут проголосовать")
+            Text("Выбранные дни и время будут повторяться каждую неделю")
                 .font(.footnote)
                 .foregroundStyle(AppTheme.ink.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -2989,6 +3074,13 @@ struct SearchLobbySheet: View {
     }
 
     private func updateSelectedDate(_ date: Date) {
+        let key = dateKey(for: date)
+        if selectedSlotDateKeys.contains(key), selectedSlotDateKeys.count > 1 {
+            selectedSlotDateKeys.remove(key)
+        } else {
+            selectedSlotDateKeys.insert(key)
+        }
+
         let calendar = Calendar.current
         let time = calendar.dateComponents([.hour, .minute], from: proposedAt)
         proposedAt = calendar.date(bySettingHour: time.hour ?? 19, minute: time.minute ?? 0, second: 0, of: date) ?? date
@@ -3054,6 +3146,47 @@ struct SearchLobbySheet: View {
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.setLocalizedDateFormatFromTemplate("d")
         return formatter.string(from: date)
+    }
+
+    private func dateKey(for date: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return [
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        ]
+        .map(String.init)
+        .joined(separator: "-")
+    }
+
+    private static func timeValue(from preference: String) -> String? {
+        let parts = preference.split(separator: "@", maxSplits: 1).map(String.init)
+        let value = parts.count == 2 ? parts[1] : preference
+        return value.range(of: #"^([01]\d|2[0-3]):[0-5]\d$"#, options: .regularExpression) == nil ? nil : value
+    }
+
+    private static func dayValue(from preference: String) -> String? {
+        let parts = preference.split(separator: "@", maxSplits: 1).map(String.init)
+        guard parts.count == 2,
+              DayOfWeek(rawValue: parts[0]) != nil else {
+            return nil
+        }
+        return parts[0]
+    }
+
+    private static func inferredTimeRange(for value: String) -> TimeRange? {
+        guard timeValue(from: value) != nil,
+              let hour = Int(value.prefix(2)) else {
+            return nil
+        }
+
+        if hour < 12 {
+            return .morning
+        }
+        if hour < 18 {
+            return .day
+        }
+        return .evening
     }
 
     private func detailPill(icon: String, text: String) -> some View {
@@ -3646,7 +3779,7 @@ private struct SearchHeroImage: View {
     }
 }
 
-private struct SearchComposerView: View {
+struct SearchComposerView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
 
@@ -3688,11 +3821,67 @@ private struct SearchComposerView: View {
     @State private var selectedCourtSnapshot: Court?
 
     let initialSearch: GameSearch?
+    let initialCourt: Court?
+    let initialSport: Sport?
     let onCreate: (GameSearch) -> Void
 
-    init(initialSearch: GameSearch? = nil, onCreate: @escaping (GameSearch) -> Void) {
+    init(
+        initialSearch: GameSearch? = nil,
+        initialCourt: Court? = nil,
+        initialSport: Sport? = nil,
+        onCreate: @escaping (GameSearch) -> Void
+    ) {
         self.initialSearch = initialSearch
+        self.initialCourt = initialCourt
+        self.initialSport = initialSport
         self.onCreate = onCreate
+
+        let resolvedSport = initialSearch?.sport ?? initialSport ?? initialCourt?.primarySport ?? .tennis
+        let resolvedFormat = resolvedSport.defaultFormat
+        var initialDraft = SearchDraft(
+            inviteSlug: nil,
+            preferredCourtId: initialCourt?.id,
+            preferredDistricts: initialCourt?.district.map { [$0] } ?? [],
+            preferredDays: ["wednesday", "saturday"],
+            preferredTimeRanges: ["evening"],
+            searchType: .regular,
+            hotWindow: .today,
+            hotStartTime: "19:00",
+            durationMinutes: resolvedSport.defaultDurationMinutes,
+            hasCourtBooked: false,
+            sport: resolvedSport,
+            selfLevel: nil,
+            selfLevelUnknown: true,
+            desiredLevelMin: 4,
+            desiredLevelMax: 6,
+            format: resolvedFormat,
+            playersNeeded: resolvedSport.defaultPlayersNeeded(format: resolvedFormat),
+            comment: ""
+        )
+
+        if let initialSearch {
+            initialDraft.preferredCourtId = initialSearch.preferredCourt?.id
+            initialDraft.preferredDistricts = initialSearch.preferredDistricts
+            initialDraft.preferredDays = initialSearch.preferredDays
+            initialDraft.preferredTimeRanges = initialSearch.preferredTimeRanges
+            initialDraft.searchType = initialSearch.searchType
+            initialDraft.hotWindow = initialSearch.hotWindow
+            initialDraft.hotStartTime = initialSearch.hotStartsAt?.parsedISODateValue()?.formattedHourMinute()
+            initialDraft.durationMinutes = initialSearch.durationMinutes
+            initialDraft.hasCourtBooked = initialSearch.hasCourtBooked
+            initialDraft.selfLevel = initialSearch.selfLevel
+            initialDraft.selfLevelUnknown = initialSearch.selfLevelUnknown ?? false
+            initialDraft.desiredLevelMin = initialSearch.desiredLevelMin ?? 1
+            initialDraft.desiredLevelMax = initialSearch.desiredLevelMax ?? 10
+            initialDraft.format = initialSearch.format
+            initialDraft.playersNeeded = initialSearch.playersNeeded
+            initialDraft.comment = initialSearch.comment ?? ""
+        }
+
+        _draft = State(initialValue: initialDraft)
+        _selectedSport = State(initialValue: resolvedSport)
+        _selectedCourtId = State(initialValue: initialSearch?.preferredCourt?.id ?? initialCourt?.id)
+        _selectedCourtSnapshot = State(initialValue: initialSearch?.preferredCourt ?? initialCourt)
     }
 
     private var availableSports: [Sport] {
@@ -3983,6 +4172,13 @@ private struct SearchComposerView: View {
                     courts = try await appModel.repository.fetchCourts()
                     if let initialSearch {
                         apply(initialSearch)
+                    } else if let initialCourt {
+                        selectedCourtSnapshot = courts.first(where: { $0.id == initialCourt.id }) ?? initialCourt
+                        selectedCourtId = initialCourt.id
+                        draft.preferredCourtId = initialCourt.id
+                        if let district = initialCourt.district {
+                            draft.preferredDistricts = [district] + draft.preferredDistricts.filter { $0 != district }
+                        }
                     }
                 } catch {
                     appModel.present(error: error)
@@ -4118,7 +4314,7 @@ private struct SearchComposerView: View {
 
     private var searchTypeModeSwitch: some View {
         HStack(spacing: 8) {
-            searchTypeButton(type: .regular, systemImage: "calendar", title: "Обычный")
+            searchTypeButton(type: .regular, systemImage: "calendar", title: "Регулярный")
             searchTypeButton(type: .hot, systemImage: "rocket", title: "Срочный")
         }
         .padding(5)
@@ -5751,18 +5947,36 @@ private struct SearchComposerAdvancedSheet: View {
     }
 }
 
-private struct SearchClubPickerSheet: View {
+struct SearchClubPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let sport: Sport
     let courts: [Court]
     let selectedCourtId: String?
     let selectsImmediately: Bool
+    let allowsNoCourt: Bool
     let onSelect: (Court?) -> Void
+
+    init(
+        sport: Sport,
+        courts: [Court],
+        selectedCourtId: String?,
+        selectsImmediately: Bool,
+        allowsNoCourt: Bool = true,
+        onSelect: @escaping (Court?) -> Void
+    ) {
+        self.sport = sport
+        self.courts = courts
+        self.selectedCourtId = selectedCourtId
+        self.selectsImmediately = selectsImmediately
+        self.allowsNoCourt = allowsNoCourt
+        self.onSelect = onSelect
+    }
 
     @State private var query = ""
     @State private var pendingSelectionId: String?
     @State private var pendingCourtSnapshot: Court?
+    @State private var isMapExpanded = false
     @FocusState private var isSearchFocused: Bool
 
     private var filteredCourts: [Court] {
@@ -5844,15 +6058,42 @@ private struct SearchClubPickerSheet: View {
         return items
     }
 
+    private var pendingCourt: Court? {
+        pendingCourtSnapshot ?? pendingSelectionId.flatMap { id in courts.first(where: { $0.id == id }) }
+    }
+
+    private func recommendedListHeight(for availableHeight: CGFloat) -> CGFloat {
+        let baseHeight = isSearchFocused ? availableHeight * 0.3 : availableHeight * 0.38
+        let minimumHeight: CGFloat = isSearchFocused ? 260 : 340
+        let maximumHeight: CGFloat = isSearchFocused ? 300 : 420
+        return min(max(baseHeight, minimumHeight), maximumHeight)
+    }
+
     var body: some View {
         AppScreen {
-            VStack(spacing: 0) {
+            GeometryReader { sheetGeometry in
+                VStack(spacing: 0) {
                 Capsule()
                     .fill(Color.black.opacity(0.1))
                     .frame(width: 48, height: 6)
                     .padding(.top, 10)
 
-                HStack {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Выбор клуба")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.86)
+                        Text("Название, метро или район")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.ink.opacity(0.58))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+
+                    Spacer(minLength: 8)
+
                     Button {
                         dismiss()
                     } label: {
@@ -5863,21 +6104,9 @@ private struct SearchClubPickerSheet: View {
                             .background(Color.black.opacity(0.04), in: Circle())
                     }
                     .buttonStyle(.plain)
-
-                    Spacer()
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 10)
-
-                VStack(spacing: 8) {
-                    Text("Выбор клуба")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("Найдите клуб по названию, метро или району")
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.ink.opacity(0.58))
-                }
-                .padding(.top, 6)
+                .padding(.top, 12)
 
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
@@ -5962,44 +6191,62 @@ private struct SearchClubPickerSheet: View {
                     .padding(.top, 16)
                 }
 
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "location")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(AppTheme.ink)
-                            Text("Рядом с вами")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.ink)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "location")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(AppTheme.ink)
+                                Text("Рядом с вами")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppTheme.ink)
+                            }
+
+                            Text(
+                                focusedCourt.map { court in
+                                    [court.name, localizedDistrictName(court.district)]
+                                        .compactMap { $0 }
+                                        .joined(separator: " · ")
+                                } ?? "Санкт-Петербург"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.ink.opacity(0.56))
+                            .lineLimit(2)
+
+                            Button {
+                                isMapExpanded = true
+                                AppHaptics.selection()
+                            } label: {
+                                Label("Развернуть карту", systemImage: "arrow.up.left.and.arrow.down.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.court)
+                            }
+                            .buttonStyle(.plain)
                         }
 
-                        Text(
-                            focusedCourt.map { court in
-                                [court.name, localizedDistrictName(court.district)]
-                                    .compactMap { $0 }
-                                    .joined(separator: " · ")
-                            } ?? "Санкт-Петербург"
+                        Spacer(minLength: 8)
+
+                        SearchClubPickerMapView(
+                            courts: mapPreviewCourts,
+                            focusedCourt: pendingCourt ?? focusedCourt,
+                            onSelectCourt: { courtId in
+                                previewSelection(courts.first(where: { $0.id == courtId }))
+                            }
                         )
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.ink.opacity(0.56))
-                        .lineLimit(2)
+                        .frame(width: 132, height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        )
                     }
 
-                    Spacer(minLength: 8)
-
-                    SearchClubPickerMapView(
-                        courts: mapPreviewCourts,
-                        focusedCourt: focusedCourt,
-                        onSelectCourt: { courtId in
-                            commitSelection(courts.first(where: { $0.id == courtId }))
+                    if let pendingCourt {
+                        MapSelectedCourtMiniCard(court: pendingCourt, sport: sport) {
+                            confirmSelection(pendingCourt)
                         }
-                    )
-                    .frame(width: 126, height: 84)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                    )
+                    }
                 }
                 .padding(16)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -6018,14 +6265,16 @@ private struct SearchClubPickerSheet: View {
 
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 12) {
-                            CourtBrowseCard(
-                                sport: sport,
-                                title: "Без привязки",
-                                subtitleLines: ["Покажем ближайшие подходящие клубы"],
-                                distance: nil,
-                                isSelected: pendingSelectionId == nil
-                            ) {
-                                commitSelection(nil as Court?)
+                            if allowsNoCourt {
+                                CourtBrowseCard(
+                                    sport: sport,
+                                    title: "Без привязки",
+                                    subtitleLines: ["Покажем ближайшие подходящие клубы"],
+                                    distance: nil,
+                                    isSelected: pendingSelectionId == nil
+                                ) {
+                                    commitSelection(nil as Court?)
+                                }
                             }
 
                             ForEach(filteredCourts) { court in
@@ -6043,20 +6292,22 @@ private struct SearchClubPickerSheet: View {
                                     commitSelection(court)
                                 }
                             }
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 16)
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 16)
+                }
+                    .frame(height: recommendedListHeight(for: sheetGeometry.size.height))
                     .scrollDismissesKeyboard(.interactively)
                 }
                 .padding(.top, 20)
 
                 VStack(spacing: 10) {
-                    Button(pendingSelectionId == nil ? "Оставить без привязки" : "Выбрать этот клуб") {
+                    Button(pendingSelectionId == nil && allowsNoCourt ? "Оставить без привязки" : "Выбрать этот клуб") {
                         onSelect(pendingCourtSnapshot ?? pendingSelectionId.flatMap { id in courts.first(where: { $0.id == id }) })
                         dismiss()
                     }
                     .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
+                    .disabled(!allowsNoCourt && pendingSelectionId == nil)
 
                     Text("Клуб можно будет изменить позже")
                         .font(.footnote)
@@ -6065,26 +6316,61 @@ private struct SearchClubPickerSheet: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
                 .background(.white.opacity(0.96))
+                }
             }
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onAppear {
             pendingSelectionId = selectedCourtId
             pendingCourtSnapshot = selectedCourtId.flatMap { id in courts.first(where: { $0.id == id }) }
             isSearchFocused = false
         }
+        .sheet(isPresented: $isMapExpanded) {
+            SearchClubExpandedMapSheet(
+                sport: sport,
+                courts: mapPreviewCourts,
+                focusedCourt: pendingCourt ?? focusedCourt,
+                selectedCourt: pendingCourt,
+                onPreview: { court in
+                    previewSelection(court)
+                },
+                onChoose: { court in
+                    confirmSelection(court)
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+        }
     }
 
-    private func commitSelection(_ court: Court?) {
+    private func previewSelection(_ court: Court?) {
+        guard allowsNoCourt || court != nil else {
+            return
+        }
+
         pendingSelectionId = court?.id
         pendingCourtSnapshot = court
         AppHaptics.selection()
+    }
+
+    private func confirmSelection(_ court: Court? = nil) {
+        let resolvedCourt = court ?? pendingCourt
+        onSelect(resolvedCourt)
+        dismiss()
+    }
+
+    private func commitSelection(_ court: Court?) {
+        guard allowsNoCourt || court != nil else {
+            return
+        }
+
+        previewSelection(court)
 
         guard selectsImmediately else {
             return
         }
 
-        onSelect(court)
-        dismiss()
+        confirmSelection(court)
     }
 
     private func chip(title: String, selected: Bool) -> some View {
@@ -6175,13 +6461,346 @@ struct CourtBrowseCard: View {
     }
 }
 
+private struct MapSelectedCourtMiniCard: View {
+    let court: Court
+    let sport: Sport
+    let onChoose: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            MapCourtThumbnail(court: court, sport: sport, size: 66)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(court.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+
+                Text([sport.title, court.nearestMetroName ?? localizedDistrictName(court.district)]
+                    .compactMap { $0 }
+                    .joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.ink.opacity(0.58))
+                    .lineLimit(1)
+
+                Text(court.address)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(AppTheme.ink.opacity(0.5))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Выбрать") {
+                onChoose()
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(AppTheme.ink, in: Capsule())
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(AppTheme.mint.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppTheme.court.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+private struct MapCourtThumbnail: View {
+    let court: Court
+    let sport: Sport
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let photoUrl = court.photoUrl, let url = URL(string: photoUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var fallback: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AppTheme.court.opacity(0.82), AppTheme.ink.opacity(0.88)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: sportSymbolName(for: court.supportedSports?.first ?? sport))
+                .font(.system(size: size * 0.34, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+        }
+    }
+}
+
+private struct SearchClubExpandedMapSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let sport: Sport
+    let courts: [Court]
+    let focusedCourt: Court?
+    let selectedCourt: Court?
+    let onPreview: (Court) -> Void
+    let onChoose: (Court) -> Void
+
+    @State private var previewCourt: Court?
+    @State private var focusRevision = 0
+
+    private var activeCourt: Court? {
+        previewCourt ?? selectedCourt ?? focusedCourt
+    }
+
+    var body: some View {
+        AppScreen {
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.black.opacity(0.1))
+                    .frame(width: 48, height: 6)
+                    .padding(.top, 10)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Карта клубов")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("Нажмите на значок, чтобы увидеть клуб и выбрать его")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.ink.opacity(0.58))
+                    }
+
+                    Spacer()
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(AppTheme.ink)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.04), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 14)
+
+                ZStack(alignment: .bottom) {
+                    SearchClubPickerMapView(
+                        courts: courts,
+                        focusedCourt: activeCourt,
+                        focusRevision: focusRevision,
+                        onSelectCourt: { courtId in
+                            guard let court = courts.first(where: { $0.id == courtId }) else {
+                                return
+                            }
+                            previewCourt = court
+                            focusRevision += 1
+                            onPreview(court)
+                        },
+                        onChooseCourt: { courtId in
+                            guard let court = courts.first(where: { $0.id == courtId }) else {
+                                return
+                            }
+                            onChoose(court)
+                            dismiss()
+                        }
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    )
+
+                    if let activeCourt {
+                        MapSelectedCourtMiniCard(court: activeCourt, sport: sport) {
+                            onChoose(activeCourt)
+                            dismiss()
+                        }
+                        .padding(14)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+        }
+        .onAppear {
+            previewCourt = selectedCourt ?? focusedCourt
+        }
+    }
+}
+
+private final class SearchClubPickerAnnotationView: MKAnnotationView {
+    static let reuseID = "SearchClubPickerAnnotationView"
+
+    private var representedCourtID: String?
+
+    override var annotation: MKAnnotation? {
+        didSet {
+            if let annotation = annotation as? SearchPreviewCourtAnnotation {
+                configure(court: annotation.court, showsCallout: canShowCallout)
+            }
+        }
+    }
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        centerOffset = CGPoint(x: 0, y: -18)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func configure(court: Court, showsCallout: Bool) {
+        representedCourtID = court.id
+        image = sportMarkerImage(for: court.supportedSports?.first)
+        canShowCallout = showsCallout
+        centerOffset = CGPoint(x: 0, y: -18)
+
+        guard showsCallout else {
+            leftCalloutAccessoryView = nil
+            detailCalloutAccessoryView = nil
+            rightCalloutAccessoryView = nil
+            return
+        }
+
+        leftCalloutAccessoryView = makePhotoView(for: court)
+        detailCalloutAccessoryView = SearchClubCalloutContentView(court: court)
+
+        let chooseButton = UIButton(type: .system)
+        chooseButton.setTitle("Выбрать", for: .normal)
+        chooseButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+        chooseButton.tintColor = UIColor(red: 0.09, green: 0.17, blue: 0.16, alpha: 1)
+        chooseButton.frame = CGRect(x: 0, y: 0, width: 74, height: 34)
+        rightCalloutAccessoryView = chooseButton
+    }
+
+    private func makePhotoView(for court: Court) -> UIImageView {
+        let imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 58, height: 58))
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 12
+        imageView.backgroundColor = UIColor(red: 0.9, green: 0.97, blue: 0.93, alpha: 1)
+        imageView.tintColor = UIColor(red: 0.08, green: 0.54, blue: 0.36, alpha: 1)
+        imageView.image = UIImage(systemName: sportSymbolName(for: court.supportedSports?.first ?? .tennis))
+
+        guard let photoUrl = court.photoUrl, let url = URL(string: photoUrl) else {
+            return imageView
+        }
+
+        let courtID = court.id
+        URLSession.shared.dataTask(with: url) { [weak self, weak imageView] data, _, _ in
+            guard let data,
+                  let image = UIImage(data: data) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                guard self?.representedCourtID == courtID else {
+                    return
+                }
+                imageView?.image = image
+                imageView?.contentMode = .scaleAspectFill
+            }
+        }.resume()
+
+        return imageView
+    }
+}
+
+private final class SearchClubCalloutContentView: UIStackView {
+    init(court: Court) {
+        super.init(frame: .zero)
+        axis = .vertical
+        alignment = .fill
+        spacing = 3
+        widthAnchor.constraint(equalToConstant: 226).isActive = true
+
+        let sportsLine = (court.supportedSports?.isEmpty == false ? court.supportedSports : nil)?
+            .map(\.title)
+            .joined(separator: " · ")
+            ?? "Клуб"
+        addArrangedSubview(makeLabel(sportsLine, font: .systemFont(ofSize: 12, weight: .semibold), color: UIColor(red: 0.08, green: 0.54, blue: 0.36, alpha: 1), lines: 1))
+
+        let placeLine = [court.nearestMetroName, localizedDistrictName(court.district), court.distanceLabel]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        if !placeLine.isEmpty {
+            addArrangedSubview(makeLabel(placeLine, font: .systemFont(ofSize: 12, weight: .medium), color: .secondaryLabel, lines: 1))
+        }
+
+        addArrangedSubview(makeLabel(court.address, font: .systemFont(ofSize: 12, weight: .medium), color: .label, lines: 2))
+
+        let extraLine = [court.workingHours, court.priceRange, court.rating.map { String(format: "Рейтинг %.1f", $0) }]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        if !extraLine.isEmpty {
+            addArrangedSubview(makeLabel(extraLine, font: .systemFont(ofSize: 11, weight: .medium), color: .secondaryLabel, lines: 1))
+        }
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func makeLabel(_ text: String, font: UIFont, color: UIColor, lines: Int) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = font
+        label.textColor = color
+        label.numberOfLines = lines
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }
+}
+
 struct SearchClubPickerMapView: UIViewRepresentable {
     let courts: [Court]
     let focusedCourt: Court?
+    let focusedDistrictID: String?
+    let focusRevision: Int
     let onSelectCourt: (String) -> Void
+    let onChooseCourt: ((String) -> Void)?
+
+    init(
+        courts: [Court],
+        focusedCourt: Court?,
+        focusedDistrictID: String? = nil,
+        focusRevision: Int = 0,
+        onSelectCourt: @escaping (String) -> Void,
+        onChooseCourt: ((String) -> Void)? = nil
+    ) {
+        self.courts = courts
+        self.focusedCourt = focusedCourt
+        self.focusedDistrictID = focusedDistrictID
+        self.focusRevision = focusRevision
+        self.onSelectCourt = onSelectCourt
+        self.onChooseCourt = onChooseCourt
+    }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSelectCourt: onSelectCourt)
+        Coordinator(onSelectCourt: onSelectCourt, onChooseCourt: onChooseCourt)
     }
 
     func makeUIView(context: Context) -> MKMapView {
@@ -6198,20 +6817,34 @@ struct SearchClubPickerMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        context.coordinator.update(mapView: mapView, courts: courts, focusedCourt: focusedCourt)
+        context.coordinator.update(
+            mapView: mapView,
+            courts: courts,
+            focusedCourt: focusedCourt,
+            focusedDistrictID: focusedDistrictID,
+            focusRevision: focusRevision
+        )
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         private let onSelectCourt: (String) -> Void
+        private let onChooseCourt: ((String) -> Void)?
         private var lastCourtIDs: [String] = []
-        private var lastFocusedCourtID: String?
+        private var lastFocusSignature: String?
         private var hasSetVisibleRegion = false
 
-        init(onSelectCourt: @escaping (String) -> Void) {
+        init(onSelectCourt: @escaping (String) -> Void, onChooseCourt: ((String) -> Void)?) {
             self.onSelectCourt = onSelectCourt
+            self.onChooseCourt = onChooseCourt
         }
 
-        func update(mapView: MKMapView, courts: [Court], focusedCourt: Court?) {
+        func update(
+            mapView: MKMapView,
+            courts: [Court],
+            focusedCourt: Court?,
+            focusedDistrictID: String?,
+            focusRevision: Int
+        ) {
             let visibleCourts = Array(courts.prefix(18))
             let courtIDs = visibleCourts.map(\.id)
             if courtIDs != lastCourtIDs {
@@ -6222,9 +6855,15 @@ struct SearchClubPickerMapView: UIViewRepresentable {
 
             let annotations = mapView.annotations.compactMap { $0 as? SearchPreviewCourtAnnotation }
             let focusedCourtID = focusedCourt?.id
+            let normalizedDistrictID = focusedDistrictID?.lowercased()
+            let focusSignature = [
+                focusedCourtID ?? "",
+                normalizedDistrictID ?? "",
+                String(focusRevision)
+            ].joined(separator: "|")
 
-            if let focusedCourt, focusedCourtID != lastFocusedCourtID {
-                lastFocusedCourtID = focusedCourtID
+            if let focusedCourt, focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
                 hasSetVisibleRegion = true
                 let region = MKCoordinateRegion(
                     center: focusedCourt.coordinate,
@@ -6235,7 +6874,23 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return
             }
 
-            lastFocusedCourtID = focusedCourtID
+            if focusedCourt == nil,
+               let normalizedDistrictID,
+               let area = districtAreasByID[normalizedDistrictID],
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                mapView.setVisibleMapRect(
+                    polygon.boundingMapRect,
+                    edgePadding: UIEdgeInsets(top: 24, left: 24, bottom: 24, right: 24),
+                    animated: true
+                )
+                return
+            }
+
+            lastFocusSignature = focusSignature
 
             let targetRect = annotations
                 .map { MKMapRect(origin: MKMapPoint($0.coordinate), size: MKMapSize(width: 0, height: 0)) }
@@ -6259,12 +6914,10 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return nil
             }
 
-            let reuseID = "SearchClubPickerAnnotationView"
-            let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseID) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: reuseID)
+            let view = (mapView.dequeueReusableAnnotationView(withIdentifier: SearchClubPickerAnnotationView.reuseID) as? SearchClubPickerAnnotationView)
+                ?? SearchClubPickerAnnotationView(annotation: annotation, reuseIdentifier: SearchClubPickerAnnotationView.reuseID)
             view.annotation = annotation
-            view.canShowCallout = false
-            view.centerOffset = CGPoint(x: 0, y: -18)
-            view.image = sportMarkerImage(for: annotation.court.supportedSports?.first)
+            view.configure(court: annotation.court, showsCallout: onChooseCourt != nil)
             return view
         }
 
@@ -6273,6 +6926,13 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return
             }
             onSelectCourt(annotation.court.id)
+        }
+
+        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+            guard let annotation = view.annotation as? SearchPreviewCourtAnnotation else {
+                return
+            }
+            onChooseCourt?(annotation.court.id)
         }
     }
 }

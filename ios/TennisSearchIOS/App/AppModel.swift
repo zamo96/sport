@@ -336,6 +336,7 @@ enum AppNavigationTarget: Equatable {
     case discover(DiscoverTab, highlightedUserID: String? = nil, highlightedSearchID: String? = nil, highlightedGameRequestID: String? = nil)
     case matches
     case searches
+    case courts(sport: Sport?)
     case chat(String)
 }
 

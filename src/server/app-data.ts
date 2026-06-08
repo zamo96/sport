@@ -7,7 +7,7 @@ import {
   type DiscoverFilters
 } from "@/lib/scoring";
 import { courtSupportsSport } from "@/lib/courts";
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { getDiscoverCandidates } from "@/server/discover";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { normalizeSports } from "@/lib/sport-levels";
@@ -719,7 +719,7 @@ function buildNotificationSearchTime(search: {
     .join(", ");
   const rangeLabel = ranges
     .slice(0, 2)
-    .map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS] ?? range)
+    .map(getTimePreferenceLabel)
     .join(", ");
 
   return [dayLabel, rangeLabel].filter(Boolean).join(" · ") || "время уточняется";

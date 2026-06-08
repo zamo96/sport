@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CalendarDays, Flame, ListChecks } from "lucide-react";
+import { CalendarDays, Flame } from "lucide-react";
 
 import { getSessionUser } from "@/lib/auth";
 import { discoverFiltersSchema } from "@/lib/validators";
@@ -18,7 +18,6 @@ import { SwipeDeck } from "@/components/discover/swipe-deck";
 import { Button } from "@/components/ui/button";
 import { normalizeSports } from "@/lib/sport-levels";
 import {
-  getActiveSearchesCount,
   getActiveRegularPairsForUser,
   getDiscoverPageData,
   getHotNotificationsCount,
@@ -97,13 +96,12 @@ export default async function DiscoverPage({
   const isSeekingView = effectiveFilters.view === "seeking";
   const isHotView = effectiveFilters.view === "hot";
   const highlightSearchId = typeof searchParams.highlight === "string" ? searchParams.highlight : undefined;
-  const [{ candidates }, incomingLikePlayers, seekingPlayers, hotPlayers, upcomingGames, activeSearchesCount, incomingLikesCount, hotCount, activeRegularPairs] = await Promise.all([
+  const [{ candidates }, incomingLikePlayers, seekingPlayers, hotPlayers, upcomingGames, incomingLikesCount, hotCount, activeRegularPairs] = await Promise.all([
     getDiscoverPageData(user.id, effectiveFilters),
     getIncomingLikePlayers(user.id, effectiveFilters),
     getSeekingPlayers(user.id, effectiveFilters),
     getHotPlayers(user.id, effectiveFilters),
     getUpcomingGamesForUser(user.id),
-    getActiveSearchesCount(user.id),
     getIncomingLikesCount(user.id),
     getHotNotificationsCount(user.id),
     getActiveRegularPairsForUser(user.id)
@@ -165,16 +163,16 @@ export default async function DiscoverPage({
             <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">Игроки рядом</h1>
           </div>
           <div className="flex items-center gap-2">
-            <a href="/play/searches" className="shrink-0">
+            <a href="/discover?view=hot" className="shrink-0">
               <div className="inline-flex min-h-11 items-center gap-2 rounded-[20px] bg-white/85 px-3 text-sm font-semibold text-ink shadow-card">
-                <ListChecks className="h-4 w-4 text-court" />
-                <span>Мои</span>
+                <Flame className="h-4 w-4 text-orange-500" />
+                <span>Срочно</span>
                 <span
                   className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${
-                    activeSearchesCount > 0 ? "bg-red-500 text-white" : "bg-line text-ink/60"
+                    hotCount > 0 ? "bg-red-500 text-white" : "bg-line text-ink/60"
                   }`}
                 >
-                  {activeSearchesCount}
+                  {hotCount}
                 </span>
               </div>
             </a>

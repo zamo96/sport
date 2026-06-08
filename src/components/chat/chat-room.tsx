@@ -68,6 +68,7 @@ export function ChatRoom({
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const latestRequest = gameRequests[0];
   const upcomingBookedGames = gameRequests.filter(
     (request) => request.status === "accepted" && !isPastGameRequest(request.proposedDatetime)
@@ -102,6 +103,7 @@ export function ChatRoom({
     if (!text.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<{ message: Message }>(`/matches/${matchId}/messages`, {
         method: "POST",
@@ -109,6 +111,8 @@ export function ChatRoom({
       });
       setMessages((current) => [...current, data.message]);
       setText("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось отправить сообщение");
     } finally {
       setLoading(false);
     }
@@ -207,6 +211,7 @@ export function ChatRoom({
             <SendHorizonal className="h-5 w-5" />
           </button>
         </form>
+        {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       </Panel>
     </div>
   );

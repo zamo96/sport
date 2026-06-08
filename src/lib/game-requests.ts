@@ -90,7 +90,7 @@ export function getGameRequestTone(options: {
       return {
         panelClassName: "bg-cream",
         badgeClassName: "bg-mint text-court",
-        badgeLabel: isCreator ? "Ждём ответ" : "Нужно решение"
+        badgeLabel: isCreator ? "Игра создана" : "Тебя добавили"
       };
   }
 }
@@ -133,8 +133,8 @@ export function getGameRequestNextStep(options: {
   switch (status) {
     case "pending":
       return isCreator
-        ? "Ждём подтверждение второго игрока. Как только он ответит, игра перейдёт в подтвержденные."
-        : "Тебя пригласили на игру. Подтверди, если время и место подходят, чтобы сразу зафиксировать встречу.";
+        ? "Игра создана. Открой чат и уточни детали, если что-то нужно поменять."
+        : "Тебя добавили в игру. Открой чат, чтобы обсудить детали.";
     case "accepted":
       return "Игра подтверждена. Следующий шаг: открой детали игры и обсуди только финальные нюансы.";
     case "declined":

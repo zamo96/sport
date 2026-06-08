@@ -4,14 +4,22 @@ import path from "path";
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
-type UploadAvatarInput = {
+type UploadImageInput = {
   bytes: Buffer;
   originalName: string;
   contentType?: string;
+};
+
+type UploadAvatarInput = UploadImageInput & {
   userId: string;
 };
 
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+type UploadCourtPhotoInput = UploadImageInput & {
+  courtId?: string;
+  objectKey?: string;
+};
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 let s3Client: S3Client | null = null;
@@ -48,12 +56,12 @@ function sanitizeExtension(originalName: string, contentType?: string) {
   }
 }
 
-function validateAvatar(bytes: Buffer, contentType?: string) {
+function validateImage(bytes: Buffer, contentType?: string) {
   if (bytes.length === 0) {
     throw new Error("Файл пустой");
   }
 
-  if (bytes.length > MAX_AVATAR_BYTES) {
+  if (bytes.length > MAX_IMAGE_BYTES) {
     throw new Error("Фото должно быть не больше 5 МБ");
   }
 
@@ -82,19 +90,45 @@ function getS3Client() {
 
 function buildPublicObjectUrl(bucket: string, key: string) {
   const publicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.trim();
+  const encodedKey = encodeObjectKeyForUrl(key);
 
   if (publicBaseUrl) {
-    return `${publicBaseUrl.replace(/\/$/, "")}/${key}`;
+    return `${publicBaseUrl.replace(/\/$/, "")}/${encodedKey}`;
   }
 
   const endpoint = (process.env.S3_ENDPOINT?.trim() || "https://storage.yandexcloud.net").replace(/\/$/, "");
-  return `${endpoint}/${bucket}/${key}`;
+  return `${endpoint}/${bucket}/${encodedKey}`;
 }
 
-async function uploadAvatarToS3({ bytes, originalName, contentType, userId }: UploadAvatarInput) {
+function encodeObjectKeyForUrl(key: string) {
+  return key
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function sanitizeObjectKey(value: string) {
+  const key = value.trim().replace(/^\/+/, "").replace(/\\/g, "/");
+
+  if (!key || key.includes("..") || key.endsWith("/")) {
+    throw new Error("Некорректный S3 ключ для фото");
+  }
+
+  return key;
+}
+
+async function uploadImageToS3({
+  bytes,
+  originalName,
+  contentType,
+  keyPrefix,
+  objectKey
+}: UploadImageInput & { keyPrefix: string; objectKey?: string }) {
   const bucket = requiredEnv("S3_BUCKET");
   const extension = sanitizeExtension(originalName, contentType);
-  const key = `avatars/${userId}/${randomUUID()}.${extension}`;
+  const key = objectKey
+    ? sanitizeObjectKey(objectKey)
+    : `${keyPrefix.replace(/^\/+|\/+$/g, "")}/${randomUUID()}.${extension}`;
 
   await getS3Client().send(
     new PutObjectCommand({
@@ -109,24 +143,49 @@ async function uploadAvatarToS3({ bytes, originalName, contentType, userId }: Up
   return buildPublicObjectUrl(bucket, key);
 }
 
-async function uploadAvatarLocally({ bytes, originalName, contentType }: UploadAvatarInput) {
+async function uploadImageLocally({
+  bytes,
+  originalName,
+  contentType,
+  objectKey
+}: UploadImageInput & { objectKey?: string }) {
   const extension = sanitizeExtension(originalName, contentType);
   const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  const fileName = `${randomUUID()}.${extension}`;
+  const fileName = objectKey ? sanitizeObjectKey(objectKey) : `${randomUUID()}.${extension}`;
   const filePath = path.join(uploadsDir, fileName);
 
-  await mkdir(uploadsDir, { recursive: true });
+  await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, bytes);
 
   return `/uploads/${fileName}`;
 }
 
 export async function uploadAvatar(input: UploadAvatarInput) {
-  validateAvatar(input.bytes, input.contentType);
+  validateImage(input.bytes, input.contentType);
 
   if (resolveUploadsProvider() === "s3") {
-    return uploadAvatarToS3(input);
+    return uploadImageToS3({ ...input, keyPrefix: `avatars/${input.userId}` });
   }
 
-  return uploadAvatarLocally(input);
+  return uploadImageLocally(input);
+}
+
+export async function uploadCourtPhoto(input: UploadCourtPhotoInput) {
+  validateImage(input.bytes, input.contentType);
+
+  const keyPrefix = input.courtId ? `courts/${input.courtId}` : "courts/import";
+
+  if (resolveUploadsProvider() === "s3") {
+    return uploadImageToS3({ ...input, keyPrefix });
+  }
+
+  return uploadImageLocally(input);
+}
+
+export function resolveUploadedObjectUrl(objectKey: string) {
+  if (resolveUploadsProvider() === "s3") {
+    return buildPublicObjectUrl(requiredEnv("S3_BUCKET"), sanitizeObjectKey(objectKey));
+  }
+
+  return `/uploads/${sanitizeObjectKey(objectKey)}`;
 }

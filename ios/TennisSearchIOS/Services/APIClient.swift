@@ -582,6 +582,10 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
+    func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult {
+        try await client.request(path: "game-searches/\(searchId)/simulate", method: "POST", body: EmptyRequest())
+    }
+
     func fetchCourts() async throws -> [Court] {
         let response: CourtsEnvelope = try await client.request(path: "courts")
         return response.courts

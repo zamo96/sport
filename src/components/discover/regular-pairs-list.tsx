@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Sport } from "@prisma/client";
 
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ function buildScheduleLabel(preferredDays: unknown, preferredTimeRanges: unknown
     .map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]);
   const timeRanges = normalizeStringArray(preferredTimeRanges)
     .slice(0, 2)
-    .map((timeRange) => TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS]);
+    .map(getTimePreferenceLabel);
 
   return [days.join(", "), timeRanges.join(", ")].filter(Boolean).join(" · ");
 }

@@ -17,6 +17,7 @@ type CourtMapPoint = {
 type CourtsMapFocus =
   | {
       type: "metro" | "club";
+      courtId?: string | null;
       label?: string | null;
       center: { lat: number; lng: number };
       radiusKm: number;

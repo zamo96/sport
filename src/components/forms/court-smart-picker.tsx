@@ -87,7 +87,7 @@ export function CourtSmartPicker({
         </div>
       ) : null}
 
-      <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+      <div className="max-h-[440px] min-h-[360px] space-y-2 overflow-y-auto pr-1">
         <CourtSmartPickerRow
           title={emptyLabel}
           metaItems={[{ icon: "mappin", text: emptyDescription }]}

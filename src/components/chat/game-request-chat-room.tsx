@@ -35,6 +35,7 @@ export function GameRequestChatRoom({
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +63,7 @@ export function GameRequestChatRoom({
     if (!text.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<{ message: Message }>(`/game-requests/${gameRequestId}/messages`, {
         method: "POST",
@@ -69,6 +71,8 @@ export function GameRequestChatRoom({
       });
       setMessages((current) => [...current, data.message]);
       setText("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось отправить сообщение");
     } finally {
       setLoading(false);
     }
@@ -124,6 +128,7 @@ export function GameRequestChatRoom({
           <SendHorizonal className="h-5 w-5" />
         </button>
       </form>
+      {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </Panel>
   );
 }

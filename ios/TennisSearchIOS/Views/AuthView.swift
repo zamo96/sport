@@ -93,12 +93,7 @@ struct AuthView: View {
                 if let district = detectedDistrictForConfirmation {
                     OnboardingDetectedDistrictSheet(
                         districtID: district,
-                        onConfirm: {
-                            isDetectedDistrictConfirmed = true
-                            selectedLocationChoice = .nearby
-                            showsDetectedDistrictConfirmation = false
-                            AppHaptics.notification(.success)
-                        },
+                        onConfirm: confirmDetectedDistrict,
                         onChooseDistrict: {
                             isDetectedDistrictConfirmed = false
                             selectedLocationChoice = .districts
@@ -119,6 +114,9 @@ struct AuthView: View {
                 guard let district else {
                     return
                 }
+                guard step == .availability else {
+                    return
+                }
                 draft.district = district
                 draft.preferredDistricts = [district]
                 selectedLocationChoice = .nearby
@@ -126,6 +124,11 @@ struct AuthView: View {
                 isDetectedDistrictConfirmed = false
                 showsDetectedDistrictConfirmation = true
                 AppHaptics.notification(.success)
+            }
+            .onChange(of: step) { newValue in
+                if newValue != .availability {
+                    showsDetectedDistrictConfirmation = false
+                }
             }
         }
     }
@@ -459,9 +462,7 @@ struct AuthView: View {
                             AppHaptics.selection()
                         },
                         onConfirmDetectedDistrict: {
-                            isDetectedDistrictConfirmed = true
-                            selectedLocationChoice = .nearby
-                            AppHaptics.notification(.success)
+                            confirmDetectedDistrict()
                         },
                         onDistricts: {
                             selectedLocationChoice = .districts
@@ -618,6 +619,22 @@ struct AuthView: View {
         }
         appModel.dismissPresentedAuth()
         dismiss()
+    }
+
+    private func confirmDetectedDistrict() {
+        let district = detectedDistrictForConfirmation ?? draft.district ?? locationPermission.detectedDistrict
+
+        if let district {
+            draft.district = district
+            draft.preferredDistricts = [district]
+            detectedDistrictForConfirmation = district
+        }
+
+        selectedLocationChoice = .nearby
+        isDetectedDistrictConfirmed = true
+        showsDetectedDistrictConfirmation = false
+        persistDraft()
+        AppHaptics.notification(.success)
     }
 
     private var currentStepLabel: String {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { prisma } from "@/lib/prisma";
-import { DAY_LABELS, SPORT_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { Panel } from "@/components/ui/panel";
@@ -111,7 +111,7 @@ export default async function SearchInvitePage({ params }: { params: { id: strin
           </div>
 
           <div className="rounded-2xl bg-cream px-4 py-3 text-sm text-ink/72">
-            {[days.map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]).join(", "), timeRanges.map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")]
+            {[days.map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS]).join(", "), timeRanges.map(getTimePreferenceLabel).join(", ")]
               .filter(Boolean)
               .join(" · ") || "Время и дни уточнят в чате после отклика."}
           </div>

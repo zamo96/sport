@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { CalendarDays, Clock3, Flame, MapPin, Target, Trophy, Users2 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
-import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, SPORT_SEARCH_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
+import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, SPORT_SEARCH_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { formatTimeUntilHotSearch, resolveSearchLifecycleStatus } from "@/lib/game-search";
 import { getSportLevel, getSportLevelEntries } from "@/lib/sport-levels";
 import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
@@ -332,7 +332,7 @@ function buildAvailabilityLabel(days: unknown[], timeRanges: unknown[]) {
     .join(", ");
   const timeLabel = timeRanges
     .slice(0, 2)
-    .map((timeRange) => TIME_RANGE_LABELS[timeRange as keyof typeof TIME_RANGE_LABELS])
+    .map((timeRange) => getTimePreferenceLabel(String(timeRange)))
     .join(", ");
 
   if (dayLabel && timeLabel) {

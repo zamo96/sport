@@ -173,8 +173,10 @@ struct AppInlineChip: View {
     var body: some View {
         Text(text)
             .font(.caption.weight(.semibold))
-            .lineLimit(1)
+            .lineLimit(2)
             .minimumScaleFactor(0.82)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)

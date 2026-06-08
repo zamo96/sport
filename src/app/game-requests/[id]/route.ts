@@ -146,17 +146,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           })
         : [];
       const cascadeRequests = relatedRequests.length > 1 ? relatedRequests : [];
-      const shouldResetToPending =
-        editableRequested &&
-        !editableNoOp &&
-        !statusRequested &&
-        gameRequest.status === GameRequestStatus.accepted;
       const resolvedNextStatus =
         statusRequested && !statusNoOp && nextStatus !== undefined
           ? nextStatus
-          : shouldResetToPending
-            ? GameRequestStatus.pending
-            : undefined;
+          : undefined;
 
       let result: typeof relatedRequests[number] | (typeof gameRequest & { proposedCourt?: null });
 
@@ -284,7 +277,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           const editMessage = getEditChangeMessage({
             proposedDatetime: result.proposedDatetime,
             courtName: result.proposedCourt?.name ?? null,
-            resetConfirmation: shouldResetToPending
+            resetConfirmation: false
           });
 
           await tx.chatMessage.createMany({
@@ -418,7 +411,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             ? getEditChangeMessage({
                 proposedDatetime: updated.proposedDatetime,
                 courtName: updated.proposedCourt?.name ?? null,
-                resetConfirmation: updated.status === GameRequestStatus.pending
+                resetConfirmation: false
               })
           : body.status !== undefined
             ? getStatusChangeMessage(body.status, {

@@ -41,6 +41,7 @@ protocol TennisRepository {
     func respondToSearch(searchId: String, message: String) async throws -> SearchResponse
     func withdrawSearchResponse(responseId: String) async throws -> SearchResponse
     func updateSearchResponseStatus(responseId: String, status: String) async throws -> SearchResponseUpdateResult
+    func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult
     func fetchCourts() async throws -> [Court]
     func fetchNotifications() async throws -> [AppNotification]
     func fetchActivitySummary() async throws -> ActivitySummary
@@ -54,4 +55,11 @@ struct SearchSlotProposalDraftOption {
     let scheduledAt: Date
     let proposedCourtId: String?
     let durationMinutes: Int?
+}
+
+struct SearchSimulationResult: Codable {
+    let createdResponses: Int
+    let createdVotes: Int
+    let finalizedOptions: Int
+    let message: String
 }

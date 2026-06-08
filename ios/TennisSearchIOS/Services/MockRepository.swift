@@ -484,7 +484,7 @@ actor MockRepository: TennisRepository {
             id: "game-request-\(UUID().uuidString)",
             matchId: matchId,
             searchLobbyId: nil,
-            status: "pending",
+            status: "accepted",
             proposedDatetime: ISO8601DateFormatter().string(from: draft.proposedDatetime),
             createdByUserId: currentUser.id,
             matchedUserId: matches.first(where: { $0.id == matchId })?.otherUser.id,
@@ -508,8 +508,8 @@ actor MockRepository: TennisRepository {
                 timeStyle: .short
             )
             let summary = draft.comment.isEmpty
-                ? "Предложение игры: \(proposalText) · \(draft.sport.formatTitle(format: draft.format))"
-                : "Предложение игры: \(proposalText) · \(draft.comment)"
+                ? "Игра назначена: \(proposalText) · \(draft.sport.formatTitle(format: draft.format))"
+                : "Игра назначена: \(proposalText) · \(draft.comment)"
             let systemMessage = ChatMessage(
                 id: "msg-\(UUID().uuidString)",
                 senderUserId: currentUser.id,
@@ -542,7 +542,6 @@ actor MockRepository: TennisRepository {
             throw APIError.server("Предложение игры не найдено")
         }
 
-        let nextStatus = existing.status.lowercased() == "accepted" ? "pending" : existing.status
         let updated = MatchGameRequest(
             id: existing.id,
             matchId: existing.matchId,
@@ -550,7 +549,7 @@ actor MockRepository: TennisRepository {
             searchLobbyId: existing.searchLobbyId,
             sourceType: existing.sourceType,
             regularPairId: existing.regularPairId,
-            status: nextStatus,
+            status: existing.status,
             proposedDatetime: ISO8601DateFormatter().string(from: draft.proposedDatetime),
             createdByUserId: existing.createdByUserId,
             matchedUserId: existing.matchedUserId,
@@ -606,7 +605,7 @@ actor MockRepository: TennisRepository {
                 id: "game-request-\(UUID().uuidString)",
                 matchId: matchId,
                 searchLobbyId: nil,
-                status: "pending",
+                status: "accepted",
                 proposedDatetime: sourceRequest.proposedDatetime,
                 createdByUserId: currentUser.id,
                 matchedUserId: matches[matchIndex].otherUser.id,
@@ -628,7 +627,7 @@ actor MockRepository: TennisRepository {
             let systemMessage = ChatMessage(
                 id: "msg-\(UUID().uuidString)",
                 senderUserId: currentUser.id,
-                text: "Отправил(а) приглашение в уже созданную игру.",
+                text: "Добавил(а) тебя в уже созданную игру.",
                 createdAt: ISO8601DateFormatter().string(from: Date()),
                 senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl)
             )
@@ -928,7 +927,7 @@ actor MockRepository: TennisRepository {
         let proposal = SearchSlotProposalSummary(
             id: "slot-proposal-\(UUID().uuidString.prefix(6))",
             comment: comment,
-            status: "active",
+            status: "open",
             createdAt: ISO8601DateFormatter().string(from: Date()),
             options: options.enumerated().map { index, option in
                 SearchSlotProposalOption(
@@ -943,6 +942,7 @@ actor MockRepository: TennisRepository {
             }
         )
         slotProposalsBySearchId[searchId] = proposal
+        updateSearchSchedule(searchId: searchId, from: proposal.options, activeSlotProposal: proposal)
         return proposal
     }
 
@@ -956,33 +956,51 @@ actor MockRepository: TennisRepository {
         }
 
         let selectedOptionIds = Set(optionIds)
+        let votedOptions = proposal.options.map { option in
+            let votesWithoutCurrentUser = option.votes.filter { $0.userId != currentUser.id }
+            let votes = selectedOptionIds.contains(option.id)
+                ? votesWithoutCurrentUser + [
+                    SearchSlotProposalVote(
+                        id: "slot-vote-\(UUID().uuidString.prefix(6))",
+                        userId: currentUser.id,
+                        createdAt: ISO8601DateFormatter().string(from: Date())
+                    )
+                ]
+                : votesWithoutCurrentUser
+
+            return SearchSlotProposalOption(
+                id: option.id,
+                scheduledAt: option.scheduledAt,
+                durationMinutes: option.durationMinutes,
+                proposedCourt: option.proposedCourt,
+                votes: votes
+            )
+        }
+        let approvedCount = searches
+            .first(where: { $0.id == searchId })?
+            .responses
+            .filter { $0.status == "approved" }
+            .count ?? 1
+        let finalizedOptions = approvedCount > 0 ? votedOptions.filter { $0.votes.count >= approvedCount } : []
+        let updatedStatus = finalizedOptions.isEmpty ? proposal.status : "closed"
         let updated = SearchSlotProposalSummary(
             id: proposal.id,
             comment: proposal.comment,
-            status: proposal.status,
+            status: updatedStatus,
             createdAt: proposal.createdAt,
-            options: proposal.options.map { option in
-                let votesWithoutCurrentUser = option.votes.filter { $0.userId != currentUser.id }
-                let votes = selectedOptionIds.contains(option.id)
-                    ? votesWithoutCurrentUser + [
-                        SearchSlotProposalVote(
-                            id: "slot-vote-\(UUID().uuidString.prefix(6))",
-                            userId: currentUser.id,
-                            createdAt: ISO8601DateFormatter().string(from: Date())
-                        )
-                    ]
-                    : votesWithoutCurrentUser
-
-                return SearchSlotProposalOption(
-                    id: option.id,
-                    scheduledAt: option.scheduledAt,
-                    durationMinutes: option.durationMinutes,
-                    proposedCourt: option.proposedCourt,
-                    votes: votes
-                )
-            }
+            options: votedOptions
         )
-        slotProposalsBySearchId[searchId] = updated
+        if finalizedOptions.isEmpty {
+            slotProposalsBySearchId[searchId] = updated
+        } else {
+            slotProposalsBySearchId[searchId] = nil
+        }
+        updateSearchSchedule(
+            searchId: searchId,
+            from: finalizedOptions.isEmpty ? votedOptions : finalizedOptions,
+            activeSlotProposal: finalizedOptions.isEmpty ? updated : nil,
+            clearsActiveProposal: !finalizedOptions.isEmpty
+        )
         return updated
     }
 
@@ -1285,8 +1303,24 @@ actor MockRepository: TennisRepository {
             responses[responseIndex] = updated
 
             let approvedCount = responses.filter { $0.status == "approved" }.count
+            let playersNeeded = max(search.playersNeeded, 1)
+            let isFilled = approvedCount >= playersNeeded
+            if isFilled {
+                responses = responses.map { response in
+                    guard response.id != updated.id, response.status == "pending" else {
+                        return response
+                    }
+                    return SearchResponse(
+                        id: response.id,
+                        status: "rejected",
+                        responderUser: response.responderUser,
+                        matchId: response.matchId
+                    )
+                }
+            }
+
             let nextSearchStatus: String
-            if approvedCount >= max(search.playersNeeded, 1) {
+            if isFilled {
                 nextSearchStatus = "matched"
             } else if approvedCount > 0 || responses.contains(where: { $0.status == "pending" }) {
                 nextSearchStatus = "in_review"
@@ -1294,52 +1328,164 @@ actor MockRepository: TennisRepository {
                 nextSearchStatus = "active"
             }
 
-            search = GameSearch(
-                id: search.id,
+            let generatedMatchId = updated.matchId ?? search.regularPair?.matchId ?? "match-\(responseId)"
+            let generatedRegularPairId =
+                status == "approved" && search.searchType == .regular && playersNeeded == 1
+                ? (search.regularPair?.id ?? "pair-\(responseId)")
+                : nil
+            let generatedGameRequestId =
+                status == "approved" && search.searchType == .hot && playersNeeded == 1
+                ? "game-\(responseId)"
+                : nil
+            let nextRegularPair = generatedRegularPairId.map { regularPairId in
+                RegularPairSummary(
+                    id: regularPairId,
+                    matchId: generatedMatchId,
+                    partnerUser: updated.responderUser,
+                    preferredCourt: search.preferredCourt,
+                    preferredDays: search.preferredDays,
+                    preferredTimeRanges: search.preferredTimeRanges,
+                    comment: search.comment,
+                    occurrences: makeRegularOccurrences(
+                        preferredDays: search.preferredDays,
+                        preferredTimeRanges: search.preferredTimeRanges,
+                        proposedCourt: search.preferredCourt,
+                        durationMinutes: search.durationMinutes
+                    )
+                )
+            } ?? search.regularPair
+
+            search = makeGameSearch(
+                from: search,
                 status: nextSearchStatus,
-                searchType: search.searchType,
-                hotWindow: search.hotWindow,
-                hotStartsAt: search.hotStartsAt,
-                durationMinutes: search.durationMinutes,
-                hasCourtBooked: search.hasCourtBooked,
-                sport: search.sport,
-                selfLevel: search.selfLevel,
-                selfLevelUnknown: search.selfLevelUnknown,
-                desiredLevelMin: search.desiredLevelMin,
-                desiredLevelMax: search.desiredLevelMax,
-                format: search.format,
-                playersNeeded: search.playersNeeded,
-                preferredDays: search.preferredDays,
-                preferredTimeRanges: search.preferredTimeRanges,
-                comment: search.comment,
-                isActive: search.isActive,
-                isExpired: search.isExpired,
-                preferredCourt: search.preferredCourt,
-                regularPair: search.regularPair,
+                isActive: !isFilled,
+                regularPair: nextRegularPair,
                 responses: responses
             )
 
             searches[searchIndex] = search
-            let generatedMatchId = updated.matchId ?? search.regularPair?.matchId ?? "match-\(responseId)"
-            let generatedRegularPairId =
-                status == "approved" && search.searchType == .regular && max(search.playersNeeded, 1) == 1
-                ? (search.regularPair?.id ?? "pair-\(responseId)")
-                : nil
-            let generatedGameRequestId =
-                status == "approved" && search.searchType == .hot && max(search.playersNeeded, 1) == 1
-                ? "game-\(responseId)"
-                : nil
 
             return SearchResponseUpdateResult(
                 response: updated,
                 matchId: status == "approved" ? generatedMatchId : nil,
                 gameRequestId: generatedGameRequestId,
                 regularPairId: generatedRegularPairId,
-                gameSearch: nil
+                gameSearch: SearchStatusUpdate(
+                    id: search.id,
+                    status: nextSearchStatus,
+                    isActive: !isFilled
+                )
             )
         }
 
         throw APIError.server("Отклик не найден")
+    }
+
+    func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult {
+        guard let searchIndex = searches.firstIndex(where: { $0.id == searchId && $0.searchType == .regular }) else {
+            throw APIError.server("Регулярный поиск не найден")
+        }
+
+        let search = searches[searchIndex]
+        let approvedResponses = search.responses.filter { $0.status == "approved" }
+
+        if let proposal = slotProposalsBySearchId[searchId], !approvedResponses.isEmpty {
+            let selectedOptionIds = Set(proposal.options.prefix(2).map(\.id))
+            let votedOptions = proposal.options.map { option in
+                guard selectedOptionIds.contains(option.id) else {
+                    return option
+                }
+
+                let existingUserIds = Set(option.votes.map(\.userId))
+                let missingVotes = approvedResponses
+                    .filter { !existingUserIds.contains($0.responderUser.id) }
+                    .map { response in
+                        SearchSlotProposalVote(
+                            id: "slot-vote-\(UUID().uuidString.prefix(6))",
+                            userId: response.responderUser.id,
+                            createdAt: ISO8601DateFormatter().string(from: Date())
+                        )
+                    }
+
+                return SearchSlotProposalOption(
+                    id: option.id,
+                    scheduledAt: option.scheduledAt,
+                    durationMinutes: option.durationMinutes,
+                    proposedCourt: option.proposedCourt,
+                    votes: option.votes + missingVotes
+                )
+            }
+            let finalizedOptions = votedOptions.filter { $0.votes.count >= approvedResponses.count }
+            let updatedProposal = SearchSlotProposalSummary(
+                id: proposal.id,
+                comment: proposal.comment,
+                status: finalizedOptions.isEmpty ? proposal.status : "closed",
+                createdAt: proposal.createdAt,
+                options: votedOptions
+            )
+
+            if finalizedOptions.isEmpty {
+                slotProposalsBySearchId[searchId] = updatedProposal
+            } else {
+                slotProposalsBySearchId[searchId] = nil
+            }
+
+            updateSearchSchedule(
+                searchId: searchId,
+                from: finalizedOptions.isEmpty ? votedOptions : finalizedOptions,
+                activeSlotProposal: finalizedOptions.isEmpty ? updatedProposal : nil,
+                clearsActiveProposal: !finalizedOptions.isEmpty
+            )
+
+            return SearchSimulationResult(
+                createdResponses: 0,
+                createdVotes: selectedOptionIds.count * approvedResponses.count,
+                finalizedOptions: finalizedOptions.count,
+                message: finalizedOptions.isEmpty ? "Игроки проголосовали за слоты" : "Регулярное расписание согласовано"
+            )
+        }
+
+        if search.responses.contains(where: { $0.status == "pending" }) {
+            return SearchSimulationResult(
+                createdResponses: 0,
+                createdVotes: 0,
+                finalizedOptions: 0,
+                message: "Отклики уже есть. Одобри игроков, затем предложи слоты."
+            )
+        }
+
+        if !approvedResponses.isEmpty {
+            return SearchSimulationResult(
+                createdResponses: 0,
+                createdVotes: 0,
+                finalizedOptions: 0,
+                message: "Игроки уже одобрены. Предложи слоты и запусти симуляцию ещё раз."
+            )
+        }
+
+        let responders = makeSimulationResponders(for: search, count: max(2, search.playersNeeded))
+        let responses = responders.map { responder in
+            SearchResponse(
+                id: "response-\(UUID().uuidString.prefix(6))",
+                status: "pending",
+                responderUser: responder,
+                matchId: nil
+            )
+        }
+
+        searches[searchIndex] = makeGameSearch(
+            from: search,
+            status: "in_review",
+            isActive: true,
+            responses: search.responses + responses
+        )
+
+        return SearchSimulationResult(
+            createdResponses: responses.count,
+            createdVotes: 0,
+            finalizedOptions: 0,
+            message: "Добавлены отклики на регулярный поиск"
+        )
     }
 
     private func participants(for matchId: String) -> [DiscoverUser] {
@@ -1368,6 +1514,252 @@ actor MockRepository: TennisRepository {
             ),
             match.otherUser
         ]
+    }
+
+    private func updateSearchSchedule(
+        searchId: String,
+        from options: [SearchSlotProposalOption],
+        activeSlotProposal: SearchSlotProposalSummary?,
+        clearsActiveProposal: Bool = false
+    ) {
+        guard let index = searches.firstIndex(where: { $0.id == searchId }) else {
+            return
+        }
+
+        let existing = searches[index]
+        let schedule = weeklySchedule(from: options)
+        let nextDays = schedule.preferredDays.isEmpty ? existing.preferredDays : schedule.preferredDays
+        let nextTimeRanges = schedule.preferredTimeRanges.isEmpty ? existing.preferredTimeRanges : schedule.preferredTimeRanges
+        let nextCourt = schedule.preferredCourt ?? existing.preferredCourt
+        let nextProposal = clearsActiveProposal ? nil : (activeSlotProposal ?? existing.activeSlotProposal)
+        let nextRegularPair = existing.regularPair.map { pair in
+            RegularPairSummary(
+                id: pair.id,
+                matchId: pair.matchId,
+                partnerUser: pair.partnerUser,
+                preferredCourt: nextCourt,
+                preferredDays: nextDays,
+                preferredTimeRanges: nextTimeRanges,
+                comment: pair.comment,
+                occurrences: makeRegularOccurrences(
+                    preferredDays: nextDays,
+                    preferredTimeRanges: nextTimeRanges,
+                    proposedCourt: nextCourt,
+                    durationMinutes: existing.durationMinutes
+                )
+            )
+        }
+
+        searches[index] = makeGameSearch(
+            from: existing,
+            preferredDays: nextDays,
+            preferredTimeRanges: nextTimeRanges,
+            preferredCourt: nextCourt,
+            activeSlotProposal: nextProposal,
+            clearsActiveProposal: clearsActiveProposal,
+            regularPair: nextRegularPair
+        )
+    }
+
+    private func weeklySchedule(from options: [SearchSlotProposalOption]) -> (
+        preferredDays: [String],
+        preferredTimeRanges: [String],
+        preferredCourt: Court?
+    ) {
+        let formatter = ISO8601DateFormatter()
+        var days = Set<String>()
+        var timeRanges = Set<String>()
+        let courtIds = Set(options.compactMap(\.proposedCourt?.id))
+
+        for option in options {
+            guard let date = formatter.date(from: option.scheduledAt) else {
+                continue
+            }
+
+            let day = dayOfWeek(for: date)
+            days.insert(day.rawValue)
+            timeRanges.insert("\(day.rawValue)@\(hourMinuteString(from: date))")
+        }
+
+        let preferredDays = DayOfWeek.allCases.map(\.rawValue).filter { days.contains($0) }
+        let preferredTimeRanges = Array(timeRanges).sorted(by: sortTimePreference)
+        let preferredCourt = courtIds.count == 1
+            ? courtIds.first.flatMap { courtId in courts.first(where: { $0.id == courtId }) }
+            : nil
+
+        return (preferredDays, preferredTimeRanges, preferredCourt)
+    }
+
+    private func makeRegularOccurrences(
+        preferredDays: [String],
+        preferredTimeRanges: [String],
+        proposedCourt: Court?,
+        durationMinutes: Int?
+    ) -> [RegularPairOccurrence] {
+        let days = preferredDays.compactMap(DayOfWeek.init(rawValue:))
+        let timePreferences = preferredTimeRanges.isEmpty ? ["evening"] : preferredTimeRanges
+        var occurrences: [RegularPairOccurrence] = []
+
+        for weekOffset in 0 ..< 4 {
+            for preference in timePreferences {
+                let parsed = parsedTimePreference(preference)
+                let targetDays = parsed.day.map { [$0] } ?? days
+                for day in targetDays where !targetDays.isEmpty {
+                    guard let scheduledAt = nextWeeklyDate(
+                        day: day,
+                        hour: parsed.hour,
+                        minute: parsed.minute,
+                        weekOffset: weekOffset
+                    ) else {
+                        continue
+                    }
+                    let scheduledAtString = ISO8601DateFormatter().string(from: scheduledAt)
+                    occurrences.append(
+                        RegularPairOccurrence(
+                            id: "mock-occurrence-\(day.rawValue)-\(parsed.hour)-\(parsed.minute)-\(weekOffset)",
+                            scheduledAt: scheduledAtString,
+                            scheduleAnchor: scheduledAtString,
+                            durationMinutes: durationMinutes ?? 90,
+                            status: "pending",
+                            proposedCourt: proposedCourt,
+                            confirmations: []
+                        )
+                    )
+                }
+            }
+        }
+
+        return occurrences
+            .sorted { $0.scheduledAt < $1.scheduledAt }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private func parsedTimePreference(_ value: String) -> (day: DayOfWeek?, hour: Int, minute: Int) {
+        let parts = value.split(separator: "@", maxSplits: 1).map(String.init)
+        if parts.count == 2 {
+            let day = DayOfWeek(rawValue: parts[0])
+            let time = parsedHourMinute(parts[1]) ?? (19, 0)
+            return (day, time.0, time.1)
+        }
+
+        if let time = parsedHourMinute(value) {
+            return (nil, time.0, time.1)
+        }
+
+        switch TimeRange(rawValue: value) {
+        case .morning:
+            return (nil, 9, 0)
+        case .day:
+            return (nil, 13, 0)
+        case .evening, .none:
+            return (nil, 19, 0)
+        }
+    }
+
+    private func parsedHourMinute(_ value: String) -> (Int, Int)? {
+        let parts = value.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2,
+              (0 ... 23).contains(parts[0]),
+              (0 ... 59).contains(parts[1]) else {
+            return nil
+        }
+        return (parts[0], parts[1])
+    }
+
+    private func nextWeeklyDate(day: DayOfWeek, hour: Int, minute: Int, weekOffset: Int) -> Date? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        for dayOffset in 0 ..< 7 {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: today) else {
+                continue
+            }
+            if dayOfWeek(for: date) == day {
+                let shifted = calendar.date(byAdding: .day, value: weekOffset * 7, to: date) ?? date
+                return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: shifted)
+            }
+        }
+        return nil
+    }
+
+    private func dayOfWeek(for date: Date) -> DayOfWeek {
+        switch Calendar.current.component(.weekday, from: date) {
+        case 1:
+            return .sunday
+        case 2:
+            return .monday
+        case 3:
+            return .tuesday
+        case 4:
+            return .wednesday
+        case 5:
+            return .thursday
+        case 6:
+            return .friday
+        default:
+            return .saturday
+        }
+    }
+
+    private func hourMinuteString(from date: Date) -> String {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
+    }
+
+    private func sortTimePreference(_ left: String, _ right: String) -> Bool {
+        let leftParsed = parsedTimePreference(left)
+        let rightParsed = parsedTimePreference(right)
+        let leftDayIndex = leftParsed.day.flatMap { DayOfWeek.allCases.firstIndex(of: $0) } ?? 0
+        let rightDayIndex = rightParsed.day.flatMap { DayOfWeek.allCases.firstIndex(of: $0) } ?? 0
+
+        if leftDayIndex != rightDayIndex {
+            return leftDayIndex < rightDayIndex
+        }
+        if leftParsed.hour != rightParsed.hour {
+            return leftParsed.hour < rightParsed.hour
+        }
+        return leftParsed.minute < rightParsed.minute
+    }
+
+    private func makeGameSearch(
+        from search: GameSearch,
+        status: String? = nil,
+        isActive: Bool? = nil,
+        preferredDays: [String]? = nil,
+        preferredTimeRanges: [String]? = nil,
+        preferredCourt: Court? = nil,
+        activeSlotProposal: SearchSlotProposalSummary? = nil,
+        clearsActiveProposal: Bool = false,
+        regularPair: RegularPairSummary? = nil,
+        responses: [SearchResponse]? = nil
+    ) -> GameSearch {
+        GameSearch(
+            id: search.id,
+            inviteSlug: search.inviteSlug,
+            status: status ?? search.status,
+            searchType: search.searchType,
+            hotWindow: search.hotWindow,
+            hotStartsAt: search.hotStartsAt,
+            durationMinutes: search.durationMinutes,
+            hasCourtBooked: search.hasCourtBooked,
+            sport: search.sport,
+            selfLevel: search.selfLevel,
+            selfLevelUnknown: search.selfLevelUnknown,
+            desiredLevelMin: search.desiredLevelMin,
+            desiredLevelMax: search.desiredLevelMax,
+            format: search.format,
+            playersNeeded: search.playersNeeded,
+            preferredDays: preferredDays ?? search.preferredDays,
+            preferredTimeRanges: preferredTimeRanges ?? search.preferredTimeRanges,
+            comment: search.comment,
+            isActive: isActive ?? search.isActive,
+            isExpired: search.isExpired,
+            preferredCourt: preferredCourt ?? search.preferredCourt,
+            preferredDistricts: search.preferredDistricts,
+            activeSlotProposal: clearsActiveProposal ? nil : (activeSlotProposal ?? search.activeSlotProposal),
+            regularPair: regularPair ?? search.regularPair,
+            responses: responses ?? search.responses
+        )
     }
 
     func fetchCourts() async throws -> [Court] {
@@ -1464,6 +1856,33 @@ private func makeDiscoverUser(
     ]
     let data = try! JSONSerialization.data(withJSONObject: payload)
     return try! JSONDecoder().decode(DiscoverUser.self, from: data)
+}
+
+private func makeSimulationResponders(for search: GameSearch, count: Int) -> [DiscoverUser] {
+    let names = ["Елена", "Мария", "София", "Никита"]
+    let districts = ["petrogradsky", "primorsky", "central", "moskovsky"]
+
+    return (0 ..< count).map { index in
+        let level = min(max((search.selfLevel ?? 5) + (index % 2 == 0 ? 0 : -1), 1), 10)
+        return makeDiscoverUser(
+            id: "sim-responder-\(search.id)-\(index + 1)",
+            name: names[index % names.count],
+            age: 27 + index * 3,
+            city: "Санкт-Петербург",
+            district: districts[index % districts.count],
+            districtLabel: localizedDistrictName(districts[index % districts.count]) ?? "Район",
+            bio: "Симуляция: готов(а) регулярно играть и голосовать за предложенные слоты.",
+            sports: [search.sport],
+            levels: [search.sport.rawValue: level],
+            format: search.format,
+            surface: .any,
+            days: search.preferredDays.isEmpty ? ["wednesday"] : search.preferredDays,
+            ranges: search.preferredTimeRanges.isEmpty ? ["evening"] : search.preferredTimeRanges,
+            distance: "\(3 + index).\(index) км",
+            score: 92 - Double(index * 3),
+            searches: []
+        )
+    }
 }
 
 private func gameSearchDictionary(_ search: GameSearch) -> [String: Any] {

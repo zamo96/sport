@@ -7,6 +7,7 @@ import {
 import { prisma } from "@/lib/prisma";
 
 type DBLike = Prisma.TransactionClient | typeof prisma;
+type TimePreferenceSlot = { hour: number; minute: number; day?: string };
 
 const DAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -18,11 +19,34 @@ const DAY_INDEX: Record<string, number> = {
   saturday: 6
 };
 
-const TIME_RANGE_HOURS: Record<string, { hour: number; minute: number }> = {
+const TIME_RANGE_HOURS: Record<string, TimePreferenceSlot> = {
   morning: { hour: 9, minute: 0 },
   day: { hour: 14, minute: 0 },
   evening: { hour: 19, minute: 0 }
 };
+
+function parseTimePreference(value: string): TimePreferenceSlot | null {
+  const [maybeDay, maybeTime] = value.split("@");
+  if (maybeDay && maybeTime && DAY_INDEX[maybeDay] !== undefined) {
+    const pairedSlot = parseTimePreference(maybeTime);
+    return pairedSlot ? { ...pairedSlot, day: maybeDay } : null;
+  }
+
+  const rangeSlot = TIME_RANGE_HOURS[value];
+  if (rangeSlot) {
+    return rangeSlot;
+  }
+
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    hour: Number(match[1]),
+    minute: Number(match[2])
+  };
+}
 
 function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
@@ -53,8 +77,11 @@ function buildOccurrenceSchedule({
     }
 
     for (const timeRange of preferredTimeRanges) {
-      const slot = TIME_RANGE_HOURS[timeRange];
+      const slot = parseTimePreference(timeRange);
       if (!slot) {
+        continue;
+      }
+      if (slot.day && DAY_INDEX[slot.day] !== weekday) {
         continue;
       }
 

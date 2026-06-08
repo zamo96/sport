@@ -5,6 +5,19 @@ import { GameSearchType, HotSearchWindow, PlayFormat, Sport } from "@prisma/clie
 import { createGameRequestSchema, createGameSearchSchema, updateGameSearchSchema } from "@/lib/validators";
 
 describe("validators contract (sport x format)", () => {
+  it("createGameSearchSchema: accepts exact weekly time preferences", () => {
+    const result = createGameSearchSchema.safeParse({
+      preferredDays: ["wednesday", "friday"],
+      preferredTimeRanges: ["wednesday@19:00", "friday@08:30", "20:15"],
+      searchType: GameSearchType.regular,
+      sport: Sport.tennis,
+      format: PlayFormat.singles,
+      playersNeeded: 1
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("createGameSearchSchema: rejects padel + singles with a clear format error", () => {
     const result = createGameSearchSchema.safeParse({
       preferredTimeRanges: ["evening"],
