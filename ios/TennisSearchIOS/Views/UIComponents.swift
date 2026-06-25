@@ -647,20 +647,7 @@ struct RemoteAvatarView: View {
     }
 
     private var resolvedURL: URL? {
-        guard let path, !path.isEmpty else {
-            return nil
-        }
-
-        if path.contains("://") {
-            return URL(string: path)
-        }
-
-        guard let base = AppConfig.apiBaseURL else {
-            return nil
-        }
-
-        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        return base.appendingPathComponent(trimmed)
+        resolveAppRemoteURL(path)
     }
 }
 
@@ -906,25 +893,27 @@ struct AppSportSelectionCard: View {
                         .foregroundStyle(isSelected ? .white : AppTheme.court)
 
                     Text(sport.title)
-                        .font(.subheadline.weight(.bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(isSelected ? .white : AppTheme.ink)
                         .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
                 }
 
                 Text("Добавь в свои виды спорта")
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isSelected ? .white.opacity(0.76) : AppTheme.mutedInk)
 
                 if isSelected {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("Уровень")
-                                .font(.caption2.weight(.semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.72))
                             Spacer()
                             Text(levelTone)
-                                .font(.caption2.weight(.bold))
-                                .padding(.horizontal, 8)
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 9)
                                 .padding(.vertical, 5)
                                 .background(.white.opacity(0.14), in: Capsule())
                         }

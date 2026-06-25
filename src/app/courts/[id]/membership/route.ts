@@ -1,0 +1,97 @@
+import { NextRequest } from "next/server";
+import { z } from "zod";
+
+import { requireSessionUser } from "@/lib/auth";
+import { haversineDistanceKm } from "@/lib/geo";
+import { fail, getErrorMessage, ok } from "@/lib/http";
+import { prisma } from "@/lib/prisma";
+import { serializeCourt } from "@/server/serializers";
+
+const courtMembershipSchema = z.object({
+  isMember: z.boolean()
+});
+
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const user = await requireSessionUser();
+    const body = courtMembershipSchema.parse(await request.json());
+    const court = await prisma.court.findUnique({
+      where: { id: params.id },
+      select: { id: true }
+    });
+
+    if (!court) {
+      return fail("Клуб не найден", 404);
+    }
+
+    if (body.isMember) {
+      await prisma.userCourt.upsert({
+        where: {
+          userId_courtId: {
+            userId: user.id,
+            courtId: params.id
+          }
+        },
+        create: {
+          userId: user.id,
+          courtId: params.id
+        },
+        update: {}
+      });
+    } else {
+      await prisma.userCourt.deleteMany({
+        where: {
+          userId: user.id,
+          courtId: params.id
+        }
+      });
+    }
+
+    const refreshed = await prisma.court.findUnique({
+      where: { id: params.id },
+      include: {
+        nearestMetro: true,
+        members: {
+          where: {
+            userId: {
+              not: user.id
+            }
+          },
+          include: {
+            user: true
+          },
+          orderBy: {
+            updatedAt: "desc"
+          },
+          take: 12
+        },
+        _count: {
+          select: {
+            members: true
+          }
+        }
+      }
+    });
+
+    if (!refreshed) {
+      return fail("Клуб не найден", 404);
+    }
+
+    return ok({
+      court: serializeCourt({
+        ...refreshed,
+        isMember: body.isMember,
+        distanceKm: haversineDistanceKm(
+          user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
+          { lat: refreshed.locationLat, lng: refreshed.locationLng }
+        )
+      })
+    });
+  } catch (error) {
+    if (getErrorMessage(error) === "UNAUTHORIZED") {
+      return fail("Требуется авторизация", 401);
+    }
+
+    return fail(getErrorMessage(error));
+  }
+}

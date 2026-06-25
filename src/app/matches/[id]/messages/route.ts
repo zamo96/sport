@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
 
 async function getMatchForUser(matchId: string, userId: string) {
@@ -105,6 +106,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         sound: recipient.notificationSound ?? true
       });
     }
+
+    await publishRealtimeEventToUsers([user.id, recipientUserId], {
+      type: "chat_message_created",
+      matchId: match.id,
+      messageId: message.id,
+      href: `/inbox/${match.id}`
+    });
 
     return ok({
       message: {

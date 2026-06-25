@@ -18,11 +18,12 @@ export async function POST(request: NextRequest) {
       return fail("Укажи свой уровень по этому виду спорта или выбери «Не знаю»");
     }
 
-    const preferredDays = resolveSearchDays(body.searchType, body.preferredDays, body.hotWindow);
+    const explicitHotStartsAt = body.hotStartsAt ? new Date(body.hotStartsAt) : null;
     const hotStartsAt =
-      body.searchType === "hot" && body.hotWindow && body.hotStartTime
-        ? resolveHotSearchStartAt(body.hotWindow, body.hotStartTime)
+      body.searchType === "hot"
+        ? explicitHotStartsAt ?? (body.hotWindow && body.hotStartTime ? resolveHotSearchStartAt(body.hotWindow, body.hotStartTime) : null)
         : null;
+    const preferredDays = resolveSearchDays(body.searchType, body.preferredDays, explicitHotStartsAt ? null : body.hotWindow, hotStartsAt);
 
     if (body.searchType === "hot" && !hotStartsAt) {
       return fail("Не удалось определить время начала горячего поиска");
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
           preferredDays,
           preferredTimeRanges: body.preferredTimeRanges,
           searchType: body.searchType,
-          hotWindow: body.searchType === "hot" ? body.hotWindow ?? null : null,
+          hotWindow: body.searchType === "hot" && !explicitHotStartsAt ? body.hotWindow ?? null : null,
           hotStartsAt,
           durationMinutes: body.searchType === "hot" ? body.durationMinutes ?? null : null,
           hasCourtBooked: body.hasCourtBooked ?? false,

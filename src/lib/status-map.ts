@@ -59,7 +59,7 @@ export function translateGameSearchResponseStatus(
 export function translateGameRequestStatus(status: GameRequestStatusLike, options?: { isCreator?: boolean }) {
   switch (status) {
     case "pending":
-      return options?.isCreator ? "Игра создана" : "Тебя добавили";
+      return options?.isCreator ? "Ожидает подтверждения" : "Требуется ответ";
     case "accepted":
       return "Игра подтверждена";
     case "declined":

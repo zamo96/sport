@@ -10,12 +10,45 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   try {
     const user = await requireSessionUser();
     const court = await prisma.court.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      include: {
+        nearestMetro: true,
+        members: {
+          where: {
+            userId: {
+              not: user.id
+            }
+          },
+          include: {
+            user: true
+          },
+          orderBy: {
+            updatedAt: "desc"
+          },
+          take: 12
+        },
+        _count: {
+          select: {
+            members: true
+          }
+        }
+      }
     });
 
     if (!court) {
       return fail("Корт не найден", 404);
     }
+    const membership = await prisma.userCourt.findUnique({
+      where: {
+        userId_courtId: {
+          userId: user.id,
+          courtId: court.id
+        }
+      },
+      select: {
+        id: true
+      }
+    });
 
     const distanceKm = haversineDistanceKm(
       user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
@@ -25,6 +58,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     return ok({
       court: serializeCourt({
         ...court,
+        isMember: membership != null,
         distanceKm
       })
     });

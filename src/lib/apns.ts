@@ -1,7 +1,8 @@
 import { connect as http2Connect, constants as http2Constants } from "http2";
-import { createPrivateKey, createSign } from "crypto";
+import { createPrivateKey, createSign, randomUUID } from "crypto";
 
 import { prisma } from "@/lib/prisma";
+import { publishRealtimeEvent } from "@/server/realtime";
 
 type PushEnvironment = "development" | "production";
 
@@ -122,7 +123,27 @@ function getAPNSHost(environment: PushEnvironment) {
   return environment === "production" ? "https://api.push.apple.com" : "https://api.sandbox.push.apple.com";
 }
 
+function parseAPNSFailureReason(body: string, fallback: string) {
+  if (!body.trim()) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(body) as { reason?: string };
+    return parsed.reason ? `${parsed.reason}: ${body}` : body;
+  } catch {
+    return body;
+  }
+}
+
 export async function sendPushToUser(payload: PushPayload) {
+  await publishRealtimeEvent(payload.userId, {
+    type: "notification",
+    title: payload.title,
+    body: payload.body,
+    href: payload.href
+  });
+
   const devices = await prisma.pushDevice.findMany({
     where: {
       userId: payload.userId,
@@ -138,6 +159,10 @@ export async function sendPushToUser(payload: PushPayload) {
   });
 
   if (devices.length === 0) {
+    console.warn("APNs push skipped: no active iOS devices", {
+      userId: payload.userId,
+      href: payload.href
+    });
     return;
   }
 
@@ -161,7 +186,8 @@ export async function sendPushToUser(payload: PushPayload) {
             authorization: `bearer ${authToken}`,
             "apns-topic": device.bundleId,
             "apns-push-type": "alert",
-            "apns-priority": "10"
+            "apns-priority": "10",
+            "apns-id": randomUUID()
           });
 
           const apnsPayload = JSON.stringify({
@@ -209,8 +235,17 @@ export async function sendPushToUser(payload: PushPayload) {
           return;
         }
 
-        const reason = response.body || `APNs HTTP ${response.status}`;
+        const reason = parseAPNSFailureReason(response.body, `APNs HTTP ${response.status}`);
         const shouldDeactivate = response.status === 410 || reason.includes("BadDeviceToken") || reason.includes("Unregistered");
+
+        console.error("APNs push failed", {
+          userId: payload.userId,
+          deviceId: device.id,
+          environment: device.environment,
+          bundleId: device.bundleId,
+          status: response.status,
+          reason
+        });
 
         await prisma.pushDevice.update({
           where: { id: device.id },
@@ -221,6 +256,14 @@ export async function sendPushToUser(payload: PushPayload) {
           }
         });
       } catch (error) {
+        console.error("APNs push request error", {
+          userId: payload.userId,
+          deviceId: device.id,
+          environment: device.environment,
+          bundleId: device.bundleId,
+          error: error instanceof Error ? error.message : "APNs request failed"
+        });
+
         await prisma.pushDevice.update({
           where: { id: device.id },
           data: {

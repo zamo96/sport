@@ -12,9 +12,11 @@ struct DiscoverView: View {
     @State private var selectedUpcomingMatch: MatchSummary?
     @State private var selectedUpcomingParticipant: DiscoverUser?
     @State private var selectedUpcomingDetailsRequest: MatchGameRequest?
+    @State private var selectedUpcomingCourt: Court?
     @State private var selectedEditGameRequest: MatchGameRequest?
     @State private var selectedShareRequest: MatchGameRequest?
     @State private var selectedNextProposalMatch: MatchSummary?
+    @State private var isHotSearchComposerPresented = false
     @State private var isUpcomingChatPresented = false
     @State private var mySearches: [GameSearch] = []
     @State private var selectedTab: DiscoverTab = .swipe
@@ -38,6 +40,7 @@ struct DiscoverView: View {
     @State private var discoverScrollOffset: CGFloat = 0
     @State private var regularSportFilter: Sport?
     @State private var regularDayFilter: DayOfWeek?
+    @State private var isUpcomingHistoryExpanded = false
     @State private var updatingUpcomingRequestIDs: Set<String> = []
     @State private var presentedRegularPairID: String?
     @State private var presentedSearchLobbyID: String?
@@ -45,6 +48,7 @@ struct DiscoverView: View {
     @AppStorage("ios.discover.upcomingWidgetPrompt.dismissed.v1") private var isUpcomingWidgetPromptDismissed = false
     @State private var isSimilarPlayersHintPresented = false
     @State private var isSimilarPlayersHintScheduled = false
+    @State private var isSimilarPlayersHintDismissing = false
     @State private var similarPlayersHintDemoPhase = 0
     @State private var isFirstInterestHintPresented = false
     @State private var isFirstInterestHintScheduled = false
@@ -61,7 +65,7 @@ struct DiscoverView: View {
         highlightedGameRequestID: String? = nil,
         onTabChanged: ((DiscoverTab) -> Void)? = nil
     ) {
-        _selectedTab = State(initialValue: initialTab)
+        _selectedTab = State(initialValue: initialTab == .seeking ? .hot : initialTab)
         self.highlightedUserID = highlightedUserID
         self.highlightedSearchID = highlightedSearchID
         self.highlightedGameRequestID = highlightedGameRequestID
@@ -166,14 +170,7 @@ struct DiscoverView: View {
     }
 
     private var searchesNeedingSlotsCount: Int {
-        mySearches.filter { search in
-            guard isSearchCountedInMyEvents(search) else {
-                return false
-            }
-
-            let approvedResponses = search.responses.filter { $0.status == "approved" }
-            return !approvedResponses.isEmpty && search.activeSlotProposal == nil
-        }.count
+        0
     }
 
     private var searchAttentionCount: Int {
@@ -181,6 +178,10 @@ struct DiscoverView: View {
     }
 
     private func isSearchCountedInMyEvents(_ search: GameSearch) -> Bool {
+        guard search.searchType == .hot else {
+            return false
+        }
+
         let status = search.status.lowercased()
         guard (search.isActive ?? true),
               !["matched", "closed", "canceled", "cancelled", "expired"].contains(status) else {
@@ -409,6 +410,19 @@ struct DiscoverView: View {
                 SearchLobbySheet(searchId: presentedSearchLobbyID)
             }
         }
+        .sheet(isPresented: $isHotSearchComposerPresented) {
+            SearchComposerView { search in
+                isHotSearchComposerPresented = false
+                selectedTab = .hot
+                Task {
+                    await loadDiscover()
+                }
+                appModel.navigate(to: .discover(.hot, highlightedSearchID: search.id))
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -504,6 +518,12 @@ struct DiscoverView: View {
                     await cancelUpcomingRequest(request)
                     selectedUpcomingDetailsRequest = nil
                 },
+                onOpenCourt: { court in
+                    selectedUpcomingDetailsRequest = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        selectedUpcomingCourt = court
+                    }
+                },
                 onParticipantsChanged: {
                     await loadDiscover()
                     if let updated = upcomingGameRequests.first(where: { $0.id == request.id }) {
@@ -515,6 +535,13 @@ struct DiscoverView: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
             .presentationBackground(Color.black)
+        }
+        .sheet(item: $selectedUpcomingCourt) { court in
+            UpcomingCourtDetailSheet(court: court)
+                .presentationDetents([.fraction(0.72), .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color.black)
         }
         .sheet(item: $selectedEditGameRequest) { request in
             if let match = upcomingMatch(for: request) {
@@ -559,11 +586,15 @@ struct DiscoverView: View {
         .onChange(of: selectedTab) { _ in
             appModel.lastSelectedDiscoverTab = selectedTab
             onTabChanged?(selectedTab)
+            resetSwipeInteraction(animated: false)
             markHotEventsSeenIfNeeded()
             Task {
                 await loadDiscover()
                 scheduleSimilarPlayersHintIfNeeded()
             }
+        }
+        .onChange(of: appModel.isAuthenticated) { _ in
+            resetSwipeInteraction(animated: false)
         }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
@@ -630,6 +661,8 @@ struct DiscoverView: View {
             }
             if !isPresented {
                 similarPlayersHintDemoPhase = 0
+                isSimilarPlayersHintDismissing = false
+                resetSwipeInteraction(animated: false)
                 scheduleFirstInterestHintIfNeeded()
             }
         }
@@ -757,10 +790,29 @@ struct DiscoverView: View {
     }
 
     private func dismissSimilarPlayersHint() {
+        guard !isSimilarPlayersHintDismissing else {
+            return
+        }
+        isSimilarPlayersHintDismissing = true
         AppHaptics.selection()
         appModel.completeDiscoverSimilarPlayersHint()
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+        similarPlayersHintDemoPhase = 0
+        resetSwipeInteraction(animated: false)
+        withAnimation(.easeOut(duration: 0.12)) {
             isSimilarPlayersHintPresented = false
+        }
+    }
+
+    private func resetSwipeInteraction(animated: Bool = true) {
+        let updates = {
+            dragOffset = .zero
+            dragDecision = nil
+        }
+
+        if animated {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.88), updates)
+        } else {
+            updates()
         }
     }
 
@@ -901,7 +953,7 @@ struct DiscoverView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(DiscoverTab.allCases) { tab in
+                    ForEach(DiscoverTab.userVisibleCases) { tab in
                         Button {
                             selectTab(tab)
                         } label: {
@@ -1000,12 +1052,10 @@ struct DiscoverView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                if activeUpcomingGameRequests.isEmpty, archivedUpcomingGameRequests.isEmpty, !isLoading {
-                    EmptyStateView(
-                        title: "Ближайших игр пока нет",
-                        subtitle: "Как только договорённость будет подтверждена, она появится здесь.",
-                        systemImage: "calendar.badge.clock"
-                    )
+                if activeUpcomingGameRequests.isEmpty, !isLoading {
+                    UpcomingEmptyState {
+                        appModel.navigate(to: .searches)
+                    }
                 }
 
                 if !isUpcomingWidgetPromptDismissed {
@@ -1036,6 +1086,9 @@ struct DiscoverView: View {
                             },
                             onOpenDetails: {
                                 selectedUpcomingDetailsRequest = request
+                            },
+                            onOpenCourt: {
+                                openUpcomingCourt(request.proposedCourt)
                             },
                             onShare: canShareUpcomingRequest(request)
                                 ? {
@@ -1078,6 +1131,9 @@ struct DiscoverView: View {
                             onOpenDetails: {
                                 selectedUpcomingDetailsRequest = request
                             },
+                            onOpenCourt: {
+                                openUpcomingCourt(request.proposedCourt)
+                            },
                             onShare: canShareUpcomingRequest(request)
                                 ? {
                                     selectedShareRequest = request
@@ -1105,36 +1161,50 @@ struct DiscoverView: View {
 
                 if !archivedUpcomingGameRequests.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("История игр")
-                                .font(.caption.weight(.semibold))
-                                .textCase(.uppercase)
-                                .tracking(1.8)
-                                .foregroundStyle(.white.opacity(0.68))
-                            Spacer()
-                            Text("\(archivedUpcomingGameRequests.count)")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white.opacity(0.88))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.white.opacity(0.08), in: Capsule())
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                                isUpcomingHistoryExpanded.toggle()
+                            }
+                            AppHaptics.selection()
+                        } label: {
+                            HStack {
+                                Label(isUpcomingHistoryExpanded ? "Скрыть историю" : "Показать историю", systemImage: "clock.arrow.circlepath")
+                                    .font(.caption.weight(.semibold))
+                                    .textCase(.uppercase)
+                                    .tracking(1.4)
+                                    .foregroundStyle(.white.opacity(0.72))
+                                Spacer()
+                                Text("\(archivedUpcomingGameRequests.count)")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white.opacity(0.88))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.white.opacity(0.08), in: Capsule())
+                                Image(systemName: "chevron.down")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white.opacity(0.58))
+                                    .rotationEffect(.degrees(isUpcomingHistoryExpanded ? 180 : 0))
+                            }
                         }
+                        .buttonStyle(.plain)
 
-                        ForEach(archivedUpcomingGameRequests, id: \.id) { request in
-                            CompactUpcomingHistoryRow(
-                                request: request,
-                                displayName: request.upcomingDisplayName(currentUserId: appModel.currentUser?.id),
-                                avatarURL: request.upcomingAvatarURL(currentUserId: appModel.currentUser?.id)
-                                    ?? upcomingMatches.first(where: { $0.id == request.matchId })?.otherUser.avatarUrl,
-                                onOpenChat: {
-                                    if let searchLobbyId = request.searchLobbyId {
-                                        presentedSearchLobbyID = searchLobbyId
-                                    } else if let match = upcomingMatches.first(where: { $0.id == request.matchId }) {
-                                        selectedUpcomingMatch = match
-                                        isUpcomingChatPresented = true
+                        if isUpcomingHistoryExpanded {
+                            ForEach(archivedUpcomingGameRequests, id: \.id) { request in
+                                CompactUpcomingHistoryRow(
+                                    request: request,
+                                    displayName: request.upcomingDisplayName(currentUserId: appModel.currentUser?.id),
+                                    avatarURL: request.upcomingAvatarURL(currentUserId: appModel.currentUser?.id)
+                                        ?? upcomingMatches.first(where: { $0.id == request.matchId })?.otherUser.avatarUrl,
+                                    onOpenChat: {
+                                        if let searchLobbyId = request.searchLobbyId {
+                                            presentedSearchLobbyID = searchLobbyId
+                                        } else if let match = upcomingMatches.first(where: { $0.id == request.matchId }) {
+                                            selectedUpcomingMatch = match
+                                            isUpcomingChatPresented = true
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                     .padding(.top, 8)
@@ -1146,6 +1216,8 @@ struct DiscoverView: View {
     private var swipeContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             SwipeHintBar(isHighlighted: isSimilarPlayersHintPresented)
+                .padding(.top, -8)
+                .padding(.bottom, 4)
             if topStack.isEmpty, !isLoading {
                 EmptyStateView(
                     title: "Карточки закончились",
@@ -1208,6 +1280,8 @@ struct DiscoverView: View {
         } else {
             VStack(alignment: .leading, spacing: 14) {
                 SwipeHintBar(leftTitle: "Влево — отказать", rightTitle: "Вправо — можно сыграть")
+                    .padding(.top, -8)
+                    .padding(.bottom, 4)
 
                 if topStack.isEmpty, !isLoading {
                     EmptyStateView(
@@ -1255,25 +1329,33 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private var searchContent: some View {
-        let title = selectedTab == .hot ? "Срочные поиски" : "Регулярные поиски"
+        let title = "Срочные поиски"
         let visibleUsers = filteredSearchUsers
 
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2.weight(.bold))
+            HStack(alignment: .center, spacing: 12) {
+                Text(title)
+                    .font(.title2.weight(.bold))
 
-            if selectedTab == .seeking {
-                regularFilters
+                Spacer()
+
+                Button {
+                    presentHotSearchComposer()
+                } label: {
+                    Label("Создать", systemImage: "plus")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 34)
+                        .background(.red.opacity(0.92), in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
 
             if visibleUsers.isEmpty, !isLoading {
-                EmptyStateView(
-                    title: "Подходящих поисков пока нет",
-                    subtitle: selectedTab == .hot
-                        ? "Срочные события появятся здесь, как только кто-то начнёт искать игрока на сегодня или завтра."
-                        : "Регулярные поиски появятся здесь, когда найдутся совпадения по спорту и времени.",
-                    systemImage: selectedTab == .hot ? "flame" : "calendar"
-                )
+                UrgentSearchEmptyState {
+                    presentHotSearchComposer()
+                }
             }
 
             ForEach(visibleUsers) { user in
@@ -1316,12 +1398,12 @@ struct DiscoverView: View {
             baseUsers = users
         }
 
-        guard selectedTab == .seeking else {
-            return baseUsers
-        }
-
         return baseUsers.filter { user in
             guard let search = user.gameSearches.first else {
+                return false
+            }
+
+            guard search.searchType == .hot else {
                 return false
             }
 
@@ -1332,9 +1414,7 @@ struct DiscoverView: View {
                 return false
              }
 
-            let matchesSport = regularSportFilter == nil || search.sport == regularSportFilter
-            let matchesDay = regularDayFilter == nil || search.preferredDays.contains(regularDayFilter?.rawValue ?? "")
-            return matchesSport && matchesDay
+            return true
         }
     }
 
@@ -1436,7 +1516,7 @@ struct DiscoverView: View {
 
                 upcomingMatches = matches
                 upcomingGameRequests = reorderedGameRequests(gameRequests)
-                mySearches = searches
+                mySearches = searches.filter { $0.searchType == .hot }
                 appModel.hasActiveUpcomingGameRequests = !activeUpcomingGameRequests.isEmpty
                 UpcomingGamesWidgetStore.save(
                     gameRequests: activeUpcomingGameRequests,
@@ -1542,12 +1622,30 @@ struct DiscoverView: View {
         selectedUpcomingParticipant = user
     }
 
+    private func openUpcomingCourt(_ court: Court?) {
+        guard let court else {
+            return
+        }
+
+        AppHaptics.selection()
+        selectedUpcomingCourt = court
+    }
+
     private func markHotEventsSeenIfNeeded() {
         guard selectedTab == .hot, notificationManager.summary.hotBadgeCount > 0 else {
             return
         }
 
         notificationManager.markHotEventsOpened()
+    }
+
+    private func presentHotSearchComposer() {
+        AppHaptics.selection()
+        guard appModel.isAuthenticated else {
+            appModel.presentAuth(step: .email)
+            return
+        }
+        isHotSearchComposerPresented = true
     }
 
     private func rememberAnnouncedSummarySignature(_ signature: String) {
@@ -1568,6 +1666,7 @@ struct DiscoverView: View {
         let swipedUserName = activeUser.displayName
 
         if !appModel.isAuthenticated && action != .dislike {
+            resetSwipeInteraction()
             appModel.presentAuth(step: .email)
             return
         }
@@ -1890,18 +1989,12 @@ struct DiscoverView: View {
                     return
                 }
                 guard isHorizontalSwipe(value.translation) else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-                        dragOffset = .zero
-                        dragDecision = nil
-                    }
+                    resetSwipeInteraction()
                     return
                 }
                 let decision = currentDecision(for: value.translation)
                 guard let decision else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-                        dragOffset = .zero
-                        dragDecision = nil
-                    }
+                    resetSwipeInteraction()
                     return
                 }
 
@@ -1988,24 +2081,117 @@ struct DiscoverView: View {
     }
 
     private func switchToNeighborTab(offset: Int) {
-        guard let currentIndex = DiscoverTab.allCases.firstIndex(of: selectedTab) else {
+        let tabs = DiscoverTab.userVisibleCases
+        guard let currentIndex = tabs.firstIndex(of: selectedTab) else {
             return
         }
-        let nextIndex = min(max(currentIndex + offset, 0), DiscoverTab.allCases.count - 1)
+        let nextIndex = min(max(currentIndex + offset, 0), tabs.count - 1)
         guard nextIndex != currentIndex else {
             return
         }
-        selectTab(DiscoverTab.allCases[nextIndex])
+        selectTab(tabs[nextIndex])
     }
 
     private func selectTab(_ tab: DiscoverTab) {
-        guard tab != selectedTab else {
+        let resolvedTab: DiscoverTab = tab == .seeking ? .hot : tab
+        guard resolvedTab != selectedTab else {
             return
         }
         withAnimation(.interactiveSpring(response: 0.46, dampingFraction: 0.88, blendDuration: 0.12)) {
-            selectedTab = tab
+            selectedTab = resolvedTab
             tabSwipeOffset = 0
         }
+    }
+}
+
+private struct UpcomingEmptyState: View {
+    let onCreateSearch: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(AppTheme.court)
+                .frame(width: 68, height: 68)
+                .background(.white.opacity(0.08), in: Circle())
+
+            VStack(spacing: 6) {
+                Text("Ближайших игр пока нет")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Создай срочный поиск, чтобы быстро собрать игру и увидеть её здесь после подтверждения.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            Button {
+                onCreateSearch()
+                AppHaptics.selection()
+            } label: {
+                Label("Создать поиск", systemImage: "plus")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .frame(height: 46)
+                    .background(AppTheme.court, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 24)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct UrgentSearchEmptyState: View {
+    let onCreateSearch: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(.red.opacity(0.92))
+                .frame(width: 66, height: 66)
+                .background(Color.red.opacity(0.12), in: Circle())
+
+            VStack(spacing: 6) {
+                Text("Подходящих поисков пока нет")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text("Создай срочный поиск на сегодня или завтра, чтобы быстро собрать игроков.")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.ink.opacity(0.62))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            Button {
+                onCreateSearch()
+            } label: {
+                Label("Создать срочный поиск", systemImage: "plus")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .frame(height: 46)
+                    .background(.red.opacity(0.92), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(.white.opacity(0.78))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(AppTheme.line, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 }
 
@@ -2015,17 +2201,13 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             let isCompact = geometry.size.height < 760
-            let safeTop = geometry.safeAreaInsets.top
             let safeBottom = geometry.safeAreaInsets.bottom
             let maxPanelWidth = min(geometry.size.width - 28, 370)
-            let instructionY = max(
-                safeTop + (isCompact ? 118 : 132),
-                geometry.size.height * (isCompact ? 0.18 : 0.17)
-            )
             let actionY = min(
                 max(geometry.size.height * (isCompact ? 0.54 : 0.56), isCompact ? 380 : 440),
                 geometry.size.height - 230
             )
+            let instructionY = min(actionY + (isCompact ? 70 : 78), geometry.size.height - safeBottom - 128)
 
             ZStack {
                 Color.black.opacity(0.36)
@@ -2041,17 +2223,6 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
-
-                VStack(spacing: 10) {
-                    Text("Смахивай карточки, чтобы выбирать игроков")
-                        .font(.system(size: isCompact ? 17 : 19, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
-                .frame(width: maxPanelWidth)
-                .position(x: geometry.size.width / 2, y: instructionY)
 
                 HStack(alignment: .top) {
                     TutorialSwipeActionCue(
@@ -2074,6 +2245,15 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                 .frame(width: geometry.size.width)
                 .position(x: geometry.size.width / 2, y: actionY)
 
+                Text("Смахивай карточки, чтобы выбирать игроков")
+                    .font(.system(size: isCompact ? 17 : 19, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                    .frame(width: maxPanelWidth)
+                    .position(x: geometry.size.width / 2, y: instructionY)
+
                 VStack {
                     Spacer()
 
@@ -2095,7 +2275,9 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                         ),
                         in: RoundedRectangle(cornerRadius: 24, style: .continuous)
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .buttonStyle(.plain)
+                    .zIndex(20)
                     .padding(.horizontal, 24)
                     .padding(.bottom, max(18, safeBottom + 18))
                 }
@@ -3141,6 +3323,7 @@ private struct UpcomingGameDetailsSheet: View {
     let cancelTitle: String
     let onEdit: (() -> Void)?
     let onCancel: (() async -> Void)?
+    let onOpenCourt: ((Court) -> Void)?
     let onParticipantsChanged: () async -> Void
 
     @State private var lobby: SearchLobbyGameSearch?
@@ -3194,11 +3377,26 @@ private struct UpcomingGameDetailsSheet: View {
                             title: request.proposedDatetime.formattedDateTime(),
                             subtitle: countdownText
                         )
-                        detailRow(
-                            icon: "sportscourt.fill",
-                            title: request.proposedCourt?.name ?? request.sport.venuePendingTitle,
-                            subtitle: request.proposedCourt?.address
-                        )
+                        if let court = request.proposedCourt, let onOpenCourt {
+                            Button {
+                                AppHaptics.selection()
+                                onOpenCourt(court)
+                            } label: {
+                                detailRow(
+                                    icon: "sportscourt.fill",
+                                    title: court.name,
+                                    subtitle: court.address,
+                                    accessory: "Открыть клуб"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            detailRow(
+                                icon: "sportscourt.fill",
+                                title: request.proposedCourt?.name ?? request.sport.venuePendingTitle,
+                                subtitle: request.proposedCourt?.address
+                            )
+                        }
                         detailRow(
                             icon: "checkmark.circle",
                             title: request.statusLabel,
@@ -3565,7 +3763,7 @@ private struct UpcomingGameDetailsSheet: View {
         }
     }
 
-    private func detailRow(icon: String, title: String, subtitle: String?) -> some View {
+    private func detailRow(icon: String, title: String, subtitle: String?, accessory: String? = nil) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .bold))
@@ -3585,6 +3783,13 @@ private struct UpcomingGameDetailsSheet: View {
                         .foregroundStyle(.white.opacity(0.62))
                         .lineLimit(3)
                 }
+            }
+
+            if let accessory {
+                Text(accessory)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)
@@ -3725,16 +3930,7 @@ private struct SwipeCard: View {
                         .stroke(.white.opacity(0.16), lineWidth: 1)
                 )
 
-            VStack(alignment: .leading, spacing: 8) {
-                if let score = user.score {
-                    Text("Скор \(Int(score.rounded()))")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.white.opacity(0.14), in: Capsule())
-                        .foregroundStyle(.white.opacity(0.94))
-                }
-
+            VStack(alignment: .leading, spacing: 6) {
                 Text(user.displayName)
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
@@ -4692,6 +4888,7 @@ private struct UpcomingGameCard: View {
     let onSelectParticipant: (DiscoverUser) -> Void
     let onOpenChat: (() -> Void)?
     let onOpenDetails: (() -> Void)?
+    let onOpenCourt: (() -> Void)?
     let onShare: (() -> Void)?
     let onAccept: (() async -> Void)?
     let onCancel: (() async -> Void)?
@@ -4921,6 +5118,28 @@ private struct UpcomingGameCard: View {
                 .frame(width: 1)
                 .padding(.vertical, 4)
 
+            venueInfoBlock
+        }
+    }
+
+    @ViewBuilder
+    private var venueInfoBlock: some View {
+        if let onOpenCourt, request.proposedCourt != nil {
+            Button(action: onOpenCourt) {
+                compactInfoBlock(
+                    systemImage: "sportscourt.fill",
+                    title: request.sport.venueFieldTitle,
+                    subtitle: courtLabel
+                ) {
+                    Label("Открыть клуб", systemImage: "chevron.up.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
+                        .lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
             compactInfoBlock(
                 systemImage: "sportscourt.fill",
                 title: request.sport.venueFieldTitle,
@@ -5083,6 +5302,166 @@ private struct UpcomingGameCard: View {
             return "участника"
         }
         return "участников"
+    }
+}
+
+private struct UpcomingCourtDetailSheet: View {
+    let court: Court
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    private var imageSize: CGFloat {
+        min(UIScreen.main.bounds.width - 36, 380)
+    }
+
+    private var placeLine: String {
+        [
+            court.nearestMetroName,
+            localizedDistrictName(court.district),
+            court.distanceLabel
+        ]
+        .compactMap { $0 }
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
+    }
+
+    private var mapURL: URL? {
+        if let yandexMapsUrl = court.yandexMapsUrl, let url = URL(string: yandexMapsUrl) {
+            return url
+        }
+
+        var components = URLComponents(string: "http://maps.apple.com/")
+        components?.queryItems = [
+            URLQueryItem(name: "ll", value: "\(court.locationLat),\(court.locationLng)"),
+            URLQueryItem(name: "q", value: court.name)
+        ]
+        return components?.url
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.black,
+                    Color(red: 4 / 255, green: 13 / 255, blue: 13 / 255),
+                    Color(red: 10 / 255, green: 28 / 255, blue: 24 / 255)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(court.name)
+                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+
+                            Text(court.sportsTitle(fallback: nil))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .frame(width: 38, height: 38)
+                                .background(.white.opacity(0.10), in: Circle())
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Закрыть")
+                    }
+
+                    CourtImageTile(court: court, size: imageSize)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !placeLine.isEmpty {
+                            infoRow(icon: "mappin.and.ellipse", title: placeLine)
+                        }
+
+                        infoRow(icon: "location.fill", title: court.address)
+
+                        if let workingHours = court.workingHours, !workingHours.isEmpty {
+                            infoRow(icon: "clock", title: workingHours)
+                        }
+
+                        if let rating = court.rating {
+                            infoRow(icon: "star.fill", title: String(format: "%.1f", rating))
+                        }
+                    }
+
+                    if !court.displayTags.isEmpty {
+                        FlowLayout(items: court.displayTags) { tag in
+                            Text(tag)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.84))
+                                .padding(.horizontal, 10)
+                                .frame(height: 30)
+                                .background(.white.opacity(0.08), in: Capsule())
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        actionButton(title: "Маршрут", systemImage: "map", url: mapURL)
+                        actionButton(title: "Позвонить", systemImage: "phone", url: court.phoneURL)
+                    }
+
+                    if court.bookingLinkURL != nil || court.websiteLinkURL != nil {
+                        HStack(spacing: 10) {
+                            actionButton(title: "Бронь", systemImage: "calendar.badge.plus", url: court.bookingLinkURL)
+                            actionButton(title: "Сайт", systemImage: "safari", url: court.websiteLinkURL)
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 36)
+            }
+        }
+    }
+
+    private func infoRow(icon: String, title: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                .frame(width: 26, height: 26)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func actionButton(title: String, systemImage: String, url: URL?) -> some View {
+        Button {
+            guard let url else {
+                return
+            }
+            openURL(url)
+            AppHaptics.selection()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .bold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(url == nil ? .white.opacity(0.32) : .white)
+        .background(url == nil ? .white.opacity(0.06) : AppTheme.court, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .disabled(url == nil)
     }
 }
 

@@ -26,7 +26,7 @@ export type GuestOnboardingDraft = {
 export function createDefaultGuestOnboardingDraft(): GuestOnboardingDraft {
   return {
     name: "",
-    age: 28,
+    age: 0,
     gender: null,
     city: DEFAULT_CITY,
     district: null,
@@ -64,11 +64,17 @@ export function loadGuestOnboardingDraft() {
 
   try {
     const parsed = JSON.parse(raw) as Partial<GuestOnboardingDraft>;
+    const defaultDraft = createDefaultGuestOnboardingDraft();
     const fallbackDistrict = parsed.district && typeof parsed.district === "string" ? parsed.district : null;
+    const hasUserEnteredProfile =
+      (typeof parsed.name === "string" && parsed.name.trim().length > 0) ||
+      (Array.isArray(parsed.preferredSports) && parsed.preferredSports.length > 0);
+    const normalizedAge = parsed.age === 28 && !hasUserEnteredProfile ? 0 : parsed.age;
 
     return {
-      ...createDefaultGuestOnboardingDraft(),
+      ...defaultDraft,
       ...parsed,
+      age: normalizedAge ?? defaultDraft.age,
       preferredDistricts: Array.isArray(parsed.preferredDistricts)
         ? parsed.preferredDistricts.filter((district): district is DistrictOption => typeof district === "string")
         : fallbackDistrict
@@ -89,7 +95,7 @@ export function clearGuestOnboardingDraft() {
 }
 
 export function guestDraftHasProfileBasics(draft: GuestOnboardingDraft) {
-  return draft.name.trim().length >= 2 && draft.age >= 18 && draft.preferredSports.length > 0;
+  return draft.name.trim().length >= 2 && draft.age >= 18 && draft.age <= 100 && draft.preferredSports.length > 0;
 }
 
 export function buildGuestAuthHref(continueTo: string) {

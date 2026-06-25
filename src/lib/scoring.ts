@@ -50,6 +50,8 @@ export type ScoredCandidate = CandidateUser & {
   sportsOverlapCount: number;
   dayOverlapCount: number;
   timeOverlapCount: number;
+  exactTimeSlotOverlapCount: number;
+  ageGap: number | null;
 };
 
 function isSport(value: unknown): value is Sport {
@@ -103,6 +105,67 @@ function resolveUserDistricts(preferredDistricts: unknown, district?: string | n
   }
 
   return district ? [district] : [];
+}
+
+function normalizedCity(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function ageCompatibilityScore(viewerAge?: number | null, candidateAge?: number | null) {
+  if (typeof viewerAge !== "number" || typeof candidateAge !== "number") {
+    return { score: 3, gap: null };
+  }
+
+  const gap = Math.abs(viewerAge - candidateAge);
+
+  if (gap <= 5) {
+    return { score: 10, gap };
+  }
+
+  if (gap <= 10) {
+    return { score: 7, gap };
+  }
+
+  if (gap <= 15) {
+    return { score: 4, gap };
+  }
+
+  return { score: 1, gap };
+}
+
+function cityCompatibilityScore(viewerCity?: string | null, candidateCity?: string | null) {
+  const viewerNormalizedCity = normalizedCity(viewerCity);
+  const candidateNormalizedCity = normalizedCity(candidateCity);
+
+  if (!viewerNormalizedCity || !candidateNormalizedCity) {
+    return 2;
+  }
+
+  return viewerNormalizedCity === candidateNormalizedCity ? 10 : -18;
+}
+
+function availabilityCompatibilityScore(viewer: CandidateUser, candidate: CandidateUser) {
+  const exactTimeSlotOverlapCount = overlapStrings(viewer.availableTimeSlots, candidate.availableTimeSlots);
+  const dayOverlapCount = overlapStrings(viewer.availableDays, candidate.availableDays);
+  const timeOverlapCount = overlapStrings(viewer.availableTimeRanges, candidate.availableTimeRanges);
+  const viewerHasExactSlots = parseStringArray(viewer.availableTimeSlots).length > 0;
+  const candidateHasExactSlots = parseStringArray(candidate.availableTimeSlots).length > 0;
+
+  if (viewerHasExactSlots && candidateHasExactSlots) {
+    return {
+      exactTimeSlotOverlapCount,
+      dayOverlapCount,
+      timeOverlapCount,
+      score: Math.min(20, exactTimeSlotOverlapCount * 10 + dayOverlapCount * 2 + timeOverlapCount)
+    };
+  }
+
+  return {
+    exactTimeSlotOverlapCount,
+    dayOverlapCount,
+    timeOverlapCount,
+    score: Math.min(14, dayOverlapCount * 3 + timeOverlapCount * 4)
+  };
 }
 
 export function buildDiscoverExplainabilityReasons<T extends CandidateUser>(
@@ -262,6 +325,8 @@ export function scoreCandidate<T extends CandidateUser>(
   const surfaceScore = surfaceCompatible(viewer.preferredSurface, candidate.preferredSurface) ? 18 : 0;
   const sportScore = Math.min(24, sportsOverlapCount * 12);
   const levelScore = Math.max(0, 28 - levelGap * 7);
+  const { score: ageScore, gap: ageGap } = ageCompatibilityScore(viewer.age, candidate.age);
+  const cityScore = cityCompatibilityScore(viewer.city, candidate.city);
   const viewerDistricts = resolveUserDistricts(viewer.preferredDistricts, viewer.district);
   const candidateDistricts = resolveUserDistricts(candidate.preferredDistricts, candidate.district);
   const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
@@ -276,18 +341,27 @@ export function scoreCandidate<T extends CandidateUser>(
         : distanceKm == null
           ? 8
           : Math.max(2, 12 - Math.min(distanceKm, 25) / 3);
-  const dayOverlapCount = overlapStrings(viewer.availableDays, candidate.availableDays);
-  const timeOverlapCount = overlapStrings(viewer.availableTimeRanges, candidate.availableTimeRanges);
-  const availabilityScore = Math.min(12, dayOverlapCount * 2 + timeOverlapCount * 4);
+  const availability = availabilityCompatibilityScore(viewer, candidate);
   const seekingBoost = candidate.isLookingForGame ? 8 : 0;
 
   return {
     ...candidate,
     distanceKm,
     sportsOverlapCount,
-    dayOverlapCount,
-    timeOverlapCount,
-    score: sportScore + formatScore + surfaceScore + levelScore + distanceScore + availabilityScore + seekingBoost
+    dayOverlapCount: availability.dayOverlapCount,
+    timeOverlapCount: availability.timeOverlapCount,
+    exactTimeSlotOverlapCount: availability.exactTimeSlotOverlapCount,
+    ageGap,
+    score:
+      sportScore +
+      formatScore +
+      surfaceScore +
+      levelScore +
+      ageScore +
+      cityScore +
+      distanceScore +
+      availability.score +
+      seekingBoost
   };
 }
 

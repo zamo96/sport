@@ -13,6 +13,7 @@ protocol TennisRepository {
     func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser]
     func swipe(userId: String, action: SwipeAction) async throws -> String?
     func fetchMatches() async throws -> [MatchSummary]
+    func ensureMatch(userId: String) async throws -> MatchSummary
     func fetchMyGameRequests() async throws -> [MatchGameRequest]
     func fetchMessages(matchId: String) async throws -> [ChatMessage]
     func sendMessage(matchId: String, text: String) async throws -> ChatMessage
@@ -43,8 +44,11 @@ protocol TennisRepository {
     func updateSearchResponseStatus(responseId: String, status: String) async throws -> SearchResponseUpdateResult
     func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult
     func fetchCourts() async throws -> [Court]
+    func fetchCourt(courtId: String) async throws -> Court
+    func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court
     func fetchNotifications() async throws -> [AppNotification]
     func fetchActivitySummary() async throws -> ActivitySummary
+    func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error>
     func fetchAppStats() async throws -> AppStats
     func markInboxSeen() async throws
     func markNotificationsSeen() async throws

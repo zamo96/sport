@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 
 async function getGameRequestForUser(gameRequestId: string, userId: string) {
   return prisma.gameRequest.findFirst({
@@ -107,6 +108,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         sound: recipient.notificationSound ?? true
       });
     }
+
+    await publishRealtimeEventToUsers([user.id, recipientUserId], {
+      type: "chat_message_created",
+      matchId: gameRequest.matchId,
+      gameRequestId: gameRequest.id,
+      messageId: message.id,
+      href: `/play/games/${gameRequest.id}`
+    });
 
     return ok({
       message: {

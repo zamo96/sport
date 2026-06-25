@@ -93,7 +93,7 @@ export const appleAuthSchema = z.object({
 
 export const updateMeSchema = z.object({
   name: z.string().min(2).max(40),
-  age: z.number().int().min(18).max(70),
+  age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: z.literal(DEFAULT_CITY),
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
@@ -135,7 +135,7 @@ export const updateMeSchema = z.object({
 
 export const guestOnboardingDraftSchema = z.object({
   name: z.string().min(2).max(40),
-  age: z.number().int().min(18).max(70),
+  age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: z.literal(DEFAULT_CITY),
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
@@ -323,6 +323,7 @@ export const createGameSearchSchema = z
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Укажи время начала в формате ЧЧ:ММ")
       .optional()
       .nullable(),
+    hotStartsAt: z.string().datetime().optional().nullable(),
     durationMinutes: z.number().int().min(30).max(240).optional().nullable(),
     hasCourtBooked: z.boolean().optional().default(false),
     sport: z.nativeEnum(Sport),
@@ -351,15 +352,15 @@ export const createGameSearchSchema = z
       });
     }
 
-    if (value.searchType === GameSearchType.hot && !value.hotWindow) {
+    if (value.searchType === GameSearchType.hot && !value.hotWindow && !value.hotStartsAt) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["hotWindow"],
-        message: "Для горячего поиска выбери сегодня или завтра"
+        message: "Для горячего поиска выбери дату"
       });
     }
 
-    if (value.searchType === GameSearchType.hot && !value.hotStartTime) {
+    if (value.searchType === GameSearchType.hot && !value.hotStartTime && !value.hotStartsAt) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["hotStartTime"],
@@ -402,6 +403,7 @@ export const updateGameSearchSchema = z
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Укажи время начала в формате ЧЧ:ММ")
       .nullable()
       .optional(),
+    hotStartsAt: z.string().datetime().nullable().optional(),
     durationMinutes: z.number().int().min(30).max(240).nullable().optional(),
     hasCourtBooked: z.boolean().optional(),
     sport: z.nativeEnum(Sport).optional(),

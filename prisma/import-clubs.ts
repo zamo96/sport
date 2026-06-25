@@ -25,6 +25,7 @@ type ClubRow = {
   district_label?: string;
   lat?: number | string;
   lng?: number | string;
+  [key: string]: unknown;
 };
 
 type CsvRow = Record<string, string>;
@@ -33,6 +34,7 @@ const DISTRICTS_REFERENCE_PATH = path.join(process.cwd(), "docs/import/districts
 const METROS_REFERENCE_PATH = path.join(process.cwd(), "docs/import/metros-spb.reference.csv");
 const DEFAULT_CLUBS_XLSX_PATH = path.join(process.cwd(), "docs/import/clubs.xlsx");
 const IMPORT_SOURCE_TYPE = "xlsx-import";
+const MAX_COURT_PHOTOS = 8;
 const VALID_SPORTS = new Set(Object.values(Sport));
 
 const SPORT_ALIASES: Record<string, Sport> = {
@@ -132,7 +134,7 @@ export async function importClubsFromWorkbook(filePath: string) {
     ).values()
   );
   const rowsWithPhotos = await Promise.all(
-    dedupedRows.map((row) => resolveImportedPhoto(row, path.dirname(filePath)))
+    dedupedRows.map((row) => resolveImportedPhotos(row, path.dirname(filePath)))
   );
 
   await prisma.court.deleteMany({
@@ -158,6 +160,7 @@ export async function importClubsFromWorkbook(filePath: string) {
       yandexMapsUrl: row.yandexMapsUrl,
       websiteUrl: row.websiteUrl,
       photoUrl: row.photoUrl,
+      photoUrls: row.photoUrls,
       priceRange: "Не указано",
       rating: null,
       sourceType: IMPORT_SOURCE_TYPE,
@@ -208,8 +211,9 @@ type NormalizedClubRow = {
   yandexMapsUrl: string | null;
   websiteUrl: string | null;
   photoUrl: string | null;
-  photoFile: string | null;
-  photoS3Key: string | null;
+  photoUrls: string[];
+  photoFiles: string[];
+  photoS3Keys: string[];
   metro: string | null;
   district: string | null;
   districtLabel: string | null;
@@ -236,9 +240,10 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
     workingHours: normalizeText(row.working_hours),
     yandexMapsUrl: normalizeUrl(row.yandex_maps_url),
     websiteUrl: normalizeUrl(row.website_url),
-    photoUrl: normalizeUrl(row.photo_url),
-    photoFile: normalizeText(row.photo_file) ?? normalizeText(row.photo_path),
-    photoS3Key: normalizeS3Key(row.photo_s3_key),
+    photoUrl: null,
+    photoUrls: normalizeUrlValues(row, "photo_url", "photo_urls"),
+    photoFiles: normalizeTextValues(row, "photo_file", "photo_files", "photo_path", "photo_paths"),
+    photoS3Keys: normalizeS3KeyValues(row, "photo_s3_key", "photo_s3_keys"),
     metro: normalizeText(row.metro),
     district: normalizeDistrictCode(row.district),
     districtLabel: normalizeText(row.district_label),
@@ -247,15 +252,17 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
   };
 }
 
-async function resolveImportedPhoto(row: NormalizedClubRow, workbookDir: string): Promise<NormalizedClubRow> {
-  if (row.photoUrl) {
-    return row;
-  }
+async function resolveImportedPhotos(row: NormalizedClubRow, workbookDir: string): Promise<NormalizedClubRow> {
+  const photoUrls = [...row.photoUrls];
 
-  if (row.photoFile) {
-    const filePath = resolveImportAssetPath(row.photoFile, workbookDir);
+  for (const [index, photoFile] of row.photoFiles.entries()) {
+    if (photoUrls.length >= MAX_COURT_PHOTOS) {
+      break;
+    }
+
+    const filePath = resolveImportAssetPath(photoFile, workbookDir);
     const bytes = await readFile(filePath);
-    const objectKey = row.photoS3Key ?? defaultCourtPhotoObjectKey(row, filePath);
+    const objectKey = row.photoS3Keys[index] ?? defaultCourtPhotoObjectKey(row, filePath, index);
     const photoUrl = await uploadCourtPhoto({
       bytes,
       originalName: path.basename(filePath),
@@ -263,20 +270,24 @@ async function resolveImportedPhoto(row: NormalizedClubRow, workbookDir: string)
       objectKey
     });
 
-    return {
-      ...row,
-      photoUrl
-    };
+    photoUrls.push(photoUrl);
   }
 
-  if (row.photoS3Key) {
-    return {
-      ...row,
-      photoUrl: resolveUploadedObjectUrl(row.photoS3Key)
-    };
+  for (const s3Key of row.photoS3Keys) {
+    if (photoUrls.length >= MAX_COURT_PHOTOS) {
+      break;
+    }
+
+    photoUrls.push(resolveUploadedObjectUrl(s3Key));
   }
 
-  return row;
+  const dedupedPhotoUrls = uniqueNonEmpty(photoUrls).slice(0, MAX_COURT_PHOTOS);
+
+  return {
+    ...row,
+    photoUrl: dedupedPhotoUrls[0] ?? null,
+    photoUrls: dedupedPhotoUrls
+  };
 }
 
 function resolveImportAssetPath(value: string, workbookDir: string) {
@@ -287,9 +298,10 @@ function resolveImportAssetPath(value: string, workbookDir: string) {
   return path.resolve(workbookDir, value);
 }
 
-function defaultCourtPhotoObjectKey(row: NormalizedClubRow, filePath: string) {
+function defaultCourtPhotoObjectKey(row: NormalizedClubRow, filePath: string, index: number) {
   const extension = path.extname(filePath).toLowerCase() || ".jpg";
-  return `courts/import/${slugifyForObjectKey(row.name)}-${slugifyForObjectKey(row.address).slice(0, 36)}${extension}`;
+  const suffix = index > 0 ? `-${index + 1}` : "";
+  return `courts/import/${slugifyForObjectKey(row.name)}-${slugifyForObjectKey(row.address).slice(0, 36)}${suffix}${extension}`;
 }
 
 function slugifyForObjectKey(value: string) {
@@ -329,6 +341,60 @@ function normalizeText(value: unknown) {
 function normalizeUrl(value: unknown) {
   const text = normalizeText(value);
   return text && /^https?:\/\//i.test(text) ? text : null;
+}
+
+function normalizeUrlValues(row: ClubRow, singularKey: string, pluralKey: string) {
+  return normalizeColumnValues(row, singularKey, pluralKey)
+    .map(normalizeUrl)
+    .filter((value): value is string => Boolean(value))
+    .slice(0, MAX_COURT_PHOTOS);
+}
+
+function normalizeTextValues(row: ClubRow, singularKey: string, pluralKey: string, ...aliases: string[]) {
+  return [singularKey, pluralKey, ...aliases]
+    .flatMap((key) => normalizeColumnValues(row, key, key.endsWith("s") ? key : `${key}s`))
+    .map(normalizeText)
+    .filter((value): value is string => Boolean(value))
+    .slice(0, MAX_COURT_PHOTOS);
+}
+
+function normalizeS3KeyValues(row: ClubRow, singularKey: string, pluralKey: string) {
+  return normalizeColumnValues(row, singularKey, pluralKey)
+    .map(normalizeS3Key)
+    .filter((value): value is string => Boolean(value))
+    .slice(0, MAX_COURT_PHOTOS);
+}
+
+function normalizeColumnValues(row: ClubRow, singularKey: string, pluralKey: string) {
+  const values: unknown[] = [
+    row[singularKey],
+    row[pluralKey],
+    ...Array.from({ length: MAX_COURT_PHOTOS }, (_, index) => row[`${singularKey}_${index + 1}`])
+  ];
+
+  return uniqueNonEmpty(values.flatMap(splitCellValues));
+}
+
+function splitCellValues(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return [];
+  }
+
+  return text
+    .split(/[\n;,|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueNonEmpty(values: string[]) {
+  return values.reduce<string[]>((result, value) => {
+    const normalized = value.trim();
+    if (normalized && !result.includes(normalized)) {
+      result.push(normalized);
+    }
+    return result;
+  }, []);
 }
 
 function normalizeS3Key(value: unknown) {

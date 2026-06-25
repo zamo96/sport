@@ -407,6 +407,28 @@ enum AppConfig {
     }
 }
 
+func resolveAppRemoteURL(_ path: String?) -> URL? {
+    guard let path else {
+        return nil
+    }
+
+    let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedPath.isEmpty else {
+        return nil
+    }
+
+    if trimmedPath.contains("://") {
+        return URL(string: trimmedPath)
+    }
+
+    guard let baseURL = AppConfig.apiBaseURL else {
+        return nil
+    }
+
+    let relativePath = trimmedPath.hasPrefix("/") ? String(trimmedPath.dropFirst()) : trimmedPath
+    return baseURL.appendingPathComponent(relativePath)
+}
+
 private struct GuestDraftStore {
     private let key = "ios.guest-onboarding-draft.v1"
     private let defaults = UserDefaults.standard
@@ -417,7 +439,11 @@ private struct GuestDraftStore {
         }
 
         let decoder = JSONDecoder()
-        return (try? decoder.decode(GuestOnboardingDraft.self, from: data)) ?? .default
+        var draft = (try? decoder.decode(GuestOnboardingDraft.self, from: data)) ?? .default
+        if !draft.onboardingCompleted && draft.age == 28 {
+            draft.age = 0
+        }
+        return draft
     }
 
     func save(_ draft: GuestOnboardingDraft) {

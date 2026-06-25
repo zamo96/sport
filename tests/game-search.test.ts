@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isExpiredHotSearch, resolveHotSearchStartAt, resolveSearchNextStep } from "@/lib/game-search";
+import { isExpiredHotSearch, resolveHotSearchStartAt, resolveSearchDays, resolveSearchNextStep } from "@/lib/game-search";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
 
 describe("game search helpers", () => {
@@ -15,6 +15,12 @@ describe("game search helpers", () => {
     expect(startsAt?.getDate()).toBe(18);
 
     vi.useRealTimers();
+  });
+
+  it("resolves hot search day from an explicit custom start date", () => {
+    const days = resolveSearchDays("hot", [], null, new Date("2026-03-20T19:30:00.000Z"));
+
+    expect(days).toEqual(["friday"]);
   });
 
   it("marks hot search as expired when start time is in the past", () => {

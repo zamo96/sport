@@ -384,7 +384,88 @@ struct UpcomingGamesWidgetEntryView: View {
     }
 
     private func content(for game: UpcomingGamesWidgetGame) -> some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 10) {
+        if family == .systemSmall {
+            return AnyView(compactContent(for: game))
+        }
+
+        return AnyView(regularContent(for: game))
+    }
+
+    private func compactContent(for game: UpcomingGamesWidgetGame) -> some View {
+        let statusStyle = game.statusStyle
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(Color.green)
+                    .frame(width: 16, height: 16)
+
+                Text("Игра")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Spacer(minLength: 4)
+
+                Text(game.compactStatusLabel)
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundStyle(statusStyle.foreground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .padding(.horizontal, 7)
+                    .frame(height: 22)
+                    .background(statusStyle.background, in: Capsule())
+            }
+
+            Spacer(minLength: 0)
+
+            Text(game.title)
+                .font(.system(size: 17, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+                .allowsTightening(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(game.dateText)
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Text(game.timeText)
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                }
+                .foregroundStyle(Color.green)
+
+                Text(game.compactVenueLine)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                    .allowsTightening(true)
+
+                Text(game.courtName)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .allowsTightening(true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private func regularContent(for game: UpcomingGamesWidgetGame) -> some View {
+        let statusStyle = game.statusStyle
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 15, weight: .black))
@@ -394,48 +475,89 @@ struct UpcomingGamesWidgetEntryView: View {
                     .textCase(.uppercase)
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(game.statusLabel)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(statusStyle.foreground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(statusStyle.background, in: Capsule())
             }
 
             Spacer(minLength: 2)
 
             Text(game.title)
-                .font(.system(size: family == .systemSmall ? 20 : 24, weight: .black, design: .rounded))
+                .font(.system(size: 23, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+                .minimumScaleFactor(0.64)
+                .allowsTightening(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(game.dateText), \(game.timeText)")
-                    .font(.system(size: family == .systemSmall ? 15 : 17, weight: .black, design: .rounded))
+                    .font(.system(size: 17, weight: .black, design: .rounded))
                     .foregroundStyle(Color.green)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.76)
 
                 Text("\(game.sportTitle) · \(game.courtName)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(family == .systemSmall ? 1 : 2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
 
                 if let courtAddress = game.courtAddress?.trimmingCharacters(in: .whitespacesAndNewlines), !courtAddress.isEmpty {
                     Text(courtAddress)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .allowsTightening(true)
                 }
             }
-
-            Text(game.statusLabel)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.black.opacity(0.88))
-                .lineLimit(1)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(Color.green, in: Capsule())
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private var emptyContent: some View {
+        if family == .systemSmall {
+            return AnyView(compactEmptyContent)
+        }
+
+        return AnyView(regularEmptyContent)
+    }
+
+    private var compactEmptyContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 24, weight: .black))
+                .foregroundStyle(Color.green)
+
+            Spacer(minLength: 0)
+
+            Text("Игр пока нет")
+                .font(.system(size: 19, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+
+            Text("Первая подтвержденная игра появится здесь.")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private var regularEmptyContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "calendar.badge.plus")
                 .font(.system(size: 28, weight: .black))
@@ -470,6 +592,83 @@ private extension View {
             }
         } else {
             self.background(background())
+        }
+    }
+}
+
+private struct WidgetStatusStyle {
+    let foreground: Color
+    let background: Color
+}
+
+private extension UpcomingGamesWidgetGame {
+    var compactVenueLine: String {
+        let normalizedCourtName = courtName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCourtName.isEmpty else {
+            return sportTitle
+        }
+
+        return "\(sportTitle) · \(normalizedCourtName)"
+    }
+
+    var compactStatusLabel: String {
+        switch statusLabel {
+        case "Ждём подтверждение", "Ждёт подтверждения", "Требуется ответ", "Ожидает подтверждения":
+            return "Ждём"
+        case "Игра подтверждена":
+            return "Подтв."
+        case "Скоро начнется":
+            return "Скоро"
+        case "Игра началась":
+            return "Старт"
+        case "Игра идет":
+            return "Идёт"
+        case "Игра закончилась":
+            return "Финиш"
+        case "Игра прошла":
+            return "Прошла"
+        default:
+            return statusLabel
+        }
+    }
+
+    var statusStyle: WidgetStatusStyle {
+        switch statusLabel {
+        case "Ждём подтверждение", "Ждёт подтверждения", "Требуется ответ", "Ожидает подтверждения":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.49, green: 0.45, blue: 0.78),
+                background: Color(red: 0.91, green: 0.90, blue: 0.99)
+            )
+        case "Игра подтверждена", "Игра прошла":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.16, green: 0.58, blue: 0.33),
+                background: Color(red: 0.86, green: 0.95, blue: 0.89)
+            )
+        case "Скоро начнется":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.78, green: 0.52, blue: 0.18),
+                background: Color(red: 0.99, green: 0.94, blue: 0.83)
+            )
+        case "Игра началась", "Игра идет":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.17, green: 0.50, blue: 0.72),
+                background: Color(red: 0.86, green: 0.93, blue: 0.98)
+            )
+        case "Игра закончилась", "Не сыграли":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.33, green: 0.33, blue: 0.38),
+                background: Color(red: 0.90, green: 0.90, blue: 0.92)
+            )
+        case "Отменена":
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.72, green: 0.22, blue: 0.20),
+                background: Color(red: 0.96, green: 0.88, blue: 0.88)
+            )
+        default:
+            return WidgetStatusStyle(
+                foreground: Color(red: 0.16, green: 0.58, blue: 0.33),
+                background: Color(red: 0.86, green: 0.95, blue: 0.89)
+            )
         }
     }
 }

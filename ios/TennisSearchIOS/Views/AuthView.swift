@@ -3,6 +3,11 @@ import CoreLocation
 import MapKit
 import SwiftUI
 
+private enum OnboardingProfileField: Hashable {
+    case name
+    case age
+}
+
 struct AuthView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
@@ -18,6 +23,7 @@ struct AuthView: View {
     @State private var showsDetectedDistrictConfirmation = false
     @State private var isDetectedDistrictConfirmed = false
     @StateObject private var locationPermission = OnboardingLocationPermission()
+    @FocusState private var profileFocusedField: OnboardingProfileField?
 
     let embedded: Bool
 
@@ -38,6 +44,22 @@ struct AuthView: View {
                             appModel.dismissPresentedAuth()
                             dismiss()
                         }
+                    }
+                }
+
+                if step == .profile && profileFocusedField != nil {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Button("Скрыть") {
+                            profileFocusedField = nil
+                        }
+
+                        Spacer()
+
+                        Button("Дальше") {
+                            advanceFromProfile()
+                        }
+                        .font(.headline.weight(.bold))
+                        .disabled(!draft.hasProfileBasics)
                     }
                 }
             }
@@ -117,8 +139,6 @@ struct AuthView: View {
                 guard step == .availability else {
                     return
                 }
-                draft.district = district
-                draft.preferredDistricts = [district]
                 selectedLocationChoice = .nearby
                 detectedDistrictForConfirmation = district
                 isDetectedDistrictConfirmed = false
@@ -165,7 +185,12 @@ struct AuthView: View {
         GeometryReader { geometry in
             let safeTop = geometry.safeAreaInsets.top
             let safeBottom = geometry.safeAreaInsets.bottom
-            let heroHeight = min(max(geometry.size.height * 0.48, 360), 500)
+            let isCompact = geometry.size.height < 760
+            let heroHeight = isCompact
+                ? min(max(geometry.size.height * 0.34, 230), 300)
+                : min(max(geometry.size.height * 0.44, 340), 470)
+            let titleTopOffset = isCompact ? max(24, safeTop + 4) : max(38, safeTop + 8)
+            let verticalSpacing: CGFloat = isCompact ? 14 : 20
 
             ZStack {
                 LinearGradient(
@@ -196,21 +221,13 @@ struct AuthView: View {
                     .blur(radius: 120)
                     .offset(x: 20, y: -220)
 
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: verticalSpacing) {
                     Spacer()
-                        .frame(height: max(6, safeTop * 0.28))
-
-                    Text("TennisSearch")
-                        .font(.caption.weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(.white.opacity(0.64))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.white.opacity(0.08), in: Capsule())
+                        .frame(height: titleTopOffset)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Найди напарника")
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                            .font(.system(size: isCompact ? 34 : 38, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
@@ -233,14 +250,45 @@ struct AuthView: View {
                     }
                     .frame(height: 72)
 
+                    existingAccountButton
+
                     Spacer()
-                        .frame(height: max(14, safeBottom))
+                        .frame(height: max(isCompact ? 8 : 14, safeBottom))
                 }
                 .padding(.horizontal, 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .ignoresSafeArea()
+    }
+
+    private var existingAccountButton: some View {
+        Button {
+            AppHaptics.selection()
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                step = .email
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("Уже есть аккаунт? Войти")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .frame(height: 52)
+            .background(.white.opacity(0.10), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Войти в существующий аккаунт")
     }
 
     private var stepProgressStrip: some View {
@@ -279,6 +327,8 @@ struct AuthView: View {
                     step = .profile
                 }
             }
+
+            existingAccountButton
         }
     }
 
@@ -344,11 +394,22 @@ struct AuthView: View {
                         }
 
                         VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                            Text("Как тебя зовут")
+                            Text("Имя и возраст")
                                 .font(.headline.weight(.black))
                                 .foregroundStyle(.white)
 
-                            OnboardingNameField(name: $draft.name, isCompact: isCompact)
+                            OnboardingProfileBasicsFields(
+                                name: $draft.name,
+                                age: $draft.age,
+                                isCompact: isCompact,
+                                focusedField: $profileFocusedField,
+                                onAgeSubmit: advanceFromProfile
+                            )
+
+                            Text("Возраст обязателен: от 18 до 100 лет.")
+                                .font(.system(size: isCompact ? 12 : 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.54))
+                                .lineLimit(2)
                         }
 
                         OnboardingVisibilityToggle(isOn: $draft.isLookingForGame, isCompact: isCompact)
@@ -371,10 +432,7 @@ struct AuthView: View {
                             }
 
                             Button {
-                                persistDraft()
-                                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                                    step = .availability
-                                }
+                                advanceFromProfile()
                             } label: {
                                 HStack(spacing: 14) {
                                     Text("Дальше")
@@ -398,7 +456,7 @@ struct AuthView: View {
                             .buttonStyle(.plain)
                             .disabled(!draft.hasProfileBasics)
                         }
-                        .padding(.bottom, bottomPadding)
+                        .padding(.bottom, bottomPadding + (isCompact ? 150 : 180))
                     }
                     .padding(.horizontal, horizontalPadding)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -406,7 +464,7 @@ struct AuthView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container)
     }
 
     private var availabilityStep: some View {
@@ -589,6 +647,15 @@ struct AuthView: View {
         appModel.updateGuestDraft(normalizedDraft())
     }
 
+    private func advanceFromProfile() {
+        profileFocusedField = nil
+        guard draft.hasProfileBasics else { return }
+        persistDraft()
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            step = .availability
+        }
+    }
+
     private var seekingPlayersLine: String {
         let count = appStats?.registeredPlayersCount ?? 315
         return "Ищут игру: \(count.formatted(.number.grouping(.automatic))) игроков"
@@ -611,6 +678,14 @@ struct AuthView: View {
 
     private func finishGuestOnboarding() {
         var completedDraft = normalizedDraft()
+        guard completedDraft.hasProfileBasics else {
+            draft = completedDraft
+            appModel.errorMessage = "Укажи имя, возраст от 18 до 100 и хотя бы один вид спорта."
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                step = .profile
+            }
+            return
+        }
         completedDraft.onboardingCompleted = true
         appModel.updateGuestDraft(completedDraft)
         appModel.queueDiscoverSimilarPlayersHint()
@@ -1879,9 +1954,25 @@ private struct MoreSportsTile: View {
     }
 }
 
+private struct OnboardingProfileBasicsFields: View {
+    @Binding var name: String
+    @Binding var age: Int
+    let isCompact: Bool
+    let focusedField: FocusState<OnboardingProfileField?>.Binding
+    let onAgeSubmit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: isCompact ? 8 : 10) {
+            OnboardingNameField(name: $name, isCompact: isCompact, focusedField: focusedField)
+            OnboardingAgeField(age: $age, isCompact: isCompact, focusedField: focusedField, onSubmit: onAgeSubmit)
+        }
+    }
+}
+
 private struct OnboardingNameField: View {
     @Binding var name: String
     let isCompact: Bool
+    let focusedField: FocusState<OnboardingProfileField?>.Binding
 
     var body: some View {
         HStack(spacing: isCompact ? 10 : 14) {
@@ -1903,7 +1994,12 @@ private struct OnboardingNameField: View {
                     .foregroundStyle(.white)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
+                    .submitLabel(.next)
                     .tint(OnboardingStepPalette.lime)
+                    .focused(focusedField, equals: .name)
+                    .onSubmit {
+                        focusedField.wrappedValue = .age
+                    }
             }
         }
         .padding(.horizontal, isCompact ? 14 : 18)
@@ -1912,6 +2008,68 @@ private struct OnboardingNameField: View {
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+    }
+}
+
+private struct OnboardingAgeField: View {
+    @Binding var age: Int
+    let isCompact: Bool
+    let focusedField: FocusState<OnboardingProfileField?>.Binding
+    let onSubmit: () -> Void
+
+    private var isValidAge: Bool {
+        (18 ... 100).contains(age)
+    }
+
+    private var ageText: Binding<String> {
+        Binding(
+            get: {
+                age > 0 ? "\(age)" : ""
+            },
+            set: { nextValue in
+                let digits = String(nextValue.filter(\.isNumber).prefix(3))
+                age = Int(digits) ?? 0
+            }
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: isCompact ? 10 : 14) {
+            Image(systemName: "birthday.cake")
+                .font(.system(size: isCompact ? 18 : 22, weight: .medium))
+                .foregroundStyle(isValidAge ? .white.opacity(0.32) : Color.red.opacity(0.82))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Возраст")
+                    .font(.system(size: isCompact ? 10 : 11, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.44))
+
+                TextField("18–100", text: ageText)
+                    .font(.system(size: isCompact ? 14 : 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .keyboardType(.numbersAndPunctuation)
+                    .submitLabel(.done)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .tint(OnboardingStepPalette.lime)
+                    .focused(focusedField, equals: .age)
+                    .onSubmit {
+                        onSubmit()
+                    }
+            }
+
+            Text("18–100")
+                .font(.system(size: isCompact ? 12 : 13, weight: .bold, design: .rounded))
+                .foregroundStyle(isValidAge ? .white.opacity(0.44) : Color.red.opacity(0.9))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, isCompact ? 14 : 18)
+        .frame(height: isCompact ? 52 : 58)
+        .background(OnboardingStepPalette.panel.opacity(0.86), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isValidAge ? Color.white.opacity(0.14) : Color.red.opacity(0.68), lineWidth: 1)
         )
     }
 }

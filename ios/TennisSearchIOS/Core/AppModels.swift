@@ -337,6 +337,10 @@ enum SearchType: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var userVisibleCases: [SearchType] {
+        [.hot]
+    }
+
     var title: String {
         switch self {
         case .regular:
@@ -485,6 +489,10 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var userVisibleCases: [DiscoverTab] {
+        [.upcoming, .swipe, .likes, .hot]
+    }
+
     var title: String {
         switch self {
         case .upcoming:
@@ -593,7 +601,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
 
     static let `default` = GuestOnboardingDraft(
         name: "",
-        age: 28,
+        age: 0,
         gender: nil,
         city: "Санкт-Петербург",
         district: nil,
@@ -611,7 +619,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
     )
 
     var hasProfileBasics: Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && age >= 18 && !preferredSports.isEmpty
+        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && (18 ... 100).contains(age) && !preferredSports.isEmpty
     }
 
     enum CodingKeys: String, CodingKey {
@@ -636,7 +644,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
-        age = try container.decodeIfPresent(Int.self, forKey: .age) ?? 28
+        age = try container.decodeIfPresent(Int.self, forKey: .age) ?? 0
         gender = try container.decodeIfPresent(Gender.self, forKey: .gender)
         city = try container.decodeIfPresent(String.self, forKey: .city) ?? "Санкт-Петербург"
         district = try container.decodeIfPresent(String.self, forKey: .district)
@@ -1523,11 +1531,19 @@ struct Court: Codable, Identifiable {
     let websiteUrl: String?
     let bookingUrl: String?
     let photoUrl: String?
+    let photoUrls: [String]
     let priceRange: String?
     let rating: Double?
+    let isMember: Bool
+    let memberCount: Int
+    let members: [DiscoverUser]
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: locationLat, longitude: locationLng)
+    }
+
+    var primaryPhotoUrl: String? {
+        photoUrls.first ?? photoUrl
     }
 
     init(
@@ -1546,8 +1562,12 @@ struct Court: Codable, Identifiable {
         websiteUrl: String? = nil,
         bookingUrl: String? = nil,
         photoUrl: String? = nil,
+        photoUrls: [String] = [],
         priceRange: String? = nil,
-        rating: Double? = nil
+        rating: Double? = nil,
+        isMember: Bool = false,
+        memberCount: Int = 0,
+        members: [DiscoverUser] = []
     ) {
         self.id = id
         self.name = name
@@ -1564,8 +1584,12 @@ struct Court: Codable, Identifiable {
         self.websiteUrl = websiteUrl
         self.bookingUrl = bookingUrl
         self.photoUrl = photoUrl
+        self.photoUrls = Self.normalizedPhotoUrls(photoUrls, fallback: photoUrl)
         self.priceRange = priceRange
         self.rating = rating
+        self.isMember = isMember
+        self.memberCount = memberCount
+        self.members = members
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1584,8 +1608,12 @@ struct Court: Codable, Identifiable {
         case websiteUrl
         case bookingUrl
         case photoUrl
+        case photoUrls
         case priceRange
         case rating
+        case isMember
+        case memberCount
+        case members
     }
 
     init(from decoder: Decoder) throws {
@@ -1604,9 +1632,33 @@ struct Court: Codable, Identifiable {
         yandexMapsUrl = try container.decodeIfPresent(String.self, forKey: .yandexMapsUrl)
         websiteUrl = try container.decodeIfPresent(String.self, forKey: .websiteUrl)
         bookingUrl = try container.decodeIfPresent(String.self, forKey: .bookingUrl)
-        photoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
+        let legacyPhotoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
+        let decodedPhotoUrls = (try? container.decode([String].self, forKey: .photoUrls)) ?? []
+        photoUrls = Self.normalizedPhotoUrls(decodedPhotoUrls, fallback: legacyPhotoUrl)
+        photoUrl = legacyPhotoUrl ?? photoUrls.first
         priceRange = try container.decodeIfPresent(String.self, forKey: .priceRange)
         rating = try container.decodeIfPresent(Double.self, forKey: .rating)
+        isMember = try container.decodeIfPresent(Bool.self, forKey: .isMember) ?? false
+        memberCount = try container.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
+        members = try container.decodeIfPresent([DiscoverUser].self, forKey: .members) ?? []
+    }
+
+    private static func normalizedPhotoUrls(_ photoUrls: [String], fallback: String?) -> [String] {
+        var result: [String] = []
+        let candidates = [fallback].compactMap { $0 } + photoUrls
+
+        for candidate in candidates {
+            let normalized = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, !result.contains(normalized) else {
+                continue
+            }
+            result.append(normalized)
+            if result.count >= 8 {
+                break
+            }
+        }
+
+        return result
     }
 }
 
@@ -1619,6 +1671,7 @@ struct SearchDraft: Codable {
     var searchType: SearchType
     var hotWindow: HotWindow?
     var hotStartTime: String?
+    var hotStartsAt: String? = nil
     var durationMinutes: Int?
     var hasCourtBooked: Bool
     var sport: Sport
@@ -1650,12 +1703,65 @@ struct AppNotification: Codable, Identifiable {
     let status: String?
 }
 
+struct RealtimeEvent: Codable, Identifiable {
+    var id: String?
+    let type: String
+    let createdAt: String?
+    let title: String?
+    let body: String?
+    let href: String?
+    let matchId: String?
+    let messageId: String?
+    let gameRequestId: String?
+    let status: String?
+}
+
+extension Notification.Name {
+    static let tennisRealtimeEventReceived = Notification.Name("TennisSearchRealtimeEventReceived")
+}
+
 struct ActivitySummary: Codable {
     let inboxBadgeCount: Int
     let incomingLikesCount: Int
     let hotBadgeCount: Int
     let discoverBadgeCount: Int
+    let searchesBadgeCount: Int
     let notificationSound: Bool
+
+    init(
+        inboxBadgeCount: Int,
+        incomingLikesCount: Int,
+        hotBadgeCount: Int,
+        discoverBadgeCount: Int,
+        searchesBadgeCount: Int = 0,
+        notificationSound: Bool
+    ) {
+        self.inboxBadgeCount = inboxBadgeCount
+        self.incomingLikesCount = incomingLikesCount
+        self.hotBadgeCount = hotBadgeCount
+        self.discoverBadgeCount = discoverBadgeCount
+        self.searchesBadgeCount = searchesBadgeCount
+        self.notificationSound = notificationSound
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case inboxBadgeCount
+        case incomingLikesCount
+        case hotBadgeCount
+        case discoverBadgeCount
+        case searchesBadgeCount
+        case notificationSound
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        inboxBadgeCount = try container.decodeIfPresent(Int.self, forKey: .inboxBadgeCount) ?? 0
+        incomingLikesCount = try container.decodeIfPresent(Int.self, forKey: .incomingLikesCount) ?? 0
+        hotBadgeCount = try container.decodeIfPresent(Int.self, forKey: .hotBadgeCount) ?? 0
+        discoverBadgeCount = try container.decodeIfPresent(Int.self, forKey: .discoverBadgeCount) ?? 0
+        searchesBadgeCount = try container.decodeIfPresent(Int.self, forKey: .searchesBadgeCount) ?? 0
+        notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
+    }
 }
 
 struct AppStats: Codable {
@@ -1674,6 +1780,7 @@ extension ActivitySummary {
         incomingLikesCount: 0,
         hotBadgeCount: 0,
         discoverBadgeCount: 0,
+        searchesBadgeCount: 0,
         notificationSound: true
     )
 
@@ -1683,6 +1790,7 @@ extension ActivitySummary {
             incomingLikesCount: incomingLikesCount,
             hotBadgeCount: 0,
             discoverBadgeCount: max(discoverBadgeCount - hotBadgeCount, 0),
+            searchesBadgeCount: searchesBadgeCount,
             notificationSound: notificationSound
         )
     }
@@ -1920,11 +2028,11 @@ extension MatchGameRequest {
         case "cancelled", "canceled", "declined", "rejected", "withdrawn":
             return "Отменена"
         case "pending", "proposed":
+            if matchedUserId != nil {
+                return "Ждёт подтверждения"
+            }
             if format == .doubles || format == .both {
                 return "Подбор игроков"
-            }
-            if matchedUserId != nil {
-                return "Игра назначается"
             }
             return "Поиск"
         case "accepted", "approved":
@@ -1964,7 +2072,7 @@ extension MatchGameRequest {
         switch rawStatus {
         case "pending", "proposed":
             if matchedUserId != nil {
-                return "Игра создана. Открой чат и уточни детали, если что-то нужно поменять."
+                return "Предложение отправлено. Ждём подтверждение второго игрока."
             }
             return "Нужно собрать состав и перевести поиск в конкретную игру."
         case "accepted", "approved":
@@ -1982,7 +2090,7 @@ extension MatchGameRequest {
             return Color(red: 0.34, green: 0.47, blue: 0.68)
         case "В процессе набора", "В процессе набора людей", "Подбор игроков":
             return Color(red: 0.72, green: 0.48, blue: 0.18)
-        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения":
             return Color(red: 0.49, green: 0.45, blue: 0.78)
         case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
             return Color(red: 0.16, green: 0.58, blue: 0.33)
@@ -2009,7 +2117,7 @@ extension MatchGameRequest {
             return Color(red: 0.88, green: 0.92, blue: 0.98)
         case "В процессе набора", "В процессе набора людей", "Подбор игроков":
             return Color(red: 0.98, green: 0.93, blue: 0.84)
-        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения":
             return Color(red: 0.91, green: 0.90, blue: 0.99)
         case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
             return Color(red: 0.86, green: 0.95, blue: 0.89)

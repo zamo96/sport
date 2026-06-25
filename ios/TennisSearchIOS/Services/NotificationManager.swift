@@ -12,13 +12,16 @@ final class NotificationManager: NSObject, ObservableObject {
     private let center = UNUserNotificationCenter.current()
     private let defaults = UserDefaults.standard
     private var monitorTask: Task<Void, Never>?
+    private var realtimeTask: Task<Void, Never>?
     private var hasCompletedInitialSync = false
     private var repository: (any TennisRepository)?
 
     private let storedIDsKey = "ios.notification.delivered.ids"
+    private let realtimeLastEventIDKey = "ios.realtime.last_event.id"
     private let seenHotEventIDsKey = "ios.notification.hot.seen.ids"
     private let storedAPNSTokenKey = "ios.apns.token"
     private let gameReminderPrefix = "ios.game.reminder.2h."
+    private let monitorIntervalNanoseconds: UInt64 = 5_000_000_000
 
     override init() {
         super.init()
@@ -71,11 +74,15 @@ final class NotificationManager: NSObject, ObservableObject {
         self.repository = repository
         monitorTask = Task { [weak self] in
             guard let self else { return }
+            if authorizationStatus == .notDetermined {
+                await requestAuthorization()
+            }
             await registerCurrentDeviceIfPossible()
             await sync(repository: repository)
+            startRealtimeMonitoring(repository: repository)
 
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                try? await Task.sleep(nanoseconds: monitorIntervalNanoseconds)
                 await sync(repository: repository)
             }
         }
@@ -83,7 +90,9 @@ final class NotificationManager: NSObject, ObservableObject {
 
     func stopMonitoring() {
         monitorTask?.cancel()
+        realtimeTask?.cancel()
         monitorTask = nil
+        realtimeTask = nil
         hasCompletedInitialSync = false
         repository = nil
     }
@@ -143,6 +152,7 @@ final class NotificationManager: NSObject, ObservableObject {
             incomingLikesCount: summary.incomingLikesCount,
             hotBadgeCount: summary.hotBadgeCount,
             discoverBadgeCount: 0,
+            searchesBadgeCount: summary.searchesBadgeCount,
             notificationSound: summary.notificationSound
         )
         applyBadge(summary: summary)
@@ -190,6 +200,41 @@ final class NotificationManager: NSObject, ObservableObject {
             hasCompletedInitialSync = true
         } catch {
             print("notification sync error:", error.localizedDescription)
+        }
+    }
+
+    private func startRealtimeMonitoring(repository: TennisRepository) {
+        realtimeTask?.cancel()
+        realtimeTask = Task { [weak self] in
+            guard let self else { return }
+            var reconnectDelay: UInt64 = 1_000_000_000
+
+            while !Task.isCancelled {
+                do {
+                    let lastEventId = defaults.string(forKey: realtimeLastEventIDKey)
+                    for try await event in repository.realtimeEvents(lastEventId: lastEventId) {
+                        guard !Task.isCancelled else {
+                            return
+                        }
+
+                        if let eventId = event.id, !eventId.isEmpty {
+                            defaults.set(eventId, forKey: realtimeLastEventIDKey)
+                        }
+
+                        NotificationCenter.default.post(name: .tennisRealtimeEventReceived, object: event)
+                        await sync(repository: repository)
+                        reconnectDelay = 1_000_000_000
+                    }
+                } catch {
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                    print("realtime stream error:", error.localizedDescription)
+                }
+
+                try? await Task.sleep(nanoseconds: reconnectDelay)
+                reconnectDelay = min(reconnectDelay * 2, 30_000_000_000)
+            }
         }
     }
 
@@ -257,7 +302,7 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     private func applyBadge(summary: ActivitySummary) {
-        UIApplication.shared.applicationIconBadgeNumber = summary.inboxBadgeCount + summary.discoverBadgeCount
+        UIApplication.shared.applicationIconBadgeNumber = summary.inboxBadgeCount + summary.discoverBadgeCount + summary.searchesBadgeCount
     }
 
     private func effectiveSummary(from fetchedSummary: ActivitySummary, notifications: [AppNotification]) -> ActivitySummary {
@@ -302,9 +347,7 @@ final class NotificationManager: NSObject, ObservableObject {
 
     private func shouldScheduleLocalNotification(for item: AppNotification) -> Bool {
         switch item.type {
-        case .new_match, .new_message:
-            return false
-        default:
+        case .new_match, .new_message, .incoming_like, .search_response, .application_result, .hot_event:
             return true
         }
     }

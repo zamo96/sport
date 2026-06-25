@@ -221,7 +221,7 @@ actor MockRepository: TennisRepository {
         )
     ]
 
-    private let courts: [Court] = [
+    private var courts: [Court] = [
         mockCourt,
         Court(
             id: "court-2",
@@ -454,6 +454,28 @@ actor MockRepository: TennisRepository {
         }
     }
 
+    func ensureMatch(userId: String) async throws -> MatchSummary {
+        if let existing = matches.first(where: { $0.otherUser.id == userId }) {
+            return existing
+        }
+
+        guard let user = discoverUsers.first(where: { $0.id == userId }) ?? incomingLikes.first(where: { $0.id == userId }) else {
+            throw APIError.server("Игрок не найден")
+        }
+
+        let match = MatchSummary(
+            id: "match-\(userId)",
+            status: "active",
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            otherUser: user,
+            lastMessage: nil,
+            latestGameRequest: nil
+        )
+        matches.insert(match, at: 0)
+        messagesByMatch[match.id] = []
+        return match
+    }
+
     func fetchMyGameRequests() async throws -> [MatchGameRequest] {
         matches.compactMap(\.latestGameRequest)
             .sorted { $0.proposedDatetime < $1.proposedDatetime }
@@ -484,7 +506,7 @@ actor MockRepository: TennisRepository {
             id: "game-request-\(UUID().uuidString)",
             matchId: matchId,
             searchLobbyId: nil,
-            status: "accepted",
+            status: "pending",
             proposedDatetime: ISO8601DateFormatter().string(from: draft.proposedDatetime),
             createdByUserId: currentUser.id,
             matchedUserId: matches.first(where: { $0.id == matchId })?.otherUser.id,
@@ -508,8 +530,8 @@ actor MockRepository: TennisRepository {
                 timeStyle: .short
             )
             let summary = draft.comment.isEmpty
-                ? "Игра назначена: \(proposalText) · \(draft.sport.formatTitle(format: draft.format))"
-                : "Игра назначена: \(proposalText) · \(draft.comment)"
+                ? "Предложение игры: \(proposalText) · нужно подтверждение второго игрока"
+                : "Предложение игры: \(proposalText) · \(draft.comment)"
             let systemMessage = ChatMessage(
                 id: "msg-\(UUID().uuidString)",
                 senderUserId: currentUser.id,
@@ -549,23 +571,23 @@ actor MockRepository: TennisRepository {
             searchLobbyId: existing.searchLobbyId,
             sourceType: existing.sourceType,
             regularPairId: existing.regularPairId,
-            status: existing.status,
+            status: "pending",
             proposedDatetime: ISO8601DateFormatter().string(from: draft.proposedDatetime),
-            createdByUserId: existing.createdByUserId,
-            matchedUserId: existing.matchedUserId,
+            createdByUserId: currentUser.id,
+            matchedUserId: existing.createdByUserId == currentUser.id ? existing.matchedUserId : existing.createdByUserId,
             durationMinutes: draft.durationMinutes,
             comment: draft.comment.isEmpty ? nil : draft.comment,
-            outcome: existing.outcome,
+            outcome: nil,
             sport: draft.sport,
             format: draft.format,
             proposedCourt: court,
-            createdByUser: existing.createdByUser,
-            matchedUser: existing.matchedUser,
+            createdByUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl),
+            matchedUser: existing.createdByUserId == currentUser.id ? existing.matchedUser : existing.createdByUser,
             participants: existing.participants,
             invitees: existing.invitees
         )
 
-        let summary = "Предложение игры обновлено: \(DateFormatter.localizedString(from: draft.proposedDatetime, dateStyle: .short, timeStyle: .short)) · \(court.name)"
+        let summary = "Предложение игры обновлено: \(DateFormatter.localizedString(from: draft.proposedDatetime, dateStyle: .short, timeStyle: .short)) · \(court.name). Подтверждение нужно заново."
         let systemMessage = ChatMessage(
             id: "msg-\(UUID().uuidString)",
             senderUserId: currentUser.id,
@@ -772,12 +794,7 @@ actor MockRepository: TennisRepository {
             status: "active",
             searchType: draft.searchType,
             hotWindow: draft.hotWindow,
-            hotStartsAt: draft.hotStartTime.map { time in
-                let today = Calendar.current.startOfDay(for: Date())
-                let parts = time.split(separator: ":").compactMap { Int($0) }
-                let date = Calendar.current.date(bySettingHour: parts.first ?? 19, minute: parts.last ?? 0, second: 0, of: today) ?? Date()
-                return ISO8601DateFormatter().string(from: date)
-            },
+            hotStartsAt: hotStartsAtString(from: draft),
             durationMinutes: draft.durationMinutes,
             hasCourtBooked: draft.hasCourtBooked,
             sport: draft.sport,
@@ -812,12 +829,7 @@ actor MockRepository: TennisRepository {
             status: searches[index].isActive == false ? "closed" : "active",
             searchType: draft.searchType,
             hotWindow: draft.hotWindow,
-            hotStartsAt: draft.hotStartTime.map { time in
-                let today = Calendar.current.startOfDay(for: Date())
-                let parts = time.split(separator: ":").compactMap { Int($0) }
-                let date = Calendar.current.date(bySettingHour: parts.first ?? 19, minute: parts.last ?? 0, second: 0, of: today) ?? Date()
-                return ISO8601DateFormatter().string(from: date)
-            },
+            hotStartsAt: hotStartsAtString(from: draft),
             durationMinutes: draft.durationMinutes,
             hasCourtBooked: draft.hasCourtBooked,
             sport: draft.sport,
@@ -839,6 +851,37 @@ actor MockRepository: TennisRepository {
         )
         searches[index] = updated
         return updated
+    }
+
+    private func hotStartsAtString(from draft: SearchDraft) -> String? {
+        if let hotStartsAt = draft.hotStartsAt, !hotStartsAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return hotStartsAt
+        }
+
+        guard let hotStartTime = draft.hotStartTime else {
+            return nil
+        }
+
+        let parts = hotStartTime.split(separator: ":").compactMap { Int($0) }
+        let dayOffset: Int
+        switch draft.hotWindow {
+        case .tomorrow:
+            dayOffset = 1
+        case .dayAfterTomorrow:
+            dayOffset = 2
+        case .today, nil:
+            dayOffset = 0
+        }
+
+        let targetDay = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+        let date = Calendar.current.date(
+            bySettingHour: parts.first ?? 19,
+            minute: parts.dropFirst().first ?? 0,
+            second: 0,
+            of: targetDay
+        ) ?? targetDay
+
+        return ISO8601DateFormatter().string(from: date)
     }
 
     func setSearchActive(searchId: String, isActive: Bool) async throws -> GameSearch {
@@ -1144,7 +1187,7 @@ actor MockRepository: TennisRepository {
             responderUser: makeDiscoverUser(
                 id: currentUser.id,
                 name: currentUser.name ?? "Ты",
-                age: currentUser.age ?? 28,
+                age: currentUser.age,
                 city: currentUser.city ?? "Санкт-Петербург",
                 district: currentUser.district ?? "petrogradsky",
                 districtLabel: "Твой район",
@@ -1194,7 +1237,7 @@ actor MockRepository: TennisRepository {
             owner = makeDiscoverUser(
                 id: owner.id,
                 name: owner.name ?? "Игрок",
-                age: owner.age ?? 28,
+                age: owner.age,
                 city: owner.city ?? "Санкт-Петербург",
                 district: owner.district ?? "petrogradsky",
                 districtLabel: owner.districtLabel ?? "Район",
@@ -1261,7 +1304,7 @@ actor MockRepository: TennisRepository {
             discoverUsers[index] = makeDiscoverUser(
                 id: owner.id,
                 name: owner.name ?? "Игрок",
-                age: owner.age ?? 28,
+                age: owner.age,
                 city: owner.city ?? "Санкт-Петербург",
                 district: owner.district ?? "petrogradsky",
                 districtLabel: owner.districtLabel ?? "Район",
@@ -1497,7 +1540,7 @@ actor MockRepository: TennisRepository {
             makeDiscoverUser(
                 id: currentUser.id,
                 name: currentUser.name ?? "Ты",
-                age: currentUser.age ?? 28,
+                age: currentUser.age,
                 city: currentUser.city ?? "Санкт-Петербург",
                 district: currentUser.district ?? "petrogradsky",
                 districtLabel: "Твой район",
@@ -1766,18 +1809,78 @@ actor MockRepository: TennisRepository {
         courts
     }
 
+    func fetchCourt(courtId: String) async throws -> Court {
+        guard let court = courts.first(where: { $0.id == courtId }) else {
+            throw APIError.server("Клуб не найден")
+        }
+
+        return court
+    }
+
+    func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court {
+        guard let index = courts.firstIndex(where: { $0.id == courtId }) else {
+            throw APIError.server("Клуб не найден")
+        }
+
+        let current = courts[index]
+        let previewMembers = current.members.isEmpty ? Array(discoverUsers.prefix(3)) : current.members
+        let delta = isMember == current.isMember ? 0 : (isMember ? 1 : -1)
+        let updated = Court(
+            id: current.id,
+            name: current.name,
+            address: current.address,
+            district: current.district,
+            locationLat: current.locationLat,
+            locationLng: current.locationLng,
+            distanceLabel: current.distanceLabel,
+            nearestMetroName: current.nearestMetroName,
+            supportedSports: current.supportedSports,
+            phone: current.phone,
+            workingHours: current.workingHours,
+            yandexMapsUrl: current.yandexMapsUrl,
+            websiteUrl: current.websiteUrl,
+            bookingUrl: current.bookingUrl,
+            photoUrl: current.photoUrl,
+            photoUrls: current.photoUrls,
+            priceRange: current.priceRange,
+            rating: current.rating,
+            isMember: isMember,
+            memberCount: max(previewMembers.count + (isMember ? 1 : 0), current.memberCount + delta),
+            members: previewMembers
+        )
+        courts[index] = updated
+        return updated
+    }
+
     func fetchNotifications() async throws -> [AppNotification] {
         notifications
     }
 
     func fetchActivitySummary() async throws -> ActivitySummary {
-        ActivitySummary(
+        let pendingSearchResponsesCount = searches.reduce(into: 0) { count, search in
+            guard search.searchType == .hot,
+                  (search.isActive ?? true),
+                  ["active", "in_review"].contains(search.status.lowercased()) else {
+                return
+            }
+            count += search.responses.filter { $0.status == "pending" }.count
+        }
+        let createdSearchGamesCount = searches.filter {
+            $0.searchType == .hot && $0.status.lowercased() == "matched"
+        }.count
+
+        return ActivitySummary(
             inboxBadgeCount: matches.count,
             incomingLikesCount: incomingLikes.count,
             hotBadgeCount: discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
             discoverBadgeCount: incomingLikes.count + discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
+            searchesBadgeCount: pendingSearchResponsesCount + createdSearchGamesCount,
             notificationSound: currentUser.notificationSound
         )
+    }
+
+    nonisolated func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error> {
+        AsyncThrowingStream { _ in }
     }
 
     func fetchAppStats() async throws -> AppStats {
@@ -1817,7 +1920,7 @@ private let mockCourt = Court(
 private func makeDiscoverUser(
     id: String,
     name: String,
-    age: Int,
+    age: Int?,
     city: String,
     district: String,
     districtLabel: String,
@@ -1836,7 +1939,7 @@ private func makeDiscoverUser(
     let payload: [String: Any] = [
         "id": id,
         "name": name,
-        "age": age,
+        "age": age.map { $0 as Any } ?? NSNull(),
         "city": city,
         "district": district,
         "districtLabel": districtLabel,
@@ -1911,6 +2014,30 @@ private func gameSearchDictionary(_ search: GameSearch) -> [String: Any] {
     ]
 }
 
+private func discoverUserDictionary(_ user: DiscoverUser) -> [String: Any] {
+    [
+        "id": user.id,
+        "name": user.name ?? NSNull(),
+        "age": user.age ?? NSNull(),
+        "city": user.city ?? NSNull(),
+        "district": user.district ?? NSNull(),
+        "districtLabel": user.districtLabel ?? NSNull(),
+        "bio": user.bio ?? NSNull(),
+        "avatarUrl": user.avatarUrl ?? NSNull(),
+        "tennisLevel": user.tennisLevel ?? NSNull(),
+        "preferredSports": user.preferredSports.map(\.rawValue),
+        "sportLevels": user.sportLevels,
+        "preferredPlayFormat": user.preferredPlayFormat.rawValue,
+        "preferredSurface": user.preferredSurface.rawValue,
+        "availableDays": user.availableDays,
+        "availableTimeRanges": user.availableTimeRanges,
+        "distanceLabel": user.distanceLabel,
+        "score": user.score ?? NSNull(),
+        "explainabilityReasons": user.explainabilityReasons,
+        "gameSearches": user.gameSearches.map(gameSearchDictionary)
+    ]
+}
+
 private func courtDictionary(_ court: Court) -> [String: Any] {
     [
         "id": court.id,
@@ -1928,7 +2055,11 @@ private func courtDictionary(_ court: Court) -> [String: Any] {
         "websiteUrl": court.websiteUrl as Any,
         "bookingUrl": court.bookingUrl as Any,
         "photoUrl": court.photoUrl as Any,
+        "photoUrls": court.photoUrls,
         "priceRange": court.priceRange as Any,
-        "rating": court.rating as Any
+        "rating": court.rating as Any,
+        "isMember": court.isMember,
+        "memberCount": court.memberCount,
+        "members": court.members.map(discoverUserDictionary)
     ]
 }

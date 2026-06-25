@@ -9,8 +9,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      REALTIME_STREAM_MAXLEN: ${REALTIME_STREAM_MAXLEN:-1000}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "127.0.0.1:${APP_PORT:-3002}:3002"
@@ -29,5 +34,19 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: tennis-search-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - tennis_search_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   tennis_search_pg_data:
+  tennis_search_redis_data:

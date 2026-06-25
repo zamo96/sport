@@ -290,7 +290,7 @@ struct ProfileView: View {
     private func sportsProfileEditor(for profile: Binding<UserProfile>) -> some View {
         ProfileEditorScreen(
             title: "Спортивный профиль",
-            subtitle: "Настрой виды спорта, уровень и стиль игры.",
+            subtitle: "Настрой виды спорта и уровень.",
             systemImage: "tennis.racket",
             tint: AppTheme.court,
             onSave: { Task { await save() } }
@@ -299,8 +299,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     ProfileEditorMetricStrip(items: [
                         .init(title: "Спортов", value: "\(profile.wrappedValue.preferredSports.count)", icon: "figure.tennis"),
-                        .init(title: "Формат", value: profile.wrappedValue.preferredPlayFormat.title, icon: "person.2"),
-                        .init(title: "Покрытие", value: profile.wrappedValue.preferredSurface.title, icon: "square.grid.2x2")
+                        .init(title: "Поиск", value: profile.wrappedValue.isLookingForGame ? "Активен" : "Скрыт", icon: "eye")
                     ])
 
                     ProfileEmbeddedLightCard(title: "Виды спорта", subtitle: "Выбери всё, во что готов играть, и выставь уровень.") {
@@ -312,9 +311,7 @@ struct ProfileView: View {
                         )
                     }
 
-                    ProfileEmbeddedLightCard(title: "Стиль игры", subtitle: "Эти параметры влияют на подбор и предложения игр.") {
-                        AppSegmentedChoice(title: "Формат", items: PlayFormat.allCases, selection: profile.preferredPlayFormat, titleForItem: \.title)
-                        AppSegmentedChoice(title: "Покрытие", items: Surface.allCases, selection: profile.preferredSurface, titleForItem: \.title)
+                    ProfileEmbeddedLightCard(title: "Видимость", subtitle: "Можно временно скрыться из активной подборки игроков.") {
                         ToggleCard(title: "Ищу игру сейчас", subtitle: "Показывать тебя в активной подборке игроков.", isOn: profile.isLookingForGame)
                     }
                 }
@@ -511,7 +508,7 @@ struct ProfileView: View {
             Stepper(value: Binding(
                 get: { profile.age.wrappedValue ?? 25 },
                 set: { profile.age.wrappedValue = $0 }
-            ), in: 18 ... 70) {
+            ), in: 18 ... 100) {
                 Text("\(profile.age.wrappedValue ?? 25)")
                     .font(.headline)
             }
@@ -539,7 +536,7 @@ struct ProfileView: View {
                 .autocorrectionDisabled()
         }
 
-        FieldShell(title: "О себе", caption: "Коротко опиши стиль игры или с кем хочешь играть.") {
+        FieldShell(title: "О себе", caption: "Коротко опиши себя или с кем хочешь играть.") {
             TextField(
                 "Люблю интенсивные розыгрыши и вечерние тренировки.",
                 text: profile.bio.orEmpty,
@@ -565,7 +562,7 @@ struct ProfileView: View {
             }
 
             FieldShell(title: "Возраст") {
-                Stepper(value: $guestDraft.age, in: 18 ... 70) {
+                Stepper(value: $guestDraft.age, in: 18 ... 100) {
                     Text("\(guestDraft.age)")
                         .font(.headline)
                 }
@@ -585,9 +582,6 @@ struct ProfileView: View {
 
     private var guestPreferencesSection: some View {
         Group {
-            AppSegmentedChoice(title: "Формат", items: PlayFormat.allCases, selection: $guestDraft.preferredPlayFormat, titleForItem: \.title)
-            AppSegmentedChoice(title: "Покрытие", items: Surface.allCases, selection: $guestDraft.preferredSurface, titleForItem: \.title)
-
             FieldShell(title: "Радиус поиска", caption: "\(guestDraft.searchRadiusKm) км") {
                 Slider(
                     value: Binding(
@@ -760,7 +754,7 @@ struct ProfileView: View {
 
     private func sportsSummary(for profile: UserProfile) -> String {
         guard !profile.preferredSports.isEmpty else { return "Виды спорта ещё не выбраны" }
-        return "\(profile.preferredSports.count) вида спорта, уровни и стили игры"
+        return "\(profile.preferredSports.count) вида спорта и уровни"
     }
 
     private func playLocationSummary(for profile: UserProfile) -> String {
@@ -1440,7 +1434,7 @@ private struct PublicProfileCard: View {
                 }
                 .padding(.bottom, 28)
 
-                Text("\(profile.displayName), \(profile.age ?? 28)")
+                Text(profile.age.map { "\(profile.displayName), \($0)" } ?? profile.displayName)
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
 
@@ -1461,7 +1455,7 @@ private struct PublicProfileCard: View {
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 0) {
                         ProfileFact(icon: "clock", title: "Когда удобно", value: "Пн-Пт вечером")
-                        ProfileFact(icon: "tennisball", title: "Предпочитаю", value: profile.preferredPlayFormat.title)
+                        ProfileFact(icon: "figure.run", title: "Активность", value: profile.isLookingForGame ? "Ищет игру" : "Открыт к играм")
                         ProfileFact(icon: "arrow.triangle.2.circlepath", title: "Частота", value: "2-4 раза в неделю")
                         ProfileFact(icon: "building.2", title: "Любимые клубы", value: "Vaska Padel Yard")
                     }
@@ -1745,7 +1739,7 @@ private struct ProfileSmallPublicCard: View {
                 Text(profile.displayName)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
-                Text("\(profile.age ?? 28) лет · \(profile.city ?? "Санкт-Петербург")")
+                Text(profile.age.map { "\($0) лет · \(profile.city ?? "Санкт-Петербург")" } ?? (profile.city ?? "Санкт-Петербург"))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.6))
                 Text(profile.preferredSports.prefix(2).map(\.title).joined(separator: " · "))

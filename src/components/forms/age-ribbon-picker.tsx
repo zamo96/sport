@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 
-const AGES = Array.from({ length: 82 }, (_, index) => 18 + index);
+const AGES = Array.from({ length: 83 }, (_, index) => 18 + index);
 
 export function AgeRibbonPicker({
   value,
@@ -17,7 +17,7 @@ export function AgeRibbonPicker({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const selectedRef = useRef<HTMLButtonElement | null>(null);
-  const normalizedValue = useMemo(() => (value >= 18 && value <= 99 ? value : 28), [value]);
+  const normalizedValue = useMemo(() => (value >= 18 && value <= 100 ? value : 28), [value]);
 
   useEffect(() => {
     const container = containerRef.current;

@@ -36,6 +36,16 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
 
+    private lazy var streamSession: URLSession = {
+        let streamConfiguration = URLSessionConfiguration.default
+        streamConfiguration.httpCookieAcceptPolicy = .always
+        streamConfiguration.httpShouldSetCookies = true
+        streamConfiguration.httpCookieStorage = .shared
+        streamConfiguration.timeoutIntervalForRequest = 45
+        streamConfiguration.timeoutIntervalForResource = 7 * 24 * 60 * 60
+        return URLSession(configuration: streamConfiguration, delegate: self, delegateQueue: nil)
+    }()
+
     init(baseURL: URL, allowDebugServerTrustOverride: Bool = false) {
         self.baseURL = baseURL
         self.allowDebugServerTrustOverride = allowDebugServerTrustOverride
@@ -104,6 +114,97 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             data: data
         )
         return try await perform(request)
+    }
+
+    func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = makeRequest(path: "realtime", method: "GET", queryItems: [])
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = 45
+                    if let lastEventId, !lastEventId.isEmpty {
+                        request.setValue(lastEventId, forHTTPHeaderField: "Last-Event-ID")
+                    }
+
+                    let (bytes, response) = try await streamSession.bytes(for: request)
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        throw APIError.invalidResponse
+                    }
+                    guard (200 ... 299).contains(httpResponse.statusCode) else {
+                        throw APIError.server("Realtime HTTP \(httpResponse.statusCode)")
+                    }
+
+                    var eventId: String?
+                    var eventName: String?
+                    var dataLines: [String] = []
+
+                    func flushEvent() {
+                        guard !dataLines.isEmpty else {
+                            eventId = nil
+                            eventName = nil
+                            return
+                        }
+
+                        let dataText = dataLines.joined(separator: "\n")
+                        if var decoded = try? decoder.decode(RealtimeEvent.self, from: Data(dataText.utf8)) {
+                            decoded.id = decoded.id ?? eventId
+                            continuation.yield(decoded)
+                        } else if let eventName {
+                            let fallback = RealtimeEvent(
+                                id: eventId,
+                                type: eventName,
+                                createdAt: nil,
+                                title: nil,
+                                body: nil,
+                                href: nil,
+                                matchId: nil,
+                                messageId: nil,
+                                gameRequestId: nil,
+                                status: nil
+                            )
+                            continuation.yield(fallback)
+                        }
+
+                        eventId = nil
+                        eventName = nil
+                        dataLines = []
+                    }
+
+                    for try await line in bytes.lines {
+                        if Task.isCancelled {
+                            break
+                        }
+
+                        if line.isEmpty {
+                            flushEvent()
+                            continue
+                        }
+
+                        if line.hasPrefix(":") {
+                            continue
+                        }
+
+                        if line.hasPrefix("id:") {
+                            eventId = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("event:") {
+                            eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("data:") {
+                            dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+                        }
+                    }
+
+                    flushEvent()
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 
     private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) -> URLRequest {
@@ -378,6 +479,15 @@ final class LiveTennisRepository: TennisRepository {
         return response.matches
     }
 
+    func ensureMatch(userId: String) async throws -> MatchSummary {
+        let response: MatchEnvelope = try await client.request(
+            path: "matches",
+            method: "POST",
+            body: CreateMatchRequest(userId: userId)
+        )
+        return response.match
+    }
+
     func fetchMyGameRequests() async throws -> [MatchGameRequest] {
         let response: GameRequestsEnvelope = try await client.request(path: "game-requests/my")
         return response.gameRequests
@@ -591,6 +701,20 @@ final class LiveTennisRepository: TennisRepository {
         return response.courts
     }
 
+    func fetchCourt(courtId: String) async throws -> Court {
+        let response: CourtEnvelope = try await client.request(path: "courts/\(courtId)")
+        return response.court
+    }
+
+    func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court {
+        let response: CourtEnvelope = try await client.request(
+            path: "courts/\(courtId)/membership",
+            method: "POST",
+            body: CourtMembershipRequest(isMember: isMember)
+        )
+        return response.court
+    }
+
     func fetchNotifications() async throws -> [AppNotification] {
         let response: NotificationsEnvelope = try await client.request(path: "activity/notifications")
         return response.notifications
@@ -599,6 +723,10 @@ final class LiveTennisRepository: TennisRepository {
     func fetchActivitySummary() async throws -> ActivitySummary {
         let response: ActivitySummary = try await client.request(path: "activity/summary")
         return response
+    }
+
+    func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error> {
+        client.realtimeEvents(lastEventId: lastEventId)
     }
 
     func fetchAppStats() async throws -> AppStats {
@@ -915,6 +1043,14 @@ private struct MatchesEnvelope: Decodable {
     let matches: [MatchSummary]
 }
 
+private struct MatchEnvelope: Decodable {
+    let match: MatchSummary
+}
+
+private struct CreateMatchRequest: Encodable {
+    let userId: String
+}
+
 private struct GameRequestsEnvelope: Decodable {
     let gameRequests: [MatchGameRequest]
 }
@@ -977,6 +1113,14 @@ private struct RegularPairOccurrenceEnvelope: Decodable {
 
 private struct CourtsEnvelope: Decodable {
     let courts: [Court]
+}
+
+private struct CourtEnvelope: Decodable {
+    let court: Court
+}
+
+private struct CourtMembershipRequest: Encodable {
+    let isMember: Bool
 }
 
 private struct NotificationsEnvelope: Decodable {

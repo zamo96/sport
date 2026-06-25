@@ -14,7 +14,14 @@ export async function GET() {
       OR: [{ user1Id: user.id }, { user2Id: user.id }]
     };
 
-    const [newMatches, unreadMessages, incomingLikesCount, hotBadgeCount] = await Promise.all([
+    const [
+      newMatches,
+      unreadMessages,
+      incomingLikesCount,
+      hotBadgeCount,
+      pendingSearchResponsesCount,
+      createdSearchGamesCount
+    ] = await Promise.all([
       prisma.match.findMany({
         where: {
           ...matchWhere,
@@ -42,7 +49,27 @@ export async function GET() {
         }
       }),
       getIncomingLikesCount(user.id),
-      getHotNotificationsCount(user.id)
+      getHotNotificationsCount(user.id),
+      prisma.gameSearchResponse.count({
+        where: {
+          status: "pending",
+          gameSearch: {
+            createdByUserId: user.id,
+            searchType: "hot",
+            isActive: true,
+            status: {
+              in: ["active", "in_review"]
+            }
+          }
+        }
+      }),
+      prisma.gameSearch.count({
+        where: {
+          createdByUserId: user.id,
+          searchType: "hot",
+          status: "matched"
+        }
+      })
     ]);
 
     const unreadMatchIds = new Set<string>();
@@ -60,6 +87,7 @@ export async function GET() {
       incomingLikesCount,
       hotBadgeCount,
       discoverBadgeCount: incomingLikesCount + hotBadgeCount,
+      searchesBadgeCount: pendingSearchResponsesCount + createdSearchGamesCount,
       notificationSound: user.notificationSound ?? true
     });
   } catch (error) {

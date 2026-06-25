@@ -6,6 +6,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { swipeSchema } from "@/lib/validators";
 import { createSwipeAndMaybeMatch } from "@/server/matching";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +46,22 @@ export async function POST(request: NextRequest) {
         title: "У тебя новый мэтч",
         body: `${user.name ?? "Игрок"} ответил взаимностью. Можно открыть чат и договориться об игре.`,
         href: `/inbox/${result.match.id}`,
+        sound: targetUser.notificationSound ?? true
+      });
+    }
+
+    if (result.match) {
+      await publishRealtimeEventToUsers([user.id, targetUser.id], {
+        type: "match_created",
+        matchId: result.match.id,
+        href: `/inbox/${result.match.id}`
+      });
+    } else if ((body.action === "like" || body.action === "superlike") && targetUser.notificationMatches) {
+      await sendPushToUser({
+        userId: targetUser.id,
+        title: `${user.name ?? "Игрок"} хочет с тобой сыграть`,
+        body: "Открой вкладку «Хотят с тобой», чтобы ответить.",
+        href: `/discover?view=likes&highlight=${user.id}`,
         sound: targetUser.notificationSound ?? true
       });
     }

@@ -212,7 +212,11 @@ export function ProfileForm({
   }
 
   const hasAvailability = Object.keys(form.availabilityByDay).length > 0;
-  const canContinueBasics = (form.name ?? "").trim().length >= 2 && (form.city ?? "").trim().length >= 2 && (form.age ?? 0) >= 18;
+  const canContinueBasics =
+    (form.name ?? "").trim().length >= 2 &&
+    (form.city ?? "").trim().length >= 2 &&
+    (form.age ?? 0) >= 18 &&
+    (form.age ?? 0) <= 100;
   const hasSports = Array.isArray(form.preferredSports) && form.preferredSports.length > 0;
 
   function nextStep() {

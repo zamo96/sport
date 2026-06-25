@@ -112,7 +112,7 @@ private enum MainTab: String, CaseIterable, Identifiable {
         case .matches:
             return "message"
         case .searches:
-            return "flame"
+            return "magnifyingglass.circle"
         case .courts:
             return "map"
         case .profile:
@@ -359,6 +359,9 @@ private struct MainTabView: View {
         case .matches:
             let count = appModel.isAuthenticated ? notificationManager.summary.inboxBadgeCount : 0
             return count > 0 ? String(min(count, 99)) : nil
+        case .searches:
+            let count = appModel.isAuthenticated ? notificationManager.summary.searchesBadgeCount : 0
+            return count > 0 ? String(min(count, 99)) : nil
         default:
             return nil
         }
@@ -407,7 +410,8 @@ private struct MainTabView: View {
 
         switch target {
         case .discover(let tab, let highlightedUserID, let highlightedSearchID, let highlightedGameRequestID):
-            appModel.lastSelectedDiscoverTab = tab
+            let resolvedTab: DiscoverTab = tab == .seeking ? .hot : tab
+            appModel.lastSelectedDiscoverTab = resolvedTab
             discoverHighlightedUserID = highlightedUserID
             discoverHighlightedSearchID = highlightedSearchID
             discoverHighlightedGameRequestID = highlightedGameRequestID

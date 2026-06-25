@@ -9,6 +9,7 @@ import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { updateGameRequestSchema } from "@/lib/validators";
 import { ensureGroupSearchLobby } from "@/server/game-request-lobbies";
 import { canTransitionGameRequest, canUpdateGameRequestOutcome } from "@/server/matching";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { serializeGameRequest } from "@/server/serializers";
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
@@ -58,6 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       (body.sport === undefined || body.sport === gameRequest.sport) &&
       (body.format === undefined || body.format === gameRequest.format) &&
       (body.comment === undefined || body.comment === (gameRequest.comment ?? ""));
+    const editableChanged = editableRequested && !editableNoOp;
 
     if (
       (!editableRequested && statusRequested && !outcomeRequested && statusNoOp) ||
@@ -149,7 +151,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       const resolvedNextStatus =
         statusRequested && !statusNoOp && nextStatus !== undefined
           ? nextStatus
+          : editableChanged
+            ? GameRequestStatus.pending
           : undefined;
+      const nextConfirmationRecipientId =
+        editableChanged && gameRequest.createdByUserId !== user.id
+          ? gameRequest.createdByUserId
+          : gameRequest.matchedUserId;
 
       let result: typeof relatedRequests[number] | (typeof gameRequest & { proposedCourt?: null });
 
@@ -241,7 +249,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                   levelRangeMax: body.levelRangeMax !== undefined ? body.levelRangeMax : gameRequest.levelRangeMax,
                   sport: effectiveSport,
                   format: effectiveFormat,
-                  comment: body.comment !== undefined ? body.comment : (gameRequest.comment ?? "")
+                  comment: body.comment !== undefined ? body.comment : (gameRequest.comment ?? ""),
+                  createdByUserId: user.id,
+                  matchedUserId: nextConfirmationRecipientId,
+                  outcome: null,
+                  outcomeUpdatedAt: null
                 }
               : {})
           },
@@ -277,7 +289,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           const editMessage = getEditChangeMessage({
             proposedDatetime: result.proposedDatetime,
             courtName: result.proposedCourt?.name ?? null,
-            resetConfirmation: false
+            resetConfirmation: true
           });
 
           await tx.chatMessage.createMany({
@@ -391,6 +403,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     if ((statusRequested && !statusNoOp) || (outcomeRequested && !outcomeNoOp) || (editableRequested && !editableNoOp)) {
+      await publishRealtimeEventToUsers([user.id, ...notificationTargets.map((target) => target.recipientUserId)], {
+        type: "game_request_updated",
+        matchId: updated.matchId,
+        gameRequestId: updated.id,
+        status: updated.status,
+        href: `/play/games/${updated.id}`
+      });
+
       const recipients = await prisma.user.findMany({
         where: {
           id: {
@@ -411,7 +431,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             ? getEditChangeMessage({
                 proposedDatetime: updated.proposedDatetime,
                 courtName: updated.proposedCourt?.name ?? null,
-                resetConfirmation: false
+                resetConfirmation: true
               })
           : body.status !== undefined
             ? getStatusChangeMessage(body.status, {

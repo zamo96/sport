@@ -148,6 +148,16 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
           Отменить предложение
         </Button>
       ) : null}
+      {isPending && isRecipient && !isRegularOccurrence ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Button fullWidth onClick={() => updateRequest({ status: "accepted" })}>
+            Подтвердить
+          </Button>
+          <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "declined" })}>
+            Отклонить
+          </Button>
+        </div>
+      ) : null}
       {isAcceptedUpcoming && !isRegularOccurrence ? (
         <Button fullWidth variant="ghost" onClick={() => updateRequest({ status: "canceled" })}>
           Отменить подтвержденную игру

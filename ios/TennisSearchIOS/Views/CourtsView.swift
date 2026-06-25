@@ -13,6 +13,7 @@ struct CourtsView: View {
     @State private var isLoadingCourts = false
     @State private var selectedCourtForDetail: Court?
     @State private var selectedCourtForSearch: Court?
+    @State private var selectedCourtPlayerProposal: CourtPlayerProposalContext?
     @State private var focusedDistrictId: String?
     @State private var mapFocusRevision = 0
     @State private var isMapScrolledAway = false
@@ -259,8 +260,14 @@ struct CourtsView: View {
                 onToggleSave: {
                     toggleSavedCourt(court)
                 },
+                onToggleMembership: {
+                    await setCourtMembership(court, isMember: !court.isMember)
+                },
                 onProposeGame: {
                     presentSearchComposer(for: court)
+                },
+                onProposeToPlayer: { player in
+                    presentPlayerProposal(to: player, at: court)
                 }
             )
             .presentationDetents([.large])
@@ -270,6 +277,15 @@ struct CourtsView: View {
             SearchComposerView(initialCourt: court, initialSport: selectedSport ?? court.primarySport) { search in
                 selectedCourtForSearch = nil
                 appModel.navigate(to: .discover(search.searchType == .hot ? .hot : .seeking, highlightedSearchID: search.id))
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
+        .sheet(item: $selectedCourtPlayerProposal) { context in
+            GameProposalSheet(match: context.match, initialCourt: context.court) {
+                selectedCourtPlayerProposal = nil
+                await loadCourts(forceRefresh: true)
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -385,6 +401,22 @@ struct CourtsView: View {
         isSearchFocused = false
         selectedCourtForDetail = court
         AppHaptics.impact(.light)
+
+        Task {
+            await refreshCourtDetail(courtId: court.id)
+        }
+    }
+
+    private func refreshCourtDetail(courtId: String) async {
+        do {
+            let freshCourt = try await appModel.repository.fetchCourt(courtId: courtId)
+            updateCourt(freshCourt)
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
     }
 
     private func presentSearchComposer(for court: Court) {
@@ -392,6 +424,51 @@ struct CourtsView: View {
         AppHaptics.impact(.medium)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             selectedCourtForSearch = court
+        }
+    }
+
+    private func presentPlayerProposal(to player: DiscoverUser, at court: Court) {
+        AppHaptics.impact(.medium)
+        Task {
+            do {
+                let match = try await appModel.repository.ensureMatch(userId: player.id)
+                await MainActor.run {
+                    selectedCourtForDetail = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        selectedCourtPlayerProposal = CourtPlayerProposalContext(court: court, match: match)
+                    }
+                }
+            } catch {
+                guard !error.isCancellationLike else {
+                    return
+                }
+                await MainActor.run {
+                    appModel.present(error: error)
+                }
+            }
+        }
+    }
+
+    private func setCourtMembership(_ court: Court, isMember: Bool) async {
+        do {
+            let updated = try await appModel.repository.setCourtMembership(courtId: court.id, isMember: isMember)
+            updateCourt(updated)
+            AppHaptics.notification(isMember ? .success : .warning)
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
+    }
+
+    private func updateCourt(_ updated: Court) {
+        if let index = courts.firstIndex(where: { $0.id == updated.id }) {
+            courts[index] = updated
+        }
+        CourtsViewCache.courts = courts
+        if selectedCourtForDetail?.id == updated.id {
+            selectedCourtForDetail = updated
         }
     }
 
@@ -820,6 +897,15 @@ private enum CourtsViewCache {
     static var courts: [Court] = []
 }
 
+private struct CourtPlayerProposalContext: Identifiable {
+    let court: Court
+    let match: MatchSummary
+
+    var id: String {
+        "\(court.id)-\(match.id)"
+    }
+}
+
 private struct CentersMapOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = .greatestFiniteMagnitude
 
@@ -888,29 +974,65 @@ private struct TennisBallsLoader: View {
         }
 }
 
-private struct CourtImageTile: View {
+struct CourtImageTile: View {
     let court: Court
     let size: CGFloat
+    var showsCarousel = true
+
+    private var photoURLs: [URL] {
+        let urls = court.photoUrls.compactMap { resolveAppRemoteURL($0) }
+        if !urls.isEmpty {
+            return urls
+        }
+
+        return resolveAppRemoteURL(court.primaryPhotoUrl).map { [$0] } ?? []
+    }
 
     var body: some View {
-        ZStack {
-            if let photoUrl = court.photoUrl, let url = URL(string: photoUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        fallback
+        ZStack(alignment: .bottomTrailing) {
+            if photoURLs.isEmpty {
+                fallback
+            } else if showsCarousel, photoURLs.count > 1 {
+                TabView {
+                    ForEach(Array(photoURLs.enumerated()), id: \.offset) { _, url in
+                        photo(url)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             } else {
-                fallback
+                photo(photoURLs[0])
+            }
+
+            if showsCarousel, photoURLs.count > 1 {
+                HStack(spacing: 4) {
+                    Image(systemName: "photo.stack")
+                    Text("\(photoURLs.count)")
+                }
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .frame(height: 22)
+                .background(.black.opacity(0.48), in: Capsule())
+                .padding(8)
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func photo(_ url: URL) -> some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+            default:
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
     }
 
     private var fallback: some View {
@@ -934,8 +1056,12 @@ private struct CourtDetailSheet: View {
     let court: Court
     let isSaved: Bool
     let onToggleSave: () -> Void
+    let onToggleMembership: () async -> Void
     let onProposeGame: () -> Void
+    let onProposeToPlayer: (DiscoverUser) -> Void
     @Environment(\.openURL) private var openURL
+    @State private var isUpdatingMembership = false
+    @State private var selectedPlayerProfile: DiscoverUser?
 
     var body: some View {
         ZStack {
@@ -957,6 +1083,8 @@ private struct CourtDetailSheet: View {
                     actionGrid
                     metaRow
                     aboutBlock
+                    membershipBlock
+                    playersBlock
                     sportsBlock
                     amenitiesBlock
                     proposeButton
@@ -966,10 +1094,21 @@ private struct CourtDetailSheet: View {
                 .padding(.bottom, 34)
             }
         }
+        .sheet(item: $selectedPlayerProfile) { player in
+            CourtPlayerProfileSheet(player: player, court: court) {
+                selectedPlayerProfile = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    onProposeToPlayer(player)
+                }
+            }
+            .presentationDetents([.fraction(0.68), .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
     }
 
     private var hero: some View {
-        CourtImageTile(court: court, size: UIScreen.main.bounds.width - 36)
+        CourtPhotoHero(court: court)
             .frame(height: 250)
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 10) {
@@ -1087,6 +1226,266 @@ private struct CourtDetailSheet: View {
         }
     }
 
+    private var membershipBlock: some View {
+        Button {
+            Task {
+                isUpdatingMembership = true
+                await onToggleMembership()
+                isUpdatingMembership = false
+            }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: court.isMember ? "checkmark.circle.fill" : "figure.tennis")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(court.isMember ? Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255) : .white.opacity(0.86))
+                    .frame(width: 48, height: 48)
+                    .background(Color.white.opacity(0.075), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(court.isMember ? "Вы ходите сюда" : "Я хожу сюда")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Игроки увидят вас в списке клуба и смогут предложить игру.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                if isUpdatingMembership {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: court.isMember ? "minus.circle" : "plus.circle")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+            }
+            .padding(14)
+            .background(Color.white.opacity(court.isMember ? 0.09 : 0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(court.isMember ? Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.42) : Color.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isUpdatingMembership)
+    }
+
+    private var playersBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Игроки клуба")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if court.memberCount > 0 {
+                    Text("\(court.memberCount)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Color.white.opacity(0.08), in: Capsule())
+                }
+            }
+
+            if court.members.isEmpty {
+                Text(court.isMember ? "Вы первый отметились в этом клубе. Когда появятся другие игроки, им можно будет предложить игру отсюда." : "Пока никто не отметился. Отметьтесь, если ходите сюда, чтобы клуб начал собирать игроков.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineSpacing(3)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(court.members.prefix(6)) { player in
+                        courtPlayerRow(player)
+                    }
+                }
+            }
+        }
+    }
+
+    private func courtPlayerRow(_ player: DiscoverUser) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                AppHaptics.selection()
+                selectedPlayerProfile = player
+            } label: {
+                HStack(spacing: 12) {
+                    RemoteAvatarView(name: player.displayName, path: player.avatarUrl, size: 44)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(player.displayName)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text(courtPlayerSubtitle(player))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.88))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 6)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.34))
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                onProposeToPlayer(player)
+            } label: {
+                Text("Предложить")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private struct CourtPlayerProfileSheet: View {
+        @Environment(\.dismiss) private var dismiss
+        let player: DiscoverUser
+        let court: Court
+        let onProposeGame: () -> Void
+
+        private var courtSports: [Sport] {
+            let supported = court.supportedSports ?? []
+            return supported.isEmpty ? player.preferredSports : supported
+        }
+
+        private var commonSports: [Sport] {
+            let supported = Set(courtSports)
+            let common = player.preferredSports.filter { supported.contains($0) }
+            return common.isEmpty ? Array(courtSports.prefix(4)) : common
+        }
+
+        private var primarySport: Sport {
+            commonSports.first ?? court.primarySport ?? player.preferredSports.first ?? .tennis
+        }
+
+        private var levelSummary: String {
+            guard let level = player.sportLevels[primarySport.rawValue] ?? player.tennisLevel else {
+                return "уровень не указан"
+            }
+            return "\(level)/10"
+        }
+
+        var body: some View {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top, spacing: 14) {
+                            RemoteAvatarView(name: player.displayName, path: player.avatarUrl, size: 86)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(player.displayName)
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.78)
+
+                                Text([player.age.map { "\($0) лет" }, player.city].compactMap { $0 }.joined(separator: ", "))
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.62))
+
+                                Text(player.districtDisplaySummary)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(AppTheme.court)
+                                    .lineLimit(2)
+                            }
+                        }
+
+                        if let bio = player.bio, !bio.isEmpty {
+                            Text(bio)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineSpacing(3)
+                        }
+                    }
+                    .padding(18)
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("В этом клубе")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.white)
+
+                        HStack(spacing: 10) {
+                            Image(systemName: sportSymbolName(for: primarySport))
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(AppTheme.court)
+                                .frame(width: 42, height: 42)
+                                .background(Color.white.opacity(0.08), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(court.name)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                Text("\(commonSports.map(\.title).joined(separator: " · ")) · \(levelSummary)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.58))
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(14)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                        Button {
+                            AppHaptics.impact(.medium)
+                            dismiss()
+                            onProposeGame()
+                        } label: {
+                            Label("Предложить игру здесь", systemImage: "calendar.badge.plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(AppTheme.court, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(18)
+                    .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 30)
+            }
+            .background(Color.black.ignoresSafeArea())
+        }
+    }
+
+    private func courtPlayerSubtitle(_ player: DiscoverUser) -> String {
+        let sport = player.preferredSports.first?.title ?? court.primarySport?.title ?? "Спорт"
+        let district = player.districtLabel ?? localizedDistrictName(player.district) ?? "район не указан"
+        return "\(sport) · \(district)"
+    }
+
     private var sportsBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Виды спорта")
@@ -1138,7 +1537,7 @@ private struct CourtDetailSheet: View {
             onProposeGame()
         } label: {
             VStack(spacing: 4) {
-                Text("Предложить игру здесь")
+                Text("Создать срочный поиск здесь")
                     .font(.system(size: 20, weight: .bold))
                 Text("Найти игроков для игры в этом клубе")
                     .font(.system(size: 14, weight: .medium))
@@ -1174,6 +1573,50 @@ private struct CourtDetailSheet: View {
         if lowercased.contains("wi") { return "wifi" }
         if lowercased.contains("арен") { return "tennis.racket" }
         return "checkmark.circle"
+    }
+}
+
+private struct CourtPhotoHero: View {
+    let court: Court
+
+    private var urls: [URL] {
+        court.photoUrls.compactMap { resolveAppRemoteURL($0) }
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if urls.isEmpty {
+                CourtImageTile(court: court, size: UIScreen.main.bounds.width - 36)
+            } else {
+                TabView {
+                    ForEach(Array(urls.enumerated()), id: \.offset) { _, url in
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            default:
+                                CourtImageTile(court: court, size: UIScreen.main.bounds.width - 36, showsCarousel: false)
+                            }
+                        }
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: urls.count > 1 ? .automatic : .never))
+            }
+
+            if urls.count > 1 {
+                Text("\(urls.count) фото")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(.black.opacity(0.48), in: Capsule())
+                    .padding(.bottom, 12)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipped()
     }
 }
 

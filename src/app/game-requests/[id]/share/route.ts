@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { shareGameRequestSchema } from "@/lib/validators";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { serializeGameRequest, serializeUserPreview } from "@/server/serializers";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -149,6 +150,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       return createdRequests;
     });
+
+    await Promise.all(
+      sharedGameRequests.map((gameRequest) =>
+        publishRealtimeEventToUsers([user.id, gameRequest.matchedUserId], {
+          type: "game_request_created",
+          matchId: gameRequest.matchId,
+          gameRequestId: gameRequest.id,
+          status: gameRequest.status,
+          href: `/play/games/${gameRequest.id}`
+        })
+      )
+    );
 
     return ok({
       gameRequests: sharedGameRequests.map((gameRequest) => ({

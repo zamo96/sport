@@ -5,13 +5,14 @@ import { DAY_OPTIONS } from "@/lib/constants";
 export function resolveSearchDays(
   searchType: GameSearchType,
   preferredDays: string[],
-  hotWindow?: HotSearchWindow | null
+  hotWindow?: HotSearchWindow | null,
+  hotStartsAt?: Date | null
 ) {
   if (searchType !== "hot") {
     return preferredDays;
   }
 
-  const targetDate = new Date();
+  const targetDate = hotStartsAt ? new Date(hotStartsAt) : new Date();
   if (hotWindow === "tomorrow") {
     targetDate.setDate(targetDate.getDate() + 1);
   } else if (hotWindow === "day_after_tomorrow") {

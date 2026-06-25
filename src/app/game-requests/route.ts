@@ -6,6 +6,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameRequestSchema } from "@/lib/validators";
+import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
 
 export async function POST(request: NextRequest) {
@@ -40,15 +41,15 @@ export async function POST(request: NextRequest) {
           sport: body.sport,
           format: body.format,
           comment: body.comment,
-          status: GameRequestStatus.accepted
+          status: GameRequestStatus.pending
         },
         include: {
           proposedCourt: true
         }
       });
 
-      const summaryText = `Игра назначена: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
-        created.comment?.trim() ? created.comment : "Открой детали, чтобы обсудить игру отдельно."
+      const summaryText = `Предложение игры: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+        created.comment?.trim() ? created.comment : "Второй игрок должен подтвердить игру."
       }`;
 
       await tx.chatMessage.create({
@@ -66,8 +67,8 @@ export async function POST(request: NextRequest) {
           gameRequestId: created.id,
           senderUserId: user.id,
           text: created.comment?.trim()
-            ? `Создал(а) игру и отдельный чат по ней. ${created.comment}`
-            : "Создал(а) игру и отдельный чат по ней. Тут можно обсуждать только эту договоренность."
+            ? `Предложил(а) игру. ${created.comment}`
+            : "Предложил(а) игру. Подтверди предложение, если время и место подходят."
         }
       });
 
@@ -88,11 +89,19 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    await publishRealtimeEventToUsers([user.id, matchedUserId], {
+      type: "game_request_created",
+      matchId: match.id,
+      gameRequestId: gameRequest.id,
+      status: gameRequest.status,
+      href: `/play/games/${gameRequest.id}`
+    });
+
     if (recipient?.notificationGames) {
       await sendPushToUser({
         userId: recipient.id,
-        title: `Новая игра от ${user.name ?? "игрока"}`,
-        body: `${gameRequest.proposedCourt.name} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
+        title: `Предложение игры от ${user.name ?? "игрока"}`,
+        body: `Подтверди: ${gameRequest.proposedCourt.name} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true
       });

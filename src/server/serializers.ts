@@ -1,4 +1,4 @@
-import type { Court, GameRequest, Match, Metro, User } from "@prisma/client";
+import type { Court, GameRequest, Match, Metro, User, UserCourt } from "@prisma/client";
 
 import { getDistrictLabel } from "@/lib/constants";
 import { formatDistanceKm } from "@/lib/utils";
@@ -45,13 +45,38 @@ export function serializeUserPreview(
   };
 }
 
-export function serializeCourt(court: Court & { distanceKm?: number | null; nearestMetro?: Metro | null }) {
+export function serializeCourt(
+  court: Court & {
+    distanceKm?: number | null;
+    nearestMetro?: Metro | null;
+    members?: Array<UserCourt & { user: User }>;
+    _count?: { members?: number };
+    isMember?: boolean;
+  }
+) {
+  const photoUrls = normalizeCourtPhotoUrls(court.photoUrls, court.photoUrl);
+
   return {
     ...court,
+    photoUrl: court.photoUrl ?? photoUrls[0] ?? null,
+    photoUrls,
     nearestMetroName: court.nearestMetro?.name ?? null,
     distanceKm: court.distanceKm ?? null,
-    distanceLabel: formatDistanceKm(court.distanceKm)
+    distanceLabel: formatDistanceKm(court.distanceKm),
+    isMember: court.isMember ?? false,
+    memberCount: court._count?.members ?? court.members?.length ?? 0,
+    members: court.members?.map((member) => serializeUserPreview(member.user)) ?? []
   };
+}
+
+function normalizeCourtPhotoUrls(value: unknown, fallbackPhotoUrl?: string | null) {
+  const rawUrls = Array.isArray(value) ? value : [];
+  const urls = rawUrls.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  if (fallbackPhotoUrl) {
+    urls.unshift(fallbackPhotoUrl);
+  }
+
+  return Array.from(new Set(urls.map((url) => url.trim()).filter(Boolean))).slice(0, 8);
 }
 
 export function serializeGameRequest(gameRequest: GameRequest & { proposedCourt?: Court | null }) {

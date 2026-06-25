@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { GameRequestStatus, GameSearchResponseStatus } from "@prisma/client";
+import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
@@ -73,11 +73,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       (Array.isArray(gameSearch.preferredDistricts)
         ? gameSearch.preferredDistricts.filter((item): item is string => typeof item === "string")
         : []);
-    const hotWindow = body.hotWindow !== undefined ? body.hotWindow : gameSearch.hotWindow;
+    const explicitHotStartsAt = body.hotStartsAt !== undefined ? (body.hotStartsAt ? new Date(body.hotStartsAt) : null) : undefined;
+    const hotWindow = body.hotWindow !== undefined ? body.hotWindow : explicitHotStartsAt !== undefined ? null : gameSearch.hotWindow;
     const hotStartTime = body.hotStartTime ?? (gameSearch.hotStartsAt ? gameSearch.hotStartsAt.toISOString().slice(11, 16) : null);
-    const preferredDays = resolveSearchDays(nextSearchType, preferredDaysInput, hotWindow ?? undefined);
     const hotStartsAt =
-      nextSearchType === "hot" && hotWindow && hotStartTime ? resolveHotSearchStartAt(hotWindow, hotStartTime) : null;
+      nextSearchType === "hot"
+        ? explicitHotStartsAt !== undefined
+          ? explicitHotStartsAt
+          : hotWindow && hotStartTime
+            ? resolveHotSearchStartAt(hotWindow, hotStartTime)
+            : gameSearch.hotStartsAt
+        : null;
+    const preferredDays = resolveSearchDays(nextSearchType, preferredDaysInput, hotWindow ?? undefined, hotStartsAt);
 
     if (nextSearchType === "hot" && !hotStartsAt) {
       return fail("Не удалось определить время начала горячего поиска");
@@ -119,15 +126,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             : {}),
           ...(body.preferredCourtId !== undefined ? { preferredCourtId: body.preferredCourtId } : {}),
           ...(body.preferredDistricts !== undefined ? { preferredDistricts: preferredDistrictsInput } : {}),
-          ...(body.preferredDays !== undefined || body.searchType !== undefined || body.hotWindow !== undefined
+          ...(body.preferredDays !== undefined || body.searchType !== undefined || body.hotWindow !== undefined || body.hotStartsAt !== undefined
             ? { preferredDays }
             : {}),
           ...(body.preferredTimeRanges !== undefined ? { preferredTimeRanges: preferredTimeRangesInput } : {}),
           ...(body.searchType !== undefined ? { searchType: nextSearchType } : {}),
-          ...(body.hotWindow !== undefined || body.searchType !== undefined
+          ...(body.hotWindow !== undefined || body.searchType !== undefined || body.hotStartsAt !== undefined
             ? { hotWindow: nextSearchType === "hot" ? hotWindow ?? null : null }
             : {}),
-          ...(body.hotWindow !== undefined || body.hotStartTime !== undefined || body.searchType !== undefined
+          ...(body.hotWindow !== undefined || body.hotStartTime !== undefined || body.searchType !== undefined || body.hotStartsAt !== undefined
             ? { hotStartsAt }
             : {}),
           ...(body.durationMinutes !== undefined || body.searchType !== undefined
@@ -204,6 +211,135 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       });
 
       let confirmedGameRequestId: string | null = null;
+      const playersNeeded = Math.max(updated.playersNeeded ?? 1, 1);
+      const approvedResponses = updated.responses.filter((response) => response.status === GameSearchResponseStatus.approved);
+      const shouldFinalizeFilledHotSearch =
+        !shouldCloseBySchedule &&
+        updated.searchType === "hot" &&
+        playersNeeded === 1 &&
+        approvedResponses.length === 1 &&
+        Boolean(updated.preferredCourtId) &&
+        Boolean(updated.hotStartsAt) &&
+        (body.playersNeeded !== undefined ||
+          body.preferredCourtId !== undefined ||
+          body.hotStartsAt !== undefined ||
+          body.hotWindow !== undefined ||
+          body.hotStartTime !== undefined ||
+          body.durationMinutes !== undefined);
+
+      if (shouldFinalizeFilledHotSearch && updated.preferredCourtId && updated.hotStartsAt) {
+        const approved = approvedResponses[0];
+        const proposedCourtId = updated.preferredCourtId;
+        const scheduledAt = updated.hotStartsAt;
+        const match = await ensureMatchForUsers(tx, updated.createdByUserId, approved.responderUserId);
+
+        await tx.gameSearchSlotProposal.updateMany({
+          where: {
+            gameSearchId: updated.id,
+            status: "open"
+          },
+          data: {
+            status: "closed"
+          }
+        });
+
+        await tx.gameSearchResponse.updateMany({
+          where: {
+            gameSearchId: updated.id,
+            status: GameSearchResponseStatus.pending
+          },
+          data: {
+            status: GameSearchResponseStatus.rejected
+          }
+        });
+
+        await tx.gameSearch.update({
+          where: { id: updated.id },
+          data: {
+            status: GameSearchStatus.matched,
+            isActive: false,
+            scheduledCourtId: proposedCourtId,
+            scheduledAt,
+            scheduledDurationMinutes: updated.durationMinutes ?? null
+          }
+        });
+
+        updated.status = GameSearchStatus.matched;
+        updated.isActive = false;
+        updated.scheduledCourtId = proposedCourtId;
+        updated.scheduledAt = scheduledAt;
+        updated.scheduledDurationMinutes = updated.durationMinutes ?? null;
+
+        const existingConfirmed = await tx.gameRequest.findFirst({
+          where: {
+            matchId: match.id,
+            status: GameRequestStatus.accepted,
+            createdByUserId: updated.createdByUserId,
+            matchedUserId: approved.responderUserId,
+            proposedCourtId,
+            proposedDatetime: scheduledAt
+          }
+        });
+
+        const gameRequest =
+          existingConfirmed ??
+          (await tx.gameRequest.create({
+            data: {
+              matchId: match.id,
+              createdByUserId: updated.createdByUserId,
+              matchedUserId: approved.responderUserId,
+              proposedCourtId,
+              proposedDatetime: scheduledAt,
+              durationMinutes: updated.durationMinutes ?? 90,
+              sport: updated.sport,
+              format: updated.format,
+              comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
+              status: GameRequestStatus.accepted
+            }
+          }));
+
+        confirmedGameRequestId = gameRequest.id;
+
+        if (!existingConfirmed) {
+          const scheduleText = `${scheduledAt.toLocaleString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit"
+          })} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
+          const courtLabel = updated.preferredCourt?.name ?? "клуб уточняется";
+
+          await tx.chatMessage.create({
+            data: {
+              matchId: match.id,
+              senderUserId: updated.createdByUserId,
+              text: `Игра подтверждена по поиску: ${scheduleText} · ${courtLabel}.`
+            }
+          });
+
+          await tx.chatMessage.create({
+            data: {
+              matchId: match.id,
+              gameRequestId: gameRequest.id,
+              senderUserId: updated.createdByUserId,
+              text: "Организатор изменил(а) состав и зафиксировал(а) игру по поиску."
+            }
+          });
+
+          await tx.gameSearchMessage.create({
+            data: {
+              gameSearchId: updated.id,
+              senderUserId: updated.createdByUserId,
+              text: `${approved.responderUser.name ?? "Игрок"} подтвержден(а). Состав собран, игра добавлена в ближайшие.`
+            }
+          });
+
+          await tx.match.update({
+            where: { id: match.id },
+            data: { updatedAt: new Date() }
+          });
+        }
+      }
 
       if (shouldCloseBySchedule && nextScheduledAt) {
         await tx.gameSearchSlotProposal.updateMany({
@@ -225,9 +361,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             status: GameSearchResponseStatus.rejected
           }
         });
-
-        const playersNeeded = Math.max(updated.playersNeeded ?? 1, 1);
-        const approvedResponses = updated.responses.filter((response) => response.status === GameSearchResponseStatus.approved);
 
         if (approvedResponses.length > 0) {
           const proposedCourtId = updated.scheduledCourtId ?? updated.preferredCourtId ?? null;

@@ -213,4 +213,69 @@ describe("scoring", () => {
 
     expect(ranked.map((candidate) => candidate.id)).toEqual(["hot-candidate"]);
   });
+
+  it("uses age as a soft recommendation signal", () => {
+    const ranked = scoreCandidates(viewer, [
+      {
+        ...viewer,
+        id: "older",
+        age: 52
+      },
+      {
+        ...viewer,
+        id: "close-age",
+        age: 29
+      }
+    ]);
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["close-age", "older"]);
+    expect(ranked[0]?.ageGap).toBe(2);
+  });
+
+  it("prefers same city before expanding to other cities", () => {
+    const ranked = scoreCandidates(viewer, [
+      {
+        ...viewer,
+        id: "other-city",
+        city: "Berlin"
+      },
+      {
+        ...viewer,
+        id: "same-city",
+        city: "Moscow"
+      }
+    ]);
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["same-city", "other-city"]);
+  });
+
+  it("prioritizes exact day-time slot overlap over broad range overlap", () => {
+    const ranked = scoreCandidates(
+      {
+        ...viewer,
+        availableDays: ["monday"],
+        availableTimeRanges: ["evening"],
+        availableTimeSlots: ["monday-evening"]
+      },
+      [
+        {
+          ...viewer,
+          id: "broad-evening",
+          availableDays: ["monday"],
+          availableTimeRanges: ["evening"],
+          availableTimeSlots: []
+        },
+        {
+          ...viewer,
+          id: "exact-evening",
+          availableDays: ["monday"],
+          availableTimeRanges: ["evening"],
+          availableTimeSlots: ["monday-evening"]
+        }
+      ]
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["exact-evening", "broad-evening"]);
+    expect(ranked[0]?.exactTimeSlotOverlapCount).toBe(1);
+  });
 });

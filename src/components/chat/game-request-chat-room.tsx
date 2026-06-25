@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { SendHorizonal } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
@@ -37,26 +37,42 @@ export function GameRequestChatRoom({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const loadMessages = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ messages: Message[] }>(`/game-requests/${gameRequestId}/messages`);
+      setMessages(data.messages);
+    } catch {
+      return;
+    }
+  }, [gameRequestId]);
 
-    async function loadMessages() {
+  useEffect(() => {
+    const interval = window.setInterval(loadMessages, 5000);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [loadMessages]);
+
+  useEffect(() => {
+    const source = new EventSource("/realtime");
+    const refreshIfRelevant = (event: MessageEvent) => {
       try {
-        const data = await apiFetch<{ messages: Message[] }>(`/game-requests/${gameRequestId}/messages`);
-        if (active) {
-          setMessages(data.messages);
+        const payload = JSON.parse(event.data) as { gameRequestId?: string; href?: string };
+        if (payload.gameRequestId === gameRequestId || payload.href === `/play/games/${gameRequestId}`) {
+          void loadMessages();
         }
       } catch {
         return;
       }
-    }
-
-    const interval = window.setInterval(loadMessages, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
     };
-  }, [gameRequestId]);
+
+    source.addEventListener("chat_message_created", refreshIfRelevant);
+    source.addEventListener("game_request_updated", refreshIfRelevant);
+
+    return () => {
+      source.close();
+    };
+  }, [gameRequestId, loadMessages]);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();

@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Clock3, SendHorizonal } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
@@ -65,6 +66,7 @@ export function ChatRoom({
   gameRequests,
   showLatestRequest = true
 }: ChatRoomProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -77,26 +79,45 @@ export function ChatRoom({
   const primarySport = getPrimarySport(otherUser.preferredSports);
   const primarySportLevel = getSportLevel(otherUser.sportLevels, primarySport, otherUser.tennisLevel ?? 5);
 
-  useEffect(() => {
-    let active = true;
+  const loadMessages = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ messages: Message[] }>(`/matches/${matchId}/messages`);
+      setMessages(data.messages);
+    } catch {
+      return;
+    }
+  }, [matchId]);
 
-    async function loadMessages() {
+  useEffect(() => {
+    const interval = window.setInterval(loadMessages, 5000);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [loadMessages]);
+
+  useEffect(() => {
+    const source = new EventSource("/realtime");
+    const refreshIfRelevant = (event: MessageEvent) => {
       try {
-        const data = await apiFetch<{ messages: Message[] }>(`/matches/${matchId}/messages`);
-        if (active) {
-          setMessages(data.messages);
+        const payload = JSON.parse(event.data) as { matchId?: string; href?: string };
+        if (payload.matchId === matchId || payload.href === `/inbox/${matchId}`) {
+          void loadMessages();
+          router.refresh();
         }
       } catch {
         return;
       }
-    }
-
-    const interval = window.setInterval(loadMessages, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
     };
-  }, [matchId]);
+
+    source.addEventListener("chat_message_created", refreshIfRelevant);
+    source.addEventListener("game_request_created", refreshIfRelevant);
+    source.addEventListener("game_request_updated", refreshIfRelevant);
+    source.addEventListener("match_created", refreshIfRelevant);
+
+    return () => {
+      source.close();
+    };
+  }, [loadMessages, matchId, router]);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();

@@ -21,7 +21,7 @@ struct SearchesView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             Color.white
                 .ignoresSafeArea()
 
@@ -32,11 +32,11 @@ struct SearchesView: View {
                     filterRail
 
                     if filteredSearches.isEmpty {
-                        SectionCard(title: "Пока пусто", subtitle: "Создай первый поиск, чтобы получать отклики игроков.") {
+                        SectionCard(title: "Пока пусто", subtitle: "Создай срочный поиск, чтобы получать отклики игроков.") {
                             EmptyStateView(
                                 title: "Нет поисков в этом разделе",
-                                subtitle: "Попробуй другой фильтр или создай новый поиск.",
-                                systemImage: "sportscourt"
+                                subtitle: "Сейчас показываем только срочные поиски.",
+                                systemImage: "flame"
                             )
                         }
                     } else {
@@ -51,8 +51,10 @@ struct SearchesView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
-                .padding(.bottom, 120)
+                .padding(.bottom, 252)
             }
+
+            createSearchDock
         }
         .toolbar(.hidden, for: .navigationBar)
         .simultaneousGesture(backToDiscoverSwipe)
@@ -128,11 +130,11 @@ struct SearchesView: View {
     }
 
     private var activeSearchCount: Int {
-        searches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }.count
+        visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }.count
     }
 
     private var pendingResponsesCount: Int {
-        searches.reduce(into: 0) { count, search in
+        visibleSearches.reduce(into: 0) { count, search in
             guard isSearchCountedInSummary(search) else {
                 return
             }
@@ -141,7 +143,7 @@ struct SearchesView: View {
     }
 
     private var nextUpcomingLine: String {
-        let candidates = searches.compactMap(nextEventDate(for:))
+        let candidates = visibleSearches.compactMap(nextEventDate(for:))
         guard let next = candidates.sorted().first else {
             return "Пока нет"
         }
@@ -151,22 +153,26 @@ struct SearchesView: View {
     private var filteredSearches: [GameSearch] {
         switch selectedFilter {
         case .all:
-            return searches
+            return visibleSearches
         case .active:
-            return searches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
+            return visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
         case .withResponses:
-            return searches.filter { !$0.responses.isEmpty }
+            return visibleSearches.filter { !$0.responses.isEmpty }
         case .paused:
-            return searches.filter { !($0.isActive ?? true) && $0.status != "closed" }
+            return visibleSearches.filter { !($0.isActive ?? true) && $0.status != "closed" }
         case .completed:
-            return searches.filter { $0.status == "matched" || $0.status == "closed" }
+            return visibleSearches.filter { $0.status == "matched" || $0.status == "closed" }
         }
     }
 
+    private var visibleSearches: [GameSearch] {
+        searches.filter { $0.searchType == .hot }
+    }
+
     private var allSearchSections: [SearchSectionModel] {
-        let active = searches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
-        let paused = searches.filter { !($0.isActive ?? true) && $0.status != "closed" }
-        let completed = searches.filter { $0.status == "matched" || $0.status == "closed" }
+        let active = visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
+        let paused = visibleSearches.filter { !($0.isActive ?? true) && $0.status != "closed" }
+        let completed = visibleSearches.filter { $0.status == "matched" || $0.status == "closed" }
 
         return [
             SearchSectionModel(id: "active", title: "Активные", subtitle: "Поиски, которые сейчас видят игроки.", searches: active),
@@ -236,38 +242,68 @@ struct SearchesView: View {
     }
 
     private var searchesHeader: some View {
-        HStack(alignment: .center) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Мои поиски")
                 .font(.system(size: 25, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
-
-            Spacer()
-
-            Button {
-                triggerCreateComposerFeedback()
-                editingSearch = nil
-                isPresentingComposer = true
-            } label: {
-                HStack(spacing: 10) {
-                    Text("Создать поиск")
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .frame(height: 48)
-                .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-            .scaleEffect(createButtonPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.65), value: createButtonPressed)
-            .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var createSearchDock: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.white.opacity(0), .white.opacity(0.96), .white],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 24)
+            .allowsHitTesting(false)
+
+            createSearchButton
+                .padding(.horizontal, 16)
+                .padding(.bottom, createSearchDockBottomPadding)
+        }
+    }
+
+    private var createSearchDockBottomPadding: CGFloat {
+        switch appModel.bottomBarDisplayMode {
+        case .expanded:
+            return 112
+        case .compact:
+            return 34
+        case .hidden:
+            return 12
+        }
+    }
+
+    private var createSearchButton: some View {
+        Button {
+            triggerCreateComposerFeedback()
+            editingSearch = nil
+            isPresentingComposer = true
+        } label: {
+            HStack(spacing: 10) {
+                Text("Создать поиск")
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .bold))
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 22)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: AppTheme.ink.opacity(0.16), radius: 18, x: 0, y: 8)
+        }
+        .scaleEffect(createButtonPressed ? 0.96 : 1)
+        .animation(.spring(response: 0.22, dampingFraction: 0.65), value: createButtonPressed)
+        .buttonStyle(.plain)
     }
 
     private var summaryStrip: some View {
         HStack(spacing: 0) {
-            summaryCell(title: "Активные поиски", value: "\(activeSearchCount)", accent: AppTheme.court, systemImage: "waveform.path.ecg")
+            summaryCell(title: "Активные срочные", value: "\(activeSearchCount)", accent: AppTheme.court, systemImage: "flame")
             Divider()
                 .frame(height: 44)
             summaryCell(title: "Новые отклики", value: "\(pendingResponsesCount)", accent: .red.opacity(0.9), systemImage: "person.2")
@@ -675,6 +711,19 @@ private struct SearchOverviewCard: View {
         return AppTheme.court.opacity(0.78)
     }
 
+    private var cardSurfaceColor: Color {
+        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+            return Color.blue.opacity(0.10)
+        }
+        if !(search.isActive ?? true) {
+            return Color.gray.opacity(0.14)
+        }
+        if !pendingResponses.isEmpty {
+            return Color(red: 1.0, green: 0.96, blue: 0.86).opacity(0.82)
+        }
+        return AppTheme.mint.opacity(0.42)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 12) {
@@ -823,7 +872,7 @@ private struct SearchOverviewCard: View {
             }
         }
         .padding(16)
-        .background(.white, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(cardSurfaceColor, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(cardAccentColor.opacity(0.28), lineWidth: 1.2)
@@ -3791,7 +3840,7 @@ struct SearchComposerView: View {
         preferredDistricts: [],
         preferredDays: ["wednesday", "saturday"],
         preferredTimeRanges: ["evening"],
-        searchType: .regular,
+        searchType: .hot,
         hotWindow: .today,
         hotStartTime: "19:00",
         durationMinutes: Sport.tennis.defaultDurationMinutes,
@@ -3819,6 +3868,8 @@ struct SearchComposerView: View {
     @State private var selectedSport: Sport = .tennis
     @State private var selectedCourtId: String?
     @State private var selectedCourtSnapshot: Court?
+    @State private var customHotDate: Date?
+    @State private var isCustomHotCalendarExpanded = false
 
     let initialSearch: GameSearch?
     let initialCourt: Court?
@@ -3836,7 +3887,11 @@ struct SearchComposerView: View {
         self.initialSport = initialSport
         self.onCreate = onCreate
 
-        let resolvedSport = initialSearch?.sport ?? initialSport ?? initialCourt?.primarySport ?? .tennis
+        let requestedSport = initialSearch?.sport ?? initialSport ?? initialCourt?.primarySport ?? .tennis
+        let initialCourtSports = initialCourt?.supportedSports?.isEmpty == false ? initialCourt?.supportedSports ?? [] : []
+        let resolvedSport = initialCourtSports.isEmpty || initialCourtSports.contains(requestedSport)
+            ? requestedSport
+            : initialCourtSports[0]
         let resolvedFormat = resolvedSport.defaultFormat
         var initialDraft = SearchDraft(
             inviteSlug: nil,
@@ -3844,7 +3899,7 @@ struct SearchComposerView: View {
             preferredDistricts: initialCourt?.district.map { [$0] } ?? [],
             preferredDays: ["wednesday", "saturday"],
             preferredTimeRanges: ["evening"],
-            searchType: .regular,
+            searchType: .hot,
             hotWindow: .today,
             hotStartTime: "19:00",
             durationMinutes: resolvedSport.defaultDurationMinutes,
@@ -3864,9 +3919,10 @@ struct SearchComposerView: View {
             initialDraft.preferredDistricts = initialSearch.preferredDistricts
             initialDraft.preferredDays = initialSearch.preferredDays
             initialDraft.preferredTimeRanges = initialSearch.preferredTimeRanges
-            initialDraft.searchType = initialSearch.searchType
+            initialDraft.searchType = .hot
             initialDraft.hotWindow = initialSearch.hotWindow
             initialDraft.hotStartTime = initialSearch.hotStartsAt?.parsedISODateValue()?.formattedHourMinute()
+            initialDraft.hotStartsAt = initialSearch.hotStartsAt
             initialDraft.durationMinutes = initialSearch.durationMinutes
             initialDraft.hasCourtBooked = initialSearch.hasCourtBooked
             initialDraft.selfLevel = initialSearch.selfLevel
@@ -3882,18 +3938,30 @@ struct SearchComposerView: View {
         _selectedSport = State(initialValue: resolvedSport)
         _selectedCourtId = State(initialValue: initialSearch?.preferredCourt?.id ?? initialCourt?.id)
         _selectedCourtSnapshot = State(initialValue: initialSearch?.preferredCourt ?? initialCourt)
+        _customHotDate = State(initialValue: initialDraft.hotWindow == nil ? initialSearch?.hotStartsAt?.parsedISODateValue() : nil)
+        _isCustomHotCalendarExpanded = State(initialValue: initialDraft.hotWindow == nil && initialSearch?.hotStartsAt != nil)
     }
 
     private var availableSports: [Sport] {
         let preferred = appModel.currentUser?.preferredSports ?? []
         let fallback = Sport.defaultAuthSports + Sport.allCases
         var ordered = preferred + fallback
+        if let selectedCourtSports {
+            ordered = ordered.filter { selectedCourtSports.contains($0) } + selectedCourtSports
+        }
         var seen = Set<String>()
         ordered.removeAll { sport in
             let inserted = seen.insert(sport.rawValue).inserted
             return !inserted
         }
         return ordered
+    }
+
+    private var selectedCourtSports: [Sport]? {
+        guard let sports = selectedCourt?.supportedSports, !sports.isEmpty else {
+            return nil
+        }
+        return sports
     }
 
     private var profileSportLevel: Int? {
@@ -4037,6 +4105,59 @@ struct SearchComposerView: View {
         return !selectedDayValues.isEmpty && !selectedTimeRangeValues.isEmpty
     }
 
+    private var isCustomHotDateSelected: Bool {
+        draft.hotWindow == nil
+    }
+
+    private var resolvedHotDate: Date {
+        if isCustomHotDateSelected, let customHotDate {
+            return customHotDate
+        }
+
+        let offset: Int
+        switch draft.hotWindow ?? .today {
+        case .today:
+            offset = 0
+        case .tomorrow:
+            offset = 1
+        case .dayAfterTomorrow:
+            offset = 2
+        }
+
+        return Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+    }
+
+    private var defaultCustomHotDate: Date {
+        Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date().addingTimeInterval(3 * 24 * 60 * 60)
+    }
+
+    private var customHotDateBinding: Binding<Date> {
+        Binding(
+            get: { customHotDate ?? defaultCustomHotDate },
+            set: { date in
+                selectCustomHotDate(date)
+            }
+        )
+    }
+
+    private var hotDateTitle: String {
+        if Calendar.current.isDateInToday(resolvedHotDate) {
+            return "Сегодня"
+        }
+        if Calendar.current.isDateInTomorrow(resolvedHotDate) {
+            return "Завтра"
+        }
+        if let dayAfterTomorrow = Calendar.current.date(byAdding: .day, value: 2, to: Date()),
+           Calendar.current.isDate(resolvedHotDate, inSameDayAs: dayAfterTomorrow) {
+            return "Послезавтра"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.setLocalizedDateFormatFromTemplate("d MMM")
+        return formatter.string(from: resolvedHotDate)
+    }
+
     private var hotStepIndex: Int {
         HotSearchStep.allCases.firstIndex(of: hotStep) ?? 0
     }
@@ -4089,7 +4210,7 @@ struct SearchComposerView: View {
         selectedSport == .tennis
             && selectedCourtId == nil
             && draft.preferredDistricts.isEmpty
-            && draft.searchType == .regular
+            && draft.searchType == .hot
             && draft.format == Sport.tennis.defaultFormat
             && draft.playersNeeded == Sport.tennis.defaultPlayersNeeded(format: Sport.tennis.defaultFormat)
             && (draft.durationMinutes ?? Sport.tennis.defaultDurationMinutes) == Sport.tennis.defaultDurationMinutes
@@ -4105,21 +4226,9 @@ struct SearchComposerView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         composerHeader
-                        inviteBanner
-                        searchTypeModeSwitch
-                        if draft.searchType == .hot {
-                            urgentSearchProgressHeader
-                            hotStepContent
-                            hotStepActions
-                        } else {
-                            sportRailSection
-                            formatSection
-                            compactStatsSection
-                            scheduleSection
-                            mapPreviewSection
-                            commentSection
-                            submitSection
-                        }
+                        urgentSearchProgressHeader
+                        hotStepContent
+                        hotStepActions
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
@@ -4169,6 +4278,7 @@ struct SearchComposerView: View {
                     if initialSearch == nil, draft.inviteSlug == nil {
                         draft.inviteSlug = UUID().uuidString.lowercased()
                     }
+                    draft.searchType = .hot
                     courts = try await appModel.repository.fetchCourts()
                     if let initialSearch {
                         apply(initialSearch)
@@ -4180,6 +4290,7 @@ struct SearchComposerView: View {
                             draft.preferredDistricts = [district] + draft.preferredDistricts.filter { $0 != district }
                         }
                     }
+                    reconcileSelectedSportWithAvailableSports()
                 } catch {
                     appModel.present(error: error)
                 }
@@ -4193,25 +4304,15 @@ struct SearchComposerView: View {
             }
             draft.playersNeeded = selectedSport.defaultPlayersNeeded(format: resolvedFormat)
         }
-        .onChange(of: draft.searchType) { nextType in
-            if nextType == .hot {
-                hotStep = .when
-                if (draft.hotStartTime ?? "").isEmpty {
-                    draft.hotStartTime = hotQuickTimes.first ?? "00:00"
-                }
+        .onChange(of: draft.searchType) { _ in
+            draft.searchType = .hot
+            hotStep = .when
+            if (draft.hotStartTime ?? "").isEmpty {
+                draft.hotStartTime = hotQuickTimes.first ?? "00:00"
             }
         }
         .onChange(of: draft.hotWindow) { _ in
-            let availableTimes = hotQuickTimes
-            guard !availableTimes.isEmpty else {
-                draft.hotStartTime = nil
-                return
-            }
-
-            if let selectedTime = draft.hotStartTime, availableTimes.contains(selectedTime) {
-                return
-            }
-            draft.hotStartTime = availableTimes.first
+            syncHotStartTimeWithAvailableTimes()
         }
     }
 
@@ -4236,16 +4337,8 @@ struct SearchComposerView: View {
 
             Spacer()
 
-            Button {
-                isAdvancedPresented = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .frame(width: 44, height: 44)
-                    .background(Color.black.opacity(0.04), in: Circle())
-            }
-            .buttonStyle(.plain)
+            Color.clear
+                .frame(width: 44, height: 44)
         }
     }
 
@@ -4385,7 +4478,6 @@ struct SearchComposerView: View {
         case .who:
             VStack(spacing: 24) {
                 sportRailSection
-                formatSection
                 compactStatsSection
                 commentSection
             }
@@ -4537,9 +4629,12 @@ struct SearchComposerView: View {
                 .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                 HStack(spacing: -8) {
-                    ForEach(0 ..< min(max(draft.playersNeeded, 1), 3), id: \.self) { index in
+                    if let currentUser = appModel.currentUser {
+                        RemoteAvatarView(name: currentUser.displayName, path: currentUser.avatarUrl, size: 28)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                    } else {
                         Circle()
-                            .fill(index == 0 ? AppTheme.clay.opacity(0.9) : AppTheme.ink.opacity(0.18 + Double(index) * 0.08))
+                            .fill(AppTheme.clay.opacity(0.9))
                             .overlay(
                                 Image(systemName: "person.fill")
                                     .font(.system(size: 12, weight: .semibold))
@@ -4548,9 +4643,23 @@ struct SearchComposerView: View {
                             .frame(width: 28, height: 28)
                             .overlay(Circle().stroke(.white, lineWidth: 2))
                     }
-                    Text(draft.playersNeeded == 1 ? "1 место открыто" : "\(draft.playersNeeded) места открыто")
+
+                    ForEach(0 ..< min(draft.playersNeeded, 2), id: \.self) { index in
+                        Circle()
+                            .fill(AppTheme.ink.opacity(0.18 + Double(index) * 0.08))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            )
+                            .frame(width: 28, height: 28)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                    }
+                    Text("Вы + \(openSeatsLabel)")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(AppTheme.court)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
                         .padding(.leading, 10)
                 }
             }
@@ -4602,6 +4711,26 @@ struct SearchComposerView: View {
             .padding(14)
             .background(Color.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
+        }
+    }
+
+    private var openSeatsLabel: String {
+        "\(draft.playersNeeded) \(openSeatsWord(for: draft.playersNeeded)) открыто"
+    }
+
+    private func openSeatsWord(for count: Int) -> String {
+        let lastTwoDigits = count % 100
+        if (11 ... 14).contains(lastTwoDigits) {
+            return "мест"
+        }
+
+        switch count % 10 {
+        case 1:
+            return "место"
+        case 2 ... 4:
+            return "места"
+        default:
+            return "мест"
         }
     }
 
@@ -4670,6 +4799,16 @@ struct SearchComposerView: View {
                 ForEach(HotWindow.allCases) { window in
                     hotWindowButton(window)
                 }
+                customHotDateButton
+
+                if isCustomHotDateSelected && isCustomHotCalendarExpanded {
+                    HotDateCalendarCard(
+                        selection: customHotDateBinding,
+                        minimumDate: Date(),
+                        tint: AppTheme.court
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
 
             Text("Во сколько?")
@@ -4734,13 +4873,11 @@ struct SearchComposerView: View {
     }
 
     private var hotQuickTimes: [String] {
-        let window = draft.hotWindow ?? .today
         let startMinutes: Int
 
-        switch window {
-        case .today:
+        if Calendar.current.isDateInToday(resolvedHotDate) {
             startMinutes = roundedUpMinutesFromNow()
-        case .tomorrow, .dayAfterTomorrow:
+        } else {
             startMinutes = 0
         }
 
@@ -4752,11 +4889,13 @@ struct SearchComposerView: View {
     }
 
     private func hotWindowButton(_ window: HotWindow) -> some View {
-        let selected = (draft.hotWindow ?? .today) == window
+        let selected = draft.hotWindow == window
 
         return Button {
             withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
                 draft.hotWindow = window
+                draft.hotStartsAt = nil
+                isCustomHotCalendarExpanded = false
             }
         } label: {
             HStack(spacing: 14) {
@@ -4793,6 +4932,53 @@ struct SearchComposerView: View {
         .buttonStyle(.plain)
     }
 
+    private var customHotDateButton: some View {
+        let selected = isCustomHotDateSelected
+
+        return Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
+                selectCustomHotDate(customHotDate ?? defaultCustomHotDate)
+                isCustomHotCalendarExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(selected ? AppTheme.court : AppTheme.ink.opacity(0.72))
+                    .frame(width: 34, height: 34)
+                    .background(selected ? AppTheme.mint : Color.black.opacity(0.04), in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Другая дата")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(selected ? AppTheme.court : AppTheme.ink)
+                    Text(selected ? hotDateTitle : "Выбрать в календаре")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.ink.opacity(0.48))
+                }
+
+                Spacer()
+
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppTheme.court)
+                } else {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppTheme.ink.opacity(0.42))
+                }
+            }
+            .padding(14)
+            .background(selected ? AppTheme.mint.opacity(0.55) : Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(selected ? AppTheme.court.opacity(0.35) : Color.black.opacity(0.06), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func hotQuickTimeButton(_ time: String) -> some View {
         let selected = (draft.hotStartTime ?? "19:00") == time
 
@@ -4812,6 +4998,49 @@ struct SearchComposerView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private func selectCustomHotDate(_ date: Date) {
+        customHotDate = date
+        draft.hotWindow = nil
+        draft.hotStartsAt = nil
+        syncHotStartTimeWithAvailableTimes()
+    }
+
+    private func syncHotStartTimeWithAvailableTimes() {
+        let availableTimes = hotQuickTimes
+        guard !availableTimes.isEmpty else {
+            draft.hotStartTime = nil
+            return
+        }
+
+        if let selectedTime = draft.hotStartTime, availableTimes.contains(selectedTime) {
+            return
+        }
+        draft.hotStartTime = availableTimes.first
+    }
+
+    private func combinedHotStartsAt() -> Date? {
+        let time = draft.hotStartTime ?? "19:00"
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        guard let hour = parts.first else {
+            return nil
+        }
+
+        return Calendar.current.date(
+            bySettingHour: hour,
+            minute: parts.dropFirst().first ?? 0,
+            second: 0,
+            of: resolvedHotDate
+        )
+    }
+
+    private func hotStartsAtPayloadValue() -> String? {
+        guard isCustomHotDateSelected, let startsAt = combinedHotStartsAt() else {
+            return nil
+        }
+
+        return ISO8601DateFormatter().string(from: startsAt)
     }
 
     private func hotWindowIcon(for window: HotWindow) -> String {
@@ -4948,14 +5177,14 @@ struct SearchComposerView: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
+            inviteBanner
+
             VStack(spacing: 0) {
-                urgentConfirmationRow(icon: "calendar", title: "Когда", value: "\(draft.hotWindow?.title ?? HotWindow.today.title), \(draft.hotStartTime ?? "19:00")")
+                urgentConfirmationRow(icon: "calendar", title: "Когда", value: "\(hotDateTitle), \(draft.hotStartTime ?? "19:00")")
                 Divider()
                 urgentConfirmationRow(icon: "tennis.racket", title: "Вид спорта", value: selectedSport.title)
                 Divider()
-                urgentConfirmationRow(icon: "person.2", title: "Формат", value: selectedSport.formatTitle(format: draft.format))
-                Divider()
-                urgentConfirmationRow(icon: "person.badge.plus", title: "Нужно игроков", value: "\(draft.playersNeeded)")
+                urgentConfirmationRow(icon: "person.badge.plus", title: "Нужно игроков", value: "Вы + \(openSeatsLabel)")
                 Divider()
                 urgentConfirmationRow(icon: "chart.bar", title: "Уровень", value: "\(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
                 Divider()
@@ -5079,12 +5308,14 @@ struct SearchComposerView: View {
         }
     }
 
-    private func applySportSelection(_ sport: Sport) {
+    private func applySportSelection(_ sport: Sport, haptic: Bool = true) {
         guard selectedSport != sport else {
             return
         }
 
-        AppHaptics.selection()
+        if haptic {
+            AppHaptics.selection()
+        }
         let nextFormat = sport.resolveFormat(draft.format)
         let validDistricts = Set(
             courts
@@ -5109,6 +5340,13 @@ struct SearchComposerView: View {
         }
 
         setSportLevel(appModel.currentUser?.sportLevels[sport.rawValue] ?? appModel.currentUser?.tennisLevel ?? 5, haptic: false)
+    }
+
+    private func reconcileSelectedSportWithAvailableSports() {
+        guard !availableSports.contains(selectedSport), let firstSport = availableSports.first else {
+            return
+        }
+        applySportSelection(firstSport, haptic: false)
     }
 
     private func courtSupports(_ court: Court, sport: Sport) -> Bool {
@@ -5326,6 +5564,7 @@ struct SearchComposerView: View {
 
         do {
             var payload = draft
+            payload.searchType = .hot
             payload.sport = selectedSport
             payload.preferredCourtId = selectedCourtId
             payload.inviteSlug = payload.inviteSlug ?? resolvedInviteIdentifier
@@ -5343,17 +5582,22 @@ struct SearchComposerView: View {
             payload.desiredLevelMin = max((sportLevel ?? 5) - 1, 1)
             payload.desiredLevelMax = min((sportLevel ?? 5) + 1, 10)
 
-            if draft.searchType == .regular {
+            if payload.searchType == .regular {
                 payload.preferredDays = orderedDays(from: availabilityByDay)
                 payload.preferredTimeRanges = Array(Set(availabilityByDay.values.flatMap { $0 })).sorted { lhs, rhs in
                     timeRangeIndex(lhs) < timeRangeIndex(rhs)
                 }
                 payload.hotWindow = nil
                 payload.hotStartTime = nil
+                payload.hotStartsAt = nil
                 payload.durationMinutes = nil
             } else {
                 payload.preferredDays = []
                 payload.preferredTimeRanges = [timeRangeFromHotStartTime(payload.hotStartTime ?? "19:00")]
+                payload.hotStartsAt = hotStartsAtPayloadValue()
+                if payload.hotStartsAt != nil {
+                    payload.hotWindow = nil
+                }
             }
 
             let created: GameSearch
@@ -5422,6 +5666,7 @@ struct SearchComposerView: View {
             searchType: search.searchType,
             hotWindow: search.hotWindow,
             hotStartTime: search.hotStartsAt?.parsedISODateValue()?.formattedHourMinute(),
+            hotStartsAt: search.hotStartsAt,
             durationMinutes: search.durationMinutes,
             hasCourtBooked: search.hasCourtBooked,
             sport: search.sport,
@@ -5434,6 +5679,8 @@ struct SearchComposerView: View {
             comment: search.comment ?? ""
         )
         selectedCourtSnapshot = search.preferredCourt
+        customHotDate = search.hotWindow == nil ? search.hotStartsAt?.parsedISODateValue() : nil
+        isCustomHotCalendarExpanded = customHotDate != nil
         availabilityByDay = Dictionary(uniqueKeysWithValues: search.preferredDays.map { ($0, search.preferredTimeRanges) })
     }
 
@@ -5755,6 +6002,187 @@ private final class SearchPreviewAnnotationView: MKAnnotationView {
     }
 }
 
+private struct HotDateCalendarCard: View {
+    @Binding private var selection: Date
+    let minimumDate: Date
+    let tint: Color
+
+    @State private var visibleMonthStart: Date
+
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    init(selection: Binding<Date>, minimumDate: Date, tint: Color) {
+        self._selection = selection
+        self.minimumDate = minimumDate
+        self.tint = tint
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.firstWeekday = 2
+        let start = calendar.date(from: calendar.dateComponents([.year, .month], from: selection.wrappedValue))
+            ?? calendar.startOfDay(for: selection.wrappedValue)
+        self._visibleMonthStart = State(initialValue: start)
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                Button {
+                    moveMonth(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(canMoveToPreviousMonth ? AppTheme.ink : AppTheme.ink.opacity(0.18))
+                        .frame(width: 38, height: 38)
+                        .background(Color.black.opacity(0.035), in: Circle())
+                }
+                .disabled(!canMoveToPreviousMonth)
+                .buttonStyle(.plain)
+
+                Text(monthTitle)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(maxWidth: .infinity)
+
+                Button {
+                    moveMonth(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(width: 38, height: 38)
+                        .background(Color.black.opacity(0.035), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
+                ForEach(weekdayTitles, id: \.self) { title in
+                    Text(title)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AppTheme.ink.opacity(0.46))
+                        .frame(height: 24)
+                }
+
+                ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, day in
+                    if let day {
+                        dayButton(day)
+                    } else {
+                        Color.clear
+                            .frame(height: 42)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(tint.opacity(0.2), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.ink.opacity(0.08), radius: 18, x: 0, y: 10)
+    }
+
+    private var weekdayTitles: [String] {
+        ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    }
+
+    private var minimumDay: Date {
+        calendar.startOfDay(for: minimumDate)
+    }
+
+    private var minimumMonthStart: Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: minimumDate)) ?? minimumDay
+    }
+
+    private var canMoveToPreviousMonth: Bool {
+        visibleMonthStart > minimumMonthStart
+    }
+
+    private var monthTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.setLocalizedDateFormatFromTemplate("LLLL yyyy")
+        let value = formatter.string(from: visibleMonthStart)
+        return value.prefix(1).uppercased() + String(value.dropFirst())
+    }
+
+    private var calendarDays: [Int?] {
+        guard let daysRange = calendar.range(of: .day, in: .month, for: visibleMonthStart) else {
+            return []
+        }
+
+        let weekday = calendar.component(.weekday, from: visibleMonthStart)
+        let leadingEmptyDays = (weekday - calendar.firstWeekday + 7) % 7
+        var days: [Int?] = Array(repeating: nil, count: leadingEmptyDays)
+        days.append(contentsOf: daysRange.map { Optional($0) })
+
+        let trailingEmptyDays = (7 - (days.count % 7)) % 7
+        days.append(contentsOf: Array(repeating: nil, count: trailingEmptyDays))
+        return days
+    }
+
+    private func dayButton(_ day: Int) -> some View {
+        let date = date(for: day)
+        let isSelected = calendar.isDate(date, inSameDayAs: selection)
+        let isToday = calendar.isDateInToday(date)
+        let isDisabled = date < minimumDay
+
+        return Button {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                selection = date
+            }
+        } label: {
+            Text("\(day)")
+                .font(.system(size: 16, weight: isSelected ? .bold : .semibold))
+                .foregroundStyle(dayTextColor(isSelected: isSelected, isDisabled: isDisabled))
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(
+                    Group {
+                        if isSelected {
+                            Circle().fill(tint)
+                        } else if isToday {
+                            Circle().fill(AppTheme.mint)
+                        } else {
+                            Circle().fill(Color.clear)
+                        }
+                    }
+                )
+        }
+        .disabled(isDisabled)
+        .buttonStyle(.plain)
+    }
+
+    private func dayTextColor(isSelected: Bool, isDisabled: Bool) -> Color {
+        if isSelected {
+            return .white
+        }
+        if isDisabled {
+            return AppTheme.ink.opacity(0.2)
+        }
+        return AppTheme.ink
+    }
+
+    private func date(for day: Int) -> Date {
+        var components = calendar.dateComponents([.year, .month], from: visibleMonthStart)
+        components.day = day
+        return calendar.date(from: components) ?? visibleMonthStart
+    }
+
+    private func moveMonth(by offset: Int) {
+        guard let newMonth = calendar.date(byAdding: .month, value: offset, to: visibleMonthStart) else {
+            return
+        }
+        visibleMonthStart = max(newMonth, minimumMonthStart)
+    }
+}
+
 private enum HotSearchStep: Int, CaseIterable {
     case when = 0
     case who
@@ -5816,7 +6244,7 @@ private struct SearchComposerAdvancedSheet: View {
                         SectionCard(title: "Дополнительно", subtitle: "Скрытые настройки поиска: тип, срочное окно, районы и бронирование клуба.") {
                             AppSegmentedChoice(
                                 title: "Тип поиска",
-                                items: SearchType.allCases,
+                                items: SearchType.userVisibleCases,
                                 selection: $draft.searchType,
                                 titleForItem: \.title
                             )
@@ -6517,7 +6945,7 @@ private struct MapCourtThumbnail: View {
 
     var body: some View {
         ZStack {
-            if let photoUrl = court.photoUrl, let url = URL(string: photoUrl) {
+            if let url = resolveAppRemoteURL(court.primaryPhotoUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
@@ -6704,7 +7132,7 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
         imageView.tintColor = UIColor(red: 0.08, green: 0.54, blue: 0.36, alpha: 1)
         imageView.image = UIImage(systemName: sportSymbolName(for: court.supportedSports?.first ?? .tennis))
 
-        guard let photoUrl = court.photoUrl, let url = URL(string: photoUrl) else {
+        guard let url = resolveAppRemoteURL(court.primaryPhotoUrl) else {
             return imageView
         }
 

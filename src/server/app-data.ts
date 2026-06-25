@@ -1026,6 +1026,11 @@ export async function getCourtsForUser(
   }
 
   const preferredDistricts = resolvePreferredDistricts(user.preferredDistricts, user.district);
+  const memberships = await prisma.userCourt.findMany({
+    where: { userId },
+    select: { courtId: true }
+  });
+  const memberCourtIds = new Set(memberships.map((membership) => membership.courtId));
 
   const courts = await prisma.court.findMany({
     where: {
@@ -1057,7 +1062,26 @@ export async function getCourtsForUser(
         : {})
     },
     include: {
-      nearestMetro: true
+      nearestMetro: true,
+      members: {
+        where: {
+          userId: {
+            not: userId
+          }
+        },
+        include: {
+          user: true
+        },
+        orderBy: {
+          updatedAt: "desc"
+        },
+        take: 8
+      },
+      _count: {
+        select: {
+          members: true
+        }
+      }
     },
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
@@ -1065,6 +1089,7 @@ export async function getCourtsForUser(
   return courts
     .map((court) => ({
       ...court,
+      isMember: memberCourtIds.has(court.id),
       distanceKm: haversineDistanceKm(
         user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
         { lat: court.locationLat, lng: court.locationLng }

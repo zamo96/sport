@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { GameSearchResponseStatus, GameSearchStatus, GameSearchType, Prisma } from "@prisma/client";
 
+import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -394,6 +395,27 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
       return { updated, matchId, gameRequestId, regularPairId, gameSearchStatus, gameSearchIsActive };
     });
+
+    if (
+      (body.status === GameSearchResponseStatus.approved || body.status === GameSearchResponseStatus.rejected) &&
+      response.responderUser.notificationGames
+    ) {
+      await sendPushToUser({
+        userId: response.responderUserId,
+        title:
+          body.status === GameSearchResponseStatus.approved
+            ? `${user.name ?? "Организатор"} одобрил твой отклик`
+            : `${user.name ?? "Организатор"} отклонил твой отклик`,
+        body:
+          body.status === GameSearchResponseStatus.approved
+            ? "Открой чат или поиск, чтобы продолжить договоренность."
+            : "Можно вернуться в ленту и выбрать другой поиск.",
+        href: result.matchId
+          ? `/inbox/${result.matchId}`
+          : `/discover?view=seeking&highlight=${response.gameSearchId}`,
+        sound: response.responderUser.notificationSound ?? true
+      });
+    }
 
     return ok({
       response: {
