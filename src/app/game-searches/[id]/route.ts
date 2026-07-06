@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus } from "@prisma/client";
+import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, Prisma } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
@@ -7,9 +7,32 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
+import { isRouteSport } from "@/lib/sport-semantics";
 import { updateGameSearchSchema } from "@/lib/validators";
 import { ensureMatchForUsers } from "@/server/matching";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+
+type RouteSearchSource = {
+  sport: string;
+  runningRoute: string | null;
+  runningRoutePoints: Prisma.JsonValue | null;
+};
+
+function gameRequestRouteData(search: RouteSearchSource) {
+  if (!isRouteSport(search.sport)) {
+    return {
+      runningRoute: null,
+      runningRoutePoints: Prisma.JsonNull
+    };
+  }
+
+  return {
+    runningRoute: search.runningRoute?.trim() || null,
+    runningRoutePoints: Array.isArray(search.runningRoutePoints)
+      ? (search.runningRoutePoints as Prisma.InputJsonValue)
+      : Prisma.JsonNull
+  };
+}
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -25,6 +48,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     if (!gameSearch) {
       return fail("Поиск игры не найден", 404);
+    }
+
+    if (gameSearch.status === GameSearchStatus.matched || gameSearch.scheduledAt) {
+      return fail("Поиск уже перешёл в игру. Изменения вносите в карточке игры.", 409);
     }
 
     const nextScheduledAt =
@@ -103,6 +130,20 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const scheduleRequested =
       body.scheduledAt !== undefined || body.scheduledCourtId !== undefined || body.scheduledDurationMinutes !== undefined;
     const shouldCloseBySchedule = scheduleRequested && Boolean(nextScheduledAt);
+    const nextPreferredCourtId = body.preferredCourtId !== undefined ? body.preferredCourtId : gameSearch.preferredCourtId;
+    const shouldClearCustomVenue = body.preferredCourtId !== undefined && body.preferredCourtId !== null;
+    const customVenueTitle =
+      body.customVenueTitle !== undefined ? normalizeOptionalText(body.customVenueTitle) : gameSearch.customVenueTitle;
+    const customVenueAddress =
+      body.customVenueAddress !== undefined ? normalizeOptionalText(body.customVenueAddress) : gameSearch.customVenueAddress;
+    const runningRoute =
+      body.runningRoute !== undefined ? normalizeOptionalText(body.runningRoute) : gameSearch.runningRoute;
+    const runningRoutePoints =
+      body.runningRoutePoints !== undefined
+        ? body.runningRoutePoints
+        : Array.isArray(gameSearch.runningRoutePoints)
+          ? gameSearch.runningRoutePoints
+          : null;
 
     const { updated, confirmedGameRequestId } = await prisma.$transaction(async (tx) => {
       const updated = await tx.gameSearch.update({
@@ -125,6 +166,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             ? { scheduledDurationMinutes: body.scheduledDurationMinutes }
             : {}),
           ...(body.preferredCourtId !== undefined ? { preferredCourtId: body.preferredCourtId } : {}),
+          ...(body.preferredCourtId !== undefined || body.customVenueTitle !== undefined
+            ? { customVenueTitle: shouldClearCustomVenue ? null : customVenueTitle }
+            : {}),
+          ...(body.preferredCourtId !== undefined || body.customVenueAddress !== undefined
+            ? { customVenueAddress: shouldClearCustomVenue ? null : customVenueAddress }
+            : {}),
+          ...(body.runningRoute !== undefined || body.sport !== undefined ? { runningRoute: isRouteSport(nextSport) ? runningRoute : null } : {}),
+          ...(body.runningRoutePoints !== undefined || body.sport !== undefined
+            ? {
+                runningRoutePoints:
+                  isRouteSport(nextSport) && Array.isArray(runningRoutePoints)
+                    ? (runningRoutePoints as Prisma.InputJsonValue)
+                    : Prisma.JsonNull
+              }
+            : {}),
           ...(body.preferredDistricts !== undefined ? { preferredDistricts: preferredDistrictsInput } : {}),
           ...(body.preferredDays !== undefined || body.searchType !== undefined || body.hotWindow !== undefined || body.hotStartsAt !== undefined
             ? { preferredDays }
@@ -218,7 +274,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         updated.searchType === "hot" &&
         playersNeeded === 1 &&
         approvedResponses.length === 1 &&
-        Boolean(updated.preferredCourtId) &&
+        Boolean(updated.hotStartsAt) &&
+        (body.playersNeeded !== undefined ||
+          body.preferredCourtId !== undefined ||
+          body.hotStartsAt !== undefined ||
+          body.hotWindow !== undefined ||
+          body.hotStartTime !== undefined ||
+          body.durationMinutes !== undefined);
+      const shouldFinalizeFilledGroupHotSearch =
+        !shouldCloseBySchedule &&
+        updated.searchType === "hot" &&
+        playersNeeded > 1 &&
+        approvedResponses.length >= playersNeeded &&
         Boolean(updated.hotStartsAt) &&
         (body.playersNeeded !== undefined ||
           body.preferredCourtId !== undefined ||
@@ -227,9 +294,156 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           body.hotStartTime !== undefined ||
           body.durationMinutes !== undefined);
 
-      if (shouldFinalizeFilledHotSearch && updated.preferredCourtId && updated.hotStartsAt) {
+      if (shouldFinalizeFilledGroupHotSearch && updated.hotStartsAt) {
+        const proposedCourtId = nextPreferredCourtId ?? updated.preferredCourtId ?? null;
+        const scheduledAt = updated.hotStartsAt;
+        const scheduleText = `${scheduledAt.toLocaleString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        })} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
+        const courtLabel =
+          updated.preferredCourt?.name ??
+          updated.customVenueAddress ??
+          updated.customVenueTitle ??
+          updated.runningRoute ??
+          "Место уточняется";
+
+        await tx.gameSearchSlotProposal.updateMany({
+          where: {
+            gameSearchId: updated.id,
+            status: "open"
+          },
+          data: {
+            status: "closed"
+          }
+        });
+
+        await tx.gameSearchResponse.updateMany({
+          where: {
+            gameSearchId: updated.id,
+            status: GameSearchResponseStatus.pending
+          },
+          data: {
+            status: GameSearchResponseStatus.rejected
+          }
+        });
+
+        await tx.gameSearch.update({
+          where: { id: updated.id },
+          data: {
+            status: GameSearchStatus.matched,
+            isActive: false,
+            scheduledCourtId: proposedCourtId,
+            scheduledAt,
+            scheduledDurationMinutes: updated.durationMinutes ?? null
+          }
+        });
+
+        updated.status = GameSearchStatus.matched;
+        updated.isActive = false;
+        updated.scheduledCourtId = proposedCourtId;
+        updated.scheduledAt = scheduledAt;
+        updated.scheduledDurationMinutes = updated.durationMinutes ?? null;
+
+        let rootRequestId: string | null = null;
+
+        for (const approved of approvedResponses) {
+          const match = await ensureMatchForUsers(tx, updated.createdByUserId, approved.responderUserId);
+          const existingGameRequest = await tx.gameRequest.findFirst({
+            where: {
+              matchId: match.id,
+              createdByUserId: updated.createdByUserId,
+              matchedUserId: approved.responderUserId,
+              proposedCourtId,
+              proposedDatetime: scheduledAt,
+              sport: updated.sport,
+              format: updated.format,
+              status: {
+                in: [GameRequestStatus.pending, GameRequestStatus.accepted]
+              }
+            }
+          });
+
+          let gameRequest = existingGameRequest;
+          const shouldAnnounceGame = !existingGameRequest || existingGameRequest.status !== GameRequestStatus.accepted;
+          if (gameRequest) {
+            gameRequest = await tx.gameRequest.update({
+              where: { id: gameRequest.id },
+              data: {
+                status: GameRequestStatus.accepted,
+                durationMinutes: updated.durationMinutes ?? 90,
+                comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
+                sharedRootId: rootRequestId ?? gameRequest.sharedRootId
+              }
+            });
+          } else {
+            gameRequest = await tx.gameRequest.create({
+              data: {
+                matchId: match.id,
+                sharedRootId: rootRequestId,
+                createdByUserId: updated.createdByUserId,
+                matchedUserId: approved.responderUserId,
+                proposedCourtId,
+                proposedDatetime: scheduledAt,
+                durationMinutes: updated.durationMinutes ?? 90,
+                sport: updated.sport,
+                format: updated.format,
+                ...gameRequestRouteData(updated),
+                comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
+                status: GameRequestStatus.accepted
+              }
+            });
+          }
+
+          if (rootRequestId == null) {
+            rootRequestId = gameRequest.id;
+            confirmedGameRequestId = gameRequest.id;
+          } else if (gameRequest.sharedRootId !== rootRequestId) {
+            gameRequest = await tx.gameRequest.update({
+              where: { id: gameRequest.id },
+              data: { sharedRootId: rootRequestId }
+            });
+          }
+
+          if (shouldAnnounceGame) {
+            await tx.chatMessage.create({
+              data: {
+                matchId: match.id,
+                senderUserId: updated.createdByUserId,
+                text: `Игра подтверждена по поиску: ${scheduleText} · ${courtLabel}.`
+              }
+            });
+
+            await tx.chatMessage.create({
+              data: {
+                matchId: match.id,
+                gameRequestId: gameRequest.id,
+                senderUserId: updated.createdByUserId,
+                text: "Организатор изменил(а) состав и зафиксировал(а) игру по поиску."
+              }
+            });
+
+            await tx.match.update({
+              where: { id: match.id },
+              data: { updatedAt: new Date() }
+            });
+          }
+        }
+
+        await tx.gameSearchMessage.create({
+          data: {
+            gameSearchId: updated.id,
+            senderUserId: updated.createdByUserId,
+            text: "Состав собран, игра добавлена в ближайшие."
+          }
+        });
+      }
+
+      if (shouldFinalizeFilledHotSearch && updated.hotStartsAt) {
         const approved = approvedResponses[0];
-        const proposedCourtId = updated.preferredCourtId;
+        const proposedCourtId = nextPreferredCourtId ?? updated.preferredCourtId ?? null;
         const scheduledAt = updated.hotStartsAt;
         const match = await ensureMatchForUsers(tx, updated.createdByUserId, approved.responderUserId);
 
@@ -293,6 +507,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               durationMinutes: updated.durationMinutes ?? 90,
               sport: updated.sport,
               format: updated.format,
+              ...gameRequestRouteData(updated),
               comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
               status: GameRequestStatus.accepted
             }
@@ -307,7 +522,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             hour: "2-digit",
             minute: "2-digit"
           })} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
-          const courtLabel = updated.preferredCourt?.name ?? "клуб уточняется";
+          const courtLabel =
+            updated.preferredCourt?.name ??
+            updated.customVenueAddress ??
+            updated.customVenueTitle ??
+            updated.runningRoute ??
+            "Место уточняется";
 
           await tx.chatMessage.create({
             data: {
@@ -365,14 +585,20 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         if (approvedResponses.length > 0) {
           const proposedCourtId = updated.scheduledCourtId ?? updated.preferredCourtId ?? null;
 
-          if (proposedCourtId) {
+          {
             const scheduleText = `${nextScheduledAt.toLocaleString("ru-RU", {
               day: "2-digit",
               month: "2-digit",
               hour: "2-digit",
               minute: "2-digit"
             })} · ${updated.format}${updated.scheduledDurationMinutes ? ` · ${updated.scheduledDurationMinutes} мин` : ""}`;
-            const courtLabel = updated.scheduledCourt?.name ?? updated.preferredCourt?.name ?? "клуб уточняется";
+            const courtLabel =
+              updated.scheduledCourt?.name ??
+              updated.preferredCourt?.name ??
+              updated.customVenueAddress ??
+              updated.customVenueTitle ??
+              updated.runningRoute ??
+              "Место уточняется";
 
             if (playersNeeded === 1 && approvedResponses.length === 1) {
               const approved = approvedResponses[0];
@@ -385,7 +611,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
               if (scheduleChanged) {
                 const previousProposedCourtId = gameSearch.scheduledCourtId ?? gameSearch.preferredCourtId ?? null;
-                if (gameSearch.scheduledAt && previousProposedCourtId) {
+                if (gameSearch.scheduledAt) {
                   await tx.gameRequest.updateMany({
                     where: {
                       matchId: match.id,
@@ -425,6 +651,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                     durationMinutes: updated.scheduledDurationMinutes ?? 90,
                     sport: updated.sport,
                     format: updated.format,
+                    ...gameRequestRouteData(updated),
                     comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
                     status: GameRequestStatus.accepted
                   },
@@ -485,6 +712,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                 });
 
                 let scheduledRequest = existingPending;
+                if (scheduledRequest && scheduledRequest.status !== GameRequestStatus.accepted) {
+                  scheduledRequest = await tx.gameRequest.update({
+                    where: { id: scheduledRequest.id },
+                    data: {
+                      status: GameRequestStatus.accepted,
+                      durationMinutes: updated.scheduledDurationMinutes ?? 90,
+                      comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
+                      sharedRootId: rootRequestId ?? scheduledRequest.sharedRootId
+                    }
+                  });
+                }
+
                 if (!scheduledRequest) {
                   scheduledRequest = await tx.gameRequest.create({
                     data: {
@@ -497,8 +736,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                       durationMinutes: updated.scheduledDurationMinutes ?? 90,
                       sport: updated.sport,
                       format: updated.format,
-                      comment: updated.comment?.trim() || "Организатор предложил ближайшую игру для собранного состава.",
-                      status: GameRequestStatus.pending
+                      ...gameRequestRouteData(updated),
+                      comment: updated.comment?.trim() || "Игра из поиска подтверждена.",
+                      status: GameRequestStatus.accepted
                     }
                   });
                 }
@@ -512,6 +752,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                     });
                   }
                   confirmedGameRequestId = scheduledRequest.id;
+                } else if (scheduledRequest.sharedRootId !== rootRequestId) {
+                  scheduledRequest = await tx.gameRequest.update({
+                    where: { id: scheduledRequest.id },
+                    data: { sharedRootId: rootRequestId }
+                  });
                 }
 
                 if (!existingPending) {
@@ -519,7 +764,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                     data: {
                       matchId: entry.match.id,
                       senderUserId: updated.createdByUserId,
-                      text: `Предложение игры по собранному составу: ${scheduleText} · ${courtLabel}.`
+                      text: `Игра подтверждена по поиску: ${scheduleText} · ${courtLabel}.`
                     }
                   });
 
@@ -528,7 +773,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                       matchId: entry.match.id,
                       gameRequestId: scheduledRequest.id,
                       senderUserId: updated.createdByUserId,
-                      text: "Организатор предложил слот для собранного состава. Подтверди или отклони участие в карточке игры."
+                      text: "Организатор зафиксировал(а) игру и подтвердил(а) состав. Игра добавлена в ближайшие."
                     }
                   });
 
@@ -543,7 +788,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                 data: {
                   gameSearchId: updated.id,
                   senderUserId: updated.createdByUserId,
-                  text: `Организатор предложил общий слот: ${scheduleText} · ${courtLabel}. Подтверждение отправлено всем участникам состава.`
+                  text: `Организатор зафиксировал(а) игру: ${scheduleText} · ${courtLabel}. Состав подтвержден.`
                 }
               });
             }
@@ -593,9 +838,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
             responses: {
               some: {
                 responderUserId: user.id,
-                status: {
-                  in: [GameSearchResponseStatus.approved, GameSearchResponseStatus.pending]
-                }
+              status: GameSearchResponseStatus.approved
               }
             }
           }
@@ -673,4 +916,9 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }

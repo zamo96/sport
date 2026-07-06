@@ -5,12 +5,32 @@ import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { SPORT_LABELS } from "@/lib/constants";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { updateGameRequestSchema } from "@/lib/validators";
 import { ensureGroupSearchLobby } from "@/server/game-request-lobbies";
 import { canTransitionGameRequest, canUpdateGameRequestOutcome } from "@/server/matching";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { serializeGameRequest } from "@/server/serializers";
+
+const gameRequestInclude = {
+  proposedCourt: true,
+  report: {
+    include: {
+      createdByUser: true,
+      photos: {
+        orderBy: {
+          position: "asc" as const
+        }
+      },
+      confirmations: {
+        include: {
+          user: true
+        }
+      }
+    }
+  }
+};
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -72,7 +92,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     ) {
       const existing = await prisma.gameRequest.findUnique({
         where: { id: params.id },
-        include: { proposedCourt: true }
+        include: gameRequestInclude
       });
 
       if (!existing) {
@@ -128,22 +148,25 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       }
     }
 
-    const notificationTargets: Array<{ requestId: string; recipientUserId: string }> = [];
+    const notificationTargets: Array<{ requestId: string; recipientUserId: string; matchId?: string }> = [];
+    let touchedSearchLobbyId: string | null = null;
+    let searchLobbyRealtimeUserIds: string[] = [];
 
     const updated = await prisma.$transaction(async (tx) => {
       const shouldCascadeGroupCancellation =
         statusRequested &&
         !statusNoOp &&
         nextStatus === GameRequestStatus.canceled;
+      const shouldCascadeGroupEdit = editableChanged && isCreator;
 
       const rootRequestId = gameRequest.sharedRootId ?? gameRequest.id;
-      const relatedRequests = shouldCascadeGroupCancellation
+      const relatedRequests = shouldCascadeGroupCancellation || shouldCascadeGroupEdit
         ? await tx.gameRequest.findMany({
             where: {
               OR: [{ id: rootRequestId }, { sharedRootId: rootRequestId }]
             },
             include: {
-              proposedCourt: true
+              ...gameRequestInclude
             }
           })
         : [];
@@ -158,10 +181,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         editableChanged && gameRequest.createdByUserId !== user.id
           ? gameRequest.createdByUserId
           : gameRequest.matchedUserId;
+      let preferredExistingLobbyId: string | null = null;
 
       let result: typeof relatedRequests[number] | (typeof gameRequest & { proposedCourt?: null });
 
-      if (cascadeRequests.length > 0) {
+      if (cascadeRequests.length > 0 && shouldCascadeGroupCancellation) {
         const activeRequestIds = cascadeRequests
           .filter((requestItem) => requestItem.status !== GameRequestStatus.canceled)
           .map((requestItem) => requestItem.id);
@@ -214,18 +238,139 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           if (recipientUserId && recipientUserId !== user.id) {
             notificationTargets.push({
               requestId: requestItem.id,
-              recipientUserId
+              recipientUserId,
+              matchId: requestItem.matchId
             });
           }
         }
 
         const refreshed = await tx.gameRequest.findUnique({
           where: { id: params.id },
-          include: { proposedCourt: true }
+          include: gameRequestInclude
         });
 
         if (!refreshed) {
           throw new Error("Предложение игры не найдено");
+        }
+
+        result = refreshed;
+      } else if (cascadeRequests.length > 0 && shouldCascadeGroupEdit) {
+        const activeRequests = cascadeRequests.filter(
+          (requestItem) =>
+            requestItem.status !== GameRequestStatus.canceled &&
+            requestItem.status !== GameRequestStatus.declined
+        );
+        const activeRequestIds = activeRequests.map((requestItem) => requestItem.id);
+        const primaryGroupRequest = cascadeRequests.find((requestItem) => !requestItem.sharedRootId) ?? cascadeRequests[0];
+        const existingLobby = primaryGroupRequest
+          ? await tx.gameSearch.findFirst({
+              where: {
+                createdByUserId: primaryGroupRequest.createdByUserId,
+                scheduledAt: primaryGroupRequest.proposedDatetime,
+                scheduledCourtId: primaryGroupRequest.proposedCourtId,
+                sport: primaryGroupRequest.sport,
+                format: primaryGroupRequest.format,
+                playersNeeded: {
+                  gt: 1
+                }
+              },
+              select: {
+                id: true
+              },
+              orderBy: {
+                updatedAt: "desc"
+              }
+            })
+          : null;
+        preferredExistingLobbyId = existingLobby?.id ?? null;
+
+        if (activeRequestIds.length > 0) {
+          await tx.gameRequest.updateMany({
+            where: {
+              id: {
+                in: activeRequestIds
+              }
+            },
+            data: {
+              status: GameRequestStatus.pending,
+              proposedCourtId: body.proposedCourtId !== undefined ? body.proposedCourtId : gameRequest.proposedCourtId,
+              proposedDatetime: body.proposedDatetime ? new Date(body.proposedDatetime) : gameRequest.proposedDatetime,
+              durationMinutes: body.durationMinutes !== undefined ? body.durationMinutes : gameRequest.durationMinutes,
+              levelRangeMin: body.levelRangeMin !== undefined ? body.levelRangeMin : gameRequest.levelRangeMin,
+              levelRangeMax: body.levelRangeMax !== undefined ? body.levelRangeMax : gameRequest.levelRangeMax,
+              sport: effectiveSport,
+              format: effectiveFormat,
+              comment: body.comment !== undefined ? body.comment : (gameRequest.comment ?? ""),
+              createdByUserId: user.id,
+              outcome: null,
+              outcomeUpdatedAt: null
+            }
+          });
+        }
+
+        const refreshed = await tx.gameRequest.findUnique({
+          where: { id: params.id },
+          include: gameRequestInclude
+        });
+
+        if (!refreshed) {
+          throw new Error("Предложение игры не найдено");
+        }
+
+        const touchedMatchIds = Array.from(new Set(activeRequests.map((requestItem) => requestItem.matchId)));
+        if (touchedMatchIds.length > 0) {
+          await Promise.all(
+            touchedMatchIds.map((matchId) =>
+              tx.match.update({
+                where: { id: matchId },
+                data: { updatedAt: new Date() }
+              })
+            )
+          );
+        }
+
+        const nextForMessages = {
+          proposedCourtId: refreshed.proposedCourtId,
+          proposedDatetime: refreshed.proposedDatetime,
+          durationMinutes: refreshed.durationMinutes,
+          sport: refreshed.sport,
+          format: refreshed.format,
+          proposedCourt: refreshed.proposedCourt
+        };
+
+        if (activeRequests.length > 0) {
+          await tx.chatMessage.createMany({
+            data: activeRequests.flatMap((requestItem) => {
+              const editMessage = getEditChangeMessage(requestItem, nextForMessages, {
+                resetConfirmation: true
+              });
+
+              return [
+                {
+                  matchId: requestItem.matchId,
+                  gameRequestId: null,
+                  senderUserId: user.id,
+                  text: editMessage
+                },
+                {
+                  matchId: requestItem.matchId,
+                  gameRequestId: requestItem.id,
+                  senderUserId: user.id,
+                  text: editMessage
+                }
+              ];
+            })
+          });
+        }
+
+        for (const requestItem of activeRequests) {
+          if (requestItem.matchedUserId && requestItem.matchedUserId !== user.id) {
+            notificationTargets.push({
+              requestId: requestItem.id,
+              recipientUserId: requestItem.matchedUserId,
+              matchId: requestItem.matchId
+            });
+          }
         }
 
         result = refreshed;
@@ -242,7 +387,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               : {}),
             ...(editableRequested && !editableNoOp
               ? {
-                  proposedCourtId: body.proposedCourtId ?? gameRequest.proposedCourtId,
+                  proposedCourtId: body.proposedCourtId !== undefined ? body.proposedCourtId : gameRequest.proposedCourtId,
                   proposedDatetime: body.proposedDatetime ? new Date(body.proposedDatetime) : gameRequest.proposedDatetime,
                   durationMinutes: body.durationMinutes !== undefined ? body.durationMinutes : gameRequest.durationMinutes,
                   levelRangeMin: body.levelRangeMin !== undefined ? body.levelRangeMin : gameRequest.levelRangeMin,
@@ -258,7 +403,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               : {})
           },
           include: {
-            proposedCourt: true
+            ...gameRequestInclude
           }
         });
 
@@ -286,9 +431,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
 
         if (editableRequested && !editableNoOp) {
-          const editMessage = getEditChangeMessage({
-            proposedDatetime: result.proposedDatetime,
-            courtName: result.proposedCourt?.name ?? null,
+          const editMessage = getEditChangeMessage(gameRequest, result, {
             resetConfirmation: true
           });
 
@@ -328,8 +471,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
       if (body.status === GameRequestStatus.accepted && statusRequested && !statusNoOp) {
         const rootId = gameRequest.sharedRootId ?? gameRequest.id;
+        const acceptedGroupRequests = await tx.gameRequest.findMany({
+          where: {
+            OR: [{ id: rootId }, { sharedRootId: rootId }]
+          },
+          select: {
+            id: true
+          }
+        });
+        const isGroupedAcceptance = acceptedGroupRequests.length > 1;
 
-        if (gameRequest.format === "singles" || gameRequest.format === "both") {
+        if (!isGroupedAcceptance && (gameRequest.format === "singles" || gameRequest.format === "both")) {
           if (gameRequest.sharedRootId) {
             await tx.gameRequest.update({
               where: { id: rootId },
@@ -382,10 +534,33 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         });
 
         if (groupRequests.length > 1) {
-          await ensureGroupSearchLobby(tx, groupRequests, {
+          const lobbyId = await ensureGroupSearchLobby(tx, groupRequests, {
             senderUserId: user.id,
-            createIntroMessage: true
+            createIntroMessage: true,
+            existingLobbyId: preferredExistingLobbyId
           });
+          if (lobbyId) {
+            touchedSearchLobbyId = lobbyId;
+            searchLobbyRealtimeUserIds = Array.from(
+              new Set(
+                groupRequests
+                  .flatMap((requestItem) => [requestItem.createdByUserId, requestItem.matchedUserId])
+                  .filter((userId): userId is string => Boolean(userId))
+              )
+            );
+
+            if (editableRequested && !editableNoOp) {
+              await tx.gameSearchMessage.create({
+                data: {
+                  gameSearchId: lobbyId,
+                  senderUserId: user.id,
+                  text: getEditChangeMessage(gameRequest, result, {
+                    resetConfirmation: true
+                  })
+                }
+              });
+            }
+          }
         }
       }
 
@@ -397,19 +572,35 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       if (recipientUserId && ((statusRequested && !statusNoOp) || (outcomeRequested && !outcomeNoOp) || (editableRequested && !editableNoOp))) {
         notificationTargets.push({
           requestId: gameRequest.id,
-          recipientUserId
+          recipientUserId,
+          matchId: gameRequest.matchId
         });
       }
     }
 
     if ((statusRequested && !statusNoOp) || (outcomeRequested && !outcomeNoOp) || (editableRequested && !editableNoOp)) {
-      await publishRealtimeEventToUsers([user.id, ...notificationTargets.map((target) => target.recipientUserId)], {
-        type: "game_request_updated",
-        matchId: updated.matchId,
-        gameRequestId: updated.id,
-        status: updated.status,
-        href: `/play/games/${updated.id}`
-      });
+      const realtimeTargets = notificationTargets.length > 0
+        ? notificationTargets
+        : [{ requestId: updated.id, recipientUserId: user.id, matchId: updated.matchId }];
+      const publishedRealtimeKeys = new Set<string>();
+
+      await Promise.all(
+        realtimeTargets.map(async (target) => {
+          const key = `${target.requestId}:${target.recipientUserId}`;
+          if (publishedRealtimeKeys.has(key)) {
+            return;
+          }
+          publishedRealtimeKeys.add(key);
+
+          await publishRealtimeEventToUsers([user.id, target.recipientUserId], {
+            type: "game_request_updated",
+            matchId: target.matchId ?? updated.matchId,
+            gameRequestId: target.requestId,
+            status: updated.status,
+            href: `/play/games/${target.requestId}`
+          });
+        })
+      );
 
       const recipients = await prisma.user.findMany({
         where: {
@@ -428,9 +619,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         body.outcome !== undefined
           ? getOutcomeChangeMessage(body.outcome) ?? "Есть обновление по вашей игре."
           : editableRequested && !editableNoOp
-            ? getEditChangeMessage({
-                proposedDatetime: updated.proposedDatetime,
-                courtName: updated.proposedCourt?.name ?? null,
+            ? getEditChangeMessage(gameRequest, updated, {
                 resetConfirmation: true
               })
           : body.status !== undefined
@@ -455,6 +644,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           });
         })
       );
+    }
+
+    if (touchedSearchLobbyId) {
+      await publishRealtimeEventToUsers(searchLobbyRealtimeUserIds, {
+        type: "game_request_updated",
+        searchId: touchedSearchLobbyId,
+        gameRequestId: updated.id,
+        status: updated.status,
+        href: `/play/searches/${touchedSearchLobbyId}`
+      });
     }
 
     return ok({
@@ -495,13 +694,50 @@ function getOutcomeChangeMessage(outcome: GameRequestOutcome | null) {
   }
 }
 
-function getEditChangeMessage(options: {
-  proposedDatetime: Date;
-  courtName?: string | null;
-  resetConfirmation?: boolean;
-}) {
-  const timeLabel = options.proposedDatetime.toLocaleString("ru-RU");
-  const placeLabel = options.courtName ? ` · ${options.courtName}` : "";
+function getEditChangeMessage(
+  previous: {
+    proposedCourtId: string | null;
+    proposedDatetime: Date;
+    durationMinutes: number | null;
+    sport: keyof typeof SPORT_LABELS;
+    format: string;
+  },
+  next: {
+    proposedCourtId: string | null;
+    proposedDatetime: Date;
+    durationMinutes: number | null;
+    sport: keyof typeof SPORT_LABELS;
+    format: string;
+    proposedCourt?: { name: string } | null;
+  },
+  options: { resetConfirmation?: boolean } = {}
+) {
+  const changes: string[] = [];
+
+  if ((previous.proposedCourtId ?? null) !== (next.proposedCourtId ?? null)) {
+    changes.push(`Изменился клуб: ${next.proposedCourt?.name ?? "место уточняется"}`);
+  }
+
+  if (previous.proposedDatetime.getTime() !== next.proposedDatetime.getTime()) {
+    changes.push(`Изменилась дата и время: ${next.proposedDatetime.toLocaleString("ru-RU")}`);
+  }
+
+  if (previous.sport !== next.sport) {
+    changes.push(`Изменился вид спорта: ${SPORT_LABELS[next.sport] ?? next.sport}`);
+  }
+
+  if (previous.format !== next.format) {
+    changes.push(`Изменился формат: ${next.format}`);
+  }
+
+  if ((previous.durationMinutes ?? null) !== (next.durationMinutes ?? null)) {
+    changes.push(`Изменилась длительность: ${next.durationMinutes ? `${next.durationMinutes} мин` : "не указана"}`);
+  }
+
+  if (changes.length === 0) {
+    changes.push("Предложение игры обновлено");
+  }
+
   const confirmationLabel = options.resetConfirmation ? " Подтверждение нужно заново." : "";
-  return `Предложение игры обновлено: ${timeLabel}${placeLabel}.${confirmationLabel}`.trim();
+  return `${changes.join(". ")}.${confirmationLabel}`.trim();
 }

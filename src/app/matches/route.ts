@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { ensureMatchForUsers } from "@/server/matching";
 import { otherUserFromMatch } from "@/server/serializers";
 
@@ -14,6 +15,7 @@ const createMatchSchema = z.object({
 export async function GET() {
   try {
     const user = await requireSessionUser();
+    await runGameRequestMaintenance({ sendReminders: false });
     const matches = await prisma.match.findMany({
       where: {
         OR: [{ user1Id: user.id }, { user2Id: user.id }]

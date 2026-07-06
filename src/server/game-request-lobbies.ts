@@ -22,7 +22,7 @@ type GroupGameRequest = Pick<
 export async function ensureGroupSearchLobby(
   db: DbClient,
   requests: GroupGameRequest[],
-  options: { senderUserId?: string; createIntroMessage?: boolean } = {}
+  options: { senderUserId?: string; createIntroMessage?: boolean; existingLobbyId?: string | null } = {}
 ) {
   const uniqueRequests = dedupeRequests(requests);
   if (uniqueRequests.length <= 1) {
@@ -31,24 +31,29 @@ export async function ensureGroupSearchLobby(
 
   const primaryRequest = selectPrimaryGroupRequest(uniqueRequests);
   const nextStatus = resolveSearchStatus(uniqueRequests);
-  const existing = await db.gameSearch.findFirst({
-    where: {
-      createdByUserId: primaryRequest.createdByUserId,
-      scheduledAt: primaryRequest.proposedDatetime,
-      scheduledCourtId: primaryRequest.proposedCourtId,
-      sport: primaryRequest.sport,
-      format: primaryRequest.format,
-      playersNeeded: {
-        gt: 1
-      }
-    },
-    select: {
-      id: true
-    },
-    orderBy: {
-      updatedAt: "desc"
-    }
-  });
+  const existing = options.existingLobbyId
+    ? await db.gameSearch.findUnique({
+        where: { id: options.existingLobbyId },
+        select: { id: true }
+      })
+    : await db.gameSearch.findFirst({
+        where: {
+          createdByUserId: primaryRequest.createdByUserId,
+          scheduledAt: primaryRequest.proposedDatetime,
+          scheduledCourtId: primaryRequest.proposedCourtId,
+          sport: primaryRequest.sport,
+          format: primaryRequest.format,
+          playersNeeded: {
+            gt: 1
+          }
+        },
+        select: {
+          id: true
+        },
+        orderBy: {
+          updatedAt: "desc"
+        }
+      });
 
   const lobbyData = {
     preferredCourtId: primaryRequest.proposedCourtId,
@@ -59,7 +64,7 @@ export async function ensureGroupSearchLobby(
     durationMinutes: primaryRequest.durationMinutes ?? null,
     scheduledAt: primaryRequest.proposedDatetime,
     scheduledDurationMinutes: primaryRequest.durationMinutes ?? null,
-    hasCourtBooked: true,
+    hasCourtBooked: Boolean(primaryRequest.proposedCourtId),
     sport: primaryRequest.sport,
     format: primaryRequest.format,
     playersNeeded: uniqueRequests.length,

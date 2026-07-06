@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
+import { isRouteSport } from "@/lib/sport-semantics";
 import { createGameSearchSchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
@@ -35,11 +37,20 @@ export async function POST(request: NextRequest) {
 
     const gameSearch = await prisma.$transaction(async (tx) => {
       const preferredDistricts = body.preferredDistricts ?? [];
+      const customVenueTitle = normalizeOptionalText(body.customVenueTitle);
+      const customVenueAddress = normalizeOptionalText(body.customVenueAddress);
+      const runningRoute = normalizeOptionalText(body.runningRoute);
+      const runningRoutePoints =
+        isRouteSport(body.sport) && body.runningRoutePoints ? (body.runningRoutePoints as Prisma.InputJsonValue) : Prisma.JsonNull;
       const created = await tx.gameSearch.create({
         data: {
           inviteSlug: body.inviteSlug ?? null,
           createdByUserId: user.id,
           preferredCourtId: body.preferredCourtId ?? null,
+          customVenueTitle: body.preferredCourtId ? null : customVenueTitle,
+          customVenueAddress: body.preferredCourtId ? null : customVenueAddress,
+          runningRoute: isRouteSport(body.sport) ? runningRoute : null,
+          runningRoutePoints,
           preferredDistricts,
           preferredDays,
           preferredTimeRanges: body.preferredTimeRanges,
@@ -87,4 +98,9 @@ export async function POST(request: NextRequest) {
 
     return fail(getErrorMessage(error));
   }
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }

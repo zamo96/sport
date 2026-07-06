@@ -56,10 +56,12 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
           format: request.format,
           createdByUserId: request.createdByUserId,
           matchedUserId: request.matchedUserId,
-          proposedCourt: {
-            name: request.proposedCourt.name,
-            address: request.proposedCourt.address
-          }
+          proposedCourt: request.proposedCourt
+            ? {
+                name: request.proposedCourt.name,
+                address: request.proposedCourt.address
+              }
+            : null
         }))}
       />
     </PageShell>

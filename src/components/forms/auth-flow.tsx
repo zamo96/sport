@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type Gender, type Sport } from "@prisma/client";
 import { ShieldCheck, Sparkles, Users } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   saveGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
+import { buildLatestUserAgreementPayload, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
 import { getPrimarySportLevel, type SportLevelValue } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
@@ -48,6 +50,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const [draft, setDraft] = useState<DraftProfile>(createDefaultGuestOnboardingDraft());
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [levelGuideOpen, setLevelGuideOpen] = useState(false);
+  const [userAgreementAccepted, setUserAgreementAccepted] = useState(false);
 
   const continueHref = searchParams.get("continue") || "/discover";
 
@@ -167,13 +170,21 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
   async function requestCode(event: FormEvent) {
     event.preventDefault();
+    if (!userAgreementAccepted) {
+      setError(LEGAL_ACCEPTANCE_ERROR);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const data = await apiFetch<{ debugCode?: string }>("/auth/request-link", {
         method: "POST",
-        body: JSON.stringify({ email })
+        body: JSON.stringify({
+          email,
+          userAgreement: buildLatestUserAgreementPayload()
+        })
       });
       setDebugCode(data.debugCode ?? null);
       setStep("code");
@@ -186,13 +197,22 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
   async function verify(event: FormEvent) {
     event.preventDefault();
+    if (!userAgreementAccepted) {
+      setError(LEGAL_ACCEPTANCE_ERROR);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const data = await apiFetch<{ user: { onboardingCompleted: boolean } }>("/auth/verify", {
         method: "POST",
-        body: JSON.stringify({ email, code })
+        body: JSON.stringify({
+          email,
+          code,
+          userAgreement: buildLatestUserAgreementPayload()
+        })
       });
 
       if (!data.user.onboardingCompleted && guestDraftHasProfileBasics(draft)) {
@@ -494,11 +514,15 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   placeholder="player@email.com"
                 />
               </label>
+              <LegalAcceptanceField
+                accepted={userAgreementAccepted}
+                onChange={setUserAgreementAccepted}
+              />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
                   Позже
                 </Button>
-                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
+                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || !userAgreementAccepted}>
                   {loading ? "Отправляем..." : "Получить код"}
                 </Button>
               </div>
@@ -521,11 +545,15 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   placeholder="000000"
                 />
               </label>
+              <LegalAcceptanceField
+                accepted={userAgreementAccepted}
+                onChange={setUserAgreementAccepted}
+              />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
                   Изменить почту
                 </Button>
-                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6}>
+                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6 || !userAgreementAccepted}>
                   {loading ? "Сохраняем..." : "Войти и открыть поиск"}
                 </Button>
               </div>
@@ -535,6 +563,35 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           {error ? <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         </Panel>
       ) : null}
+    </div>
+  );
+}
+
+function LegalAcceptanceField({
+  accepted,
+  onChange
+}: {
+  accepted: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="rounded-[20px] border border-white/75 bg-white/72 px-3 py-3">
+      <label htmlFor="user-agreement-accepted" className="flex items-start gap-3 text-[12px] leading-5 text-ink/70">
+        <input
+          id="user-agreement-accepted"
+          type="checkbox"
+          checked={accepted}
+          onChange={(event) => onChange(event.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-court"
+        />
+        <span>
+          Принимаю{" "}
+          <Link href="/legal/terms" target="_blank" className="font-semibold text-court underline underline-offset-2">
+            пользовательское соглашение
+          </Link>{" "}
+          и даю согласие на обработку персональных данных.
+        </span>
+      </label>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import Foundation
 
 actor MockRepository: TennisRepository {
     private var slotProposalsBySearchId: [String: SearchSlotProposalSummary] = [:]
+    private var personalActivities: [PersonalActivity] = []
 
     private var currentUser = UserProfile(
         id: "u-anna",
@@ -267,7 +268,11 @@ actor MockRepository: TennisRepository {
         incomingLikes = Array(discoverUsers.prefix(1))
     }
 
-    func requestCode(email: String) async throws -> AuthChallenge {
+    func requestCode(email: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> AuthChallenge {
+        guard userAgreementAccepted, userAgreementVersion == LegalDocuments.userAgreementVersion else {
+            throw APIError.server(LegalDocuments.acceptanceError)
+        }
+
         currentUser = UserProfile(
             id: currentUser.id,
             email: email,
@@ -279,6 +284,8 @@ actor MockRepository: TennisRepository {
             preferredDistricts: currentUser.preferredDistricts,
             bio: currentUser.bio,
             avatarUrl: currentUser.avatarUrl,
+            profilePhotoUrls: currentUser.profilePhotoUrls,
+            profileVideoUrls: currentUser.profileVideoUrls,
             tennisLevel: currentUser.tennisLevel,
             preferredSports: currentUser.preferredSports,
             sportLevels: currentUser.sportLevels,
@@ -299,7 +306,11 @@ actor MockRepository: TennisRepository {
         return AuthChallenge(message: "Код подтверждения отправлен", debugCode: "111111")
     }
 
-    func verifyCode(email: String, code: String) async throws -> SessionUser {
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+        guard userAgreementAccepted, userAgreementVersion == LegalDocuments.userAgreementVersion else {
+            throw APIError.server(LegalDocuments.acceptanceError)
+        }
+
         guard code == "111111" else {
             throw APIError.server("В mock-режиме используй код 111111")
         }
@@ -307,7 +318,11 @@ actor MockRepository: TennisRepository {
         return SessionUser(id: currentUser.id, email: email, onboardingCompleted: currentUser.onboardingCompleted)
     }
 
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?) async throws -> SessionUser {
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+        guard userAgreementAccepted, userAgreementVersion == LegalDocuments.userAgreementVersion else {
+            throw APIError.server(LegalDocuments.acceptanceError)
+        }
+
         let resolvedName = [givenName, familyName]
             .compactMap { value in
                 let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -327,6 +342,8 @@ actor MockRepository: TennisRepository {
                 preferredDistricts: currentUser.preferredDistricts,
                 bio: currentUser.bio,
                 avatarUrl: currentUser.avatarUrl,
+                profilePhotoUrls: currentUser.profilePhotoUrls,
+                profileVideoUrls: currentUser.profileVideoUrls,
                 tennisLevel: currentUser.tennisLevel,
                 preferredSports: currentUser.preferredSports,
                 sportLevels: currentUser.sportLevels,
@@ -378,6 +395,34 @@ actor MockRepository: TennisRepository {
         let path = "/uploads/mock/\(UUID().uuidString)-\(fileName)"
         currentUser.avatarUrl = path
         return path
+    }
+
+    func uploadProfileMedia(data: Data, fileName: String, mimeType: String) async throws -> ProfileMediaUploadResult {
+        let isVideo = mimeType.hasPrefix("video/")
+        let path = "/uploads/mock/profile-media/\(UUID().uuidString)-\(fileName)"
+
+        if isVideo {
+            currentUser.profileVideoUrls = Array((currentUser.profileVideoUrls + [path]).prefix(4))
+        } else {
+            currentUser.profilePhotoUrls = Array((currentUser.profilePhotoUrls + [path]).prefix(6))
+            currentUser.avatarUrl = currentUser.profilePhotoUrls.first
+        }
+
+        return ProfileMediaUploadResult(
+            mediaUrl: path,
+            mediaType: isVideo ? "video" : "photo",
+            avatarUrl: currentUser.avatarUrl,
+            profilePhotoUrls: currentUser.profilePhotoUrls,
+            profileVideoUrls: currentUser.profileVideoUrls
+        )
+    }
+
+    func uploadGameReportPhoto(gameRequestId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        "/uploads/mock/game-reports/\(gameRequestId)/\(UUID().uuidString)-\(fileName)"
+    }
+
+    func uploadPersonalActivityPhoto(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        "/uploads/mock/personal-activities/\(activityId)/\(UUID().uuidString)-\(fileName)"
     }
 
     func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
@@ -498,8 +543,8 @@ actor MockRepository: TennisRepository {
     }
 
     func createGameRequest(matchId: String, draft: GameProposalDraft) async throws -> MatchGameRequest {
-        guard let court = courts.first(where: { $0.id == draft.proposedCourtId }) ?? courts.first else {
-            throw APIError.server("Место не найдено")
+        let court = draft.proposedCourtId.flatMap { courtId in
+            courts.first(where: { $0.id == courtId })
         }
 
         let request = MatchGameRequest(
@@ -555,8 +600,8 @@ actor MockRepository: TennisRepository {
     }
 
     func updateGameRequest(gameRequestId: String, draft: GameProposalDraft) async throws -> MatchGameRequest {
-        guard let court = courts.first(where: { $0.id == draft.proposedCourtId }) ?? courts.first else {
-            throw APIError.server("Место не найдено")
+        let court = draft.proposedCourtId.flatMap { courtId in
+            courts.first(where: { $0.id == courtId })
         }
 
         guard let matchIndex = matches.firstIndex(where: { $0.latestGameRequest?.id == gameRequestId }),
@@ -584,10 +629,12 @@ actor MockRepository: TennisRepository {
             createdByUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl),
             matchedUser: existing.createdByUserId == currentUser.id ? existing.matchedUser : existing.createdByUser,
             participants: existing.participants,
-            invitees: existing.invitees
+            invitees: existing.invitees,
+            report: existing.report
         )
 
-        let summary = "Предложение игры обновлено: \(DateFormatter.localizedString(from: draft.proposedDatetime, dateStyle: .short, timeStyle: .short)) · \(court.name). Подтверждение нужно заново."
+        let courtLabel = court?.name ?? "Место уточняется"
+        let summary = "Предложение игры обновлено: \(DateFormatter.localizedString(from: draft.proposedDatetime, dateStyle: .short, timeStyle: .short)) · \(courtLabel). Подтверждение нужно заново."
         let systemMessage = ChatMessage(
             id: "msg-\(UUID().uuidString)",
             senderUserId: currentUser.id,
@@ -636,6 +683,8 @@ actor MockRepository: TennisRepository {
                 outcome: nil,
                 sport: sourceRequest.sport,
                 format: sourceRequest.format,
+                runningRoute: sourceRequest.runningRoute,
+                runningRoutePoints: sourceRequest.runningRoutePoints,
                 proposedCourt: sourceRequest.proposedCourt,
                 createdByUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl),
                 matchedUser: ChatSender(
@@ -692,7 +741,8 @@ actor MockRepository: TennisRepository {
             proposedCourt: existing.proposedCourt,
             createdByUser: existing.createdByUser,
             matchedUser: existing.matchedUser,
-            participants: existing.participants
+            participants: existing.participants,
+            report: existing.report
         )
 
         let text: String
@@ -755,7 +805,8 @@ actor MockRepository: TennisRepository {
             createdByUser: existing.createdByUser,
             matchedUser: existing.matchedUser,
             participants: existing.participants,
-            invitees: existing.invitees
+            invitees: existing.invitees,
+            report: existing.report
         )
 
         let text = outcome == "played"
@@ -781,6 +832,183 @@ actor MockRepository: TennisRepository {
         messagesByMatch[existingMatch.id, default: []].append(systemMessage)
 
         return updated
+    }
+
+    func createGameReport(gameRequestId: String, photoUrls: [String], comment: String, visibility: String) async throws -> MatchGameRequest {
+        guard let matchIndex = matches.firstIndex(where: { $0.latestGameRequest?.id == gameRequestId }),
+              let existing = matches[matchIndex].latestGameRequest else {
+            throw APIError.server("Игра не найдена")
+        }
+
+        let participantIds = Array(Set(([existing.createdByUserId, existing.matchedUserId].compactMap { $0 } + existing.participants.map(\.id))))
+        let currentPreview = existing.participants.first(where: { $0.id == currentUser.id })
+        let report = GameReport(
+            id: "game-report-\(UUID().uuidString)",
+            gameRequestId: existing.id,
+            createdByUserId: currentUser.id,
+            comment: comment.isEmpty ? nil : comment,
+            visibility: visibility,
+            status: "confirmed",
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            createdByUser: currentPreview,
+            photos: photoUrls.enumerated().map { index, url in
+                GameReportPhoto(id: "game-report-photo-\(UUID().uuidString)", url: url, position: index)
+            },
+            confirmations: participantIds.map { userId in
+                GameReportConfirmation(
+                    id: "game-report-confirmation-\(UUID().uuidString)",
+                    userId: userId,
+                    status: "confirmed",
+                    user: existing.participants.first(where: { $0.id == userId })
+                )
+            }
+        )
+
+        let updated = copyGameRequest(existing, outcome: "played", report: report)
+        replaceLatestGameRequest(updated, at: matchIndex, messageText: "Добавлен фотоотчёт по игре.")
+        return updated
+    }
+
+    func updateGameReportConfirmation(gameRequestId: String, status: String) async throws -> MatchGameRequest {
+        guard let matchIndex = matches.firstIndex(where: { $0.latestGameRequest?.id == gameRequestId }),
+              let existing = matches[matchIndex].latestGameRequest,
+              let report = existing.report else {
+            throw APIError.server("Фотоотчёт не найден")
+        }
+
+        let confirmations = report.confirmations.map { confirmation in
+            GameReportConfirmation(
+                id: confirmation.id,
+                userId: confirmation.userId,
+                status: confirmation.userId == currentUser.id ? status : confirmation.status,
+                user: confirmation.user
+            )
+        }
+        let reportStatus = confirmations.contains(where: { $0.status == "disputed" })
+            ? "disputed"
+            : confirmations.allSatisfy { $0.status == "confirmed" } ? "confirmed" : "pending"
+        let updatedReport = GameReport(
+            id: report.id,
+            gameRequestId: report.gameRequestId,
+            createdByUserId: report.createdByUserId,
+            comment: report.comment,
+            visibility: report.visibility,
+            status: reportStatus,
+            createdAt: report.createdAt,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            createdByUser: report.createdByUser,
+            photos: report.photos,
+            confirmations: confirmations
+        )
+        let updated = copyGameRequest(existing, report: updatedReport)
+        replaceLatestGameRequest(updated, at: matchIndex, messageText: status == "confirmed" ? "Фотоотчёт подтверждён." : "Фотоотчёт отмечен как спорный.")
+        return updated
+    }
+
+    func fetchPersonalActivities() async throws -> [PersonalActivity] {
+        personalActivities.sorted { $0.scheduledAt < $1.scheduledAt }
+    }
+
+    func createPersonalActivity(_ draft: PersonalActivityDraft) async throws -> PersonalActivity {
+        guard let court = courts.first(where: { $0.id == draft.courtId }) else {
+            throw APIError.server("Клуб не найден")
+        }
+
+        let activity = PersonalActivity(
+            id: "personal-activity-\(UUID().uuidString)",
+            userId: currentUser.id,
+            courtId: draft.courtId,
+            sport: draft.sport,
+            scheduledAt: ISO8601DateFormatter().string(from: draft.scheduledAt),
+            durationMinutes: draft.durationMinutes,
+            comment: draft.comment.isEmpty ? nil : draft.comment,
+            status: "planned",
+            reportComment: nil,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            court: court,
+            photos: []
+        )
+        personalActivities.append(activity)
+        return activity
+    }
+
+    func updatePersonalActivity(activityId: String, draft: PersonalActivityUpdateDraft) async throws -> PersonalActivity {
+        guard let index = personalActivities.firstIndex(where: { $0.id == activityId }) else {
+            throw APIError.server("Визит не найден")
+        }
+
+        let existing = personalActivities[index]
+        let photoUrls = draft.photoUrls ?? existing.photoUrls
+        let updated = PersonalActivity(
+            id: existing.id,
+            userId: existing.userId,
+            courtId: existing.courtId,
+            sport: existing.sport,
+            scheduledAt: draft.scheduledAt.map { ISO8601DateFormatter().string(from: $0) } ?? existing.scheduledAt,
+            durationMinutes: draft.durationMinutes ?? existing.durationMinutes,
+            comment: draft.comment ?? existing.comment,
+            status: draft.status ?? existing.status,
+            reportComment: draft.reportComment ?? existing.reportComment,
+            createdAt: existing.createdAt,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            court: existing.court,
+            photos: photoUrls.enumerated().map { index, url in
+                PersonalActivityPhoto(id: "personal-activity-photo-\(UUID().uuidString)", url: url, position: index)
+            }
+        )
+        personalActivities[index] = updated
+        return updated
+    }
+
+    private func copyGameRequest(_ existing: MatchGameRequest, outcome: String? = nil, report: GameReport? = nil) -> MatchGameRequest {
+        MatchGameRequest(
+            id: existing.id,
+            matchId: existing.matchId,
+            rootRequestId: existing.rootRequestId,
+            searchLobbyId: existing.searchLobbyId,
+            sourceType: existing.sourceType,
+            regularPairId: existing.regularPairId,
+            status: existing.status,
+            proposedDatetime: existing.proposedDatetime,
+            createdByUserId: existing.createdByUserId,
+            matchedUserId: existing.matchedUserId,
+            durationMinutes: existing.durationMinutes,
+            comment: existing.comment,
+            outcome: outcome ?? existing.outcome,
+            sport: existing.sport,
+            format: existing.format,
+            runningRoute: existing.runningRoute,
+            runningRoutePoints: existing.runningRoutePoints,
+            proposedCourt: existing.proposedCourt,
+            createdByUser: existing.createdByUser,
+            matchedUser: existing.matchedUser,
+            participants: existing.participants,
+            invitees: existing.invitees,
+            report: report ?? existing.report
+        )
+    }
+
+    private func replaceLatestGameRequest(_ request: MatchGameRequest, at matchIndex: Int, messageText: String) {
+        let systemMessage = ChatMessage(
+            id: "msg-\(UUID().uuidString)",
+            senderUserId: currentUser.id,
+            text: messageText,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl)
+        )
+
+        let existingMatch = matches[matchIndex]
+        matches[matchIndex] = MatchSummary(
+            id: existingMatch.id,
+            status: existingMatch.status,
+            createdAt: existingMatch.createdAt,
+            otherUser: existingMatch.otherUser,
+            lastMessage: systemMessage,
+            latestGameRequest: request
+        )
+        messagesByMatch[existingMatch.id, default: []].append(systemMessage)
     }
 
     func fetchSearches() async throws -> [GameSearch] {
@@ -810,6 +1038,9 @@ actor MockRepository: TennisRepository {
             isActive: true,
             isExpired: false,
             preferredCourt: courts.first(where: { $0.id == draft.preferredCourtId }),
+            customVenueTitle: draft.customVenueTitle,
+            customVenueAddress: draft.customVenueAddress,
+            runningRoute: draft.runningRoute,
             preferredDistricts: draft.preferredDistricts,
             regularPair: nil,
             responses: []
@@ -845,6 +1076,9 @@ actor MockRepository: TennisRepository {
             isActive: searches[index].isActive,
             isExpired: false,
             preferredCourt: courts.first(where: { $0.id == draft.preferredCourtId }),
+            customVenueTitle: draft.customVenueTitle,
+            customVenueAddress: draft.customVenueAddress,
+            runningRoute: draft.runningRoute,
             preferredDistricts: draft.preferredDistricts,
             regularPair: searches[index].regularPair,
             responses: searches[index].responses
@@ -927,6 +1161,7 @@ actor MockRepository: TennisRepository {
             gameSearch: SearchLobbyGameSearch(
                 id: search.id,
                 createdByUserId: currentUser.id,
+                createdByUser: nil,
                 searchType: search.searchType,
                 status: search.status,
                 isActive: search.isActive ?? true,
@@ -1047,13 +1282,17 @@ actor MockRepository: TennisRepository {
         return updated
     }
 
-    func scheduleSearchGame(searchId: String, courtId: String, scheduledAt: Date, durationMinutes: Int) async throws -> SearchGameScheduleResult {
+    func scheduleSearchGame(searchId: String, courtId: String?, scheduledAt: Date, durationMinutes: Int) async throws -> SearchGameScheduleResult {
         let updated = try await updateSearch(
             searchId: searchId,
             draft: searches.first(where: { $0.id == searchId }).map {
                 SearchDraft(
                     inviteSlug: $0.inviteSlug,
                     preferredCourtId: $0.preferredCourt?.id,
+                    customVenueTitle: $0.customVenueTitle,
+                    customVenueAddress: $0.customVenueAddress,
+                    runningRoute: $0.runningRoute,
+                    runningRoutePoints: $0.runningRoutePoints,
                     preferredDistricts: $0.preferredDistricts,
                     preferredDays: $0.preferredDays,
                     preferredTimeRanges: $0.preferredTimeRanges,
@@ -1081,7 +1320,7 @@ actor MockRepository: TennisRepository {
                 hotWindow: nil,
                 hotStartTime: nil,
                 durationMinutes: durationMinutes,
-                hasCourtBooked: true,
+                hasCourtBooked: courtId != nil,
                 sport: .tennis,
                 selfLevel: nil,
                 selfLevelUnknown: true,
@@ -1817,6 +2056,31 @@ actor MockRepository: TennisRepository {
         return court
     }
 
+    func fetchAddressSuggestions(query: String, city: String?) async throws -> [AddressSuggestion] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count >= 3 else {
+            return []
+        }
+
+        return [
+            AddressSuggestion(
+                id: "mock-address-\(normalized.lowercased())",
+                title: normalized,
+                address: [city?.trimmingCharacters(in: .whitespacesAndNewlines), normalized]
+                    .compactMap { value in
+                        guard let value, !value.isEmpty else {
+                            return nil
+                        }
+                        return value
+                    }
+                    .joined(separator: ", "),
+                subtitle: "Адрес",
+                lat: nil,
+                lng: nil
+            )
+        ]
+    }
+
     func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court {
         guard let index = courts.firstIndex(where: { $0.id == courtId }) else {
             throw APIError.server("Клуб не найден")
@@ -1834,6 +2098,7 @@ actor MockRepository: TennisRepository {
             locationLng: current.locationLng,
             distanceLabel: current.distanceLabel,
             nearestMetroName: current.nearestMetroName,
+            metroNames: current.metroNames,
             supportedSports: current.supportedSports,
             phone: current.phone,
             workingHours: current.workingHours,
@@ -1865,16 +2130,12 @@ actor MockRepository: TennisRepository {
             }
             count += search.responses.filter { $0.status == "pending" }.count
         }
-        let createdSearchGamesCount = searches.filter {
-            $0.searchType == .hot && $0.status.lowercased() == "matched"
-        }.count
-
         return ActivitySummary(
             inboxBadgeCount: matches.count,
             incomingLikesCount: incomingLikes.count,
             hotBadgeCount: discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
             discoverBadgeCount: incomingLikes.count + discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
-            searchesBadgeCount: pendingSearchResponsesCount + createdSearchGamesCount,
+            searchesBadgeCount: pendingSearchResponsesCount,
             notificationSound: currentUser.notificationSound
         )
     }
@@ -1893,6 +2154,10 @@ actor MockRepository: TennisRepository {
     func markInboxSeen() async throws {}
 
     func markNotificationsSeen() async throws {}
+
+    func setActiveChat(matchId: String?, gameRequestId: String?, isActive: Bool) async throws {}
+
+    func setActiveSearchLobby(searchId: String, isActive: Bool) async throws {}
 
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?) async throws {}
 }
@@ -1945,6 +2210,8 @@ private func makeDiscoverUser(
         "districtLabel": districtLabel,
         "bio": bio,
         "avatarUrl": NSNull(),
+        "profilePhotoUrls": [],
+        "profileVideoUrls": [],
         "tennisLevel": levels["tennis"] ?? 5,
         "preferredSports": sports.map(\.rawValue),
         "sportLevels": levels,
@@ -2024,6 +2291,8 @@ private func discoverUserDictionary(_ user: DiscoverUser) -> [String: Any] {
         "districtLabel": user.districtLabel ?? NSNull(),
         "bio": user.bio ?? NSNull(),
         "avatarUrl": user.avatarUrl ?? NSNull(),
+        "profilePhotoUrls": user.profilePhotoUrls,
+        "profileVideoUrls": user.profileVideoUrls,
         "tennisLevel": user.tennisLevel ?? NSNull(),
         "preferredSports": user.preferredSports.map(\.rawValue),
         "sportLevels": user.sportLevels,
@@ -2048,6 +2317,7 @@ private func courtDictionary(_ court: Court) -> [String: Any] {
         "locationLng": court.locationLng,
         "distanceLabel": court.distanceLabel as Any,
         "nearestMetroName": court.nearestMetroName as Any,
+        "metroNames": court.metroNames,
         "supportedSports": court.supportedSports?.map(\.rawValue) as Any,
         "phone": court.phone as Any,
         "workingHours": court.workingHours as Any,

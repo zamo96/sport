@@ -11,6 +11,7 @@ import {
   scoreCandidates
 } from "@/lib/scoring";
 import type { GuestOnboardingDraft } from "@/lib/guest-draft";
+import { recordDiscoverImpressions, rerankDiscoverCandidates } from "@/server/recommendations";
 
 const candidateBaseSelect = {
   id: true,
@@ -22,6 +23,8 @@ const candidateBaseSelect = {
   preferredDistricts: true,
   bio: true,
   avatarUrl: true,
+  profilePhotoUrls: true,
+  profileVideoUrls: true,
   homeLat: true,
   homeLng: true,
   tennisLevel: true,
@@ -33,7 +36,9 @@ const candidateBaseSelect = {
   availableTimeRanges: true,
   availableTimeSlots: true,
   searchRadiusKm: true,
-  isLookingForGame: true
+  isLookingForGame: true,
+  lastActiveAt: true,
+  createdAt: true
 } satisfies Prisma.UserSelect;
 
 async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilters = {}) {
@@ -60,6 +65,18 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
                   swipesReceived: {
                     none: {
                       fromUserId: viewerId
+                    }
+                  },
+                  matchesAsUser1: {
+                    none: {
+                      user2Id: viewerId,
+                      status: "active"
+                    }
+                  },
+                  matchesAsUser2: {
+                    none: {
+                      user1Id: viewerId,
+                      status: "active"
                     }
                   }
                 }
@@ -137,10 +154,19 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
                 }
               }
         },
-        orderBy: {
-          createdAt: "desc"
-        },
-        take: 1
+        orderBy:
+          filters.view === "hot"
+            ? [
+                {
+                  hotStartsAt: "asc"
+                },
+                {
+                  createdAt: "desc"
+                }
+              ]
+            : {
+                createdAt: "desc"
+              }
       }
     }
   });
@@ -175,18 +201,26 @@ function filterCandidatesForView(
   const viewerSports = parseSports(viewer.preferredSports);
 
   return candidates.filter((candidate) => {
-    const latestSearch = Array.isArray(candidate.gameSearches) ? candidate.gameSearches[0] : null;
+    const gameSearches = Array.isArray(candidate.gameSearches) ? candidate.gameSearches : [];
 
     if (filters.view === "seeking" || filters.view === "hot") {
-      if (!latestSearch?.sport) {
+      const hasMatchingSearch = gameSearches.some((search) => {
+        if (!search.sport) {
+          return false;
+        }
+
+        if (filters.sport && filters.sport.length > 0 && !filters.sport.includes(search.sport)) {
+          return false;
+        }
+
+        return viewerSports.includes(search.sport);
+      });
+
+      if (!hasMatchingSearch) {
         return false;
       }
 
-      if (filters.sport && filters.sport.length > 0 && !filters.sport.includes(latestSearch.sport)) {
-        return false;
-      }
-
-      return viewerSports.includes(latestSearch.sport);
+      return true;
     }
 
     return true;
@@ -215,7 +249,9 @@ function toCandidateViewer(viewer: CandidateUser) {
     availableTimeRanges: viewer.availableTimeRanges,
     availableTimeSlots: viewer.availableTimeSlots,
     searchRadiusKm: viewer.searchRadiusKm,
-    isLookingForGame: viewer.isLookingForGame
+    isLookingForGame: viewer.isLookingForGame,
+    lastActiveAt: viewer.lastActiveAt,
+    createdAt: viewer.createdAt
   } satisfies CandidateUser;
 }
 
@@ -225,8 +261,14 @@ async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string 
 
   const viewerProfile = toCandidateViewer(viewer);
   const scored = scoreCandidates(viewerProfile, filteredCandidates, filters);
+  const ranked = viewerId ? await rerankDiscoverCandidates(viewerId, scored, filters) : scored;
+  const source = filters.view ?? "discover";
 
-  return scored.map((candidate) => ({
+  if (viewerId) {
+    await recordDiscoverImpressions(viewerId, ranked, source);
+  }
+
+  return ranked.map((candidate) => ({
     ...candidate,
     explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
   }));

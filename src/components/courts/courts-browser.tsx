@@ -23,13 +23,19 @@ type Court = {
   id: string;
   name: string;
   address: string;
+  city?: string | null;
   district?: string | null;
   nearestMetroName?: string | null;
+  metroNames?: string[];
   phone?: string | null;
   workingHours?: string | null;
   yandexMapsUrl?: string | null;
   websiteUrl?: string | null;
   bookingUrl?: string | null;
+  about?: string | null;
+  amenities?: string[];
+  messengerType?: string | null;
+  messengerUrl?: string | null;
   photoUrl?: string | null;
   priceRange: string;
   rating: number | null;
@@ -95,8 +101,10 @@ export function CourtsBrowser({
           buildCourtSearchTerms({
             name: court.name,
             address: court.address,
+            city: court.city,
             district: court.district,
             nearestMetroName: court.nearestMetroName,
+            metroNames: courtMetroNames(court),
             sports: normalizeCourtSports(court.supportedSports)
           }),
           normalized
@@ -110,7 +118,7 @@ export function CourtsBrowser({
         value: court.name,
         center: { lat: court.locationLat, lng: court.locationLng },
         district: court.district ?? null,
-        meta: [court.nearestMetroName, getDistrictLabel(court.district), normalizeCourtSports(court.supportedSports).slice(0, 2).map((sport) => SPORT_LABELS[sport]).join(" · ")]
+        meta: [courtMetroLabel(court), getDistrictLabel(court.district), normalizeCourtSports(court.supportedSports).slice(0, 2).map((sport) => SPORT_LABELS[sport]).join(" · ")]
           .filter(Boolean)
           .join(" · ")
       }));
@@ -118,8 +126,7 @@ export function CourtsBrowser({
     const metroSuggestions = Array.from(
       new Map(
         courts
-          .filter((court) => court.nearestMetroName)
-          .map((court) => [court.nearestMetroName as string, court])
+          .flatMap((court) => courtMetroNames(court).map((metroName) => [metroName, court] as const))
       ).entries()
     )
       .filter(([metroName]) =>
@@ -129,6 +136,7 @@ export function CourtsBrowser({
             address: "",
             district: null,
             nearestMetroName: metroName,
+            metroNames: [metroName],
             sports: []
           }),
           normalized
@@ -155,6 +163,7 @@ export function CourtsBrowser({
             address: "",
             district: districtLabel,
             nearestMetroName: null,
+            metroNames: [],
             sports: []
           }),
           normalized
@@ -186,6 +195,7 @@ export function CourtsBrowser({
             address: "",
             district: null,
             nearestMetroName: null,
+            metroNames: [],
             sports: [sport]
           }),
           normalized
@@ -211,10 +221,12 @@ export function CourtsBrowser({
       const supportsSport = !selectedSport || normalizeCourtSports(court.supportedSports).includes(selectedSport);
       const matchesQuery = matchesSearchTerms(
         buildCourtSearchTerms({
-          name: court.name,
-          address: court.address,
-          district: court.district,
+            name: court.name,
+            address: court.address,
+            city: court.city,
+            district: court.district,
           nearestMetroName: court.nearestMetroName,
+          metroNames: courtMetroNames(court),
           sports: normalizeCourtSports(court.supportedSports)
         }),
         normalizedQuery
@@ -285,7 +297,7 @@ export function CourtsBrowser({
       value: court.name,
       center: { lat: court.locationLat, lng: court.locationLng },
       district: court.district ?? null,
-      meta: [court.nearestMetroName, getDistrictLabel(court.district)].filter(Boolean).join(" · ")
+      meta: [courtMetroLabel(court), getDistrictLabel(court.district)].filter(Boolean).join(" · ")
     });
 
     window.setTimeout(() => {
@@ -494,9 +506,9 @@ export function CourtsBrowser({
                         {getDistrictLabel(court.district) ?? court.district ?? DEFAULT_CITY}
                       </div>
                       <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
-                      <div className="mt-1 text-sm leading-6 text-ink/65">{court.address}</div>
-                      {court.nearestMetroName ? (
-                        <div className="mt-1 text-xs font-medium text-ink/55">Метро: {court.nearestMetroName}</div>
+                      <div className="mt-1 text-sm leading-6 text-ink/65">{courtDisplayAddress(court)}</div>
+                      {courtMetroLabel(court) ? (
+                        <div className="mt-1 text-xs font-medium text-ink/55">Метро: {courtMetroLabel(court)}</div>
                       ) : null}
                     </div>
                     <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
@@ -518,18 +530,42 @@ export function CourtsBrowser({
                   </div>
 
                   {expanded ? (
-                    <div className="grid gap-2 rounded-[20px] bg-cream/80 p-3 text-sm leading-6 text-ink/70 sm:grid-cols-2">
-                      {court.workingHours ? <div>Часы: <span className="font-semibold text-ink">{court.workingHours}</span></div> : null}
-                      {court.phone ? <div>Телефон: <span className="font-semibold text-ink">{court.phone}</span></div> : null}
-                      {court.websiteUrl ? (
-                        <a href={court.websiteUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
-                          Сайт клуба
-                        </a>
+                    <div className="space-y-3 rounded-[20px] bg-cream/80 p-3 text-sm leading-6 text-ink/70">
+                      {court.about ? (
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/45">О клубе</div>
+                          <div className="mt-1 text-ink/75">{court.about}</div>
+                        </div>
                       ) : null}
-                      {court.bookingUrl ? (
-                        <a href={court.bookingUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
-                          Бронирование
-                        </a>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {court.workingHours ? <div>Часы: <span className="font-semibold text-ink">{court.workingHours}</span></div> : null}
+                        {court.phone ? <div>Телефон: <span className="font-semibold text-ink">{court.phone}</span></div> : null}
+                        {court.websiteUrl ? (
+                          <a href={court.websiteUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
+                            Сайт клуба
+                          </a>
+                        ) : null}
+                        {court.bookingUrl ? (
+                          <a href={court.bookingUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
+                            Бронирование
+                          </a>
+                        ) : null}
+                        {court.messengerUrl ? (
+                          <a href={court.messengerUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
+                            {messengerLabel(court.messengerType)}
+                          </a>
+                        ) : null}
+                      </div>
+
+                      {court.amenities?.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {court.amenities.map((amenity) => (
+                            <span key={amenity} className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-semibold text-ink/70">
+                              {amenity}
+                            </span>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
@@ -589,6 +625,38 @@ function buildProposalHref(court: Court, selectedSport: Sport | null) {
   }
 
   return `/play/proposals/new?${params.toString()}`;
+}
+
+function courtDisplayAddress(court: Court) {
+  const city = court.city?.trim();
+  if (!city || court.address.toLowerCase().includes(city.toLowerCase())) {
+    return court.address;
+  }
+
+  return `${city}, ${court.address}`;
+}
+
+function courtMetroNames(court: Court) {
+  return Array.from(
+    new Set([...(court.metroNames ?? []), court.nearestMetroName].filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))
+  ).slice(0, 8);
+}
+
+function courtMetroLabel(court: Court) {
+  const names = courtMetroNames(court);
+  return names.length > 0 ? names.join(" · ") : null;
+}
+
+function messengerLabel(type?: string | null) {
+  switch (type?.toLowerCase()) {
+    case "telegram":
+    case "tg":
+      return "Telegram";
+    case "max":
+      return "МАКС";
+    default:
+      return "Мессенджер";
+  }
 }
 
 function getCourtLetter(name: string) {

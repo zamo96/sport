@@ -2,13 +2,16 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { getHotNotificationsCount, getIncomingLikesCount } from "@/server/app-data";
+import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { touchUserActivity } from "@/server/user-activity";
 
 export async function GET() {
   try {
     const user = await requireSessionUser();
     await touchUserActivity(user.id);
+    await runGameRequestMaintenance();
     const seenAt = user.lastInboxSeenAt ?? new Date(0);
+    const notificationsSeenAt = user.lastNotificationsSeenAt ?? new Date(0);
     const matchWhere = {
       status: "active" as const,
       OR: [{ user1Id: user.id }, { user2Id: user.id }]
@@ -17,10 +20,10 @@ export async function GET() {
     const [
       newMatches,
       unreadMessages,
+      unreadSearchLobbyMessages,
       incomingLikesCount,
       hotBadgeCount,
-      pendingSearchResponsesCount,
-      createdSearchGamesCount
+      pendingSearchResponsesCount
     ] = await Promise.all([
       prisma.match.findMany({
         where: {
@@ -48,6 +51,34 @@ export async function GET() {
           gameRequestId: true
         }
       }),
+      prisma.gameSearchMessage.findMany({
+        where: {
+          createdAt: {
+            gt: notificationsSeenAt
+          },
+          senderUserId: {
+            not: user.id
+          },
+          gameSearch: {
+            OR: [
+              { createdByUserId: user.id },
+              {
+                responses: {
+                  some: {
+                    responderUserId: user.id,
+                    status: {
+                      in: ["approved"]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        select: {
+          gameSearchId: true
+        }
+      }),
       getIncomingLikesCount(user.id),
       getHotNotificationsCount(user.id),
       prisma.gameSearchResponse.count({
@@ -62,13 +93,6 @@ export async function GET() {
             }
           }
         }
-      }),
-      prisma.gameSearch.count({
-        where: {
-          createdByUserId: user.id,
-          searchType: "hot",
-          status: "matched"
-        }
       })
     ]);
 
@@ -82,12 +106,18 @@ export async function GET() {
       unreadMatchIds.add(message.gameRequestId ?? message.matchId);
     }
 
+    const unreadSearchLobbyIds = new Set<string>();
+
+    for (const message of unreadSearchLobbyMessages) {
+      unreadSearchLobbyIds.add(message.gameSearchId);
+    }
+
     return ok({
       inboxBadgeCount: unreadMatchIds.size,
       incomingLikesCount,
       hotBadgeCount,
       discoverBadgeCount: incomingLikesCount + hotBadgeCount,
-      searchesBadgeCount: pendingSearchResponsesCount + createdSearchGamesCount,
+      searchesBadgeCount: pendingSearchResponsesCount + unreadSearchLobbyIds.size,
       notificationSound: user.notificationSound ?? true
     });
   } catch (error) {

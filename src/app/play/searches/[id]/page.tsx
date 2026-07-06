@@ -124,7 +124,8 @@ export default async function SearchLobbyPage({ params }: { params: { id: string
             name: court.name,
             address: court.address,
             district: court.district,
-            nearestMetroName: court.nearestMetro?.name ?? null
+            nearestMetroName: court.nearestMetro?.name ?? null,
+            metroNames: court.metroLinks?.map((link) => link.metro.name) ?? []
           }))}
       />
     </PageShell>

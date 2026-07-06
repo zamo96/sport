@@ -38,7 +38,7 @@ type GameRequestCardProps = {
     proposedCourt: {
       name: string;
       address: string;
-    };
+    } | null;
   };
   currentUserId: string;
   detailsHref?: string;
@@ -113,7 +113,9 @@ export function GameRequestCard({ gameRequest, currentUserId, detailsHref }: Gam
         </span>
       </div>
       <div className="text-sm leading-6 text-ink/72">
-        {gameRequest.proposedCourt.name}, {gameRequest.proposedCourt.address}
+        {gameRequest.proposedCourt
+          ? `${gameRequest.proposedCourt.name}, ${gameRequest.proposedCourt.address}`
+          : "Место уточняется в чате игры"}
       </div>
       <div className="flex flex-wrap gap-2">
         <SportBadge sport={gameRequest.sport} className="bg-white text-ink" />

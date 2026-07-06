@@ -110,8 +110,10 @@ export function transliterateEnToRu(value: string | null | undefined) {
 export function buildCourtSearchTerms(input: {
   name: string;
   address: string;
+  city?: string | null;
   district?: string | null;
   nearestMetroName?: string | null;
+  metroNames?: string[];
   sports?: Sport[];
 }) {
   const districtLabel = getDistrictLabel(input.district);
@@ -119,7 +121,9 @@ export function buildCourtSearchTerms(input: {
   const rawParts = [
     input.name,
     input.address,
+    input.city ?? "",
     input.nearestMetroName ?? "",
+    ...(input.metroNames ?? []),
     input.district ?? "",
     districtLabel ?? "",
     ...sportLabels

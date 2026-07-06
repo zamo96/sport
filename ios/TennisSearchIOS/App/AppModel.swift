@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
     @Published var presentedAuthStep: AuthStep?
     @Published var pendingNavigationTarget: AppNavigationTarget?
     @Published var pendingChatMatchID: String?
+    @Published var pendingSearchLobbyID: String?
     @Published var bottomBarDisplayMode: BottomBarDisplayMode = .expanded
     @Published var pendingHighlightedDiscoverUserID: String?
     @Published var pendingHighlightedSearchID: String?
@@ -34,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var lastSelectedDiscoverTab: DiscoverTab = .swipe
     @Published var hasActiveUpcomingGameRequests = false
     @Published var serverRecoveryNotice: ServerRecoveryNotice?
+    @Published private(set) var tabContentLoadingKeys: Set<String> = []
 
     let repository: TennisRepository
     let isUsingMockData: Bool
@@ -112,9 +114,13 @@ final class AppModel: ObservableObject {
         presentedAuthStep = nil
     }
 
-    func requestCode() async {
+    func requestCode(userAgreementAccepted: Bool, userAgreementVersion: String = LegalDocuments.userAgreementVersion) async {
         guard !authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Укажи email"
+            return
+        }
+        guard userAgreementAccepted else {
+            errorMessage = LegalDocuments.acceptanceError
             return
         }
 
@@ -122,7 +128,11 @@ final class AppModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            let challenge = try await repository.requestCode(email: authEmail)
+            let challenge = try await repository.requestCode(
+                email: authEmail,
+                userAgreementAccepted: userAgreementAccepted,
+                userAgreementVersion: userAgreementVersion
+            )
             authMessage = challenge.message
             debugCode = challenge.debugCode
             errorMessage = nil
@@ -132,9 +142,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func verify(code: String) async {
+    func verify(code: String, userAgreementAccepted: Bool, userAgreementVersion: String = LegalDocuments.userAgreementVersion) async {
         guard !authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Сначала укажи email"
+            return
+        }
+        guard userAgreementAccepted else {
+            errorMessage = LegalDocuments.acceptanceError
             return
         }
 
@@ -142,7 +156,12 @@ final class AppModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            let session = try await repository.verifyCode(email: authEmail, code: code)
+            let session = try await repository.verifyCode(
+                email: authEmail,
+                code: code,
+                userAgreementAccepted: userAgreementAccepted,
+                userAgreementVersion: userAgreementVersion
+            )
             var user = try await repository.fetchCurrentUser()
 
             if !session.onboardingCompleted && guestDraft.hasProfileBasics {
@@ -161,7 +180,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?) async {
+    func signInWithApple(
+        identityToken: String,
+        email: String?,
+        givenName: String?,
+        familyName: String?,
+        userAgreementAccepted: Bool,
+        userAgreementVersion: String = LegalDocuments.userAgreementVersion
+    ) async {
+        guard userAgreementAccepted else {
+            errorMessage = LegalDocuments.acceptanceError
+            return
+        }
+
         isBusy = true
         defer { isBusy = false }
 
@@ -174,7 +205,9 @@ final class AppModel: ObservableObject {
                 identityToken: identityToken,
                 email: email,
                 givenName: givenName,
-                familyName: familyName
+                familyName: familyName,
+                userAgreementAccepted: userAgreementAccepted,
+                userAgreementVersion: userAgreementVersion
             )
             var user = try await repository.fetchCurrentUser()
 
@@ -218,6 +251,7 @@ final class AppModel: ObservableObject {
         presentedAuthStep = nil
         pendingNavigationTarget = nil
         pendingChatMatchID = nil
+        pendingSearchLobbyID = nil
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil
@@ -244,6 +278,28 @@ final class AppModel: ObservableObject {
 
     func dismissServerRecoveryNotice() {
         serverRecoveryNotice = nil
+    }
+
+    func setTabContentLoading(_ key: String, isLoading: Bool) {
+        if isLoading {
+            guard !tabContentLoadingKeys.contains(key) else {
+                return
+            }
+            var keys = tabContentLoadingKeys
+            keys.insert(key)
+            tabContentLoadingKeys = keys
+        } else {
+            guard tabContentLoadingKeys.contains(key) else {
+                return
+            }
+            var keys = tabContentLoadingKeys
+            keys.remove(key)
+            tabContentLoadingKeys = keys
+        }
+    }
+
+    func isTabContentLoading(_ key: String) -> Bool {
+        tabContentLoadingKeys.contains(key)
     }
 
     func queueDiscoverSimilarPlayersHint() {
@@ -336,8 +392,65 @@ enum AppNavigationTarget: Equatable {
     case discover(DiscoverTab, highlightedUserID: String? = nil, highlightedSearchID: String? = nil, highlightedGameRequestID: String? = nil)
     case matches
     case searches
+    case searchLobby(String)
     case courts(sport: Sport?)
     case chat(String)
+}
+
+extension AppNavigationTarget {
+    init?(notificationHref href: String) {
+        guard let components = URLComponents(string: href) else {
+            return nil
+        }
+
+        let path = components.path
+        let queryItems = components.queryItems ?? []
+
+        if path.hasPrefix("/inbox/") {
+            self = .chat(String(path.dropFirst("/inbox/".count)))
+            return
+        }
+
+        if path.hasPrefix("/play/searches/") {
+            self = .searchLobby(String(path.dropFirst("/play/searches/".count)))
+            return
+        }
+
+        if path == "/play/searches" || path.hasPrefix("/searches") {
+            self = .searches
+            return
+        }
+
+        if path.hasPrefix("/play/games/") {
+            self = .discover(.upcoming, highlightedGameRequestID: String(path.dropFirst("/play/games/".count)))
+            return
+        }
+
+        if path.hasPrefix("/discover") {
+            let view = queryItems.first(where: { $0.name == "view" })?.value ?? "swipe"
+            let highlight = queryItems.first(where: { $0.name == "highlight" })?.value
+            switch view {
+            case "likes":
+                self = .discover(.likes, highlightedUserID: highlight)
+            case "hot":
+                self = .discover(.hot, highlightedSearchID: highlight)
+            case "upcoming":
+                self = .discover(.upcoming, highlightedGameRequestID: highlight)
+            case "seeking", "regular":
+                self = .discover(.seeking, highlightedSearchID: highlight)
+            default:
+                self = .discover(.swipe, highlightedUserID: highlight)
+            }
+            return
+        }
+
+        if path.hasPrefix("/matches") || path.hasPrefix("/inbox") {
+            self = .matches
+            return
+        }
+
+        return nil
+    }
 }
 
 enum AppConfig {

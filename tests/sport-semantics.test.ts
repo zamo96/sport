@@ -24,4 +24,9 @@ describe("sport semantics (sport-aware labels)", () => {
     expect(getSportVenueShortLabelRu(Sport.yoga)).not.toContain("корт");
     expect(getSportVenueShortLabelRu(Sport.yoga)).not.toBe("Корт");
   });
+
+  it("labels route sports as routes", () => {
+    expect(getSportVenueShortLabelRu(Sport.running)).toBe("Маршрут");
+    expect(getSportVenueShortLabelRu(Sport.supboard)).toBe("Маршрут");
+  });
 });

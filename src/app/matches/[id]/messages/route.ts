@@ -5,7 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
-import { publishRealtimeEventToUsers } from "@/server/realtime";
+import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
 
 async function getMatchForUser(matchId: string, userId: string) {
@@ -29,8 +29,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
     const messages = await prisma.chatMessage.findMany({
       where: {
-        matchId: match.id,
-        gameRequestId: null
+        matchId: match.id
       },
       include: {
         senderUser: true
@@ -97,7 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     });
 
-    if (recipient?.notificationMessages) {
+    const recipientActiveInChat = await isUserActiveInChat(recipientUserId, [`match:${match.id}`]);
+
+    if (recipient?.notificationMessages && !recipientActiveInChat) {
       await sendPushToUser({
         userId: recipient.id,
         title: `Новое сообщение от ${user.name ?? "игрока"}`,

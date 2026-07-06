@@ -14,6 +14,7 @@ struct SearchesView: View {
     @State private var updatingSearchID: String?
     @State private var presentedSearchLobbyID: String?
     @State private var createButtonPressed = false
+    @State private var isLoadingSearches = false
     let openedFromDiscover: Bool
 
     init(openedFromDiscover: Bool = false) {
@@ -31,11 +32,11 @@ struct SearchesView: View {
                     summaryStrip
                     filterRail
 
-                    if filteredSearches.isEmpty {
-                        SectionCard(title: "Пока пусто", subtitle: "Создай срочный поиск, чтобы получать отклики игроков.") {
+                    if filteredSearches.isEmpty, !isLoadingSearches {
+                        SectionCard(title: "Пока пусто", subtitle: "Созданные поиски и твои отклики будут собраны здесь.") {
                             EmptyStateView(
                                 title: "Нет поисков в этом разделе",
-                                subtitle: "Сейчас показываем только срочные поиски.",
+                                subtitle: "Сейчас показываем только срочные поиски и отклики на них.",
                                 systemImage: "flame"
                             )
                         }
@@ -59,7 +60,11 @@ struct SearchesView: View {
         .toolbar(.hidden, for: .navigationBar)
         .simultaneousGesture(backToDiscoverSwipe)
         .task {
+            openPendingSearchLobbyIfNeeded()
             await loadSearches()
+        }
+        .onChange(of: appModel.pendingSearchLobbyID) { _ in
+            openPendingSearchLobbyIfNeeded()
         }
         .refreshable {
             await loadSearches()
@@ -130,12 +135,12 @@ struct SearchesView: View {
     }
 
     private var activeSearchCount: Int {
-        visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }.count
+        visibleSearches.filter { isOwnedSearch($0) && isEditableSearch($0) && ($0.isActive ?? true) }.count
     }
 
     private var pendingResponsesCount: Int {
         visibleSearches.reduce(into: 0) { count, search in
-            guard isSearchCountedInSummary(search) else {
+            guard isOwnedSearch(search), isSearchCountedInSummary(search) else {
                 return
             }
             count += search.responses.filter { $0.status == "pending" }.count
@@ -155,13 +160,13 @@ struct SearchesView: View {
         case .all:
             return visibleSearches
         case .active:
-            return visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
+            return visibleSearches.filter { isOwnedSearch($0) && isEditableSearch($0) && ($0.isActive ?? true) }
         case .withResponses:
-            return visibleSearches.filter { !$0.responses.isEmpty }
+            return visibleSearches.filter { (isOwnedSearch($0) && !$0.responses.isEmpty) || hasMyResponse($0) }
         case .paused:
-            return visibleSearches.filter { !($0.isActive ?? true) && $0.status != "closed" }
+            return visibleSearches.filter { isOwnedSearch($0) && isEditableSearch($0) && !($0.isActive ?? true) }
         case .completed:
-            return visibleSearches.filter { $0.status == "matched" || $0.status == "closed" }
+            return visibleSearches.filter { isCompletedSearch($0) }
         }
     }
 
@@ -170,12 +175,14 @@ struct SearchesView: View {
     }
 
     private var allSearchSections: [SearchSectionModel] {
-        let active = visibleSearches.filter { ($0.isActive ?? true) && $0.status != "matched" && $0.status != "closed" }
-        let paused = visibleSearches.filter { !($0.isActive ?? true) && $0.status != "closed" }
-        let completed = visibleSearches.filter { $0.status == "matched" || $0.status == "closed" }
+        let active = visibleSearches.filter { isOwnedSearch($0) && isEditableSearch($0) && ($0.isActive ?? true) }
+        let applications = visibleSearches.filter { !isOwnedSearch($0) && hasMyResponse($0) }
+        let paused = visibleSearches.filter { isOwnedSearch($0) && isEditableSearch($0) && !($0.isActive ?? true) }
+        let completed = visibleSearches.filter { isOwnedSearch($0) && isCompletedSearch($0) }
 
         return [
             SearchSectionModel(id: "active", title: "Активные", subtitle: "Поиски, которые сейчас видят игроки.", searches: active),
+            SearchSectionModel(id: "applications", title: "Мои отклики", subtitle: "Поиски других игроков, куда ты уже откликнулся.", searches: applications),
             SearchSectionModel(id: "paused", title: "Остановлены", subtitle: "Эти поиски сняты с показа и ждут перезапуска.", searches: paused),
             SearchSectionModel(id: "completed", title: "Завершены", subtitle: "Игроки найдены или поиск уже закрыт.", searches: completed)
         ]
@@ -189,6 +196,34 @@ struct SearchesView: View {
             return false
         }
         return true
+    }
+
+    private func isCompletedSearch(_ search: GameSearch) -> Bool {
+        let status = search.status.lowercased()
+        if ["matched", "completed", "finished"].contains(status) {
+            return true
+        }
+        let approvedCount = search.responses.filter { $0.status == "approved" }.count
+        return approvedCount >= max(search.playersNeeded, 1)
+    }
+
+    private func isEditableSearch(_ search: GameSearch) -> Bool {
+        !isCompletedSearch(search)
+    }
+
+    private func isOwnedSearch(_ search: GameSearch) -> Bool {
+        guard let createdByUserId = search.createdByUserId,
+              let currentUserId = appModel.currentUser?.id else {
+            return true
+        }
+        return createdByUserId == currentUserId
+    }
+
+    private func hasMyResponse(_ search: GameSearch) -> Bool {
+        guard let currentUserId = appModel.currentUser?.id else {
+            return false
+        }
+        return search.responses.contains { $0.responderUser.id == currentUserId }
     }
 
     @ViewBuilder
@@ -216,8 +251,10 @@ struct SearchesView: View {
     }
 
     private func searchCard(for search: GameSearch) -> some View {
-        SearchOverviewCard(
+        let isOwned = isOwnedSearch(search)
+        return SearchOverviewCard(
             search: search,
+            currentUserId: appModel.currentUser?.id,
             updatingResponseID: updatingResponseID,
             updatingSearchID: updatingSearchID,
             onUpdateResponseStatus: updateResponseStatus,
@@ -226,19 +263,47 @@ struct SearchesView: View {
                 presentedSearchLobbyID = search.id
             },
             onOpenDetails: {
-                presentedSearch = search
+                if isOwned {
+                    presentedSearch = search
+                } else {
+                    presentedSearchLobbyID = search.id
+                }
             },
             onEdit: {
+                guard isOwned else {
+                    presentedSearchLobbyID = search.id
+                    return
+                }
                 isPresentingComposer = false
                 editingSearch = search
             },
             onToggleActive: { isActive in
+                guard isOwned else {
+                    return
+                }
                 await setSearchActive(searchId: search.id, isActive: isActive)
             },
             onReload: {
                 await loadSearches()
             }
         )
+    }
+
+    private func openPendingSearchLobbyIfNeeded() {
+        guard let searchId = appModel.pendingSearchLobbyID else {
+            return
+        }
+
+        guard !searches.isEmpty else {
+            return
+        }
+
+        if let search = searches.first(where: { $0.id == searchId }), isOwnedSearch(search) {
+            presentedSearch = search
+        } else {
+            presentedSearchLobbyID = searchId
+        }
+        appModel.pendingSearchLobbyID = nil
     }
 
     private var searchesHeader: some View {
@@ -375,8 +440,21 @@ struct SearchesView: View {
 
 
     private func loadSearches() async {
+        let shouldReportMenuLoading = searches.isEmpty
+        if shouldReportMenuLoading {
+            appModel.setTabContentLoading("searches", isLoading: true)
+        }
+        isLoadingSearches = true
+        defer {
+            isLoadingSearches = false
+            if shouldReportMenuLoading {
+                appModel.setTabContentLoading("searches", isLoading: false)
+            }
+        }
+
         do {
             searches = try await appModel.repository.fetchSearches()
+            openPendingSearchLobbyIfNeeded()
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -546,6 +624,7 @@ private enum SearchResponsesFilter: String, CaseIterable, Identifiable {
 
 private struct SearchOverviewCard: View {
     let search: GameSearch
+    let currentUserId: String?
     let updatingResponseID: String?
     let updatingSearchID: String?
     let onUpdateResponseStatus: (String, String) async -> Void
@@ -556,12 +635,14 @@ private struct SearchOverviewCard: View {
     let onToggleActive: (Bool) async -> Void
     let onReload: () async -> Void
 
+    @State private var isRouteDetailPresented = false
+
     private var pendingResponses: [SearchResponse] {
-        search.responses.filter { $0.status == "pending" }
+        scopedResponses.filter { $0.status == "pending" }
     }
 
     private var approvedResponses: [SearchResponse] {
-        search.responses.filter { $0.status == "approved" }
+        scopedResponses.filter { $0.status == "approved" }
     }
 
     private var remainingSeats: Int {
@@ -569,11 +650,11 @@ private struct SearchOverviewCard: View {
     }
 
     private var rejectedResponses: [SearchResponse] {
-        search.responses.filter { $0.status == "rejected" }
+        scopedResponses.filter { $0.status == "rejected" }
     }
 
     private var withdrawnResponses: [SearchResponse] {
-        search.responses.filter { $0.status == "withdrawn" }
+        scopedResponses.filter { $0.status == "withdrawn" }
     }
 
     private var visibleResponses: [SearchResponse] {
@@ -584,8 +665,51 @@ private struct SearchOverviewCard: View {
         max(search.playersNeeded, approvedResponses.count)
     }
 
+    private var isCompleted: Bool {
+        let status = search.status.lowercased()
+        return ["matched", "completed", "finished"].contains(status) ||
+            search.responses.filter { $0.status == "approved" }.count >= max(search.playersNeeded, 1)
+    }
+
+    private var canManageSearch: Bool {
+        isOwnedByCurrentUser && !isCompleted
+    }
+
+    private var isOwnedByCurrentUser: Bool {
+        guard let createdByUserId = search.createdByUserId,
+              let currentUserId else {
+            return true
+        }
+        return createdByUserId == currentUserId
+    }
+
+    private var myResponse: SearchResponse? {
+        guard let currentUserId else {
+            return nil
+        }
+        return search.responses.first { $0.responderUser.id == currentUserId }
+    }
+
+    private var canOpenDetailsForCurrentUser: Bool {
+        isOwnedByCurrentUser || myResponse?.status == "approved"
+    }
+
+    private var scopedResponses: [SearchResponse] {
+        if isOwnedByCurrentUser {
+            return search.responses
+        }
+        return myResponse.map { [$0] } ?? []
+    }
+
     private var headlineText: String {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            if let min = search.desiredLevelMin, let max = search.desiredLevelMax {
+                return "Вы откликнулись на поиск уровня \(min)–\(max)"
+            }
+            return "Вы откликнулись на этот поиск"
+        }
+
+        if isCompleted {
             return "Игра собрана"
         }
 
@@ -620,11 +744,18 @@ private struct SearchOverviewCard: View {
     }
 
     private var courtText: String {
-        search.preferredCourt?.name ?? "Без клуба"
+        search.preferredCourt?.name
+            ?? search.customVenueAddress
+            ?? search.customVenueTitle
+            ?? (search.sport.isRouteSport ? "Маршрут уточняется" : "Без клуба")
     }
 
     private var responseSummaryTitle: String {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return myResponseStatusTitle
+        }
+
+        if isCompleted {
             let count = max(totalVisiblePlayerCount, approvedResponses.count)
             return "\(count) \(peopleWord(count))"
         }
@@ -633,7 +764,11 @@ private struct SearchOverviewCard: View {
     }
 
     private var responseSummarySubtitle: String {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return "Ваш отклик"
+        }
+
+        if isCompleted {
             return "Все подтвердили"
         }
 
@@ -643,7 +778,11 @@ private struct SearchOverviewCard: View {
     }
 
     private var cardStatusTitle: String {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return myResponseStatusTitle
+        }
+
+        if isCompleted {
             return "Собрано"
         }
         if !(search.isActive ?? true) {
@@ -656,7 +795,18 @@ private struct SearchOverviewCard: View {
     }
 
     private var cardStatusTint: Color {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            switch myResponse?.status {
+            case "approved":
+                return AppTheme.mint
+            case "rejected", "withdrawn":
+                return Color.gray.opacity(0.16)
+            default:
+                return AppTheme.cream
+            }
+        }
+
+        if isCompleted {
             return Color.blue.opacity(0.16)
         }
         if !(search.isActive ?? true) {
@@ -669,7 +819,18 @@ private struct SearchOverviewCard: View {
     }
 
     private var cardStatusForeground: Color {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            switch myResponse?.status {
+            case "approved":
+                return AppTheme.court
+            case "rejected", "withdrawn":
+                return AppTheme.ink.opacity(0.72)
+            default:
+                return Color(red: 0.70, green: 0.46, blue: 0.04)
+            }
+        }
+
+        if isCompleted {
             return Color.blue.opacity(0.9)
         }
         if !(search.isActive ?? true) {
@@ -679,24 +840,36 @@ private struct SearchOverviewCard: View {
     }
 
     private var primaryActionTitle: String {
+        if !isOwnedByCurrentUser {
+            return myResponse?.status == "approved" ? "Лобби" : myResponseStatusTitle
+        }
+
         if !search.responses.isEmpty {
             return "Отклики"
         }
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if isCompleted {
             return "Открыть"
         }
         return "Детали"
     }
 
     private var primaryActionTint: Color {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return AppTheme.ink
+        }
+
+        if isCompleted {
             return Color.blue.opacity(0.85)
         }
         return AppTheme.court
     }
 
     private var cardAccentColor: Color {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return AppTheme.ink.opacity(0.42)
+        }
+
+        if isCompleted {
             return Color.blue.opacity(0.78)
         }
         if !(search.isActive ?? true) {
@@ -712,7 +885,11 @@ private struct SearchOverviewCard: View {
     }
 
     private var cardSurfaceColor: Color {
-        if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
+        if !isOwnedByCurrentUser {
+            return Color.black.opacity(0.04)
+        }
+
+        if isCompleted {
             return Color.blue.opacity(0.10)
         }
         if !(search.isActive ?? true) {
@@ -724,6 +901,19 @@ private struct SearchOverviewCard: View {
         return AppTheme.mint.opacity(0.42)
     }
 
+    private var myResponseStatusTitle: String {
+        switch myResponse?.status {
+        case "approved":
+            return "Одобрено"
+        case "rejected":
+            return "Отклонено"
+        case "withdrawn":
+            return "Отозвано"
+        default:
+            return "На рассмотрении"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 12) {
@@ -731,9 +921,7 @@ private struct SearchOverviewCard: View {
                     .fill(sportTint.opacity(0.16))
                     .frame(width: 42, height: 42)
                     .overlay(
-                        Image(systemName: sportIconName)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(sportTint)
+                        SportIconView(sport: search.sport, color: sportTint, size: 20)
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -747,13 +935,14 @@ private struct SearchOverviewCard: View {
 
                 AppInlineChip(text: cardStatusTitle, tint: cardStatusTint, foreground: cardStatusForeground)
 
-                Button(action: onOpenDetails) {
+                Button(action: openDetailsIfAllowed) {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(AppTheme.ink.opacity(0.74))
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
+                .disabled(!canOpenDetailsForCurrentUser)
             }
 
             Text(headlineText)
@@ -779,6 +968,30 @@ private struct SearchOverviewCard: View {
                 }
             }
 
+            if search.sport.isRouteSport, search.runningRoutePoints.count >= 2 {
+                Button {
+                    isRouteDetailPresented = true
+                } label: {
+                    RunningRoutePreviewMapView(points: search.runningRoutePoints, followsRoads: search.sport.routeFollowsRoads)
+                        .frame(height: 132)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(cardAccentColor.opacity(0.24), lineWidth: 1)
+                        )
+                        .overlay(alignment: .bottomTrailing) {
+                            Label("Открыть маршрут", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(.black.opacity(0.48), in: Capsule())
+                                .padding(10)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+
             Divider()
 
             HStack(spacing: 12) {
@@ -801,7 +1014,7 @@ private struct SearchOverviewCard: View {
 
                 Spacer()
 
-                Button(action: onOpenDetails) {
+                Button(action: openDetailsIfAllowed) {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(responseSummaryTitle)
                             .font(.system(size: 15, weight: .semibold))
@@ -812,6 +1025,7 @@ private struct SearchOverviewCard: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .disabled(!canOpenDetailsForCurrentUser)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .bold))
@@ -819,7 +1033,7 @@ private struct SearchOverviewCard: View {
             }
 
             HStack(spacing: 10) {
-                Button(action: onOpenDetails) {
+                Button(action: openDetailsIfAllowed) {
                     Label(primaryActionTitle, systemImage: primaryActionTitle == "Отклики" ? "person.crop.circle.badge.checkmark" : "arrow.up.right")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
@@ -828,47 +1042,50 @@ private struct SearchOverviewCard: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
                 .background(primaryActionTint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .disabled(!canOpenDetailsForCurrentUser)
 
-                Button(action: onEdit) {
-                    Label("Изм.", systemImage: "pencil")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 38)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(AppTheme.ink)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                )
-                .disabled(updatingSearchID == search.id)
-
-                Button {
-                    Task {
-                        await onToggleActive(!(search.isActive ?? true))
-                        await onReload()
-                    }
-                } label: {
-                    if updatingSearchID == search.id {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 38)
-                    } else {
-                        Label((search.isActive ?? true) ? "Остановить" : "Возобновить", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                if canManageSearch {
+                    Button(action: onEdit) {
+                        Label("Изм.", systemImage: "pencil")
                             .font(.system(size: 13, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.ink)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    )
+                    .disabled(updatingSearchID == search.id)
+
+                    Button {
+                        Task {
+                            await onToggleActive(!(search.isActive ?? true))
+                            await onReload()
+                        }
+                    } label: {
+                        if updatingSearchID == search.id {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 38)
+                        } else {
+                            Label((search.isActive ?? true) ? "Остановить" : "Возобновить", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 38)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.ink)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    )
+                    .disabled(updatingSearchID == search.id)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(AppTheme.ink)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                )
-                .disabled(updatingSearchID == search.id)
             }
         }
         .padding(16)
@@ -879,22 +1096,23 @@ private struct SearchOverviewCard: View {
         )
         .shadow(color: AppTheme.ink.opacity(0.04), radius: 14, x: 0, y: 8)
         .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .onTapGesture(perform: onOpenDetails)
+        .onTapGesture(perform: openDetailsIfAllowed)
+        .sheet(isPresented: $isRouteDetailPresented) {
+            RunningRouteDetailSheet(title: search.runningRoute ?? search.sport.routeDefaultTitle, sport: search.sport, points: search.runningRoutePoints)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+        }
     }
 
     private var sportIconName: String {
-        switch search.sport {
-        case .tableTennis: return "circle.grid.cross"
-        case .tennis: return "tennis.racket"
-        case .padel: return "sportscourt"
-        case .squash: return "figure.racquetball"
-        case .badminton: return "bird"
-        case .volleyball: return "volleyball"
-        case .fitness: return "dumbbell"
-        case .boxing: return "figure.boxing"
-        case .yoga: return "figure.mind.and.body"
-        case .football: return "soccerball"
+        search.sport.appSystemIconName
+    }
+
+    private func openDetailsIfAllowed() {
+        guard canOpenDetailsForCurrentUser else {
+            return
         }
+        onOpenDetails()
     }
 
     private var sportTint: Color {
@@ -1033,18 +1251,30 @@ private struct SearchDetailSheet: View {
         search.playersNeeded > 1 && !approvedResponses.isEmpty
     }
 
+    private var usesRegularSlotLobby: Bool {
+        search.searchType == .regular && search.playersNeeded <= 1
+    }
+
+    private var isCompleted: Bool {
+        search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1)
+    }
+
+    private var canManageSearch: Bool {
+        !isCompleted
+    }
+
     private var lobbyActionTitle: String {
-        search.searchType == .regular ? "Предложите время для игры" : "Состав и чат игры"
+        usesRegularSlotLobby ? "Предложите время для игры" : "Состав и чат игры"
     }
 
     private var lobbyActionSubtitle: String {
-        search.searchType == .regular
+        usesRegularSlotLobby
             ? "Открой общий состав, чтобы предложить слоты и обсудить детали игры."
             : "Открой общий чат состава, чтобы уточнить детали без опроса по слотам."
     }
 
     private var lobbyActionButtonTitle: String {
-        search.searchType == .regular ? "Предложить слоты" : "Открыть состав"
+        usesRegularSlotLobby ? "Предложить слоты" : "Открыть состав"
     }
 
     private var parameterRows: [(icon: String, title: String, value: String)] {
@@ -1082,7 +1312,16 @@ private struct SearchDetailSheet: View {
             rows.append(("map", "Районы", districts))
         }
 
-        rows.append(("building.2", "Корт / клуб", search.preferredCourt?.name ?? "Не указан"))
+        let venue = search.preferredCourt?.name
+            ?? search.customVenueAddress
+            ?? search.customVenueTitle
+            ?? (search.sport.isRouteSport ? "Маршрут не указан" : "Не указан")
+        rows.append(("building.2", search.sport.isRouteSport ? "Маршрут" : "Корт / клуб", venue))
+        if search.sport.isRouteSport,
+           let route = search.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !route.isEmpty {
+            rows.append(("point.topleft.down.curvedto.point.bottomright.up", "Детали маршрута", route))
+        }
         rows.append(("bubble.left", "Комментарий", (search.comment?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? search.comment! : "Не указан")))
         return rows
     }
@@ -1141,19 +1380,21 @@ private struct SearchDetailSheet: View {
 
                     inviteCard
 
-                    Button {
-                        Task { await toggleSearchActive() }
-                    } label: {
-                        if updatingSearchID == search.id {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 54)
-                        } else {
-                            Label((search.isActive ?? true) ? "Остановить поиск" : "Запустить поиск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
-                                .frame(maxWidth: .infinity)
+                    if canManageSearch {
+                        Button {
+                            Task { await toggleSearchActive() }
+                        } label: {
+                            if updatingSearchID == search.id {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 54)
+                            } else {
+                                Label((search.isActive ?? true) ? "Остановить поиск" : "Запустить поиск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
                         }
+                        .buttonStyle(SecondaryActionButtonStyle(tint: .red.opacity(0.88)))
                     }
-                    .buttonStyle(SecondaryActionButtonStyle(tint: .red.opacity(0.88)))
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -1200,7 +1441,14 @@ private struct SearchDetailSheet: View {
                     onUpdateResponseStatus: { responseId, status in
                         await updateResponseStatus(responseId: responseId, status: status)
                     },
-                    onShareInviteLink: shareInviteLink
+                    onShareInviteLink: shareInviteLink,
+                    onFinalizeRoster: {
+                        await finalizeApprovedRoster()
+                    },
+                    onOpenLobby: {
+                        isPresentingResponses = false
+                        onOpenLobby(search.id)
+                    }
                 )
                 .environmentObject(appModel)
             }
@@ -1224,9 +1472,7 @@ private struct SearchDetailSheet: View {
                     .fill(.white.opacity(0.14))
                     .frame(width: 42, height: 42)
                     .overlay(
-                        Image(systemName: detailSportIcon)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
+                        SportIconView(sport: search.sport, color: .white, size: 20)
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -1334,37 +1580,39 @@ private struct SearchDetailSheet: View {
             .foregroundStyle(.white)
             .background(AppTheme.court, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Button {
-                onEdit(search)
-            } label: {
-                Label("Изменить", systemImage: "pencil")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.ink)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            )
+            if canManageSearch {
+                Button {
+                    onEdit(search)
+                } label: {
+                    Label("Изменить", systemImage: "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.ink)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
 
-            Button {
-                Task { await toggleSearchActive() }
-            } label: {
-                Label((search.isActive ?? true) ? "Пауза" : "Запуск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
+                Button {
+                    Task { await toggleSearchActive() }
+                } label: {
+                    Label((search.isActive ?? true) ? "Пауза" : "Запуск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.ink)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.ink)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            )
         }
     }
 
@@ -1496,18 +1744,7 @@ private struct SearchDetailSheet: View {
     }
 
     private var detailSportIcon: String {
-        switch search.sport {
-        case .tableTennis: return "circle.grid.cross"
-        case .tennis: return "tennis.racket"
-        case .padel: return "sportscourt"
-        case .squash: return "figure.racquetball"
-        case .badminton: return "bird"
-        case .volleyball: return "volleyball"
-        case .fitness: return "dumbbell"
-        case .boxing: return "figure.boxing"
-        case .yoga: return "figure.mind.and.body"
-        case .football: return "soccerball"
-        }
+        search.sport.appSystemIconName
     }
 
     private var detailHeadline: String {
@@ -1603,6 +1840,37 @@ private struct SearchDetailSheet: View {
         }
     }
 
+    private func finalizeApprovedRoster() async {
+        guard let scheduledAt = search.hotStartsAt?.parsedISODateValue() else {
+            appModel.errorMessage = "Не удалось определить время игры"
+            return
+        }
+
+        updatingSearchID = search.id
+        defer { updatingSearchID = nil }
+
+        do {
+            let result = try await appModel.repository.scheduleSearchGame(
+                searchId: search.id,
+                courtId: search.preferredCourt?.id,
+                scheduledAt: scheduledAt,
+                durationMinutes: search.durationMinutes ?? 90
+            )
+            search = result.gameSearch
+            await onReloadParent()
+            await appModel.notificationManager.manualRefresh(repository: appModel.repository)
+            isPresentingResponses = false
+
+            if let gameRequestId = result.gameRequestId {
+                dismiss()
+                appModel.navigate(to: .discover(.upcoming, highlightedGameRequestID: gameRequestId))
+            }
+        } catch {
+            guard !error.isCancellationLike else { return }
+            appModel.present(error: error)
+        }
+    }
+
     private func loadCourtsIfNeeded() async {
         guard courts.isEmpty else { return }
         do {
@@ -1648,8 +1916,12 @@ private struct SearchResponsesSheet: View {
     let updatingResponseID: String?
     let onUpdateResponseStatus: (String, String) async -> Void
     let onShareInviteLink: () -> Void
+    let onFinalizeRoster: (() async -> Void)?
+    let onOpenLobby: (() -> Void)?
 
     @State private var selectedFilter: SearchResponsesFilter = .all
+    @State private var selectedPlayer: DiscoverUser?
+    @State private var isFinalizingRoster = false
 
     private var filteredResponses: [SearchResponse] {
         switch selectedFilter {
@@ -1668,6 +1940,14 @@ private struct SearchResponsesSheet: View {
         search.status != "matched" && search.responses.filter { $0.status == "approved" }.count < max(search.playersNeeded, 1)
     }
 
+    private var approvedResponsesCount: Int {
+        search.responses.filter { $0.status == "approved" }.count
+    }
+
+    private var shouldShowLobbyShortcut: Bool {
+        search.playersNeeded > 1 && approvedResponsesCount > 0
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
@@ -1680,8 +1960,43 @@ private struct SearchResponsesSheet: View {
                             response: response,
                             canApprove: canApproveMoreResponses,
                             updatingResponseID: updatingResponseID,
-                            onUpdateResponseStatus: onUpdateResponseStatus
+                            onUpdateResponseStatus: onUpdateResponseStatus,
+                            onOpenPlayer: { player in
+                                selectedPlayer = player
+                            }
                         )
+                    }
+
+                    if shouldShowLobbyShortcut, let onOpenLobby {
+                        Button {
+                            if approvedResponsesCount >= max(search.playersNeeded, 1) {
+                                onOpenLobby()
+                            } else if let onFinalizeRoster {
+                                Task {
+                                    isFinalizingRoster = true
+                                    await onFinalizeRoster()
+                                    isFinalizingRoster = false
+                                }
+                            } else {
+                                onOpenLobby()
+                            }
+                        } label: {
+                            if isFinalizingRoster {
+                                ProgressView()
+                                    .tint(.white)
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                Label(
+                                    approvedResponsesCount >= max(search.playersNeeded, 1)
+                                        ? "Перейти к составу"
+                                        : "Завершить без полного добора",
+                                    systemImage: "person.3.fill"
+                                )
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
+                        .disabled(isFinalizingRoster)
                     }
 
                     Button {
@@ -1716,6 +2031,10 @@ private struct SearchResponsesSheet: View {
                     )
                 }
             }
+        }
+        .sheet(item: $selectedPlayer) { player in
+            DiscoverParticipantSheet(user: player, onOpenChat: nil)
+                .environmentObject(appModel)
         }
     }
 
@@ -1805,6 +2124,7 @@ private struct SearchResponseActionRow: View {
     let canApprove: Bool
     let updatingResponseID: String?
     let onUpdateResponseStatus: (String, String) async -> Void
+    let onOpenPlayer: (DiscoverUser) -> Void
 
     private var levelLine: String? {
         if let level = response.responderUser.sportLevels["tennis"] ?? response.responderUser.tennisLevel {
@@ -1815,33 +2135,41 @@ private struct SearchResponseActionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            RemoteAvatarView(name: response.responderUser.displayName, path: response.responderUser.avatarUrl, size: 56)
+            Button {
+                onOpenPlayer(response.responderUser)
+            } label: {
+                HStack(spacing: 12) {
+                    RemoteAvatarView(name: response.responderUser.displayName, path: response.responderUser.avatarUrl, size: 56)
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(response.responderUser.displayName)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(AppTheme.ink)
-                    if let levelLine {
-                        Text(levelLine)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 8) {
+                            Text(response.responderUser.displayName)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(AppTheme.ink)
+                            if let levelLine {
+                                Text(levelLine)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(AppTheme.ink.opacity(0.58))
+                            }
+                            Spacer()
+                            statusPill
+                        }
+
+                        Text(response.responderUser.bio?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? defaultSubtitle)
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(AppTheme.ink.opacity(0.58))
+                            .foregroundStyle(AppTheme.ink.opacity(0.68))
+                            .lineLimit(2)
+
+                        if let district = response.responderUser.districtLabel ?? response.responderUser.district {
+                            Text(localizedDistrictName(district) ?? district)
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.ink.opacity(0.5))
+                        }
                     }
-                    Spacer()
-                    statusPill
-                }
-
-                Text(response.responderUser.bio?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? defaultSubtitle)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(AppTheme.ink.opacity(0.68))
-                    .lineLimit(2)
-
-                if let district = response.responderUser.districtLabel ?? response.responderUser.district {
-                    Text(localizedDistrictName(district) ?? district)
-                        .font(.footnote)
-                        .foregroundStyle(AppTheme.ink.opacity(0.5))
                 }
             }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if response.status == "pending" {
                 HStack(spacing: 10) {
@@ -2005,6 +2333,10 @@ struct SearchLobbySheet: View {
     @State private var isVotingOnSlots = false
     @State private var isSimulatingRegularFlow = false
     @State private var simulationMessage: String?
+    @State private var lastLobbyPresenceRefresh = Date.distantPast
+    @State private var selectedLobbyPlayer: DiscoverUser?
+    @FocusState private var isMessageComposerFocused: Bool
+    private let bottomAnchorID = "search-lobby-bottom-anchor"
 
     private var approvedResponses: [SearchResponse] {
         lobby?.responses.filter { $0.status == "approved" } ?? []
@@ -2022,21 +2354,21 @@ struct SearchLobbySheet: View {
         guard let lobby else {
             return false
         }
-        return isCreator && lobby.searchType == .regular && !approvedResponses.isEmpty
+        return isCreator && lobby.searchType == .regular && lobby.playersNeeded <= 1 && !approvedResponses.isEmpty
     }
 
     private var canVoteForSlotsInLobby: Bool {
         guard let lobby else {
             return false
         }
-        return lobby.searchType == .regular && lobby.activeSlotProposal != nil
+        return lobby.searchType == .regular && lobby.playersNeeded <= 1 && lobby.activeSlotProposal != nil
     }
 
     private var canSimulateRegularFlow: Bool {
         guard let lobby else {
             return false
         }
-        return isCreator && lobby.searchType == .regular
+        return isCreator && lobby.searchType == .regular && lobby.playersNeeded <= 1
     }
 
     private var availableCourts: [Court] {
@@ -2120,167 +2452,61 @@ struct SearchLobbySheet: View {
                 Color.white
                     .ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if let lobby {
-                            SectionCard(
-                                title: "Состав и общий чат",
-                                subtitle: "Это общее пространство по этому поиску. Здесь видно состав и обсуждение до финальной игры."
-                            ) {
-                                HStack(spacing: 10) {
-                                    AppInlineChip(
-                                        text: "\(approvedResponses.count) из \(max(lobby.playersNeeded, 1)) подтверждено",
-                                        tint: AppTheme.mint,
-                                        foreground: AppTheme.court
-                                    )
-                                    AppInlineChip(
-                                        text: lobby.sport.formatTitle(format: lobby.format, playersNeeded: lobby.playersNeeded),
-                                        tint: AppTheme.cream,
-                                        foreground: AppTheme.ink
-                                    )
-                                }
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            searchLobbyContent
 
-                                if let comment = lobby.comment?.trimmingCharacters(in: .whitespacesAndNewlines), !comment.isEmpty {
-                                    Text(comment)
-                                        .font(.footnote)
-                                        .foregroundStyle(AppTheme.ink.opacity(0.72))
-                                }
-
-                                if canSimulateRegularFlow {
-                                    Button {
-                                        Task { await simulateRegularFlow() }
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            if isSimulatingRegularFlow {
-                                                ProgressView()
-                                                    .controlSize(.small)
-                                                    .tint(AppTheme.court)
-                                            } else {
-                                                Image(systemName: "wand.and.stars")
-                                                    .font(.system(size: 14, weight: .bold))
-                                            }
-                                            Text("Симулировать отклики и слоты")
-                                                .font(.subheadline.weight(.semibold))
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption.weight(.bold))
-                                                .opacity(0.55)
-                                        }
-                                        .foregroundStyle(AppTheme.court)
-                                        .padding(.horizontal, 12)
-                                        .frame(height: 44)
-                                        .background(AppTheme.mint.opacity(0.5), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(isSimulatingRegularFlow)
-                                }
-
-                                if let simulationMessage {
-                                    Text(simulationMessage)
-                                        .font(.footnote.weight(.medium))
-                                        .foregroundStyle(AppTheme.court)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 9)
-                                        .background(AppTheme.mint.opacity(0.36), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                }
-                            }
-
-                            SectionCard(
-                                title: "Участники",
-                                subtitle: "Подтвержденные игроки уже в составе, ожидающие пока не приняты."
-                            ) {
-                                VStack(spacing: 10) {
-                                    ForEach(approvedResponses) { response in
-                                        lobbyParticipantRow(response: response, title: "В составе", tint: AppTheme.court)
-                                    }
-
-                                    ForEach(pendingResponses) { response in
-                                        lobbyParticipantRow(response: response, title: "Ожидаем ответ", tint: Color(red: 1.0, green: 0.70, blue: 0.30))
-                                    }
-                                }
-                            }
-
-                            if canProposeSlotsInLobby {
-                                slotProposalSection(lobby: lobby)
-                            } else if canVoteForSlotsInLobby, let activeSlotProposal = lobby.activeSlotProposal {
-                                slotVotingSection(activeSlotProposal)
-                            }
-
-                            SectionCard(
-                                title: "Общий чат",
-                                subtitle: "Здесь удобно договориться по составу, району и ожиданиям до финальной игры."
-                            ) {
-                                VStack(spacing: 10) {
-                                    ForEach(lobby.messages) { message in
-                                        searchLobbyBubble(message: message)
-                                    }
-                                }
-
-                                HStack(alignment: .bottom, spacing: 10) {
-                                    FieldShell {
-                                        TextField("Сообщение для состава...", text: $messageText, axis: .vertical)
-                                            .lineLimit(1 ... 4)
-                                    }
-
-                                    Button {
-                                        Task { await sendMessage() }
-                                    } label: {
-                                        if isSendingMessage {
-                                            ProgressView()
-                                                .tint(.white)
-                                                .frame(width: 50, height: 50)
-                                        } else {
-                                            Image(systemName: "paperplane.fill")
-                                                .font(.system(size: 16, weight: .bold))
-                                                .frame(width: 50, height: 50)
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                    .foregroundStyle(.white)
-                                    .disabled(isSendingMessage || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                }
-                            }
-                        } else if let lobbyLoadError {
-                            SectionCard(title: "Состав и общий чат", subtitle: "Не удалось загрузить детали поиска.") {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text(lobbyLoadError)
-                                        .font(.footnote)
-                                        .foregroundStyle(AppTheme.ink.opacity(0.68))
-
-                                    Button {
-                                        Task {
-                                            await loadLobby()
-                                        }
-                                    } label: {
-                                        Label("Повторить", systemImage: "arrow.clockwise")
-                                            .font(.subheadline.weight(.semibold))
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 46)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.white)
-                                    .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                }
-                            }
-                        } else {
-                            SectionCard(title: "Состав и общий чат", subtitle: "Загружаем детали поиска.") {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .padding(.vertical, 24)
-                            }
+                            Color.clear
+                                .frame(height: 1)
+                                .id(bottomAnchorID)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 40)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isMessageComposerFocused = false
+                    }
+                    .onAppear {
+                        scrollLobbyToBottom(proxy, animated: false)
+                    }
+                    .onChange(of: lobbyMessageSignature) { _ in
+                        scrollLobbyToBottom(proxy)
+                    }
+                    .onChange(of: isMessageComposerFocused) { isFocused in
+                        if isFocused {
+                            scrollLobbyToBottom(proxy)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 40)
                 }
             }
             .navigationTitle("Лобби поиска")
             .navigationBarTitleDisplayMode(.inline)
             .task {
+                appModel.notificationManager.setNotificationMuted(href: "/play/searches/\(searchId)", isMuted: true)
                 await loadLobby()
                 await loadLobbyCourts()
+                await updateSearchLobbyPresence(isActive: true)
+                await runRealtimeLobbyUpdates()
+            }
+            .onDisappear {
+                appModel.notificationManager.setNotificationMuted(href: "/play/searches/\(searchId)", isMuted: false)
+                Task {
+                    await updateSearchLobbyPresence(isActive: false)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tennisRealtimeEventReceived)) { notification in
+                guard let event = notification.object as? RealtimeEvent,
+                      shouldRefreshLobby(for: event) else {
+                    return
+                }
+
+                Task {
+                    await loadLobby()
+                }
             }
             .sheet(isPresented: $isCourtPickerPresented) {
                 SearchClubPickerSheet(
@@ -2332,23 +2558,221 @@ struct SearchLobbySheet: View {
                     }
                 }
             }
+            .sheet(item: $selectedLobbyPlayer) { player in
+                DiscoverParticipantSheet(user: player, onOpenChat: nil)
+                    .environmentObject(appModel)
+            }
         }
     }
 
-    private func loadLobby() async {
-        lobbyLoadError = nil
+    @ViewBuilder
+    private var searchLobbyContent: some View {
+        if let lobby {
+            SectionCard(
+                title: "Состав и общий чат",
+                subtitle: "Это общее пространство по этому поиску. Здесь видно состав и обсуждение до финальной игры."
+            ) {
+                HStack(spacing: 10) {
+                    AppInlineChip(
+                        text: "\(approvedResponses.count) из \(max(lobby.playersNeeded, 1)) подтверждено",
+                        tint: AppTheme.mint,
+                        foreground: AppTheme.court
+                    )
+                    AppInlineChip(
+                        text: lobby.sport.formatTitle(format: lobby.format, playersNeeded: lobby.playersNeeded),
+                        tint: AppTheme.cream,
+                        foreground: AppTheme.ink
+                    )
+                }
+
+                if let comment = lobby.comment?.trimmingCharacters(in: .whitespacesAndNewlines), !comment.isEmpty {
+                    Text(comment)
+                        .font(.footnote)
+                        .foregroundStyle(AppTheme.ink.opacity(0.72))
+                }
+
+                if canSimulateRegularFlow {
+                    Button {
+                        Task { await simulateRegularFlow() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSimulatingRegularFlow {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(AppTheme.court)
+                            } else {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            Text("Симулировать отклики и слоты")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .opacity(0.55)
+                        }
+                        .foregroundStyle(AppTheme.court)
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(AppTheme.mint.opacity(0.5), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSimulatingRegularFlow)
+                }
+
+                if let simulationMessage {
+                    Text(simulationMessage)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(AppTheme.court)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(AppTheme.mint.opacity(0.36), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+
+            SectionCard(
+                title: "Участники",
+                subtitle: "Подтвержденные игроки уже в составе, ожидающие пока не приняты."
+            ) {
+                VStack(spacing: 10) {
+                    ForEach(approvedResponses) { response in
+                        lobbyParticipantRow(response: response, title: "В составе", tint: AppTheme.court)
+                    }
+
+                    ForEach(pendingResponses) { response in
+                        lobbyParticipantRow(response: response, title: "Ожидаем ответ", tint: Color(red: 1.0, green: 0.70, blue: 0.30))
+                    }
+                }
+            }
+
+            if canProposeSlotsInLobby {
+                slotProposalSection(lobby: lobby)
+            } else if canVoteForSlotsInLobby, let activeSlotProposal = lobby.activeSlotProposal {
+                slotVotingSection(activeSlotProposal)
+            }
+
+            SectionCard(
+                title: "Общий чат",
+                subtitle: "Здесь удобно договориться по составу, району и ожиданиям до финальной игры."
+            ) {
+                VStack(spacing: 10) {
+                    ForEach(lobby.messages) { message in
+                        searchLobbyBubble(message: message)
+                            .id(message.id)
+                    }
+                }
+
+                HStack(alignment: .bottom, spacing: 10) {
+                    FieldShell {
+                        TextField("Сообщение для состава...", text: $messageText, axis: .vertical)
+                            .lineLimit(1 ... 4)
+                            .focused($isMessageComposerFocused)
+                    }
+
+                    Button {
+                        Task { await sendMessage() }
+                    } label: {
+                        if isSendingMessage {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(width: 50, height: 50)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .frame(width: 50, height: 50)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .foregroundStyle(.white)
+                    .disabled(isSendingMessage || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        } else if let lobbyLoadError {
+            SectionCard(title: "Состав и общий чат", subtitle: "Не удалось загрузить детали поиска.") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(lobbyLoadError)
+                        .font(.footnote)
+                        .foregroundStyle(AppTheme.ink.opacity(0.68))
+
+                    Button {
+                        Task {
+                            await loadLobby()
+                        }
+                    } label: {
+                        Label("Повторить", systemImage: "arrow.clockwise")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        } else {
+            SectionCard(title: "Состав и общий чат", subtitle: "Загружаем детали поиска.") {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
+            }
+        }
+    }
+
+    private var lobbyMessageSignature: String {
+        lobby?.messages.map(\.id).joined(separator: "|") ?? ""
+    }
+
+    private func scrollLobbyToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.22)) {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            }
+        }
+    }
+
+    private func loadLobby(showErrors: Bool = true) async {
+        if showErrors {
+            lobbyLoadError = nil
+        }
 
         do {
             let summary = try await appModel.repository.fetchSearchLobby(searchId: searchId)
             applyLobbySummary(summary)
+            lobbyLoadError = nil
         } catch {
             guard !error.isCancellationLike else {
                 return
             }
-            lobbyLoadError = error.detailedMessage
-            appModel.present(error: error)
+            if showErrors {
+                lobbyLoadError = error.detailedMessage
+                appModel.present(error: error)
+            }
             return
         }
+    }
+
+    private func runRealtimeLobbyUpdates() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            await refreshSearchLobbyPresenceIfNeeded()
+            await loadLobby(showErrors: false)
+        }
+    }
+
+    private func refreshSearchLobbyPresenceIfNeeded() async {
+        guard Date().timeIntervalSince(lastLobbyPresenceRefresh) > 30 else {
+            return
+        }
+
+        await updateSearchLobbyPresence(isActive: true)
     }
 
     private func loadLobbyCourts() async {
@@ -2360,6 +2784,31 @@ struct SearchLobbySheet: View {
             }
             courts = []
         }
+    }
+
+    private func updateSearchLobbyPresence(isActive: Bool) async {
+        do {
+            try await appModel.repository.setActiveSearchLobby(searchId: searchId, isActive: isActive)
+            if isActive {
+                lastLobbyPresenceRefresh = Date()
+            }
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+        }
+    }
+
+    private func shouldRefreshLobby(for event: RealtimeEvent) -> Bool {
+        if event.searchId == searchId {
+            return true
+        }
+
+        if let href = event.href, href == "/play/searches/\(searchId)" {
+            return true
+        }
+
+        return false
     }
 
     private func applyLobbySummary(_ summary: SearchLobbySummary) {
@@ -2401,7 +2850,7 @@ struct SearchLobbySheet: View {
         [
             court.name,
             court.address,
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district)
         ]
         .compactMap { $0?.lowercased() }
@@ -2444,7 +2893,7 @@ struct SearchLobbySheet: View {
                         .multilineTextAlignment(.leading)
 
                     HStack(spacing: 6) {
-                        courtMetaPill(systemImage: "tram.fill", text: court.nearestMetroName)
+                        courtMetaPill(systemImage: "tram.fill", text: court.metroDisplayName)
                         courtMetaPill(systemImage: "map.fill", text: prettifyDistrict(court.district))
                     }
 
@@ -2482,6 +2931,7 @@ struct SearchLobbySheet: View {
             return
         }
 
+        isMessageComposerFocused = false
         isSendingMessage = true
         defer { isSendingMessage = false }
 
@@ -2490,6 +2940,7 @@ struct SearchLobbySheet: View {
             lobby = SearchLobbyGameSearch(
                 id: lobby?.id ?? searchId,
                 createdByUserId: lobby?.createdByUserId ?? appModel.currentUser?.id ?? "",
+                createdByUser: lobby?.createdByUser,
                 searchType: lobby?.searchType ?? .regular,
                 status: lobby?.status ?? "active",
                 isActive: lobby?.isActive ?? true,
@@ -2523,7 +2974,7 @@ struct SearchLobbySheet: View {
 
     private func scheduleSlot() async {
         let options = selectedSlotDraftOptions()
-        guard !proposedCourtId.isEmpty, !options.isEmpty else {
+        guard !options.isEmpty else {
             return
         }
 
@@ -2619,7 +3070,13 @@ struct SearchLobbySheet: View {
 
     private func lobbyParticipantRow(response: SearchResponse, title: String, tint: Color) -> some View {
         HStack(spacing: 10) {
-            RemoteAvatarView(name: response.responderUser.displayName, path: response.responderUser.avatarUrl, size: 40)
+            Button {
+                selectedLobbyPlayer = response.responderUser
+            } label: {
+                RemoteAvatarView(name: response.responderUser.displayName, path: response.responderUser.avatarUrl, size: 40)
+            }
+            .buttonStyle(.plain)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(response.responderUser.displayName)
                     .font(.subheadline.weight(.semibold))
@@ -2638,10 +3095,20 @@ struct SearchLobbySheet: View {
 
     private func searchLobbyBubble(message: SearchLobbyMessage) -> some View {
         let isMine = message.senderUserId == appModel.currentUser?.id
+        let sender = lobbyUser(for: message.senderUserId)
 
-        return HStack {
+        return HStack(alignment: .bottom, spacing: 8) {
             if isMine {
                 Spacer(minLength: 48)
+            } else if let sender {
+                Button {
+                    selectedLobbyPlayer = sender
+                } label: {
+                    RemoteAvatarView(name: sender.displayName, path: sender.avatarUrl, size: 34)
+                }
+                .buttonStyle(.plain)
+            } else {
+                RemoteAvatarView(name: message.senderUser?.name ?? "Игрок", path: message.senderUser?.avatarUrl, size: 34)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -2671,6 +3138,18 @@ struct SearchLobbySheet: View {
                 Spacer(minLength: 48)
             }
         }
+    }
+
+    private func lobbyUser(for userId: String) -> DiscoverUser? {
+        if let responseUser = lobby?.responses.first(where: { $0.responderUser.id == userId })?.responderUser {
+            return responseUser
+        }
+
+        if lobby?.createdByUser?.id == userId {
+            return lobby?.createdByUser
+        }
+
+        return nil
     }
 
     @ViewBuilder
@@ -2711,9 +3190,7 @@ struct SearchLobbySheet: View {
                     .fill(AppTheme.mint)
                     .frame(width: 36, height: 36)
                     .overlay(
-                        Image(systemName: lobby.sport == .tennis ? "tennis.racket" : "sportscourt")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AppTheme.court)
+                        SportIconView(sport: lobby.sport, color: AppTheme.court, size: 18)
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -3081,7 +3558,7 @@ struct SearchLobbySheet: View {
                 }
             }
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
-            .disabled(isScheduling || proposedCourtId.isEmpty || selectedSlotTimes.isEmpty || selectedSlotDates.isEmpty)
+            .disabled(isScheduling || selectedSlotTimes.isEmpty || selectedSlotDates.isEmpty)
 
             Text("Выбранные дни и время будут повторяться каждую неделю")
                 .font(.footnote)
@@ -3091,7 +3568,7 @@ struct SearchLobbySheet: View {
     }
 
     private var selectedCourtName: String {
-        availableCourts.first(where: { $0.id == proposedCourtId })?.name ?? (lobby?.preferredCourt?.name ?? "Выбрать клуб")
+        availableCourts.first(where: { $0.id == proposedCourtId })?.name ?? (lobby?.preferredCourt?.name ?? "Без клуба")
     }
 
     private var primaryTimeRangeTitle: String {
@@ -3824,6 +4301,10 @@ private struct SearchHeroImage: View {
             return ["hero-yoga", "upcoming-game-hero"]
         case .football:
             return ["hero-football", "upcoming-game-hero"]
+        case .running:
+            return ["hero-run", "upcoming-game-hero"]
+        case .supboard:
+            return ["hero-run", "upcoming-game-hero"]
         }
     }
 }
@@ -3860,6 +4341,7 @@ struct SearchComposerView: View {
     ]
     @State private var isClubPickerPresented = false
     @State private var isAdvancedPresented = false
+    @State private var isRunningRoutePickerPresented = false
     @State private var isSavingSearch = false
     @State private var isRocketLaunchPresented = false
     @State private var submitButtonPressed = false
@@ -3870,6 +4352,7 @@ struct SearchComposerView: View {
     @State private var selectedCourtSnapshot: Court?
     @State private var customHotDate: Date?
     @State private var isCustomHotCalendarExpanded = false
+    @FocusState private var isSearchCommentFocused: Bool
 
     let initialSearch: GameSearch?
     let initialCourt: Court?
@@ -4128,7 +4611,8 @@ struct SearchComposerView: View {
     }
 
     private var defaultCustomHotDate: Date {
-        Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date().addingTimeInterval(3 * 24 * 60 * 60)
+        let fallbackDate = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date().addingTimeInterval(3 * 24 * 60 * 60)
+        return Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: fallbackDate) ?? fallbackDate
     }
 
     private var customHotDateBinding: Binding<Date> {
@@ -4188,14 +4672,40 @@ struct SearchComposerView: View {
     }
 
     private var locationTitle: String {
-        selectedCourt?.name ?? (draft.preferredDistricts.isEmpty ? "Без привязки" : districtsSummary)
+        if selectedSport.isRouteSport {
+            if let route = draft.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !route.isEmpty {
+                return route
+            }
+            if draft.runningRoutePoints?.isEmpty == false {
+                return selectedSport.routeDefaultTitle
+            }
+            return "Без маршрута"
+        }
+
+        return selectedCourt?.name
+            ?? draft.customVenueAddress
+            ?? draft.customVenueTitle
+            ?? (draft.preferredDistricts.isEmpty ? "Без привязки" : districtsSummary)
     }
 
     private var locationSubtitle: String {
         if let selectedCourt {
-            return [selectedCourt.nearestMetroName, localizedDistrictName(selectedCourt.district), selectedCourt.address]
+            return [selectedCourt.metroDisplayName, localizedDistrictName(selectedCourt.district), selectedCourt.address]
                 .compactMap { $0 }
                 .joined(separator: " · ")
+        }
+
+        if selectedSport.isRouteSport {
+            if let points = draft.runningRoutePoints, points.count >= 2 {
+                return "Маршрут на карте · \(points.count) точек"
+            }
+            return "Нарисуйте старт, финиш и ключевые точки"
+        }
+
+        if let address = draft.customVenueAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !address.isEmpty {
+            return address
         }
 
         return draft.preferredDistricts.isEmpty ? "Покажем клубы рядом" : "Будем искать в выбранных районах"
@@ -4236,7 +4746,11 @@ struct SearchComposerView: View {
                 }
 
                 if isRocketLaunchPresented {
-                    RocketLaunchOverlay()
+                    SuccessCelebrationOverlay(
+                        title: "Срочный поиск опубликован",
+                        subtitle: "Игроки увидят его в ленте",
+                        icon: "🚀"
+                    )
                         .transition(.opacity)
                         .zIndex(20)
                 }
@@ -4254,7 +4768,25 @@ struct SearchComposerView: View {
                             clearDistrictsWhenNil: true,
                             markBooked: draft.searchType == .hot
                         )
+                    },
+                    onSelectCustomAddress: { address in
+                        selectCustomVenueAddress(address)
                     }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
+            .sheet(isPresented: $isRunningRoutePickerPresented) {
+                RunningRoutePickerSheet(
+                    sport: selectedSport,
+                    points: Binding(
+                        get: { draft.runningRoutePoints ?? [] },
+                        set: { draft.runningRoutePoints = $0 }
+                    ),
+                    routeTitle: Binding(
+                        get: { draft.runningRoute ?? "" },
+                        set: { draft.runningRoute = $0 }
+                    )
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -4308,7 +4840,7 @@ struct SearchComposerView: View {
             draft.searchType = .hot
             hotStep = .when
             if (draft.hotStartTime ?? "").isEmpty {
-                draft.hotStartTime = hotQuickTimes.first ?? "00:00"
+                draft.hotStartTime = hotQuickTimes.first ?? "09:00"
             }
         }
         .onChange(of: draft.hotWindow) { _ in
@@ -4543,9 +5075,11 @@ struct SearchComposerView: View {
                             applySportSelection(sport)
                         } label: {
                             VStack(spacing: 10) {
-                                Image(systemName: sportIconName(for: sport))
-                                    .font(.system(size: 26, weight: .semibold))
-                                    .foregroundStyle(isSelected ? AppTheme.court : AppTheme.ink.opacity(0.92))
+                                SportIconView(
+                                    sport: sport,
+                                    color: isSelected ? AppTheme.court : AppTheme.ink.opacity(0.92),
+                                    size: 30
+                                )
                                     .frame(width: 52, height: 52)
                                     .background(isSelected ? AppTheme.mint : Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
@@ -4815,11 +5349,23 @@ struct SearchComposerView: View {
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(hotQuickTimes, id: \.self) { time in
-                        hotQuickTimeButton(time)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(hotQuickTimes, id: \.self) { time in
+                            hotQuickTimeButton(time)
+                                .id(time)
+                        }
                     }
+                }
+                .onAppear {
+                    scrollToSelectedHotTime(proxy)
+                }
+                .onChange(of: draft.hotStartTime ?? "") { _ in
+                    scrollToSelectedHotTime(proxy)
+                }
+                .onChange(of: hotQuickTimes) { _ in
+                    scrollToSelectedHotTime(proxy)
                 }
             }
 
@@ -4838,18 +5384,104 @@ struct SearchComposerView: View {
     private var hotLocationSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Где играем?")
+                Text(selectedSport.isRouteSport ? "Где маршрут?" : "Где играем?")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Выберите район или клуб, если он уже забронирован")
+                Text(selectedSport.isRouteSport ? "Отметьте маршрут на карте. Клубы и районы здесь не нужны." : "Выберите район или клуб, если он уже забронирован")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
 
-            courtToggle
-            mapPreviewSection
-            hotDistrictRail
+            if selectedSport.isRouteSport {
+                runningRouteSection
+            } else {
+                courtToggle
+                mapPreviewSection
+                hotDistrictRail
+            }
         }
+    }
+
+    private var runningRouteSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(selectedSport.routeDefaultTitle)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(runningRouteSummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink.opacity(0.56))
+                }
+
+                Spacer()
+
+                Button {
+                    isRunningRoutePickerPresented = true
+                    AppHaptics.selection()
+                } label: {
+                    Label(draft.runningRoutePoints?.isEmpty == false ? "Изменить" : "Нарисовать", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(AppTheme.court, in: Capsule())
+            }
+
+            if let points = draft.runningRoutePoints, points.count >= 2 {
+                RunningRoutePreviewMapView(points: points, followsRoads: selectedSport.routeFollowsRoads)
+                    .frame(height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    )
+            } else {
+                Button {
+                    isRunningRoutePickerPresented = true
+                    AppHaptics.selection()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "map")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(AppTheme.court)
+                            .frame(width: 42, height: 42)
+                            .background(AppTheme.mint, in: Circle())
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Отметьте точки маршрута на карте")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(AppTheme.ink)
+                            Text("Маршрут будет виден игрокам в карточке поиска.")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(AppTheme.ink.opacity(0.56))
+                        }
+
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AppTheme.ink.opacity(0.32))
+                    }
+                    .padding(14)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var runningRouteSummary: String {
+        let pointsCount = draft.runningRoutePoints?.count ?? 0
+        if pointsCount >= 2 {
+            return "\(pointsCount) точек · \(draft.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? draft.runningRoute! : "Маршрут на карте")"
+        }
+        return "Нарисуйте старт, финиш и ключевые точки"
     }
 
     @ViewBuilder
@@ -4895,6 +5527,7 @@ struct SearchComposerView: View {
             withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
                 draft.hotWindow = window
                 draft.hotStartsAt = nil
+                draft.hotStartTime = preferredHotStartTime(for: hotDate(for: window))
                 isCustomHotCalendarExpanded = false
             }
         } label: {
@@ -5004,6 +5637,7 @@ struct SearchComposerView: View {
         customHotDate = date
         draft.hotWindow = nil
         draft.hotStartsAt = nil
+        draft.hotStartTime = preferredHotStartTime(for: date)
         syncHotStartTimeWithAvailableTimes()
     }
 
@@ -5017,7 +5651,43 @@ struct SearchComposerView: View {
         if let selectedTime = draft.hotStartTime, availableTimes.contains(selectedTime) {
             return
         }
-        draft.hotStartTime = availableTimes.first
+        let preferredTime = preferredHotStartTime(for: resolvedHotDate)
+        draft.hotStartTime = availableTimes.contains(preferredTime) ? preferredTime : availableTimes.first
+    }
+
+    private func hotDate(for window: HotWindow) -> Date {
+        let offset: Int
+        switch window {
+        case .today:
+            offset = 0
+        case .tomorrow:
+            offset = 1
+        case .dayAfterTomorrow:
+            offset = 2
+        }
+
+        return Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+    }
+
+    private func preferredHotStartTime(for date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return Self.timeLabel(minutes: roundedUpMinutesFromNow())
+        }
+
+        return "09:00"
+    }
+
+    private func scrollToSelectedHotTime(_ proxy: ScrollViewProxy) {
+        let selectedTime = draft.hotStartTime ?? preferredHotStartTime(for: resolvedHotDate)
+        guard hotQuickTimes.contains(selectedTime) else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.22)) {
+                proxy.scrollTo(selectedTime, anchor: .center)
+            }
+        }
     }
 
     private func combinedHotStartsAt() -> Date? {
@@ -5165,6 +5835,19 @@ struct SearchComposerView: View {
                     .lineLimit(2 ... 4)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.ink)
+                    .focused($isSearchCommentFocused)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        isSearchCommentFocused = false
+                    }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Готово") {
+                                isSearchCommentFocused = false
+                            }
+                        }
+                    }
             }
         }
         .padding(18)
@@ -5195,40 +5878,6 @@ struct SearchComposerView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(Color.black.opacity(0.06), lineWidth: 1)
-            )
-
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Больше шансов найти игрока", systemImage: "sparkles")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.56, green: 0.32, blue: 0.05))
-
-                HStack {
-                    Label("Отправить push подходящим игрокам", systemImage: "clock.badge.checkmark")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.ink)
-                    Spacer()
-                    Toggle("", isOn: .constant(true))
-                        .labelsHidden()
-                        .tint(AppTheme.court)
-                        .disabled(true)
-                }
-
-                HStack {
-                    Label("Показать выше в ленте", systemImage: "arrow.up.circle")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.ink)
-                    Spacer()
-                    Toggle("", isOn: .constant(true))
-                        .labelsHidden()
-                        .tint(AppTheme.court)
-                        .disabled(true)
-                }
-            }
-            .padding(14)
-            .background(Color(red: 1.0, green: 0.97, blue: 0.88), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color(red: 0.74, green: 0.54, blue: 0.22).opacity(0.18), lineWidth: 1)
             )
         }
     }
@@ -5336,7 +5985,21 @@ struct SearchComposerView: View {
                 selectedCourtSnapshot = nil
             }
 
-            draft.preferredDistricts = draft.preferredDistricts.filter { validDistricts.contains($0) }
+            if !sport.isRouteSport {
+                draft.runningRoute = nil
+                draft.runningRoutePoints = nil
+            } else {
+                selectedCourtId = nil
+                draft.preferredCourtId = nil
+                selectedCourtSnapshot = nil
+                draft.customVenueTitle = nil
+                draft.customVenueAddress = nil
+                draft.hasCourtBooked = false
+            }
+
+            draft.preferredDistricts = sport.isRouteSport
+                ? []
+                : draft.preferredDistricts.filter { validDistricts.contains($0) }
         }
 
         setSportLevel(appModel.currentUser?.sportLevels[sport.rawValue] ?? appModel.currentUser?.tennisLevel ?? 5, haptic: false)
@@ -5409,6 +6072,8 @@ struct SearchComposerView: View {
             selectedCourtId = court?.id
             draft.preferredCourtId = court?.id
             if let court {
+                draft.customVenueTitle = nil
+                draft.customVenueAddress = nil
                 if let district = court.district {
                     draft.preferredDistricts = [district] + draft.preferredDistricts.filter { $0 != district }
                 }
@@ -5420,6 +6085,22 @@ struct SearchComposerView: View {
                 draft.preferredDistricts.removeAll()
             }
             draft.sport = currentSport
+        }
+    }
+
+    private func selectCustomVenueAddress(_ address: String) {
+        let normalized = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            return
+        }
+
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+            selectedCourtSnapshot = nil
+            selectedCourtId = nil
+            draft.preferredCourtId = nil
+            draft.customVenueTitle = nil
+            draft.customVenueAddress = normalized
+            draft.hasCourtBooked = true
         }
     }
 
@@ -5435,18 +6116,7 @@ struct SearchComposerView: View {
     }
 
     private func sportIconName(for sport: Sport) -> String {
-        switch sport {
-        case .tableTennis: return "circle.grid.cross"
-        case .tennis: return "tennis.racket"
-        case .padel: return "sportscourt"
-        case .squash: return "figure.racquetball"
-        case .badminton: return "bird"
-        case .volleyball: return "volleyball"
-        case .fitness: return "dumbbell"
-        case .boxing: return "figure.boxing"
-        case .yoga: return "figure.mind.and.body"
-        case .football: return "soccerball"
-        }
+        sport.appSystemIconName
     }
 
     private func timeRangeIcon(for range: TimeRange) -> String {
@@ -5571,6 +6241,23 @@ struct SearchComposerView: View {
             if let selectedCourt = courts.first(where: { $0.id == payload.preferredCourtId }), let district = selectedCourt.district {
                 payload.preferredDistricts = [district] + payload.preferredDistricts.filter { $0 != district }
             }
+            if payload.preferredCourtId != nil {
+                payload.customVenueTitle = nil
+                payload.customVenueAddress = nil
+            }
+            if !payload.sport.isRouteSport {
+                payload.runningRoute = nil
+                payload.runningRoutePoints = nil
+            } else {
+                payload.preferredCourtId = nil
+                payload.customVenueTitle = nil
+                payload.customVenueAddress = nil
+                payload.hasCourtBooked = false
+                payload.preferredDistricts = []
+                if payload.runningRoutePoints?.isEmpty == true {
+                    payload.runningRoutePoints = nil
+                }
+            }
             payload.preferredDistricts = payload.preferredDistricts.reduce(into: [String]()) { result, district in
                 if !result.contains(district) {
                     result.append(district)
@@ -5606,14 +6293,15 @@ struct SearchComposerView: View {
             } else {
                 created = try await appModel.repository.createSearch(payload)
             }
-            onCreate(created)
-            if initialSearch == nil, payload.searchType == .hot {
-                AppHaptics.notification(.success)
+            let shouldCelebratePublish = initialSearch == nil && payload.searchType == .hot
+            if shouldCelebratePublish {
+                AppHaptics.successCelebration()
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isRocketLaunchPresented = true
                 }
-                try? await Task.sleep(for: .milliseconds(1250))
+                try? await Task.sleep(for: .milliseconds(1700))
             }
+            onCreate(created)
             dismiss()
         } catch {
             appModel.present(error: error)
@@ -5678,6 +6366,10 @@ struct SearchComposerView: View {
             playersNeeded: search.playersNeeded,
             comment: search.comment ?? ""
         )
+        draft.customVenueTitle = search.customVenueTitle
+        draft.customVenueAddress = search.customVenueAddress
+        draft.runningRoute = search.runningRoute
+        draft.runningRoutePoints = search.runningRoutePoints
         selectedCourtSnapshot = search.preferredCourt
         customHotDate = search.hotWindow == nil ? search.hotStartsAt?.parsedISODateValue() : nil
         isCustomHotCalendarExpanded = customHotDate != nil
@@ -5688,7 +6380,7 @@ struct SearchComposerView: View {
         [
             court.name,
             court.address,
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district)
         ]
         .compactMap { $0?.lowercased() }
@@ -5697,7 +6389,7 @@ struct SearchComposerView: View {
 
     private func courtSubtitle(for court: Court) -> String {
         [
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district),
             court.address
         ]
@@ -6203,28 +6895,455 @@ private enum HotSearchStep: Int, CaseIterable {
     }
 }
 
-private struct RocketLaunchOverlay: View {
-    @State private var launched = false
+struct RunningRoutePreviewMapView: UIViewRepresentable {
+    let points: [RunningRoutePoint]
+    var isInteractive = false
+    var showsAnnotations = false
+    var mapType: MKMapType = .standard
+    var followsRoads = true
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView(frame: .zero)
+        mapView.delegate = context.coordinator
+        mapView.mapType = mapType
+        mapView.isUserInteractionEnabled = isInteractive
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsCompass = false
+        mapView.showsScale = false
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        mapView.mapType = mapType
+        mapView.isUserInteractionEnabled = isInteractive
+        context.coordinator.update(mapView: mapView, points: points, showsAnnotations: showsAnnotations, followsRoads: followsRoads)
+    }
+
+    func makeCoordinator() -> RunningRouteMapCoordinator {
+        RunningRouteMapCoordinator()
+    }
+}
+
+struct RunningRouteDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    var sport: Sport = .running
+    let points: [RunningRoutePoint]
+    @State private var usesSatelliteMap = false
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.18)
-                .ignoresSafeArea()
+        AppScreen {
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title.isEmpty ? sport.routeDefaultTitle : title)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
 
-            Text("🚀")
-                .font(.system(size: launched ? 46 : 78))
-                .rotationEffect(.degrees(launched ? -24 : 0))
-                .scaleEffect(launched ? 0.72 : 1)
-                .offset(y: launched ? -360 : 0)
-                .opacity(launched ? 0 : 1)
-                .shadow(color: AppTheme.court.opacity(0.32), radius: 26, x: 0, y: 18)
-        }
-        .allowsHitTesting(false)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.05)) {
-                launched = true
+                        Text("\(points.count) точек · \(sport.routeFollowsRoads ? "маршрут по улицам" : "маршрут по воде")")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(AppTheme.ink.opacity(0.56))
+                    }
+
+                    Spacer()
+
+                    Button {
+                        usesSatelliteMap.toggle()
+                        AppHaptics.selection()
+                    } label: {
+                        Text(usesSatelliteMap ? "Карта" : "Спутник")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background(Color.black.opacity(0.04), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(AppTheme.ink)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.04), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
+                .background(Color.white)
+
+                RunningRoutePreviewMapView(
+                    points: points,
+                    isInteractive: true,
+                    showsAnnotations: true,
+                    mapType: usesSatelliteMap ? .satellite : .standard,
+                    followsRoads: sport.routeFollowsRoads
+                )
+                    .ignoresSafeArea(edges: .horizontal)
             }
         }
+    }
+}
+
+private struct RunningRoutePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let sport: Sport
+    @Binding var points: [RunningRoutePoint]
+    @Binding var routeTitle: String
+    @State private var draftPoints: [RunningRoutePoint]
+    @State private var draftTitle: String
+    @State private var usesSatelliteMap = false
+    @FocusState private var isRouteTitleFocused: Bool
+
+    init(sport: Sport, points: Binding<[RunningRoutePoint]>, routeTitle: Binding<String>) {
+        self.sport = sport
+        _points = points
+        _routeTitle = routeTitle
+        _draftPoints = State(initialValue: points.wrappedValue)
+        _draftTitle = State(initialValue: routeTitle.wrappedValue)
+    }
+
+    var body: some View {
+        AppScreen {
+            VStack(spacing: 0) {
+                header
+
+                ZStack(alignment: .topLeading) {
+                    RunningRouteEditorMapView(
+                        points: $draftPoints,
+                        mapType: usesSatelliteMap ? .satellite : .standard,
+                        followsRoads: sport.routeFollowsRoads
+                    )
+                        .ignoresSafeArea(edges: .horizontal)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Нажимайте на карту по маршруту")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text(sport.routeFollowsRoads ? "Поставьте минимум старт и финиш. Линия будет строиться по улицам." : "Поставьте минимум старт и финиш. Линия пойдёт по воде между точками.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.ink.opacity(0.58))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(16)
+                }
+                .frame(maxHeight: .infinity)
+
+                controls
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(sport.routeDefaultTitle)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text("\(draftPoints.count) точек на карте")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.ink.opacity(0.56))
+            }
+
+            Spacer()
+
+            Button {
+                usesSatelliteMap.toggle()
+                AppHaptics.selection()
+            } label: {
+                Text(usesSatelliteMap ? "Карта" : "Спутник")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                    .background(Color.black.opacity(0.04), in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                isRouteTitleFocused = false
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(width: 44, height: 44)
+                    .background(Color.black.opacity(0.04), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+        .background(Color.white)
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField(sport == .supboard ? "Название маршрута, например: Крестовский, круг по воде" : "Название маршрута, например: Парк 300-летия, круг 5 км", text: $draftTitle, axis: .vertical)
+                .lineLimit(1 ... 3)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppTheme.ink)
+                .focused($isRouteTitleFocused)
+                .submitLabel(.done)
+                .onSubmit {
+                    isRouteTitleFocused = false
+                }
+                .padding(14)
+                .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Готово") {
+                            isRouteTitleFocused = false
+                        }
+                    }
+                }
+
+            HStack(spacing: 10) {
+                Button {
+                    isRouteTitleFocused = false
+                    _ = draftPoints.popLast()
+                    AppHaptics.selection()
+                } label: {
+                    Label("Назад", systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
+                .disabled(draftPoints.isEmpty)
+
+                Button {
+                    isRouteTitleFocused = false
+                    draftPoints.removeAll()
+                    AppHaptics.selection()
+                } label: {
+                    Label("Очистить", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryActionButtonStyle(tint: .red.opacity(0.88)))
+                .disabled(draftPoints.isEmpty)
+            }
+
+            Button {
+                isRouteTitleFocused = false
+                points = draftPoints
+                let normalizedTitle = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                routeTitle = normalizedTitle.isEmpty && draftPoints.count >= 2 ? "Маршрут на карте" : normalizedTitle
+                AppHaptics.notification(.success)
+                dismiss()
+            } label: {
+                Text("Готово")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
+            .disabled(draftPoints.count < 2)
+        }
+        .padding(18)
+        .background(Color.white)
+    }
+}
+
+private struct RunningRouteEditorMapView: UIViewRepresentable {
+    @Binding var points: [RunningRoutePoint]
+    var mapType: MKMapType = .standard
+    var followsRoads = true
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView(frame: .zero)
+        mapView.delegate = context.coordinator
+        mapView.mapType = mapType
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsCompass = false
+        mapView.showsScale = false
+        mapView.setRegion(MKCoordinateRegion(
+            center: runningRouteDefaultCenter,
+            span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.16)
+        ), animated: false)
+
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(RunningRouteMapCoordinator.handleTap(_:)))
+        mapView.addGestureRecognizer(tap)
+        context.coordinator.pointsBinding = $points
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        mapView.mapType = mapType
+        context.coordinator.pointsBinding = $points
+        context.coordinator.update(mapView: mapView, points: points, showsAnnotations: true, followsRoads: followsRoads)
+    }
+
+    func makeCoordinator() -> RunningRouteMapCoordinator {
+        RunningRouteMapCoordinator()
+    }
+}
+
+private let runningRouteDefaultCenter = CLLocationCoordinate2D(latitude: 59.9386, longitude: 30.3141)
+
+final class RunningRouteMapCoordinator: NSObject, MKMapViewDelegate {
+    var pointsBinding: Binding<[RunningRoutePoint]>?
+    private var lastSignature = ""
+    private var activeDirections: [MKDirections] = []
+
+    @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended, let mapView = recognizer.view as? MKMapView else {
+            return
+        }
+        let location = recognizer.location(in: mapView)
+        let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
+        pointsBinding?.wrappedValue.append(RunningRoutePoint(coordinate: coordinate))
+    }
+
+    func update(mapView: MKMapView, points: [RunningRoutePoint], showsAnnotations: Bool, followsRoads: Bool) {
+        let signature = "\(followsRoads ? "roads" : "direct")|" + points.map { "\($0.lat.rounded(toPlaces: 5)),\($0.lng.rounded(toPlaces: 5))" }.joined(separator: "|")
+        guard signature != lastSignature else {
+            return
+        }
+        lastSignature = signature
+        activeDirections.forEach { $0.cancel() }
+        activeDirections.removeAll()
+
+        mapView.removeAnnotations(mapView.annotations)
+        mapView.removeOverlays(mapView.overlays)
+
+        if showsAnnotations {
+            mapView.addAnnotations(points.enumerated().map { index, point in
+                RunningRoutePointAnnotation(index: index + 1, coordinate: point.coordinate)
+            })
+        }
+
+        if points.count >= 2 {
+            let coordinates = points.map(\.coordinate)
+            let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+            mapView.addOverlay(polyline)
+            setVisibleRoute(mapView: mapView, overlays: [polyline], animated: true)
+            if followsRoads {
+                buildStreetRoute(mapView: mapView, points: points, signature: signature)
+            }
+        } else if let first = points.first {
+            mapView.setRegion(MKCoordinateRegion(
+                center: first.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.05)
+            ), animated: true)
+        }
+    }
+
+    private func buildStreetRoute(mapView: MKMapView, points: [RunningRoutePoint], signature: String) {
+        activeDirections.forEach { $0.cancel() }
+        activeDirections.removeAll()
+
+        let coordinatePairs = zip(points.dropLast(), points.dropFirst()).map { ($0.coordinate, $1.coordinate) }
+        guard !coordinatePairs.isEmpty else {
+            return
+        }
+
+        var routedOverlays = Array<MKPolyline?>(repeating: nil, count: coordinatePairs.count)
+        var completedSegments = 0
+        var hasFailedSegment = false
+
+        for (index, pair) in coordinatePairs.enumerated() {
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: pair.0))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: pair.1))
+            request.transportType = .walking
+            request.requestsAlternateRoutes = false
+
+            let directions = MKDirections(request: request)
+            activeDirections.append(directions)
+            directions.calculate { [weak self, weak mapView] response, _ in
+                DispatchQueue.main.async {
+                    guard let self, let mapView, self.lastSignature == signature else {
+                        return
+                    }
+
+                    if let route = response?.routes.first {
+                        routedOverlays[index] = route.polyline
+                    } else {
+                        hasFailedSegment = true
+                    }
+
+                    completedSegments += 1
+                    guard completedSegments == coordinatePairs.count else {
+                        return
+                    }
+
+                    self.activeDirections.removeAll()
+                    let resolvedOverlays = routedOverlays.compactMap { $0 }
+                    guard !hasFailedSegment, resolvedOverlays.count == coordinatePairs.count else {
+                        return
+                    }
+
+                    mapView.removeOverlays(mapView.overlays)
+                    mapView.addOverlays(resolvedOverlays)
+                    self.setVisibleRoute(mapView: mapView, overlays: resolvedOverlays, animated: true)
+                }
+            }
+        }
+    }
+
+    private func setVisibleRoute(mapView: MKMapView, overlays: [MKPolyline], animated: Bool) {
+        let routeRect = overlays.reduce(MKMapRect.null) { partial, overlay in
+            partial.isNull ? overlay.boundingMapRect : partial.union(overlay.boundingMapRect)
+        }
+
+        guard !routeRect.isNull, !routeRect.isEmpty else {
+            return
+        }
+
+        mapView.setVisibleMapRect(
+            routeRect,
+            edgePadding: UIEdgeInsets(top: 44, left: 34, bottom: 44, right: 34),
+            animated: animated
+        )
+    }
+
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        guard let polyline = overlay as? MKPolyline else {
+            return MKOverlayRenderer(overlay: overlay)
+        }
+        let renderer = MKPolylineRenderer(polyline: polyline)
+        renderer.strokeColor = UIColor(red: 0.05, green: 0.55, blue: 0.36, alpha: 1)
+        renderer.lineWidth = 5
+        renderer.lineCap = .round
+        renderer.lineJoin = .round
+        return renderer
+    }
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        guard let annotation = annotation as? RunningRoutePointAnnotation else {
+            return nil
+        }
+        let reuseID = "RunningRoutePointAnnotation"
+        let view = (mapView.dequeueReusableAnnotationView(withIdentifier: reuseID) as? MKMarkerAnnotationView)
+            ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: reuseID)
+        view.annotation = annotation
+        view.markerTintColor = UIColor(red: 0.05, green: 0.55, blue: 0.36, alpha: 1)
+        view.glyphText = "\(annotation.index)"
+        view.canShowCallout = false
+        return view
+    }
+}
+
+private final class RunningRoutePointAnnotation: NSObject, MKAnnotation {
+    let index: Int
+    let coordinate: CLLocationCoordinate2D
+
+    init(index: Int, coordinate: CLLocationCoordinate2D) {
+        self.index = index
+        self.coordinate = coordinate
     }
 }
 
@@ -6377,6 +7496,7 @@ private struct SearchComposerAdvancedSheet: View {
 
 struct SearchClubPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
 
     let sport: Sport
     let courts: [Court]
@@ -6384,6 +7504,7 @@ struct SearchClubPickerSheet: View {
     let selectsImmediately: Bool
     let allowsNoCourt: Bool
     let onSelect: (Court?) -> Void
+    let onSelectCustomAddress: ((String) -> Void)?
 
     init(
         sport: Sport,
@@ -6391,7 +7512,8 @@ struct SearchClubPickerSheet: View {
         selectedCourtId: String?,
         selectsImmediately: Bool,
         allowsNoCourt: Bool = true,
-        onSelect: @escaping (Court?) -> Void
+        onSelect: @escaping (Court?) -> Void,
+        onSelectCustomAddress: ((String) -> Void)? = nil
     ) {
         self.sport = sport
         self.courts = courts
@@ -6399,21 +7521,37 @@ struct SearchClubPickerSheet: View {
         self.selectsImmediately = selectsImmediately
         self.allowsNoCourt = allowsNoCourt
         self.onSelect = onSelect
+        self.onSelectCustomAddress = onSelectCustomAddress
     }
 
     @State private var query = ""
     @State private var pendingSelectionId: String?
     @State private var pendingCourtSnapshot: Court?
     @State private var isMapExpanded = false
+    @State private var addressSuggestions: [AddressSuggestion] = []
+    @State private var isLoadingAddressSuggestions = false
+    @State private var addressSuggestionTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
+    private var normalizedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSuggestAddresses: Bool {
+        onSelectCustomAddress != nil && normalizedQuery.count >= 3
+    }
+
+    private var suggestionCity: String? {
+        courts.first(where: { $0.city?.isEmpty == false })?.city ?? "Санкт-Петербург"
+    }
+
     private var filteredCourts: [Court] {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let searchText = normalizedQuery.lowercased()
         let sortedCourts = courts.sorted { left, right in
             left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
 
-        guard !normalizedQuery.isEmpty else {
+        guard !searchText.isEmpty else {
             return sortedCourts
         }
 
@@ -6421,35 +7559,35 @@ struct SearchClubPickerSheet: View {
             [
                 court.name,
                 court.address,
-                court.nearestMetroName,
+                court.metroDisplayName,
                 localizedDistrictName(court.district)
             ]
             .compactMap { $0?.lowercased() }
             .joined(separator: " ")
-            .contains(normalizedQuery)
+            .contains(searchText)
         }
     }
 
     private var suggestedCourts: [Court] {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalizedQuery.isEmpty else {
+        let searchText = normalizedQuery.lowercased()
+        guard !searchText.isEmpty else {
             return []
         }
 
         let prefixMatches = filteredCourts.filter { court in
-            court.name.lowercased().hasPrefix(normalizedQuery)
+            court.name.lowercased().hasPrefix(searchText)
         }
         let metroMatches = filteredCourts.filter { court in
-            guard let metro = court.nearestMetroName?.lowercased() else {
+            guard let metro = court.metroDisplayName?.lowercased() else {
                 return false
             }
-            return metro.contains(normalizedQuery) && !prefixMatches.contains(where: { $0.id == court.id })
+            return metro.contains(searchText) && !prefixMatches.contains(where: { $0.id == court.id })
         }
         let districtMatches = filteredCourts.filter { court in
             guard let district = localizedDistrictName(court.district)?.lowercased() else {
                 return false
             }
-            return district.contains(normalizedQuery)
+            return district.contains(searchText)
                 && !prefixMatches.contains(where: { $0.id == court.id })
                 && !metroMatches.contains(where: { $0.id == court.id })
         }
@@ -6513,7 +7651,7 @@ struct SearchClubPickerSheet: View {
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(1)
                             .minimumScaleFactor(0.86)
-                        Text("Название, метро или район")
+                        Text("Название, метро, район или адрес")
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.ink.opacity(0.58))
                             .lineLimit(1)
@@ -6541,7 +7679,7 @@ struct SearchClubPickerSheet: View {
                         .foregroundStyle(AppTheme.ink.opacity(0.36))
                     ZStack(alignment: .leading) {
                         if query.isEmpty {
-                            Text("Название клуба, метро или район")
+                            Text("Название клуба, метро, район или адрес")
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(AppTheme.ink.opacity(0.28))
                         }
@@ -6557,6 +7695,7 @@ struct SearchClubPickerSheet: View {
                     if !query.isEmpty {
                         Button {
                             query = ""
+                            clearAddressSuggestions()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppTheme.ink.opacity(0.2))
@@ -6574,6 +7713,22 @@ struct SearchClubPickerSheet: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
 
+                if !normalizedQuery.isEmpty,
+                   let onSelectCustomAddress {
+                    addressSuggestionsSection(onSelectAddress: onSelectCustomAddress)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
+
+                    if normalizedQuery.count >= 3 && !isLoadingAddressSuggestions && addressSuggestions.isEmpty {
+                        MissingClubAddressHint(address: query) { address in
+                            onSelectCustomAddress(address)
+                            dismiss()
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
+                    }
+                }
+
                 if !suggestedCourts.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
@@ -6586,7 +7741,7 @@ struct SearchClubPickerSheet: View {
                                             .font(.system(size: 14, weight: .semibold))
                                             .foregroundStyle(AppTheme.ink)
                                             .lineLimit(1)
-                                        Text(court.nearestMetroName ?? localizedDistrictName(court.district) ?? court.address)
+                                        Text(court.metroDisplayName ?? localizedDistrictName(court.district) ?? court.address)
                                             .font(.caption)
                                             .foregroundStyle(AppTheme.ink.opacity(0.56))
                                             .lineLimit(1)
@@ -6711,7 +7866,7 @@ struct SearchClubPickerSheet: View {
                                     title: court.name,
                                     subtitleLines: [
                                         sport.title,
-                                        court.nearestMetroName ?? "Метро не указано",
+                                        court.metroDisplayName ?? "Метро не указано",
                                         court.address
                                     ],
                                     distance: court.distanceLabel,
@@ -6720,6 +7875,7 @@ struct SearchClubPickerSheet: View {
                                     commitSelection(court)
                                 }
                             }
+
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 16)
@@ -6753,6 +7909,12 @@ struct SearchClubPickerSheet: View {
             pendingCourtSnapshot = selectedCourtId.flatMap { id in courts.first(where: { $0.id == id }) }
             isSearchFocused = false
         }
+        .onChange(of: query) { value in
+            scheduleAddressSuggestions(for: value)
+        }
+        .onDisappear {
+            addressSuggestionTask?.cancel()
+        }
         .sheet(isPresented: $isMapExpanded) {
             SearchClubExpandedMapSheet(
                 sport: sport,
@@ -6769,6 +7931,156 @@ struct SearchClubPickerSheet: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
+    }
+
+    @ViewBuilder
+    private func addressSuggestionsSection(onSelectAddress: @escaping (String) -> Void) -> some View {
+        if canSuggestAddresses {
+            if isLoadingAddressSuggestions {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(AppTheme.court)
+                    Text("Ищем адрес")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink.opacity(0.62))
+                    Spacer()
+                }
+                .padding(14)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
+            } else if !addressSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Адреса")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.ink.opacity(0.48))
+                            .textCase(.uppercase)
+                        Text("Если клуба нет в списке, выберите точный адрес из подсказок.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.ink.opacity(0.54))
+                    }
+
+                    ForEach(addressSuggestions) { suggestion in
+                        AddressSuggestionRow(suggestion: suggestion) {
+                            onSelectAddress(suggestion.address)
+                            dismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func clearAddressSuggestions() {
+        addressSuggestionTask?.cancel()
+        addressSuggestions = []
+        isLoadingAddressSuggestions = false
+    }
+
+    @MainActor
+    private func scheduleAddressSuggestions(for value: String) {
+        addressSuggestionTask?.cancel()
+        addressSuggestions = []
+
+        let query = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard onSelectCustomAddress != nil, query.count >= 3 else {
+            isLoadingAddressSuggestions = false
+            return
+        }
+
+        let city = suggestionCity
+        addressSuggestionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 320_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+
+            isLoadingAddressSuggestions = true
+
+            do {
+                let serverSuggestions = try await appModel.repository.fetchAddressSuggestions(query: query, city: city)
+                let suggestions = serverSuggestions.isEmpty
+                    ? await fetchLocalAddressSuggestions(query: query, city: city)
+                    : serverSuggestions
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                addressSuggestions = suggestions
+                isLoadingAddressSuggestions = false
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                addressSuggestions = []
+                isLoadingAddressSuggestions = false
+            }
+        }
+    }
+
+    private func fetchLocalAddressSuggestions(query: String, city: String?) async -> [AddressSuggestion] {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = [city, query]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        request.resultTypes = [.address, .pointOfInterest]
+        request.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351),
+            latitudinalMeters: 45_000,
+            longitudinalMeters: 45_000
+        )
+
+        do {
+            let response = try await MKLocalSearch(request: request).start()
+            return Array(response.mapItems.prefix(6).enumerated()).compactMap { index, item in
+                let address = formattedAddress(for: item.placemark)
+                let title = item.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedTitle = (title?.isEmpty == false ? title : address) ?? query
+                let resolvedAddress = address ?? resolvedTitle
+                guard !resolvedAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return nil
+                }
+
+                return AddressSuggestion(
+                    id: "mapkit-\(index)-\(resolvedAddress)",
+                    title: resolvedTitle,
+                    address: resolvedAddress,
+                    subtitle: item.placemark.locality,
+                    lat: item.placemark.coordinate.latitude,
+                    lng: item.placemark.coordinate.longitude
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    private func formattedAddress(for placemark: MKPlacemark) -> String? {
+        let street = [placemark.thoroughfare, placemark.subThoroughfare]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        let parts = [
+            placemark.locality,
+            street.isEmpty ? nil : street,
+            placemark.name
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        let uniqueParts = parts.reduce(into: [String]()) { result, part in
+            if !result.contains(part) {
+                result.append(part)
+            }
+        }
+
+        return uniqueParts.isEmpty ? nil : uniqueParts.joined(separator: ", ")
     }
 
     private func previewSelection(_ court: Court?) {
@@ -6816,6 +8128,114 @@ struct SearchClubPickerSheet: View {
 
 }
 
+private struct AddressSuggestionRow: View {
+    let suggestion: AddressSuggestion
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.court)
+                    .frame(width: 38, height: 38)
+                    .background(AppTheme.mint, in: Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(suggestion.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    Text(suggestion.address)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.court)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let subtitle = suggestion.subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.ink.opacity(0.5))
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 6)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AppTheme.ink.opacity(0.32))
+                    .padding(.top, 12)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct MissingClubAddressHint: View {
+    let address: String
+    let onUseAddress: (String) -> Void
+
+    private var normalizedAddress: String {
+        address.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        Button {
+            onUseAddress(normalizedAddress)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppTheme.court)
+                    .frame(width: 38, height: 38)
+                    .background(AppTheme.mint, in: Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Использовать введённый адрес")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+
+                    Text(normalizedAddress)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.court)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Если адреса нет в подсказках, сохраним введённый текст как место поиска.")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppTheme.ink.opacity(0.58))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 6)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AppTheme.ink.opacity(0.32))
+                    .padding(.top, 12)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(normalizedAddress.isEmpty)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.mint.opacity(0.74), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AppTheme.court.opacity(0.18), lineWidth: 1)
+        )
+    }
+}
+
 struct CourtBrowseCard: View {
     let sport: Sport
     let title: String
@@ -6838,9 +8258,7 @@ struct CourtBrowseCard: View {
                     )
                     .frame(width: 104, height: 104)
                     .overlay(
-                        Image(systemName: sportSymbolName(for: sport))
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.92))
+                        SportIconView(sport: sport, color: .white.opacity(0.92), size: 34)
                     )
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -6859,9 +8277,15 @@ struct CourtBrowseCard: View {
 
                     ForEach(Array(subtitleLines.enumerated()), id: \.offset) { index, line in
                         HStack(spacing: 8) {
-                            Image(systemName: index == 0 ? sportSymbolName(for: sport) : (index == 1 ? "tram.fill" : "mappin.and.ellipse"))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(index == 0 ? AppTheme.court : AppTheme.ink.opacity(0.72))
+                            if index == 0 {
+                                SportIconView(sport: sport, color: AppTheme.court, size: 13)
+                                    .frame(width: 14)
+                            } else {
+                                Image(systemName: index == 1 ? "tram.fill" : "mappin.and.ellipse")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(AppTheme.ink.opacity(0.72))
+                                    .frame(width: 14)
+                            }
                             Text(line)
                                 .font(.subheadline)
                                 .foregroundStyle(index == 0 ? AppTheme.court : AppTheme.ink.opacity(0.72))
@@ -6904,7 +8328,7 @@ private struct MapSelectedCourtMiniCard: View {
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(2)
 
-                Text([sport.title, court.nearestMetroName ?? localizedDistrictName(court.district)]
+                Text([sport.title, court.metroDisplayName ?? localizedDistrictName(court.district)]
                     .compactMap { $0 }
                     .joined(separator: " · "))
                     .font(.caption)
@@ -6971,9 +8395,11 @@ private struct MapCourtThumbnail: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: sportSymbolName(for: court.supportedSports?.first ?? sport))
-                .font(.system(size: size * 0.34, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
+            SportIconView(
+                sport: court.supportedSports?.first ?? sport,
+                color: .white.opacity(0.9),
+                size: size * 0.38
+            )
         }
     }
 }
@@ -7170,7 +8596,7 @@ private final class SearchClubCalloutContentView: UIStackView {
             ?? "Клуб"
         addArrangedSubview(makeLabel(sportsLine, font: .systemFont(ofSize: 12, weight: .semibold), color: UIColor(red: 0.08, green: 0.54, blue: 0.36, alpha: 1), lines: 1))
 
-        let placeLine = [court.nearestMetroName, localizedDistrictName(court.district), court.distanceLabel]
+        let placeLine = [court.metroDisplayName, localizedDistrictName(court.district), court.distanceLabel]
             .compactMap { $0 }
             .joined(separator: " · ")
         if !placeLine.isEmpty {
@@ -7203,10 +8629,422 @@ private final class SearchClubCalloutContentView: UIStackView {
     }
 }
 
+private struct SearchMapItem: Identifiable {
+    let user: DiscoverUser
+    let search: GameSearch
+
+    var id: String { search.id }
+
+    var districtID: String? {
+        if let courtDistrict = search.preferredCourt?.district?.lowercased(), !courtDistrict.isEmpty {
+            return courtDistrict
+        }
+
+        if let district = search.preferredDistricts.first?.lowercased(), !district.isEmpty {
+            return district
+        }
+
+        if let userDistrict = user.district?.lowercased(), !userDistrict.isEmpty {
+            return userDistrict
+        }
+
+        return nil
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        if let court = search.preferredCourt {
+            return court.coordinate
+        }
+
+        if let districtID, let area = districtAreasByID[districtID] {
+            return area.centerCoordinate
+        }
+
+        return CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351)
+    }
+
+    var venueTitle: String {
+        if let court = search.preferredCourt {
+            return court.name
+        }
+
+        if let customVenueTitle = search.customVenueTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !customVenueTitle.isEmpty {
+            return customVenueTitle
+        }
+
+        if let customVenueAddress = search.customVenueAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !customVenueAddress.isEmpty {
+            return customVenueAddress
+        }
+
+        if let districtID, let districtName = localizedDistrictName(districtID) {
+            return districtName
+        }
+
+        return "Место уточняется"
+    }
+
+    var timeTitle: String {
+        guard let hotStartsAt = search.hotStartsAt else {
+            return "Время уточняется"
+        }
+
+        return hotStartsAt.formattedDateTime()
+    }
+
+    var playersTitle: String {
+        let approved = search.responses.filter { $0.status == "approved" }.count
+        return "\(approved) / \(max(search.playersNeeded, 1)) собрано"
+    }
+}
+
+private extension DistrictMapArea {
+    var centerCoordinate: CLLocationCoordinate2D {
+        let polygonCoordinates = self.coordinates
+        guard !polygonCoordinates.isEmpty else {
+            return CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351)
+        }
+
+        let lat = polygonCoordinates.map(\.latitude).reduce(0, +) / Double(polygonCoordinates.count)
+        let lon = polygonCoordinates.map(\.longitude).reduce(0, +) / Double(polygonCoordinates.count)
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+}
+
+private struct SearchMapPreviewCard: View {
+    let item: SearchMapItem
+    let onOpen: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RemoteAvatarView(name: item.user.displayName, path: item.user.avatarUrl, size: 46)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(item.user.isOnline ? Color(red: 0.22, green: 0.82, blue: 0.45) : Color.white.opacity(0.5))
+                        .frame(width: 11, height: 11)
+                        .overlay(Circle().stroke(Color.black.opacity(0.72), lineWidth: 2))
+                }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.user.displayName)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                Text("\(item.search.sport.title) · \(item.search.sport.formatTitle(format: item.search.format, playersNeeded: item.search.playersNeeded))")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.36, green: 0.94, blue: 0.63))
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    Label(item.timeTitle, systemImage: "calendar")
+                    Label(item.venueTitle, systemImage: "mappin.and.ellipse")
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.64))
+                .lineLimit(1)
+            }
+            .layoutPriority(1)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                Text(item.playersTitle)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+
+                Button(action: onOpen) {
+                    Text("Открыть")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background(Color(red: 0.36, green: 0.94, blue: 0.63), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(.black.opacity(0.74), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.24), radius: 18, x: 0, y: 8)
+    }
+}
+
+private struct SearchesMapView: UIViewRepresentable {
+    let items: [SearchMapItem]
+    let selectedItemID: String?
+    let highlightedDistrictIDs: [String]
+    let onSelect: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect)
+    }
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView(frame: .zero)
+        mapView.delegate = context.coordinator
+        mapView.overrideUserInterfaceStyle = .dark
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsCompass = false
+        mapView.showsScale = false
+        mapView.showsTraffic = false
+        mapView.isRotateEnabled = false
+        mapView.isPitchEnabled = false
+        mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat)
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        context.coordinator.update(
+            mapView: mapView,
+            items: items,
+            selectedItemID: selectedItemID,
+            highlightedDistrictIDs: highlightedDistrictIDs
+        )
+    }
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private let onSelect: (String) -> Void
+        private var lastItemIDs: [String] = []
+        private var lastOverlayIDs: [String] = []
+        private var lastSelectedItemID: String?
+        private var hasSetVisibleRegion = false
+
+        init(onSelect: @escaping (String) -> Void) {
+            self.onSelect = onSelect
+        }
+
+        func update(
+            mapView: MKMapView,
+            items: [SearchMapItem],
+            selectedItemID: String?,
+            highlightedDistrictIDs: [String]
+        ) {
+            let itemIDs = items.map(\.id)
+            if itemIDs != lastItemIDs {
+                lastItemIDs = itemIDs
+                mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+                mapView.addAnnotations(items.map(SearchMapAnnotation.init))
+                hasSetVisibleRegion = false
+            }
+
+            let overlayIDs = Array(Set(highlightedDistrictIDs.map { $0.lowercased() })).sorted()
+            updateDistrictOverlays(mapView: mapView, districtIDs: overlayIDs)
+            updateSelection(mapView: mapView, selectedItemID: selectedItemID)
+
+            guard !hasSetVisibleRegion else {
+                return
+            }
+
+            let targetRect = targetVisibleRect(items: items, districtIDs: overlayIDs)
+            if targetRect.isNull || targetRect.isEmpty {
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351),
+                        latitudinalMeters: 18_000,
+                        longitudinalMeters: 18_000
+                    ),
+                    animated: false
+                )
+                hasSetVisibleRegion = true
+                return
+            }
+
+            mapView.setVisibleMapRect(
+                targetRect,
+                edgePadding: UIEdgeInsets(top: 34, left: 34, bottom: 118, right: 34),
+                animated: false
+            )
+            hasSetVisibleRegion = true
+        }
+
+        private func updateDistrictOverlays(mapView: MKMapView, districtIDs: [String]) {
+            guard districtIDs != lastOverlayIDs else {
+                return
+            }
+
+            lastOverlayIDs = districtIDs
+            mapView.removeOverlays(mapView.overlays)
+
+            for districtID in districtIDs {
+                guard let area = districtAreasByID[districtID] else {
+                    continue
+                }
+
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                polygon.title = area.id
+                mapView.addOverlay(polygon)
+            }
+        }
+
+        private func updateSelection(mapView: MKMapView, selectedItemID: String?) {
+            guard selectedItemID != lastSelectedItemID else {
+                return
+            }
+
+            lastSelectedItemID = selectedItemID
+            for annotation in mapView.annotations.compactMap({ $0 as? SearchMapAnnotation }) {
+                guard let view = mapView.view(for: annotation) as? SearchMapAnnotationView else {
+                    continue
+                }
+                view.configure(item: annotation.item, isSelected: annotation.item.id == selectedItemID)
+            }
+        }
+
+        private func targetVisibleRect(items: [SearchMapItem], districtIDs: [String]) -> MKMapRect {
+            let annotationRects = items.map {
+                MKMapRect(origin: MKMapPoint($0.coordinate), size: MKMapSize(width: 0, height: 0))
+            }
+
+            let districtRects = districtIDs.compactMap { districtID -> MKMapRect? in
+                guard let area = districtAreasByID[districtID] else {
+                    return nil
+                }
+
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                return polygon.boundingMapRect
+            }
+
+            return (annotationRects + districtRects).reduce(MKMapRect.null) { partial, next in
+                partial.isNull ? next : partial.union(next)
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let polygon = overlay as? MKPolygon,
+                  let overlayID = polygon.title ?? nil,
+                  let area = districtAreasByID[overlayID] else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
+
+            let renderer = MKPolygonRenderer(polygon: polygon)
+            renderer.fillColor = area.color.withAlphaComponent(0.22)
+            renderer.strokeColor = area.color.withAlphaComponent(0.92)
+            renderer.lineWidth = 2.4
+            return renderer
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            guard let annotation = annotation as? SearchMapAnnotation else {
+                return nil
+            }
+
+            let view = (mapView.dequeueReusableAnnotationView(withIdentifier: SearchMapAnnotationView.reuseID) as? SearchMapAnnotationView)
+                ?? SearchMapAnnotationView(annotation: annotation, reuseIdentifier: SearchMapAnnotationView.reuseID)
+            view.annotation = annotation
+            view.configure(item: annotation.item, isSelected: annotation.item.id == lastSelectedItemID)
+            return view
+        }
+
+        func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+            guard let annotation = annotation as? SearchMapAnnotation else {
+                return
+            }
+
+            onSelect(annotation.item.id)
+        }
+    }
+}
+
+private final class SearchMapAnnotation: NSObject, MKAnnotation {
+    let item: SearchMapItem
+
+    var coordinate: CLLocationCoordinate2D {
+        item.coordinate
+    }
+
+    var title: String? {
+        item.user.displayName
+    }
+
+    var subtitle: String? {
+        item.venueTitle
+    }
+
+    init(item: SearchMapItem) {
+        self.item = item
+        super.init()
+    }
+}
+
+private final class SearchMapAnnotationView: MKAnnotationView {
+    static let reuseID = "SearchMapAnnotationView"
+
+    func configure(item: SearchMapItem, isSelected: Bool) {
+        image = searchMapMarkerImage(for: item.search.sport, isSelected: isSelected)
+        centerOffset = CGPoint(x: 0, y: -20)
+        canShowCallout = false
+        displayPriority = isSelected ? .required : .defaultHigh
+        zPriority = isSelected ? .max : .defaultSelected
+    }
+}
+
+private func searchMapMarkerImage(for sport: Sport, isSelected: Bool) -> UIImage? {
+    let size = CGSize(width: isSelected ? 54 : 46, height: isSelected ? 54 : 46)
+    let renderer = UIGraphicsImageRenderer(size: size)
+    let tint = searchMapSportUIColor(for: sport)
+    let symbolConfig = UIImage.SymbolConfiguration(pointSize: isSelected ? 19 : 17, weight: .bold)
+    let symbol = UIImage(systemName: sportSymbolName(for: sport), withConfiguration: symbolConfig)?
+        .withTintColor(.white, renderingMode: .alwaysOriginal)
+
+    return renderer.image { _ in
+        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 4)
+        UIColor.black.withAlphaComponent(0.68).setFill()
+        UIBezierPath(ovalIn: rect).fill()
+
+        tint.setFill()
+        UIBezierPath(ovalIn: rect.insetBy(dx: isSelected ? 4 : 5, dy: isSelected ? 4 : 5)).fill()
+
+        UIColor.white.withAlphaComponent(isSelected ? 0.95 : 0.72).setStroke()
+        let stroke = UIBezierPath(ovalIn: rect.insetBy(dx: 1.2, dy: 1.2))
+        stroke.lineWidth = isSelected ? 3 : 2
+        stroke.stroke()
+
+        if let symbol {
+            let side = isSelected ? 24 : 21
+            let symbolRect = CGRect(
+                x: (size.width - CGFloat(side)) / 2,
+                y: (size.height - CGFloat(side)) / 2,
+                width: CGFloat(side),
+                height: CGFloat(side)
+            )
+            symbol.draw(in: symbolRect)
+        }
+    }
+}
+
+private func searchMapSportUIColor(for sport: Sport) -> UIColor {
+    switch sport {
+    case .tennis:
+        return UIColor(red: 0.94, green: 0.78, blue: 0.18, alpha: 1)
+    case .padel:
+        return UIColor(red: 0.11, green: 0.72, blue: 0.43, alpha: 1)
+    case .football:
+        return UIColor(red: 0.14, green: 0.55, blue: 0.96, alpha: 1)
+    case .badminton:
+        return UIColor(red: 0.48, green: 0.38, blue: 0.96, alpha: 1)
+    case .tableTennis:
+        return UIColor(red: 0.95, green: 0.35, blue: 0.30, alpha: 1)
+    case .running:
+        return UIColor(red: 0.98, green: 0.45, blue: 0.18, alpha: 1)
+    case .supboard:
+        return UIColor(red: 0.16, green: 0.72, blue: 0.86, alpha: 1)
+    default:
+        return UIColor(red: 0.22, green: 0.86, blue: 0.55, alpha: 1)
+    }
+}
+
 struct SearchClubPickerMapView: UIViewRepresentable {
     let courts: [Court]
     let focusedCourt: Court?
     let focusedDistrictID: String?
+    let highlightedDistrictIDs: [String]
     let focusRevision: Int
     let onSelectCourt: (String) -> Void
     let onChooseCourt: ((String) -> Void)?
@@ -7215,6 +9053,7 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         courts: [Court],
         focusedCourt: Court?,
         focusedDistrictID: String? = nil,
+        highlightedDistrictIDs: [String] = [],
         focusRevision: Int = 0,
         onSelectCourt: @escaping (String) -> Void,
         onChooseCourt: ((String) -> Void)? = nil
@@ -7222,6 +9061,7 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         self.courts = courts
         self.focusedCourt = focusedCourt
         self.focusedDistrictID = focusedDistrictID
+        self.highlightedDistrictIDs = highlightedDistrictIDs
         self.focusRevision = focusRevision
         self.onSelectCourt = onSelectCourt
         self.onChooseCourt = onChooseCourt
@@ -7250,6 +9090,7 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             courts: courts,
             focusedCourt: focusedCourt,
             focusedDistrictID: focusedDistrictID,
+            highlightedDistrictIDs: highlightedDistrictIDs,
             focusRevision: focusRevision
         )
     }
@@ -7258,6 +9099,7 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         private let onSelectCourt: (String) -> Void
         private let onChooseCourt: ((String) -> Void)?
         private var lastCourtIDs: [String] = []
+        private var lastOverlayIDs: [String] = []
         private var lastFocusSignature: String?
         private var hasSetVisibleRegion = false
 
@@ -7271,9 +9113,14 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             courts: [Court],
             focusedCourt: Court?,
             focusedDistrictID: String?,
+            highlightedDistrictIDs: [String],
             focusRevision: Int
         ) {
-            let visibleCourts = Array(courts.prefix(18))
+            let normalizedHighlightIDs = Array(
+                Set(highlightedDistrictIDs.map { $0.lowercased() })
+            )
+            .sorted()
+            let visibleCourts = normalizedHighlightIDs.isEmpty ? Array(courts.prefix(18)) : Array(courts.prefix(80))
             let courtIDs = visibleCourts.map(\.id)
             if courtIDs != lastCourtIDs {
                 lastCourtIDs = courtIDs
@@ -7281,12 +9128,15 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 mapView.addAnnotations(visibleCourts.map(SearchPreviewCourtAnnotation.init))
             }
 
+            updateDistrictOverlays(mapView: mapView, districtIDs: normalizedHighlightIDs)
+
             let annotations = mapView.annotations.compactMap { $0 as? SearchPreviewCourtAnnotation }
             let focusedCourtID = focusedCourt?.id
             let normalizedDistrictID = focusedDistrictID?.lowercased()
             let focusSignature = [
                 focusedCourtID ?? "",
                 normalizedDistrictID ?? "",
+                normalizedHighlightIDs.joined(separator: ","),
                 String(focusRevision)
             ].joined(separator: "|")
 
@@ -7318,6 +9168,23 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return
             }
 
+            if focusedCourt == nil,
+               !normalizedHighlightIDs.isEmpty,
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                let targetRect = targetVisibleRect(annotations: annotations, districtIDs: normalizedHighlightIDs)
+                guard !targetRect.isNull, !targetRect.isEmpty else {
+                    return
+                }
+                mapView.setVisibleMapRect(
+                    targetRect,
+                    edgePadding: UIEdgeInsets(top: 24, left: 24, bottom: 24, right: 24),
+                    animated: true
+                )
+                return
+            }
+
             lastFocusSignature = focusSignature
 
             let targetRect = annotations
@@ -7335,6 +9202,61 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             }
             hasSetVisibleRegion = true
             mapView.setVisibleMapRect(targetRect, edgePadding: UIEdgeInsets(top: 20, left: 20, bottom: 20, right: 20), animated: false)
+        }
+
+        private func updateDistrictOverlays(mapView: MKMapView, districtIDs: [String]) {
+            guard districtIDs != lastOverlayIDs else {
+                return
+            }
+
+            lastOverlayIDs = districtIDs
+            mapView.removeOverlays(mapView.overlays)
+
+            for districtID in districtIDs {
+                guard let area = districtAreasByID[districtID] else {
+                    continue
+                }
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                polygon.title = area.id
+                mapView.addOverlay(polygon)
+            }
+        }
+
+        private func targetVisibleRect(annotations: [SearchPreviewCourtAnnotation], districtIDs: [String]) -> MKMapRect {
+            let annotationRects = annotations.map {
+                MKMapRect(
+                    origin: MKMapPoint($0.coordinate),
+                    size: MKMapSize(width: 0, height: 0)
+                )
+            }
+
+            let districtRects = districtIDs.compactMap { districtID -> MKMapRect? in
+                guard let area = districtAreasByID[districtID] else {
+                    return nil
+                }
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                return polygon.boundingMapRect
+            }
+
+            return (annotationRects + districtRects).reduce(MKMapRect.null) { partial, next in
+                partial.isNull ? next : partial.union(next)
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let polygon = overlay as? MKPolygon,
+                  let overlayID = polygon.title ?? nil,
+                  let area = districtAreasByID[overlayID] else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
+
+            let renderer = MKPolygonRenderer(polygon: polygon)
+            renderer.fillColor = area.color.withAlphaComponent(0.18)
+            renderer.strokeColor = area.color.withAlphaComponent(0.78)
+            renderer.lineWidth = 1.7
+            return renderer
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {

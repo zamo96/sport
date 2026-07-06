@@ -3,6 +3,7 @@ import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type
 import { cookies, headers } from "next/headers";
 
 import { AUTH_CODE_TTL_MINUTES, SESSION_COOKIE, SESSION_TTL_DAYS } from "@/lib/constants";
+import { buildUserAgreementAcceptanceRecord, type LegalAcceptanceSource } from "@/lib/legal-contract";
 import { prisma } from "@/lib/prisma";
 
 type AppleIdentityTokenHeader = {
@@ -167,6 +168,38 @@ async function verifyAppleIdentityToken(identityToken: string) {
 function buildAppleDisplayName(profile?: AppleAuthProfile) {
   const parts = [profile?.givenName?.trim(), profile?.familyName?.trim()].filter(Boolean);
   return parts.length ? parts.join(" ") : undefined;
+}
+
+export function getLegalAcceptanceRequestMeta(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const realIp = request.headers.get("x-real-ip")?.trim();
+
+  return {
+    ip: forwardedFor || realIp || null,
+    userAgent: request.headers.get("user-agent")?.trim() || null
+  };
+}
+
+export async function recordUserAgreementAcceptance(
+  userId: string,
+  source: LegalAcceptanceSource,
+  meta?: { ip?: string | null; userAgent?: string | null }
+) {
+  await prisma.userAgreementAcceptance.createMany({
+    data: [
+      buildUserAgreementAcceptanceRecord({
+        userId,
+        source,
+        ip: meta?.ip,
+        userAgent: meta?.userAgent
+      })
+    ],
+    skipDuplicates: true
+  });
+
+  return prisma.user.findUniqueOrThrow({
+    where: { id: userId }
+  });
 }
 
 export async function createAuthCode(email: string, userId?: string) {

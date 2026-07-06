@@ -1,16 +1,25 @@
 import SwiftUI
 
+private struct AvatarPreviewItem: Identifiable {
+    let id = UUID()
+    let name: String
+    let path: String?
+}
+
 struct MatchesView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var matches: [MatchSummary] = []
+    @State private var incomingLikes: [DiscoverUser] = []
     @State private var isLoading = false
     @State private var selectedProfileMatch: MatchSummary?
     @State private var selectedProposalMatch: MatchSummary?
     @State private var navigationMatch: MatchSummary?
     @State private var isChatPresented = false
     @State private var updatingRequestIDs: Set<String> = []
+    @State private var updatingIncomingLikeIDs: Set<String> = []
     @State private var selectedFilter: MatchListFilter = .all
+    @State private var selectedAvatarPreview: AvatarPreviewItem?
 
     private var filteredMatches: [MatchSummary] {
         matches.filter { match in
@@ -31,13 +40,26 @@ struct MatchesView: View {
         }
     }
 
+    private var visibleIncomingLikes: [DiscoverUser] {
+        switch selectedFilter {
+        case .all, .new, .action:
+            return incomingLikes
+        case .withGame, .archive:
+            return []
+        }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 matchesHeader
                 matchesFilterRail
 
-                if filteredMatches.isEmpty, !isLoading {
+                if !visibleIncomingLikes.isEmpty {
+                    incomingLikesDecisionSection
+                }
+
+                if filteredMatches.isEmpty, visibleIncomingLikes.isEmpty, !isLoading {
                     SectionCard(title: "Пока нет мэтчей", subtitle: nil) {
                         EmptyStateView(
                             title: "Пока нет мэтчей",
@@ -52,9 +74,9 @@ struct MatchesView: View {
                         match: match,
                         currentUserId: appModel.currentUser?.id,
                         isUpdating: match.latestGameRequest.map { updatingRequestIDs.contains($0.id) } ?? false,
-                        onOpenProfile: {
+                        onOpenAvatar: {
                             AppHaptics.selection()
-                            selectedProfileMatch = match
+                            selectedAvatarPreview = AvatarPreviewItem(name: match.otherUser.displayName, path: match.otherUser.avatarUrl)
                         },
                         onOpenChat: {
                             presentChat(for: match)
@@ -120,6 +142,12 @@ struct MatchesView: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
         }
+        .sheet(item: $selectedAvatarPreview) { item in
+            AvatarPreviewSheet(name: item.name, path: item.path)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+        }
     }
 
     private var matchesHeader: some View {
@@ -134,12 +162,6 @@ struct MatchesView: View {
             }
 
             Spacer()
-
-            Image(systemName: "line.3.horizontal.decrease")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 42, height: 42)
-                .background(Color.white.opacity(0.08), in: Circle())
         }
     }
 
@@ -148,7 +170,11 @@ struct MatchesView: View {
             HStack(spacing: 8) {
                 ForEach(MatchListFilter.allCases) { filter in
                     let selected = selectedFilter == filter
-                    let count = filter.count(in: matches, currentUserId: appModel.currentUser?.id)
+                    let count = filter.count(
+                        in: matches,
+                        incomingLikesCount: incomingLikes.count,
+                        currentUserId: appModel.currentUser?.id
+                    )
 
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
@@ -173,6 +199,40 @@ struct MatchesView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+        }
+    }
+
+    private var incomingLikesDecisionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Ждут решения")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("\(visibleIncomingLikes.count)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.court)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.court.opacity(0.18), in: Capsule())
+                Spacer()
+            }
+
+            ForEach(visibleIncomingLikes) { user in
+                IncomingLikeDecisionCard(
+                    user: user,
+                    isUpdating: updatingIncomingLikeIDs.contains(user.id),
+                    onOpenAvatar: {
+                        AppHaptics.selection()
+                        selectedAvatarPreview = AvatarPreviewItem(name: user.displayName, path: user.avatarUrl)
+                    },
+                    onDecline: {
+                        await respondToIncomingLike(user: user, action: .dislike)
+                    },
+                    onAccept: {
+                        await respondToIncomingLike(user: user, action: .like)
+                    }
+                )
             }
         }
     }
@@ -205,11 +265,63 @@ struct MatchesView: View {
     }
 
     private func loadMatches() async {
+        let shouldReportMenuLoading = matches.isEmpty
+        if shouldReportMenuLoading {
+            appModel.setTabContentLoading("matches", isLoading: true)
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            if shouldReportMenuLoading {
+                appModel.setTabContentLoading("matches", isLoading: false)
+            }
+        }
 
         do {
-            matches = try await appModel.repository.fetchMatches()
+            async let fetchedMatches = appModel.repository.fetchMatches()
+
+            if appModel.isAuthenticated {
+                async let fetchedIncomingLikes = appModel.repository.fetchDiscoverUsers(view: .likes)
+                matches = try await fetchedMatches
+                incomingLikes = try await fetchedIncomingLikes
+            } else {
+                matches = try await fetchedMatches
+                incomingLikes = []
+            }
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
+    }
+
+    private func respondToIncomingLike(user: DiscoverUser, action: SwipeAction) async {
+        guard !updatingIncomingLikeIDs.contains(user.id) else {
+            return
+        }
+
+        updatingIncomingLikeIDs.insert(user.id)
+        defer { updatingIncomingLikeIDs.remove(user.id) }
+
+        do {
+            let createdMatchId = try await appModel.repository.swipe(userId: user.id, action: action)
+            incomingLikes.removeAll { $0.id == user.id }
+
+            switch action {
+            case .like, .superlike:
+                AppHaptics.notification(.success)
+            case .dislike:
+                AppHaptics.notification(.warning)
+            }
+
+            await loadMatches()
+            await appModel.notificationManager.manualRefresh(repository: appModel.repository)
+
+            if let createdMatchId,
+               let createdMatch = matches.first(where: { $0.id == createdMatchId || $0.otherUser.id == user.id }) {
+                navigationMatch = createdMatch
+            }
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -302,7 +414,7 @@ private enum MatchListFilter: String, CaseIterable, Identifiable {
         }
     }
 
-    func count(in matches: [MatchSummary], currentUserId: String?) -> Int {
+    func count(in matches: [MatchSummary], incomingLikesCount: Int, currentUserId: String?) -> Int {
         matches.filter { match in
             switch self {
             case .all:
@@ -319,7 +431,142 @@ private enum MatchListFilter: String, CaseIterable, Identifiable {
                 return ["declined", "rejected", "withdrawn", "canceled", "cancelled"].contains(request.status.lowercased()) || request.statusLabel == "Игра закончилась"
             }
         }
-        .count
+        .count + extraCountForIncomingLikes(incomingLikesCount)
+    }
+
+    private func extraCountForIncomingLikes(_ incomingLikesCount: Int) -> Int {
+        switch self {
+        case .all, .new, .action:
+            return incomingLikesCount
+        case .withGame, .archive:
+            return 0
+        }
+    }
+}
+
+private struct IncomingLikeDecisionCard: View {
+    let user: DiscoverUser
+    let isUpdating: Bool
+    let onOpenAvatar: () -> Void
+    let onDecline: () async -> Void
+    let onAccept: () async -> Void
+
+    private var primarySport: Sport {
+        user.preferredSports.first ?? .tennis
+    }
+
+    private var sportDistrictLine: String {
+        let district = user.districtDisplayNames.first ?? user.districtDisplaySummary
+        return "\(primarySport.title) · \(district)"
+    }
+
+    private var reasonLine: String {
+        user.explainabilityReasons.first ?? "Игрок уже отметил, что хочет с вами сыграть."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 13) {
+                Button(action: onOpenAvatar) {
+                    RemoteAvatarView(name: user.displayName, path: user.avatarUrl, size: 58)
+                        .overlay(alignment: .bottomTrailing) {
+                            if user.isOnline {
+                                Circle()
+                                    .fill(Color(red: 0.22, green: 0.82, blue: 0.45))
+                                    .frame(width: 13, height: 13)
+                                    .overlay(Circle().stroke(Color.black, lineWidth: 2))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Text(user.displayName)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+
+                        AppInlineChip(
+                            text: "Хочет сыграть",
+                            tint: AppTheme.court.opacity(0.18),
+                            foreground: AppTheme.mint
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+                    }
+
+                    Text(sportDistrictLine)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.41, green: 0.86, blue: 0.56))
+                        .lineLimit(1)
+
+                    Text(reasonLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(2)
+                }
+                .layoutPriority(1)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { await onDecline() }
+                } label: {
+                    Label("Пропустить", systemImage: "xmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(IncomingLikeDecisionButtonStyle(tint: .white.opacity(0.12), foreground: .white.opacity(0.82)))
+                .disabled(isUpdating)
+
+                Button {
+                    Task { await onAccept() }
+                } label: {
+                    HStack(spacing: 7) {
+                        if isUpdating {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(.white)
+                        }
+                        SportIconView(sport: primarySport, color: .white, size: 16)
+                        Text("Можно сыграть")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(IncomingLikeDecisionButtonStyle(tint: AppTheme.court, foreground: .white))
+                .disabled(isUpdating)
+            }
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [Color.white.opacity(0.09), Color.white.opacity(0.045)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AppTheme.court.opacity(0.24), lineWidth: 1)
+        )
+    }
+}
+
+private struct IncomingLikeDecisionButtonStyle: ButtonStyle {
+    let tint: Color
+    let foreground: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(foreground)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .background(tint.opacity(configuration.isPressed ? 0.72 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.84), value: configuration.isPressed)
     }
 }
 
@@ -327,7 +574,7 @@ private struct MatchInboxCard: View {
     let match: MatchSummary
     let currentUserId: String?
     let isUpdating: Bool
-    let onOpenProfile: () -> Void
+    let onOpenAvatar: () -> Void
     let onOpenChat: () -> Void
     let onProposeGame: () -> Void
     let onCancelRequest: () async -> Void
@@ -431,16 +678,27 @@ private struct MatchInboxCard: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 13) {
-            Button(action: onOpenProfile) {
-                RemoteAvatarView(name: match.otherUser.displayName, path: match.otherUser.avatarUrl, size: 60)
-                    .overlay(alignment: .bottomTrailing) {
-                        Circle()
-                            .fill(Color(red: 0.22, green: 0.82, blue: 0.45))
-                            .frame(width: 13, height: 13)
-                            .overlay(Circle().stroke(Color.black, lineWidth: 2))
-                    }
+            VStack(spacing: 5) {
+                Button(action: onOpenAvatar) {
+                    RemoteAvatarView(name: match.otherUser.displayName, path: match.otherUser.avatarUrl, size: 60)
+                        .overlay(alignment: .bottomTrailing) {
+                            if match.otherUser.isOnline {
+                                Circle()
+                                    .fill(Color(red: 0.22, green: 0.82, blue: 0.45))
+                                    .frame(width: 13, height: 13)
+                                    .overlay(Circle().stroke(Color.black, lineWidth: 2))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+
+                Text(match.otherUser.presenceLabel)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(match.otherUser.isOnline ? Color(red: 0.38, green: 0.93, blue: 0.62) : .white.opacity(0.52))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(width: 72)
             }
-            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(match.otherUser.displayName)
@@ -581,6 +839,7 @@ private struct MatchInboxCard: View {
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var notificationManager: NotificationManager
     let match: MatchSummary
 
     @State private var currentMatch: MatchSummary
@@ -592,6 +851,8 @@ struct ChatView: View {
     @State private var proposalContext: ProposalSheetContext = .new
     @State private var isProfilePresented = false
     @State private var isUpdatingRequest = false
+    @State private var lastActiveChatPresenceRefresh = Date.distantPast
+    @State private var selectedAvatarPreview: AvatarPreviewItem?
     @FocusState private var isComposerFocused: Bool
     private let bottomAnchorID = "chat-bottom-anchor"
 
@@ -615,14 +876,38 @@ struct ChatView: View {
                     VStack(spacing: 14) {
                         ForEach(messages) { message in
                             let isMine = message.senderUserId == appModel.currentUser?.id
-                            ChatBubble(
-                                text: message.text,
-                                timestamp: message.createdAt.formattedDateTime(),
-                                sender: message.senderUser?.name ?? currentMatch.otherUser.displayName,
-                                avatarPath: isMine ? nil : (message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl),
-                                isMine: isMine
-                            )
-                            .id(message.id)
+                            let presentation = chatMessagePresentation(for: message)
+                            if message.isGameReportSystemEvent {
+                                ChatSystemEventRow(
+                                    title: message.gameReportSystemTitle,
+                                    timestamp: message.createdAt.formattedDateTime()
+                                )
+                                .id(message.id)
+                            } else {
+                                ChatBubble(
+                                    text: presentation.text,
+                                    timestamp: message.createdAt.formattedDateTime(),
+                                    sender: message.senderUser?.name ?? currentMatch.otherUser.displayName,
+                                    avatarPath: isMine ? nil : (message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl),
+                                    isMine: isMine,
+                                    actionTitle: presentation.action?.title,
+                                    actionSystemImage: presentation.action?.systemImage,
+                                    onAction: presentation.action.map { action in
+                                        {
+                                            appModel.navigate(to: action.target)
+                                        }
+                                    },
+                                    onAvatarTap: isMine
+                                        ? nil
+                                        : {
+                                            selectedAvatarPreview = AvatarPreviewItem(
+                                                name: message.senderUser?.name ?? currentMatch.otherUser.displayName,
+                                                path: message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl
+                                            )
+                                        }
+                                )
+                                .id(message.id)
+                            }
                         }
 
                         if !chatGameRequests.isEmpty {
@@ -706,6 +991,11 @@ struct ChatView: View {
             await runRealtimeChatUpdates()
         }
         .onAppear {
+            notificationManager.setNotificationMuted(href: "/inbox/\(currentMatch.id)", isMuted: true)
+            Task {
+                await updateActiveChatPresence(isActive: true)
+            }
+
             withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
                 appModel.bottomBarDisplayMode = .hidden
             }
@@ -726,6 +1016,10 @@ struct ChatView: View {
             }
         }
         .onDisappear {
+            notificationManager.setNotificationMuted(href: "/inbox/\(currentMatch.id)", isMuted: false)
+            Task {
+                await updateActiveChatPresence(isActive: false)
+            }
             appModel.bottomBarDisplayMode = .expanded
         }
         .sheet(isPresented: $isProfilePresented) {
@@ -757,6 +1051,12 @@ struct ChatView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
+        }
+        .sheet(item: $selectedAvatarPreview) { item in
+            AvatarPreviewSheet(name: item.name, path: item.path)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
         }
     }
 
@@ -798,24 +1098,32 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
 
-            RemoteAvatarView(name: currentMatch.otherUser.displayName, path: currentMatch.otherUser.avatarUrl, size: 48)
-                .overlay(alignment: .bottomTrailing) {
-                    Circle()
-                        .fill(Color(red: 0.22, green: 0.82, blue: 0.45))
-                        .frame(width: 11, height: 11)
-                        .overlay(Circle().stroke(Color.black, lineWidth: 2))
-                }
+            Button {
+                AppHaptics.selection()
+                selectedAvatarPreview = AvatarPreviewItem(name: currentMatch.otherUser.displayName, path: currentMatch.otherUser.avatarUrl)
+            } label: {
+                RemoteAvatarView(name: currentMatch.otherUser.displayName, path: currentMatch.otherUser.avatarUrl, size: 48)
+                    .overlay(alignment: .bottomTrailing) {
+                        if currentMatch.otherUser.isOnline {
+                            Circle()
+                                .fill(Color(red: 0.22, green: 0.82, blue: 0.45))
+                                .frame(width: 11, height: 11)
+                                .overlay(Circle().stroke(Color.black, lineWidth: 2))
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 3) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 6) {
                         chatNameText(lineLimit: 1)
-                        onlineBadge
+                        presenceBadge
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
                         chatNameText(lineLimit: 2)
-                        onlineBadge
+                        presenceBadge
                     }
                 }
 
@@ -856,13 +1164,18 @@ struct ChatView: View {
             .minimumScaleFactor(0.62)
     }
 
-    private var onlineBadge: some View {
-        Text("Онлайн")
+    private var presenceBadge: some View {
+        let isOnline = currentMatch.otherUser.isOnline
+
+        return Text(currentMatch.otherUser.presenceLabel)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Color(red: 0.38, green: 0.93, blue: 0.62))
+            .foregroundStyle(isOnline ? Color(red: 0.38, green: 0.93, blue: 0.62) : .white.opacity(0.62))
             .padding(.horizontal, 7)
             .frame(height: 24)
-            .background(Color(red: 0.05, green: 0.25, blue: 0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(
+                isOnline ? Color(red: 0.05, green: 0.25, blue: 0.16) : Color.white.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
     }
 
     private var chatGameRequests: [MatchGameRequest] {
@@ -906,7 +1219,7 @@ struct ChatView: View {
     private var gameRequestsCarousel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Игры в чате")
+                Text("Ваши договоренности")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.52))
 
@@ -948,9 +1261,7 @@ struct ChatView: View {
     private func compactGameRequestCard(_ request: MatchGameRequest, isSelected: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Image(systemName: sportSymbolName(for: request.sport))
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
+                SportIconView(sport: request.sport, color: .white, size: 32)
                     .frame(width: 56, height: 56)
                     .background(
                         LinearGradient(
@@ -967,7 +1278,7 @@ struct ChatView: View {
                         .foregroundStyle(.white.opacity(0.44))
                         .lineLimit(1)
 
-                    Text("\(request.sport.title) \(request.sport.formatTitle(format: request.format))")
+                    Text("\(request.sport.title) \(request.effectiveFormatTitle)")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
@@ -1087,7 +1398,7 @@ struct ChatView: View {
                     .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(request.sport.title) · \(request.sport.formatTitle(format: request.format))")
+                    Text("\(request.sport.title) · \(request.effectiveFormatTitle)")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
 
@@ -1586,7 +1897,29 @@ struct ChatView: View {
             guard !Task.isCancelled else {
                 return
             }
+            await refreshActiveChatPresenceIfNeeded()
             await refreshChatState(showErrors: false)
+        }
+    }
+
+    private func refreshActiveChatPresenceIfNeeded() async {
+        guard Date().timeIntervalSince(lastActiveChatPresenceRefresh) > 30 else {
+            return
+        }
+
+        await updateActiveChatPresence(isActive: true)
+    }
+
+    private func updateActiveChatPresence(isActive: Bool) async {
+        do {
+            try await appModel.repository.setActiveChat(matchId: currentMatch.id, gameRequestId: nil, isActive: isActive)
+            if isActive {
+                lastActiveChatPresenceRefresh = Date()
+            }
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
         }
     }
 
@@ -1600,6 +1933,67 @@ struct ChatView: View {
         }
 
         return false
+    }
+
+    private func chatMessagePresentation(for message: ChatMessage) -> ChatMessagePresentation {
+        if let gameRequestId = message.gameRequestId {
+            return ChatMessagePresentation(
+                text: cleanActionLinkText(message.text),
+                action: ChatMessageAction(
+                    title: "Открыть игру",
+                    systemImage: "calendar.badge.clock",
+                    target: .discover(.upcoming, highlightedGameRequestID: gameRequestId)
+                )
+            )
+        }
+
+        if let gameRequestId = extractPathID(from: message.text, marker: "/play/games/") {
+            return ChatMessagePresentation(
+                text: cleanActionLinkText(message.text),
+                action: ChatMessageAction(
+                    title: "Открыть игру",
+                    systemImage: "calendar.badge.clock",
+                    target: .discover(.upcoming, highlightedGameRequestID: gameRequestId)
+                )
+            )
+        }
+
+        if let searchId = extractPathID(from: message.text, marker: "/play/searches/") {
+            return ChatMessagePresentation(
+                text: cleanActionLinkText(message.text),
+                action: ChatMessageAction(
+                    title: "Открыть поиск",
+                    systemImage: "magnifyingglass",
+                    target: .discover(.hot, highlightedSearchID: searchId)
+                )
+            )
+        }
+
+        return ChatMessagePresentation(text: message.text, action: nil)
+    }
+
+    private func extractPathID(from text: String, marker: String) -> String? {
+        guard let markerRange = text.range(of: marker) else {
+            return nil
+        }
+
+        let suffix = text[markerRange.upperBound...]
+        let rawID = suffix.prefix { character in
+            !character.isWhitespace && character != "." && character != "," && character != ")" && character != "]"
+        }
+        let id = String(rawID).trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
+    }
+
+    private func cleanActionLinkText(_ text: String) -> String {
+        var result = text
+        for label in ["Открыть игру:", "Открыть поиск:"] {
+            if let labelRange = result.range(of: label) {
+                result = String(result[..<labelRange.lowerBound])
+                break
+            }
+        }
+        return result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
     }
 
     private func sendMessage() async {
@@ -1624,26 +2018,63 @@ struct ChatView: View {
     }
 }
 
+private struct ChatMessagePresentation {
+    let text: String
+    let action: ChatMessageAction?
+}
+
+private struct ChatMessageAction {
+    let title: String
+    let systemImage: String
+    let target: AppNavigationTarget
+}
+
 private struct ChatBubble: View {
     let text: String
     let timestamp: String
     let sender: String
     let avatarPath: String?
     let isMine: Bool
+    let actionTitle: String?
+    let actionSystemImage: String?
+    let onAction: (() -> Void)?
+    let onAvatarTap: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
             if isMine {
                 Spacer(minLength: 48)
             } else {
-                RemoteAvatarView(name: sender, path: avatarPath, size: 42)
-                    .overlay(Circle().stroke(AppTheme.court.opacity(0.72), lineWidth: 1.5))
+                if let onAvatarTap {
+                    Button(action: onAvatarTap) {
+                        RemoteAvatarView(name: sender, path: avatarPath, size: 42)
+                            .overlay(Circle().stroke(AppTheme.court.opacity(0.72), lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    RemoteAvatarView(name: sender, path: avatarPath, size: 42)
+                        .overlay(Circle().stroke(AppTheme.court.opacity(0.72), lineWidth: 1.5))
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(text)
-                    .font(.body)
-                    .foregroundStyle(isMine ? .white : AppTheme.ink)
+                if !text.isEmpty {
+                    Text(text)
+                        .font(.body)
+                        .foregroundStyle(isMine ? .white : AppTheme.ink)
+                }
+
+                if let actionTitle, let onAction {
+                    Button(action: onAction) {
+                        Label(actionTitle, systemImage: actionSystemImage ?? "arrow.up.right")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(isMine ? Color.black.opacity(0.88) : .white)
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background(isMine ? Color.white.opacity(0.92) : AppTheme.court, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Text(timestamp)
                     .font(.caption2)
@@ -1665,6 +2096,58 @@ private struct ChatBubble: View {
                 Spacer(minLength: 48)
             }
         }
+    }
+}
+
+private struct ChatSystemEventRow: View {
+    let title: String
+    let timestamp: String
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 24)
+
+            HStack(spacing: 10) {
+                Image(systemName: "photo.stack.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.court)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(timestamp)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(AppTheme.ink.opacity(0.52))
+                }
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(AppTheme.mint, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(AppTheme.court.opacity(0.28), lineWidth: 1)
+            )
+
+            Spacer(minLength: 24)
+        }
+    }
+}
+
+private extension ChatMessage {
+    var isGameReportSystemEvent: Bool {
+        let normalized = text.lowercased()
+        return normalized.contains("фотоотчёт") || normalized.contains("фотоотчет")
+    }
+
+    var gameReportSystemTitle: String {
+        let normalized = text.lowercased()
+
+        if normalized.contains("добав") || normalized.contains("загруж") {
+            return "Фотоотчёт загружен"
+        }
+
+        return text
     }
 }
 
@@ -1691,6 +2174,10 @@ private extension Sport {
             return "йоги"
         case .football:
             return "футбола"
+        case .running:
+            return "бега"
+        case .supboard:
+            return "сапборда"
         }
     }
 }
@@ -1815,7 +2302,7 @@ private struct MatchPlayerSheet: View {
                             AppInlineChip(text: request.statusLabel, tint: request.statusTintColor, foreground: .white)
                             HStack(spacing: 8) {
                                 AppInlineChip(text: request.sport.title, tint: AppTheme.cream, foreground: AppTheme.ink)
-                                AppInlineChip(text: request.sport.formatTitle(format: request.format), tint: AppTheme.cream, foreground: AppTheme.ink)
+                                AppInlineChip(text: request.effectiveFormatTitle, tint: AppTheme.cream, foreground: AppTheme.ink)
                             }
                             AppInlineChip(text: request.proposedDatetime.formattedDateTime(), tint: AppTheme.ink, foreground: .white)
                             if let court = request.proposedCourt {
@@ -2001,6 +2488,7 @@ struct GameProposalSheet: View {
     @State private var localError: String?
     @State private var draft: GameProposalDraft
     @State private var isExactDateTimeSelected = false
+    @State private var isGameUpdateCelebrationPresented = false
 
     init(
         match: MatchSummary,
@@ -2015,7 +2503,7 @@ struct GameProposalSheet: View {
         self.initialCourt = initialCourt
         self.onCreated = onCreated
 
-        let sourceRequest = seedRequest ?? match.latestGameRequest
+        let sourceRequest = context == .new ? seedRequest : (seedRequest ?? match.latestGameRequest)
         let sourceCourt = sourceRequest?.proposedCourt ?? initialCourt
         let courtSports = sourceCourt?.supportedSports ?? []
         let preferredCourtSport = match.otherUser.preferredSports.first { courtSports.contains($0) }
@@ -2027,7 +2515,7 @@ struct GameProposalSheet: View {
         let proposalDate = Self.initialProposalDate(from: sourceRequest?.proposedDate)
 
         _draft = State(initialValue: GameProposalDraft(
-            proposedCourtId: sourceCourt?.id ?? "",
+            proposedCourtId: initialCourt?.id ?? (context == .new ? nil : sourceCourt?.id),
             proposedDatetime: proposalDate,
             durationMinutes: sourceRequest?.durationMinutes ?? 90,
             levelRangeMin: max(defaultLevel - 1, 1),
@@ -2076,8 +2564,12 @@ struct GameProposalSheet: View {
     }
 
     private var selectedCourt: Court? {
-        filteredCourts.first(where: { $0.id == draft.proposedCourtId })
-            ?? courts.first(where: { $0.id == draft.proposedCourtId })
+        guard let proposedCourtId = draft.proposedCourtId else {
+            return nil
+        }
+
+        return filteredCourts.first(where: { $0.id == proposedCourtId })
+            ?? courts.first(where: { $0.id == proposedCourtId })
     }
 
     private var proposalSummaryTitle: String {
@@ -2111,6 +2603,16 @@ struct GameProposalSheet: View {
                 .padding(.top, 18)
                 .padding(.bottom, 40)
             }
+
+            if isGameUpdateCelebrationPresented {
+                SuccessCelebrationOverlay(
+                    title: "Игра изменена",
+                    subtitle: "Ждем подтверждения партнера",
+                    icon: "✅"
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
@@ -2120,11 +2622,14 @@ struct GameProposalSheet: View {
             SearchClubPickerSheet(
                 sport: draft.sport,
                 courts: filteredCourts,
-                selectedCourtId: draft.proposedCourtId.isEmpty ? nil : draft.proposedCourtId,
+                selectedCourtId: draft.proposedCourtId,
                 selectsImmediately: false,
-                allowsNoCourt: false,
+                allowsNoCourt: true,
                 onSelect: { court in
                     guard let court else {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                            draft.proposedCourtId = nil
+                        }
                         return
                     }
                     selectCourt(court)
@@ -2248,9 +2753,11 @@ struct GameProposalSheet: View {
                             applySportSelection(sport)
                         } label: {
                             VStack(spacing: 10) {
-                                Image(systemName: proposalSportIconName(for: sport))
-                                    .font(.system(size: 26, weight: .semibold))
-                                    .foregroundStyle(isSelected ? AppTheme.court : AppTheme.ink.opacity(0.92))
+                                SportIconView(
+                                    sport: sport,
+                                    color: isSelected ? AppTheme.court : AppTheme.ink.opacity(0.92),
+                                    size: 30
+                                )
                                     .frame(width: 52, height: 52)
                                     .background(isSelected ? AppTheme.mint : Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
@@ -2633,7 +3140,7 @@ struct GameProposalSheet: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
-            .disabled(isSubmitting || draft.proposedCourtId.isEmpty)
+            .disabled(isSubmitting)
 
             Button("Отмена") {
                 dismiss()
@@ -2650,9 +3157,6 @@ struct GameProposalSheet: View {
 
     private func loadCourtsIfNeeded() async {
         guard courts.isEmpty else {
-            if draft.proposedCourtId.isEmpty {
-                draft.proposedCourtId = filteredCourts.first?.id ?? ""
-            }
             return
         }
 
@@ -2661,11 +3165,11 @@ struct GameProposalSheet: View {
 
         do {
             courts = try await appModel.repository.fetchCourts()
-            if !draft.proposedCourtId.isEmpty,
-               courts.contains(where: { $0.id == draft.proposedCourtId }) {
+            if let proposedCourtId = draft.proposedCourtId,
+               courts.contains(where: { $0.id == proposedCourtId }) {
                 return
             }
-            draft.proposedCourtId = initialCourt?.id ?? filteredCourts.first?.id ?? courts.first?.id ?? ""
+            draft.proposedCourtId = initialCourt?.id
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -2679,8 +3183,9 @@ struct GameProposalSheet: View {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
             draft.sport = sport
             draft.format = sport.resolveFormat(draft.format)
-            if !filteredCourts.contains(where: { $0.id == draft.proposedCourtId }) {
-                draft.proposedCourtId = filteredCourts.first?.id ?? courts.first?.id ?? ""
+            if let proposedCourtId = draft.proposedCourtId,
+               !filteredCourts.contains(where: { $0.id == proposedCourtId }) {
+                draft.proposedCourtId = nil
             }
         }
     }
@@ -2751,11 +3256,11 @@ struct GameProposalSheet: View {
 
     private func courtSubtitle(_ court: Court?) -> String {
         guard let court else {
-            return "Выбери место, где удобно встретиться"
+            return "Место можно уточнить позже"
         }
 
         let subtitle = [
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district),
             court.distanceLabel
         ]
@@ -2787,26 +3292,10 @@ struct GameProposalSheet: View {
     }
 
     private func proposalSportIconName(for sport: Sport) -> String {
-        switch sport {
-        case .tableTennis: return "circle.grid.cross"
-        case .tennis: return "tennis.racket"
-        case .padel: return "sportscourt"
-        case .squash: return "figure.racquetball"
-        case .badminton: return "bird"
-        case .volleyball: return "volleyball"
-        case .fitness: return "dumbbell"
-        case .boxing: return "figure.boxing"
-        case .yoga: return "figure.mind.and.body"
-        case .football: return "soccerball"
-        }
+        sport.appSystemIconName
     }
 
     private func submitProposal() async {
-        guard !draft.proposedCourtId.isEmpty else {
-            localError = "Выбери место"
-            return
-        }
-
         guard draft.proposedDatetime > Date() else {
             localError = "Выбери будущую дату и время"
             draft.proposedDatetime = clampedFutureDate(draft.proposedDatetime)
@@ -2820,10 +3309,15 @@ struct GameProposalSheet: View {
         do {
             if context != .new, let requestId = seedRequest?.id {
                 _ = try await appModel.repository.updateGameRequest(gameRequestId: requestId, draft: draft)
+                AppHaptics.successCelebration()
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isGameUpdateCelebrationPresented = true
+                }
+                try? await Task.sleep(for: .milliseconds(1700))
             } else {
                 _ = try await appModel.repository.createGameRequest(matchId: match.id, draft: draft)
+                AppHaptics.notification(.success)
             }
-            AppHaptics.notification(.success)
             await onCreated()
             dismiss()
         } catch {

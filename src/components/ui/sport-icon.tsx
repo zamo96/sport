@@ -91,6 +91,23 @@ export function SportIcon({
           <path d="m9.5 12.2-2.2 1.4m9.4-1.4 2.1 1.4M10.6 15.2 10 18m4-2.8.6 2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       );
+    case "running":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <circle cx="13.5" cy="5" r="2" stroke="currentColor" strokeWidth="1.8" />
+          <path d="m12 8-2.2 4.1 3.2 2.1 1.7 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m10.4 10.7-3.2.9m6.4-2.2 2.7 2.3 2.5.2M10.8 14.4 7.2 20m6-5.8 3.8 2.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "supboard":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+          <path d="M4 17c1.8-1.1 3.5-1.1 5.2 0 1.8 1.1 3.5 1.1 5.2 0 1.8-1.1 3.5-1.1 5.6 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M7 13c3.3-1.5 6.7-1.5 10 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M12 4v9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="m8 6 8 4M16 6l-8 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
     default:
       return (
         <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">

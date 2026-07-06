@@ -42,6 +42,7 @@ type CourtOption = {
   address: string;
   district?: string | null;
   nearestMetroName?: string | null;
+  metroNames?: string[];
 };
 
 type GameSearchLobbyProps = {

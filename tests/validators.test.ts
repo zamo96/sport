@@ -2,7 +2,44 @@ import { describe, expect, it } from "vitest";
 
 import { GameSearchType, HotSearchWindow, PlayFormat, Sport, Surface } from "@prisma/client";
 
-import { createGameRequestSchema, createGameSearchSchema, guestOnboardingDraftSchema, updateGameSearchSchema } from "@/lib/validators";
+import {
+  appleAuthSchema,
+  createGameRequestSchema,
+  createGameSearchSchema,
+  guestOnboardingDraftSchema,
+  requestLinkSchema,
+  updateGameRequestSchema,
+  updateGameSearchSchema,
+  verifySchema
+} from "@/lib/validators";
+import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
+
+describe("auth validators legal acceptance", () => {
+  it("accepts the current user agreement version for email and Apple auth", () => {
+    const userAgreement = buildLatestUserAgreementPayload();
+
+    expect(requestLinkSchema.safeParse({ email: "player@example.com", userAgreement }).success).toBe(true);
+    expect(verifySchema.safeParse({ email: "player@example.com", code: "123456", userAgreement }).success).toBe(true);
+    expect(appleAuthSchema.safeParse({ identityToken: "identity-token", userAgreement }).success).toBe(true);
+  });
+
+  it("rejects missing or stale user agreement acceptance", () => {
+    expect(requestLinkSchema.safeParse({ email: "player@example.com" }).success).toBe(false);
+    expect(
+      verifySchema.safeParse({
+        email: "player@example.com",
+        code: "123456",
+        userAgreement: { accepted: true, version: "2026-01-01" }
+      }).success
+    ).toBe(false);
+    expect(
+      appleAuthSchema.safeParse({
+        identityToken: "identity-token",
+        userAgreement: { accepted: false, version: buildLatestUserAgreementPayload().version }
+      }).success
+    ).toBe(false);
+  });
+});
 
 describe("validators contract (sport x format)", () => {
   it("createGameSearchSchema: accepts exact weekly time preferences", () => {
@@ -67,6 +104,20 @@ describe("validators contract (sport x format)", () => {
 
     const formatIssue = result.error.issues.find((issue) => issue.path.join(".") === "format");
     expect(formatIssue?.message).toBe("Этот формат недоступен для выбранного вида спорта");
+  });
+
+  it("game request schemas: allow appointing a game without a selected club", () => {
+    expect(
+      createGameRequestSchema.safeParse({
+        matchId: "match-1",
+        proposedCourtId: null,
+        proposedDatetime: "2099-04-20T19:00:00.000Z",
+        sport: Sport.tennis,
+        format: PlayFormat.singles
+      }).success
+    ).toBe(true);
+
+    expect(updateGameRequestSchema.safeParse({ proposedCourtId: null }).success).toBe(true);
   });
 });
 

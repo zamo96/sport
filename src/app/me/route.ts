@@ -55,6 +55,14 @@ export async function PATCH(request: NextRequest) {
         preferredSurface: body.preferredSurface,
         bio: body.bio,
         avatarUrl: body.avatarUrl ?? currentUser.avatarUrl,
+        profilePhotoUrls:
+          body.profilePhotoUrls === undefined
+            ? undefined
+            : Array.from(new Set(body.profilePhotoUrls.map((url) => url.trim()).filter(Boolean))).slice(0, 6),
+        profileVideoUrls:
+          body.profileVideoUrls === undefined
+            ? undefined
+            : Array.from(new Set(body.profileVideoUrls.map((url) => url.trim()).filter(Boolean))).slice(0, 4),
         searchRadiusKm: body.searchRadiusKm ?? currentUser.searchRadiusKm,
         availableDays,
         availableTimeRanges,

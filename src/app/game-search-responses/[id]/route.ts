@@ -1,13 +1,36 @@
 import { NextRequest } from "next/server";
-import { GameSearchResponseStatus, GameSearchStatus, GameSearchType, Prisma } from "@prisma/client";
+import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, GameSearchType, Prisma } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { isRouteSport } from "@/lib/sport-semantics";
 import { updateGameSearchResponseSchema } from "@/lib/validators";
 import { ensureMatchForUsers } from "@/server/matching";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+
+type RouteSearchSource = {
+  sport: string;
+  runningRoute: string | null;
+  runningRoutePoints: Prisma.JsonValue | null;
+};
+
+function gameRequestRouteData(search: RouteSearchSource) {
+  if (!isRouteSport(search.sport)) {
+    return {
+      runningRoute: null,
+      runningRoutePoints: Prisma.JsonNull
+    };
+  }
+
+  return {
+    runningRoute: search.runningRoute?.trim() || null,
+    runningRoutePoints: Array.isArray(search.runningRoutePoints)
+      ? (search.runningRoutePoints as Prisma.InputJsonValue)
+      : Prisma.JsonNull
+  };
+}
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -26,7 +49,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return fail("Отклик не найден", 404);
     }
 
-    if (body.status === response.status) {
+    const shouldRetryApprovedFinalization =
+      body.status === GameSearchResponseStatus.approved && response.gameSearch.status !== GameSearchStatus.matched;
+
+    if (body.status === response.status && !shouldRetryApprovedFinalization) {
       const { gameSearch, ...responseData } = response;
       const playersNeeded = Math.max(gameSearch.playersNeeded ?? 1, 1);
       let matchId: string | null = null;
@@ -70,17 +96,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         if (
           matchId &&
           gameSearch.searchType === GameSearchType.hot &&
-          playersNeeded === 1 &&
-          gameSearch.preferredCourtId &&
           gameSearch.hotStartsAt
         ) {
           const gameRequest = await prisma.gameRequest.findFirst({
             where: {
               matchId,
-              status: "accepted",
+              status: GameRequestStatus.accepted,
               createdByUserId: gameSearch.createdByUserId,
               matchedUserId: response.responderUserId,
-              proposedCourtId: gameSearch.preferredCourtId,
+              proposedCourtId: gameSearch.preferredCourtId ?? null,
               proposedDatetime: gameSearch.hotStartsAt
             },
             select: {
@@ -172,8 +196,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         const isFilled = approvedCount >= playersNeeded;
         const shouldCreateRegularPair =
           response.gameSearch.searchType === GameSearchType.regular && playersNeeded === 1;
+        const shouldAutoFinalizeHotSearch =
+          isFilled &&
+          response.gameSearch.searchType === GameSearchType.hot &&
+          playersNeeded === 1 &&
+          Boolean(response.gameSearch.hotStartsAt);
 
-        gameSearchStatus = isFilled ? GameSearchStatus.matched : GameSearchStatus.in_review;
+        gameSearchStatus = shouldAutoFinalizeHotSearch ? GameSearchStatus.matched : GameSearchStatus.in_review;
         gameSearchIsActive = !isFilled;
 
         await tx.gameSearch.update({
@@ -181,15 +210,144 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           data: {
             status: gameSearchStatus,
             isActive: gameSearchIsActive,
-            ...(isFilled && response.gameSearch.searchType === GameSearchType.hot
+            ...(shouldAutoFinalizeHotSearch
               ? {
                   scheduledCourtId: response.gameSearch.preferredCourtId,
                   scheduledAt: response.gameSearch.hotStartsAt,
                   scheduledDurationMinutes: response.gameSearch.durationMinutes
                 }
-              : {})
+            : {})
           }
         });
+
+        if (shouldAutoFinalizeHotSearch && !shouldCreateRegularPair && response.gameSearch.hotStartsAt) {
+          const proposedCourtId = response.gameSearch.preferredCourtId ?? null;
+          const approvedResponses = await tx.gameSearchResponse.findMany({
+            where: {
+              gameSearchId: response.gameSearchId,
+              status: GameSearchResponseStatus.approved
+            },
+            orderBy: {
+              updatedAt: "asc"
+            }
+          });
+          const scheduleText = `${response.gameSearch.hotStartsAt.toLocaleString("ru-RU")} · ${
+            response.gameSearch.format
+          }${response.gameSearch.durationMinutes ? ` · ${response.gameSearch.durationMinutes} мин` : ""}`;
+          const venueText =
+            response.gameSearch.customVenueAddress ??
+            response.gameSearch.customVenueTitle ??
+            response.gameSearch.runningRoute ??
+            "Место уточняется";
+          let rootRequestId: string | null = null;
+
+          for (const approvedResponse of approvedResponses) {
+            const approvedMatch =
+              approvedResponse.responderUserId === response.responderUserId
+                ? match
+                : await ensureMatchForUsers(tx, response.gameSearch.createdByUserId, approvedResponse.responderUserId);
+            const existingGameRequest = await tx.gameRequest.findFirst({
+              where: {
+                matchId: approvedMatch.id,
+                status: GameRequestStatus.accepted,
+                createdByUserId: response.gameSearch.createdByUserId,
+                matchedUserId: approvedResponse.responderUserId,
+                proposedCourtId,
+                proposedDatetime: response.gameSearch.hotStartsAt,
+                sport: response.gameSearch.sport,
+                format: response.gameSearch.format
+              },
+              select: {
+                id: true,
+                sharedRootId: true
+              }
+            });
+
+            const gameRequest: { id: string; sharedRootId: string | null } =
+              existingGameRequest ??
+              (await tx.gameRequest.create({
+                data: {
+                  matchId: approvedMatch.id,
+                  sharedRootId: rootRequestId,
+                  createdByUserId: response.gameSearch.createdByUserId,
+                  matchedUserId: approvedResponse.responderUserId,
+                  proposedCourtId,
+                  proposedDatetime: response.gameSearch.hotStartsAt,
+                  durationMinutes: response.gameSearch.durationMinutes ?? null,
+                  sport: response.gameSearch.sport,
+                  format: response.gameSearch.format,
+                  ...gameRequestRouteData(response.gameSearch),
+                  comment: response.gameSearch.comment?.trim() || "Игра из поиска подтверждена.",
+                  status: GameRequestStatus.accepted
+                },
+                select: {
+                  id: true,
+                  sharedRootId: true
+                }
+              }));
+
+            if (!rootRequestId) {
+              rootRequestId = gameRequest.sharedRootId ?? gameRequest.id;
+            }
+            if (approvedResponse.id === response.id) {
+              gameRequestId = gameRequest.id;
+            }
+
+            if (!existingGameRequest) {
+              await tx.chatMessage.create({
+                data: {
+                  matchId: approvedMatch.id,
+                  gameRequestId: gameRequest.id,
+                  senderUserId: response.gameSearch.createdByUserId,
+                  text: `Отклик подтвержден: игра добавлена в ближайшие по параметрам поиска (${scheduleText} · ${venueText}).`
+                }
+              });
+
+              await tx.chatMessage.create({
+                data: {
+                  matchId: approvedMatch.id,
+                  gameRequestId: gameRequest.id,
+                  senderUserId: response.gameSearch.createdByUserId,
+                  text: "Организатор подтвердил(а) отклик. Договоренность сохранена в ближайших играх."
+                }
+              });
+            }
+          }
+
+          gameSearchStatus = GameSearchStatus.matched;
+          gameSearchIsActive = false;
+
+          await tx.gameSearch.update({
+            where: { id: response.gameSearchId },
+            data: {
+              status: GameSearchStatus.matched,
+              isActive: false,
+              scheduledCourtId: proposedCourtId,
+              scheduledAt: response.gameSearch.hotStartsAt,
+              scheduledDurationMinutes: response.gameSearch.durationMinutes ?? null
+            }
+          });
+
+          await tx.gameSearchResponse.updateMany({
+            where: {
+              gameSearchId: response.gameSearchId,
+              status: GameSearchResponseStatus.pending
+            },
+            data: {
+              status: GameSearchResponseStatus.rejected
+            }
+          });
+
+          await tx.gameSearchSlotProposal.updateMany({
+            where: {
+              gameSearchId: response.gameSearchId,
+              status: "open"
+            },
+            data: {
+              status: "closed"
+            }
+          });
+        }
 
         if (shouldCreateRegularPair) {
           const preferredDays = (response.gameSearch.preferredDays ?? []) as Prisma.InputJsonValue;
@@ -257,63 +415,208 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
 
         if (
-          playersNeeded === 1 &&
-          response.gameSearch.searchType === "hot" &&
-          response.gameSearch.preferredCourtId &&
+          isFilled &&
+          response.gameSearch.searchType === GameSearchType.hot &&
           response.gameSearch.hotStartsAt
         ) {
-          const createdGame = await tx.gameRequest.create({
-            data: {
-              matchId: match.id,
-              createdByUserId: response.gameSearch.createdByUserId,
-              matchedUserId: response.responderUserId,
-              proposedCourtId: response.gameSearch.preferredCourtId,
-              proposedDatetime: response.gameSearch.hotStartsAt,
-              durationMinutes: response.gameSearch.durationMinutes ?? null,
-              sport: response.gameSearch.sport,
-              format: response.gameSearch.format,
-              comment: response.gameSearch.comment,
-              status: "accepted"
+          const proposedCourtId = response.gameSearch.preferredCourtId ?? null;
+          const approvedResponses = await tx.gameSearchResponse.findMany({
+            where: {
+              gameSearchId: response.gameSearchId,
+              status: GameSearchResponseStatus.approved
             },
             include: {
-              proposedCourt: true
+              responderUser: true
+            },
+            orderBy: {
+              createdAt: "asc"
             }
           });
+          const scheduleText = `${response.gameSearch.hotStartsAt.toLocaleString("ru-RU")} · ${
+            response.gameSearch.format
+          }${response.gameSearch.durationMinutes ? ` · ${response.gameSearch.durationMinutes} мин` : ""}`;
+          const baseComment = response.gameSearch.comment?.trim() || "Игра из срочного поиска подтверждена.";
 
-          gameRequestId = createdGame.id;
-
-          const summaryText = `Горячий поиск подтвержден: ${createdGame.proposedDatetime.toLocaleString("ru-RU")} · ${
-            createdGame.format
-          }${createdGame.durationMinutes ? ` · ${createdGame.durationMinutes} мин` : ""}. ${
-            createdGame.comment?.trim() ? createdGame.comment : "Открой детали, чтобы обсудить игру отдельно."
-          }`;
-
-          await tx.chatMessage.create({
+          await tx.gameSearch.update({
+            where: { id: response.gameSearchId },
             data: {
-              matchId: match.id,
-              senderUserId: response.gameSearch.createdByUserId,
-              text: summaryText
+              status: GameSearchStatus.matched,
+              isActive: false,
+              scheduledCourtId: proposedCourtId,
+              scheduledAt: response.gameSearch.hotStartsAt,
+              scheduledDurationMinutes: response.gameSearch.durationMinutes ?? null
             }
           });
 
-          await tx.chatMessage.create({
-            data: {
-              matchId: match.id,
-              gameRequestId: createdGame.id,
-              senderUserId: response.gameSearch.createdByUserId,
-              text: "Подтвердил(а) отклик на горячий поиск. Игра сразу зафиксирована, можно обсуждать детали здесь."
+          gameSearchStatus = GameSearchStatus.matched;
+          gameSearchIsActive = false;
+
+          if (playersNeeded === 1) {
+            const existingGameRequest = await tx.gameRequest.findFirst({
+              where: {
+                matchId: match.id,
+                createdByUserId: response.gameSearch.createdByUserId,
+                matchedUserId: response.responderUserId,
+                proposedCourtId,
+                proposedDatetime: response.gameSearch.hotStartsAt,
+                sport: response.gameSearch.sport,
+                format: response.gameSearch.format
+              },
+              include: {
+                proposedCourt: true
+              }
+            });
+            let createdGame = existingGameRequest;
+
+            if (createdGame && createdGame.status !== GameRequestStatus.accepted) {
+              createdGame = await tx.gameRequest.update({
+                where: { id: createdGame.id },
+                data: { status: GameRequestStatus.accepted },
+                include: {
+                  proposedCourt: true
+                }
+              });
             }
-          });
+
+            if (!createdGame) {
+              createdGame = await tx.gameRequest.create({
+                data: {
+                  matchId: match.id,
+                  createdByUserId: response.gameSearch.createdByUserId,
+                  matchedUserId: response.responderUserId,
+                  proposedCourtId,
+                  proposedDatetime: response.gameSearch.hotStartsAt,
+                  durationMinutes: response.gameSearch.durationMinutes ?? null,
+                  sport: response.gameSearch.sport,
+                  format: response.gameSearch.format,
+                  ...gameRequestRouteData(response.gameSearch),
+                  comment: response.gameSearch.comment,
+                  status: GameRequestStatus.accepted
+                },
+                include: {
+                  proposedCourt: true
+                }
+              });
+            }
+
+            gameRequestId = createdGame.id;
+
+            if (!existingGameRequest) {
+              const summaryText = `Горячий поиск подтвержден: ${scheduleText}. ${
+                createdGame.comment?.trim() ? createdGame.comment : "Открой детали, чтобы обсудить игру отдельно."
+              }`;
+
+              await tx.chatMessage.create({
+                data: {
+                  matchId: match.id,
+                  senderUserId: response.gameSearch.createdByUserId,
+                  text: summaryText
+                }
+              });
+
+              await tx.chatMessage.create({
+                data: {
+                  matchId: match.id,
+                  gameRequestId: createdGame.id,
+                  senderUserId: response.gameSearch.createdByUserId,
+                  text: "Подтвердил(а) отклик на горячий поиск. Игра сразу зафиксирована, можно обсуждать детали здесь."
+                }
+              });
+            }
+          } else {
+            let rootRequestId: string | null = null;
+            let selectedRequestId: string | null = null;
+
+            for (const approvedResponse of approvedResponses) {
+              const participantMatch =
+                approvedResponse.responderUserId === response.responderUserId
+                  ? match
+                  : await ensureMatchForUsers(tx, response.gameSearch.createdByUserId, approvedResponse.responderUserId);
+              const existingGameRequest = await tx.gameRequest.findFirst({
+                where: {
+                  matchId: participantMatch.id,
+                  createdByUserId: response.gameSearch.createdByUserId,
+                  matchedUserId: approvedResponse.responderUserId,
+                  proposedCourtId,
+                  proposedDatetime: response.gameSearch.hotStartsAt,
+                  sport: response.gameSearch.sport,
+                  format: response.gameSearch.format
+                }
+              });
+              let createdGame = existingGameRequest;
+
+              if (!createdGame) {
+                createdGame = await tx.gameRequest.create({
+                  data: {
+                    matchId: participantMatch.id,
+                    sharedRootId: rootRequestId,
+                    createdByUserId: response.gameSearch.createdByUserId,
+                    matchedUserId: approvedResponse.responderUserId,
+                    proposedCourtId,
+                    proposedDatetime: response.gameSearch.hotStartsAt,
+                    durationMinutes: response.gameSearch.durationMinutes ?? null,
+                    sport: response.gameSearch.sport,
+                    format: response.gameSearch.format,
+                    ...gameRequestRouteData(response.gameSearch),
+                    comment: baseComment,
+                    status: GameRequestStatus.accepted
+                  },
+                  include: {
+                    proposedCourt: true
+                  }
+                });
+              }
+
+              rootRequestId = rootRequestId ?? createdGame.sharedRootId ?? createdGame.id;
+
+              if (createdGame.id !== rootRequestId && createdGame.sharedRootId !== rootRequestId) {
+                await tx.gameRequest.update({
+                  where: { id: createdGame.id },
+                  data: { sharedRootId: rootRequestId }
+                });
+              }
+
+              if (approvedResponse.responderUserId === response.responderUserId) {
+                selectedRequestId = createdGame.id;
+              }
+
+              if (!existingGameRequest) {
+                await tx.chatMessage.create({
+                  data: {
+                    matchId: participantMatch.id,
+                    senderUserId: response.gameSearch.createdByUserId,
+                    text: `Срочный поиск собран: ${scheduleText}. ${baseComment}`
+                  }
+                });
+
+                await tx.chatMessage.create({
+                  data: {
+                    matchId: participantMatch.id,
+                    gameRequestId: createdGame.id,
+                    senderUserId: response.gameSearch.createdByUserId,
+                    text: "Отклик подтвержден, состав собран. Игра добавлена в ближайшие."
+                  }
+                });
+
+                await tx.match.update({
+                  where: { id: participantMatch.id },
+                  data: { updatedAt: new Date() }
+                });
+              }
+            }
+
+            gameRequestId = selectedRequestId ?? rootRequestId;
+          }
         } else {
           await tx.chatMessage.create({
             data: {
               matchId: match.id,
               senderUserId: response.gameSearch.createdByUserId,
               text: shouldCreateRegularPair
-                ? "Я подтвердил(а) твой отклик. Дальше у нас есть регулярная пара, можно быстро договориться о ближайшей игре."
+                ? `Я подтвердил(а) твой отклик. Дальше у нас есть регулярная пара, можно быстро договориться о ближайшей игре. Открыть поиск: /play/searches/${response.gameSearch.id}.`
                 : isFilled
-                  ? "Я подтвердил(а) твой отклик. Состав собран, дальше можно согласовать детали."
-                  : `Я подтвердил(а) твой отклик. Уже собрано ${approvedCount} из ${playersNeeded} игроков.`
+                  ? `Я подтвердил(а) твой отклик. Состав собран, дальше можно согласовать детали. Открыть поиск: /play/searches/${response.gameSearch.id}.`
+                  : `Я подтвердил(а) твой отклик. Уже собрано ${approvedCount} из ${playersNeeded} игроков. Открыть поиск: /play/searches/${response.gameSearch.id}.`
             }
           });
         }
@@ -410,9 +713,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           body.status === GameSearchResponseStatus.approved
             ? "Открой чат или поиск, чтобы продолжить договоренность."
             : "Можно вернуться в ленту и выбрать другой поиск.",
-        href: result.matchId
-          ? `/inbox/${result.matchId}`
-          : `/discover?view=seeking&highlight=${response.gameSearchId}`,
+        href: result.gameRequestId
+          ? `/play/games/${result.gameRequestId}`
+          : result.matchId
+            ? `/inbox/${result.matchId}`
+            : `/play/searches/${response.gameSearchId}`,
         sound: response.responderUser.notificationSound ?? true
       });
     }

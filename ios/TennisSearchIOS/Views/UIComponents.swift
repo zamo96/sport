@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVKit
 
 enum AppTheme {
     static let ink = Color(red: 17 / 255, green: 38 / 255, blue: 29 / 255)
@@ -36,6 +37,258 @@ enum AppHaptics {
         let generator = UINotificationFeedbackGenerator()
         generator.prepare()
         generator.notificationOccurred(type)
+    }
+
+    static func successCelebration() {
+        Task { @MainActor in
+            notification(.success)
+            try? await Task.sleep(for: .milliseconds(90))
+            impact(.heavy)
+            try? await Task.sleep(for: .milliseconds(110))
+            impact(.medium)
+            try? await Task.sleep(for: .milliseconds(120))
+            selection()
+        }
+    }
+}
+
+struct SuccessCelebrationOverlay: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    @State private var launched = false
+    @State private var cardVisible = false
+
+    private static let particles: [CelebrationParticle] = [
+        .init(id: 0, color: Color(red: 0.18, green: 0.85, blue: 0.47), endX: -132, endY: -196, rotation: -38, size: CGSize(width: 9, height: 18)),
+        .init(id: 1, color: Color(red: 1.0, green: 0.82, blue: 0.23), endX: -74, endY: -224, rotation: 24, size: CGSize(width: 10, height: 16)),
+        .init(id: 2, color: Color(red: 0.31, green: 0.55, blue: 1.0), endX: 92, endY: -214, rotation: 54, size: CGSize(width: 8, height: 17)),
+        .init(id: 3, color: Color(red: 1.0, green: 0.37, blue: 0.37), endX: 138, endY: -172, rotation: -28, size: CGSize(width: 11, height: 15)),
+        .init(id: 4, color: Color(red: 0.68, green: 0.42, blue: 1.0), endX: -156, endY: -86, rotation: 72, size: CGSize(width: 8, height: 14)),
+        .init(id: 5, color: Color(red: 0.16, green: 0.78, blue: 0.78), endX: 168, endY: -96, rotation: -64, size: CGSize(width: 9, height: 16)),
+        .init(id: 6, color: Color(red: 1.0, green: 0.61, blue: 0.18), endX: -108, endY: 18, rotation: 34, size: CGSize(width: 10, height: 15)),
+        .init(id: 7, color: Color(red: 0.26, green: 0.74, blue: 0.42), endX: 122, endY: 24, rotation: -44, size: CGSize(width: 8, height: 16))
+    ]
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.24)
+                .ignoresSafeArea()
+
+            ForEach(Self.particles) { particle in
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(particle.color)
+                    .frame(width: particle.size.width, height: particle.size.height)
+                    .rotationEffect(.degrees(launched ? particle.rotation : 0))
+                    .offset(x: launched ? particle.endX : 0, y: launched ? particle.endY : -18)
+                    .opacity(launched ? 0 : 1)
+                    .scaleEffect(launched ? 1 : 0.2)
+            }
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.court)
+                        .frame(width: 96, height: 96)
+                        .shadow(color: AppTheme.court.opacity(0.36), radius: 26, x: 0, y: 16)
+
+                    Circle()
+                        .stroke(.white.opacity(0.34), lineWidth: 10)
+                        .frame(width: launched ? 128 : 82, height: launched ? 128 : 82)
+                        .opacity(launched ? 0 : 1)
+
+                    Text(icon)
+                        .font(.system(size: 46))
+                        .rotationEffect(.degrees(launched ? -12 : 0))
+                        .offset(y: launched ? -5 : 4)
+                }
+                .scaleEffect(cardVisible ? 1 : 0.72)
+
+                VStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 21, weight: .black))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text(subtitle)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 26)
+            .padding(.vertical, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(Color(red: 0.05, green: 0.13, blue: 0.10).opacity(0.94))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            )
+            .scaleEffect(cardVisible ? 1 : 0.86)
+            .opacity(cardVisible ? 1 : 0)
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
+                cardVisible = true
+            }
+            withAnimation(.easeOut(duration: 1.25)) {
+                launched = true
+            }
+        }
+    }
+}
+
+private struct CelebrationParticle: Identifiable {
+    let id: Int
+    let color: Color
+    let endX: CGFloat
+    let endY: CGFloat
+    let rotation: Double
+    let size: CGSize
+}
+
+struct SportIconView: View {
+    let sport: Sport
+    var color: Color = AppTheme.court
+    var size: CGFloat = 24
+
+    var body: some View {
+        Group {
+            switch sport {
+            case .tableTennis:
+                tableTennisIcon
+            case .padel:
+                padelIcon
+            case .badminton:
+                badmintonIcon
+            default:
+                Image(systemName: sport.appSystemIconName)
+                    .font(.system(size: size, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(sport.title)
+    }
+
+    private var tableTennisIcon: some View {
+        ZStack {
+            tableTennisRacket(rotation: -34, x: -0.14, y: 0.02)
+            tableTennisRacket(rotation: 34, x: 0.14, y: 0.02)
+
+            Circle()
+                .fill(color)
+                .frame(width: size * 0.13, height: size * 0.13)
+                .offset(x: size * 0.34, y: -size * 0.23)
+        }
+    }
+
+    private func tableTennisRacket(rotation: Double, x: CGFloat, y: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .stroke(color, lineWidth: max(1.4, size * 0.075))
+                .frame(width: size * 0.35, height: size * 0.35)
+                .offset(y: -size * 0.11)
+
+            Capsule(style: .continuous)
+                .fill(color)
+                .frame(width: size * 0.08, height: size * 0.30)
+                .offset(y: size * 0.14)
+        }
+        .rotationEffect(.degrees(rotation))
+        .offset(x: size * x, y: size * y)
+    }
+
+    private var padelIcon: some View {
+        ZStack {
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.17, style: .continuous)
+                    .stroke(color, lineWidth: max(1.5, size * 0.075))
+                    .frame(width: size * 0.44, height: size * 0.56)
+                    .offset(y: -size * 0.10)
+
+                ForEach(0 ..< 6, id: \.self) { index in
+                    Circle()
+                        .fill(color.opacity(0.88))
+                        .frame(width: size * 0.052, height: size * 0.052)
+                        .offset(
+                            x: CGFloat([-0.09, 0.06, -0.02, 0.12, -0.12, 0.02][index]) * size,
+                            y: CGFloat([-0.21, -0.18, -0.08, -0.03, 0.03, 0.09][index]) * size
+                        )
+                }
+
+                Capsule(style: .continuous)
+                    .fill(color)
+                    .frame(width: size * 0.09, height: size * 0.34)
+                    .offset(y: size * 0.24)
+            }
+            .rotationEffect(.degrees(28))
+
+            Circle()
+                .fill(color.opacity(0.92))
+                .frame(width: size * 0.13, height: size * 0.13)
+                .offset(x: -size * 0.34, y: -size * 0.22)
+        }
+    }
+
+    private var badmintonIcon: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let lineWidth = max(1.3, width * 0.065)
+            let corkRect = CGRect(x: width * 0.37, y: height * 0.66, width: width * 0.28, height: height * 0.18)
+
+            ZStack {
+                Path { path in
+                    let base = CGPoint(x: width * 0.50, y: height * 0.66)
+                    path.move(to: CGPoint(x: width * 0.16, y: height * 0.14))
+                    path.addLine(to: base)
+                    path.addLine(to: CGPoint(x: width * 0.84, y: height * 0.14))
+                    path.move(to: CGPoint(x: width * 0.30, y: height * 0.18))
+                    path.addLine(to: base)
+                    path.move(to: CGPoint(x: width * 0.50, y: height * 0.10))
+                    path.addLine(to: base)
+                    path.move(to: CGPoint(x: width * 0.70, y: height * 0.18))
+                    path.addLine(to: base)
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.16, y: height * 0.14))
+                    path.addQuadCurve(to: CGPoint(x: width * 0.84, y: height * 0.14), control: CGPoint(x: width * 0.50, y: height * 0.30))
+                }
+                .stroke(color.opacity(0.68), style: StrokeStyle(lineWidth: lineWidth * 0.8, lineCap: .round))
+
+                Capsule(style: .continuous)
+                    .fill(color)
+                    .frame(width: corkRect.width, height: corkRect.height)
+                    .rotationEffect(.degrees(-18))
+                    .position(x: corkRect.midX, y: corkRect.midY)
+            }
+        }
+    }
+}
+
+extension Sport {
+    var appSystemIconName: String {
+        switch self {
+        case .tableTennis: return "figure.table.tennis"
+        case .tennis: return "tennis.racket"
+        case .padel: return "tennis.racket"
+        case .squash: return "figure.racquetball"
+        case .badminton: return "figure.badminton"
+        case .volleyball: return "volleyball"
+        case .fitness: return "dumbbell"
+        case .boxing: return "figure.boxing"
+        case .yoga: return "figure.mind.and.body"
+        case .football: return "soccerball"
+        case .running: return "figure.run"
+        case .supboard: return "water.waves"
+        }
     }
 }
 
@@ -597,6 +850,71 @@ struct ActivityShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+struct MutedLoopingVideoView: UIViewRepresentable {
+    let url: URL
+    var videoGravity: AVLayerVideoGravity = .resizeAspectFill
+
+    func makeUIView(context: Context) -> LoopingPlayerLayerView {
+        let view = LoopingPlayerLayerView()
+        view.playerLayer.videoGravity = videoGravity
+        configure(view)
+        return view
+    }
+
+    func updateUIView(_ view: LoopingPlayerLayerView, context: Context) {
+        view.playerLayer.videoGravity = videoGravity
+        guard view.currentURL != url else {
+            view.playerLayer.player?.play()
+            return
+        }
+        configure(view)
+    }
+
+    static func dismantleUIView(_ view: LoopingPlayerLayerView, coordinator: ()) {
+        NotificationCenter.default.removeObserver(view)
+        view.playerLayer.player?.pause()
+        view.playerLayer.player = nil
+    }
+
+    private func configure(_ view: LoopingPlayerLayerView) {
+        NotificationCenter.default.removeObserver(view)
+        let player = AVPlayer(url: url)
+        player.isMuted = true
+        player.actionAtItemEnd = .none
+        view.currentURL = url
+        view.playerLayer.player = player
+        NotificationCenter.default.addObserver(
+            view,
+            selector: #selector(LoopingPlayerLayerView.loopVideo),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: player.currentItem
+        )
+        player.play()
+    }
+}
+
+final class LoopingPlayerLayerView: UIView {
+    var currentURL: URL?
+
+    override static var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+
+    @objc func loopVideo() {
+        playerLayer.player?.seek(to: .zero)
+        playerLayer.player?.play()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        playerLayer.player?.pause()
+    }
+}
+
 struct RemoteAvatarView: View {
     let name: String
     let path: String?
@@ -620,6 +938,7 @@ struct RemoteAvatarView: View {
             }
         }
         .frame(width: size, height: size)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: size * 0.34, style: .continuous))
     }
 
@@ -648,6 +967,165 @@ struct RemoteAvatarView: View {
 
     private var resolvedURL: URL? {
         resolveAppRemoteURL(path)
+    }
+}
+
+struct AvatarPreviewSheet: View {
+    let name: String
+    let path: String?
+
+    var body: some View {
+        VStack(spacing: 18) {
+            RemoteAvatarView(name: name, path: path, size: 220)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 74, style: .continuous)
+                        .stroke(Color.white.opacity(0.74), lineWidth: 2)
+                )
+                .shadow(color: AppTheme.ink.opacity(0.18), radius: 28, x: 0, y: 14)
+
+            Text(name)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(28)
+        .background(AppTheme.pageBackground.ignoresSafeArea())
+    }
+}
+
+struct PlayerMediaPreviewSheet: View {
+    let item: PlayerMediaItem
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let url = resolveAppRemoteURL(item.path) {
+                switch item.kind {
+                case .photo:
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        default:
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+                    .padding(16)
+                case .video:
+                    if let player {
+                        VideoPlayer(player: player)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .padding(14)
+                    } else {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: item.kind == .video ? "play.circle.fill" : "photo")
+                        .font(.system(size: 52, weight: .semibold))
+                    Text("Медиа недоступно")
+                        .font(.headline)
+                }
+                .foregroundStyle(.white.opacity(0.82))
+            }
+        }
+        .onAppear {
+            guard item.kind == .video, let url = resolveAppRemoteURL(item.path) else {
+                return
+            }
+            let nextPlayer = AVPlayer(url: url)
+            player = nextPlayer
+            nextPlayer.play()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+}
+
+struct VideoThumbnailView: View {
+    let url: URL
+
+    @State private var thumbnail: UIImage?
+    @State private var loadedURL: URL?
+    @State private var didFinishLoading = false
+
+    var body: some View {
+        ZStack {
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [AppTheme.court.opacity(0.52), .black.opacity(0.35)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .overlay(
+                    Group {
+                        if didFinishLoading {
+                            Image(systemName: "play.rectangle.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.82))
+                        } else {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+                )
+            }
+        }
+        .task(id: url) {
+            await loadThumbnail()
+        }
+    }
+
+    private func loadThumbnail() async {
+        guard loadedURL != url || thumbnail == nil else {
+            return
+        }
+
+        loadedURL = url
+        thumbnail = nil
+        didFinishLoading = false
+
+        let generatedImage = await generateThumbnail(for: url)
+        guard loadedURL == url else {
+            return
+        }
+        thumbnail = generatedImage
+        didFinishLoading = true
+    }
+
+    private func generateThumbnail(for url: URL) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let asset = AVURLAsset(url: url)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 720, height: 720)
+
+                do {
+                    let image = try generator.copyCGImage(
+                        at: CMTime(seconds: 0.25, preferredTimescale: 600),
+                        actualTime: nil
+                    )
+                    continuation.resume(returning: UIImage(cgImage: image))
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
 }
 
@@ -777,6 +1255,7 @@ struct AppSingleSportSelectionGrid: View {
 
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(sports) { sport in
+                    let isSelected = selectedSport == sport
                     Button {
                         guard selectedSport != sport else {
                             return
@@ -786,15 +1265,17 @@ struct AppSingleSportSelectionGrid: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 10) {
-                                Image(systemName: sport.selectionIconName)
-                                    .font(.system(size: 16, weight: .semibold))
+                                SportIconView(
+                                    sport: sport,
+                                    color: isSelected ? .white : AppTheme.court,
+                                    size: 18
+                                )
                                     .frame(width: 34, height: 34)
-                                    .background(selectedSport == sport ? .white.opacity(0.16) : .white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .foregroundStyle(selectedSport == sport ? .white : AppTheme.court)
+                                    .background(isSelected ? .white.opacity(0.16) : .white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                                 Text(sport.title)
                                     .font(.system(size: 17, weight: .bold))
-                                    .foregroundStyle(selectedSport == sport ? .white : AppTheme.ink)
+                                    .foregroundStyle(isSelected ? .white : AppTheme.ink)
                                     .multilineTextAlignment(.leading)
                                     .lineLimit(2)
                                     .minimumScaleFactor(0.82)
@@ -802,14 +1283,14 @@ struct AppSingleSportSelectionGrid: View {
 
                             VStack(alignment: .leading, spacing: 8) {
                                 if let level = levelProvider(sport) {
-                                    CompactSportLevelReadout(level: level, isSelected: selectedSport == sport)
+                                    CompactSportLevelReadout(level: level, isSelected: isSelected)
                                 } else {
                                     Text("Выбрать спорт")
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(selectedSport == sport ? .white.opacity(0.82) : AppTheme.mutedInk)
+                                        .foregroundStyle(isSelected ? .white.opacity(0.82) : AppTheme.mutedInk)
                                 }
 
-                                if selectedSport == sport {
+                                if isSelected {
                                     HStack(spacing: 6) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 15, weight: .bold))
@@ -826,16 +1307,16 @@ struct AppSingleSportSelectionGrid: View {
                         .background(
                             RoundedRectangle(cornerRadius: 24, style: .continuous)
                                 .fill(
-                                    selectedSport == sport
+                                    isSelected
                                         ? LinearGradient(colors: [AppTheme.court, AppTheme.ink], startPoint: .topLeading, endPoint: .bottomTrailing)
                                         : LinearGradient(colors: [.white.opacity(0.92), AppTheme.creamLight.opacity(0.95)], startPoint: .top, endPoint: .bottom)
                                 )
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(Color.white.opacity(selectedSport == sport ? 0.16 : 0.74), lineWidth: 1)
+                                .stroke(Color.white.opacity(isSelected ? 0.16 : 0.74), lineWidth: 1)
                         )
-                        .shadow(color: AppTheme.ink.opacity(selectedSport == sport ? 0.14 : 0.05), radius: selectedSport == sport ? 18 : 10, x: 0, y: selectedSport == sport ? 14 : 8)
+                        .shadow(color: AppTheme.ink.opacity(isSelected ? 0.14 : 0.05), radius: isSelected ? 18 : 10, x: 0, y: isSelected ? 14 : 8)
                     }
                     .buttonStyle(.plain)
                 }
@@ -886,11 +1367,13 @@ struct AppSportSelectionCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    Image(systemName: iconName)
-                        .font(.system(size: 16, weight: .semibold))
+                    SportIconView(
+                        sport: sport,
+                        color: isSelected ? .white : AppTheme.court,
+                        size: 18
+                    )
                         .frame(width: 34, height: 34)
                         .background(isSelected ? .white.opacity(0.16) : .white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .foregroundStyle(isSelected ? .white : AppTheme.court)
 
                     Text(sport.title)
                         .font(.system(size: 17, weight: .bold))
@@ -964,7 +1447,7 @@ struct AppSportSelectionCard: View {
     }
 
     private var iconName: String {
-        sport.selectionIconName
+        sport.appSystemIconName
     }
 
     private func levelButton(_ title: String, action: @escaping () -> Void) -> some View {
@@ -984,18 +1467,7 @@ struct AppSportSelectionCard: View {
 
 private extension Sport {
     var selectionIconName: String {
-        switch self {
-        case .tableTennis: return "circle.grid.cross"
-        case .tennis: return "tennis.racket"
-        case .padel: return "sportscourt"
-        case .squash: return "figure.racquetball"
-        case .badminton: return "bird"
-        case .volleyball: return "volleyball"
-        case .fitness: return "dumbbell"
-        case .boxing: return "figure.boxing"
-        case .yoga: return "figure.mind.and.body"
-        case .football: return "soccerball"
-        }
+        appSystemIconName
     }
 }
 
@@ -1848,7 +2320,7 @@ struct RegularPairOccurrenceEditorSheet: View {
                                                     title: court.name,
                                                     subtitle: courtSubtitle(for: court),
                                                     metaItems: [
-                                                        court.nearestMetroName.map { ("tram.fill", $0) },
+                                                        court.metroDisplayName.map { ("tram.fill", $0) },
                                                         localizedDistrictName(court.district).map { ("map.fill", $0) },
                                                         (!court.address.isEmpty ? ("mappin.and.ellipse", court.address) : nil)
                                                     ].compactMap { $0 },
@@ -1906,7 +2378,7 @@ struct RegularPairOccurrenceEditorSheet: View {
         [
             court.name,
             court.address,
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district)
         ]
         .compactMap { $0?.lowercased() }
@@ -1915,7 +2387,7 @@ struct RegularPairOccurrenceEditorSheet: View {
 
     private func courtSubtitle(for court: Court) -> String {
         [
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district),
             court.address
         ]

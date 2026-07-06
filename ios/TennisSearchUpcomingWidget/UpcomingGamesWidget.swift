@@ -1,3 +1,4 @@
+import ActivityKit
 import SwiftUI
 import WidgetKit
 
@@ -5,6 +6,7 @@ private let appGroupIdentifier = "group.shop.sportsearch.app"
 private let payloadKey = "upcomingGamesWidget.payload.v1"
 private let currentUserIdKey = "upcomingGamesWidget.currentUserId.v1"
 private let sessionTokenKey = "SportSearch.sessionToken"
+private let postEventDisplayInterval: TimeInterval = 2 * 60 * 60
 
 struct UpcomingGamesWidgetPayload: Codable {
     let updatedAt: Date
@@ -15,11 +17,14 @@ struct UpcomingGamesWidgetGame: Codable, Identifiable {
     let id: String
     let title: String
     let sportTitle: String
+    let startsAt: Date?
+    let durationMinutes: Int?
     let dateText: String
     let timeText: String
     let courtName: String
     let courtAddress: String?
     let statusLabel: String
+    let eventType: String?
 }
 
 struct UpcomingGamesEntry: TimelineEntry {
@@ -38,11 +43,14 @@ struct UpcomingGamesProvider: TimelineProvider {
                         id: "preview",
                         title: "Анна Волкова",
                         sportTitle: "Теннис",
+                        startsAt: Date(),
+                        durationMinutes: 90,
                         dateText: "Сегодня",
                         timeText: "19:30",
                         courtName: "Крестовский корт",
                         courtAddress: "Крестовский проспект, 21",
-                        statusLabel: "Игра подтверждена"
+                        statusLabel: "Игра подтверждена",
+                        eventType: "game"
                     )
                 ]
             )
@@ -60,9 +68,33 @@ struct UpcomingGamesProvider: TimelineProvider {
         Task {
             let payload = await loadRemotePayload() ?? loadPayload()
             let entry = UpcomingGamesEntry(date: Date(), payload: payload)
-            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(900)
+            let nextRefresh = nextRefreshDate(for: payload, from: entry.date)
             completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
         }
+    }
+
+    private func nextRefreshDate(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> Date {
+        let fallback = Calendar.current.date(byAdding: .minute, value: 15, to: referenceDate) ?? referenceDate.addingTimeInterval(900)
+        let minimumRefreshDate = referenceDate.addingTimeInterval(5)
+
+        let candidates = payload.games
+            .flatMap { game -> [Date] in
+                guard let startsAt = game.startsAt else {
+                    return []
+                }
+
+                let duration = TimeInterval((game.durationMinutes ?? 90) * 60)
+                return [
+                    startsAt.addingTimeInterval(-2 * 60 * 60),
+                    startsAt,
+                    startsAt.addingTimeInterval(10 * 60),
+                    startsAt.addingTimeInterval(duration),
+                    startsAt.addingTimeInterval(duration + postEventDisplayInterval)
+                ]
+            }
+            .filter { $0 > minimumRefreshDate }
+
+        return candidates.min() ?? fallback
     }
 
     private func loadPayload() -> UpcomingGamesWidgetPayload {
@@ -86,23 +118,32 @@ struct UpcomingGamesProvider: TimelineProvider {
             return nil
         }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent("game-requests/my"))
-        request.httpMethod = "GET"
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
-                return nil
+            let gameRequestsData = try await authenticatedData(
+                path: "game-requests/my",
+                baseURL: baseURL,
+                token: token
+            )
+            let gameRequestsEnvelope = try JSONDecoder().decode(WidgetGameRequestsEnvelope.self, from: gameRequestsData)
+
+            let personalActivitiesEnvelope: WidgetPersonalActivitiesEnvelope?
+            if let personalActivitiesData = try? await authenticatedData(
+                path: "personal-activities",
+                baseURL: baseURL,
+                token: token
+            ) {
+                personalActivitiesEnvelope = try? JSONDecoder().decode(WidgetPersonalActivitiesEnvelope.self, from: personalActivitiesData)
+            } else {
+                personalActivitiesEnvelope = nil
             }
 
-            let envelope = try JSONDecoder().decode(WidgetGameRequestsEnvelope.self, from: data)
+            let games = gameRequestsEnvelope.gameRequests.widgetGames(currentUserId: defaults.string(forKey: currentUserIdKey))
+            let personalActivities = personalActivitiesEnvelope?.personalActivities.widgetGames() ?? []
             let payload = UpcomingGamesWidgetPayload(
                 updatedAt: Date(),
-                games: envelope.gameRequests.widgetGames(currentUserId: defaults.string(forKey: currentUserIdKey))
+                games: Array((games + personalActivities)
+                    .sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
+                    .prefix(3))
             )
             if let encoded = try? JSONEncoder().encode(payload) {
                 defaults.set(encoded, forKey: payloadKey)
@@ -111,6 +152,21 @@ struct UpcomingGamesProvider: TimelineProvider {
         } catch {
             return nil
         }
+    }
+
+    private func authenticatedData(path: String, baseURL: URL, token: String) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return data
     }
 
     private var widgetAPIBaseURL: URL? {
@@ -136,6 +192,10 @@ private struct WidgetGameRequestsEnvelope: Decodable {
     let gameRequests: [WidgetGameRequest]
 }
 
+private struct WidgetPersonalActivitiesEnvelope: Decodable {
+    let personalActivities: [WidgetPersonalActivity]
+}
+
 private struct WidgetGameRequest: Decodable {
     let id: String
     let status: String
@@ -149,6 +209,15 @@ private struct WidgetGameRequest: Decodable {
     let createdByUser: WidgetUser?
     let matchedUser: WidgetUser?
     let participants: [WidgetUser]?
+}
+
+private struct WidgetPersonalActivity: Decodable {
+    let id: String
+    let status: String
+    let scheduledAt: String
+    let durationMinutes: Int?
+    let sport: String?
+    let court: WidgetCourt?
 }
 
 private struct WidgetCourt: Decodable {
@@ -176,11 +245,35 @@ private extension Array where Element == WidgetGameRequest {
                     id: request.id,
                     title: request.displayTitle(currentUserId: currentUserId),
                     sportTitle: request.sportTitle,
+                    startsAt: request.proposedDate,
+                    durationMinutes: request.durationMinutes,
                     dateText: request.widgetDateText,
                     timeText: request.widgetTimeText,
                     courtName: request.proposedCourt?.name ?? request.venuePendingTitle,
                     courtAddress: request.proposedCourt?.address,
-                    statusLabel: request.statusLabel
+                    statusLabel: request.statusLabel,
+                    eventType: "game"
+                )
+            }
+    }
+}
+
+private extension Array where Element == WidgetPersonalActivity {
+    func widgetGames() -> [UpcomingGamesWidgetGame] {
+        filter { !$0.isArchivedForTimeline }
+            .map { activity in
+                UpcomingGamesWidgetGame(
+                    id: activity.id,
+                    title: "Личный визит",
+                    sportTitle: activity.sportTitle,
+                    startsAt: activity.scheduledDate,
+                    durationMinutes: activity.durationMinutes,
+                    dateText: activity.widgetDateText,
+                    timeText: activity.widgetTimeText,
+                    courtName: activity.court?.name ?? activity.venuePendingTitle,
+                    courtAddress: activity.court?.address,
+                    statusLabel: activity.statusLabel,
+                    eventType: "personal"
                 )
             }
     }
@@ -296,7 +389,7 @@ private extension WidgetGameRequest {
         }
 
         let duration = TimeInterval((durationMinutes ?? 90) * 60)
-        return Date().timeIntervalSince(proposedDate) >= duration
+        return Date().timeIntervalSince(proposedDate) >= duration + postEventDisplayInterval
     }
 
     private var outcomeLabel: String? {
@@ -342,6 +435,112 @@ private extension WidgetGameRequest {
     }
 }
 
+private extension WidgetPersonalActivity {
+    var scheduledDate: Date? {
+        scheduledAt.parsedISODateValue()
+    }
+
+    var sportTitle: String {
+        switch sport {
+        case "padel": return "Падел"
+        case "squash": return "Сквош"
+        case "badminton": return "Бадминтон"
+        case "table_tennis": return "Настольный теннис"
+        case "volleyball": return "Волейбол"
+        case "fitness": return "Фитнес"
+        case "boxing": return "Бокс"
+        case "yoga": return "Йога"
+        case "football": return "Футбол"
+        default: return "Теннис"
+        }
+    }
+
+    var venuePendingTitle: String {
+        switch sport {
+        case "fitness": return "Зал уточняется"
+        case "boxing", "yoga": return "Студия уточняется"
+        case "football", "volleyball": return "Площадка уточняется"
+        default: return "Корт уточняется"
+        }
+    }
+
+    var widgetDateText: String {
+        guard let date = scheduledDate else {
+            return "Дата уточняется"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+
+        if Calendar.current.isDateInToday(date) {
+            return "Сегодня"
+        }
+
+        if Calendar.current.isDateInTomorrow(date) {
+            return "Завтра"
+        }
+
+        formatter.dateFormat = "d MMM"
+        return formatter.string(from: date)
+    }
+
+    var widgetTimeText: String {
+        guard let date = scheduledDate else {
+            return "--:--"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    var statusLabel: String {
+        switch status.lowercased() {
+        case "completed":
+            return "Визит завершён"
+        case "canceled", "cancelled":
+            return "Отменён"
+        default:
+            return hasEnded ? "Визит завершён" : "Визит запланирован"
+        }
+    }
+
+    var isArchivedForTimeline: Bool {
+        let rawStatus = status.lowercased()
+        if ["canceled", "cancelled"].contains(rawStatus) {
+            return true
+        }
+
+        guard let scheduledDate else {
+            return false
+        }
+
+        let duration = TimeInterval((durationMinutes ?? defaultDurationMinutes) * 60)
+        return Date().timeIntervalSince(scheduledDate) >= duration + postEventDisplayInterval
+    }
+
+    private var hasEnded: Bool {
+        guard let scheduledDate else {
+            return false
+        }
+
+        let duration = TimeInterval((durationMinutes ?? defaultDurationMinutes) * 60)
+        return Date().timeIntervalSince(scheduledDate) >= duration
+    }
+
+    private var defaultDurationMinutes: Int {
+        switch sport {
+        case "fitness", "boxing", "yoga":
+            return 60
+        case "football", "volleyball":
+            return 90
+        default:
+            return 90
+        }
+    }
+}
+
 private extension String {
     func parsedISODateValue() -> Date? {
         let formatterWithFractional = ISO8601DateFormatter()
@@ -369,7 +568,7 @@ struct UpcomingGamesWidgetEntryView: View {
             )
 
             if let game = entry.payload.games.first {
-                content(for: game)
+                content(for: game, referenceDate: entry.date)
             } else {
                 emptyContent
             }
@@ -383,16 +582,16 @@ struct UpcomingGamesWidgetEntryView: View {
         }
     }
 
-    private func content(for game: UpcomingGamesWidgetGame) -> some View {
+    private func content(for game: UpcomingGamesWidgetGame, referenceDate: Date) -> some View {
         if family == .systemSmall {
-            return AnyView(compactContent(for: game))
+            return AnyView(compactContent(for: game, referenceDate: referenceDate))
         }
 
-        return AnyView(regularContent(for: game))
+        return AnyView(regularContent(for: game, referenceDate: referenceDate))
     }
 
-    private func compactContent(for game: UpcomingGamesWidgetGame) -> some View {
-        let statusStyle = game.statusStyle
+    private func compactContent(for game: UpcomingGamesWidgetGame, referenceDate: Date) -> some View {
+        let statusStyle = game.statusStyle(referenceDate: referenceDate)
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -401,7 +600,7 @@ struct UpcomingGamesWidgetEntryView: View {
                     .foregroundStyle(Color.green)
                     .frame(width: 16, height: 16)
 
-                Text("Игра")
+                Text(game.isPersonalEvent ? "Визит" : "Игра")
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .textCase(.uppercase)
                     .foregroundStyle(.white.opacity(0.62))
@@ -410,7 +609,7 @@ struct UpcomingGamesWidgetEntryView: View {
 
                 Spacer(minLength: 4)
 
-                Text(game.compactStatusLabel)
+                Text(game.compactStatusLabel(referenceDate: referenceDate))
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundStyle(statusStyle.foreground)
                     .lineLimit(1)
@@ -462,15 +661,16 @@ struct UpcomingGamesWidgetEntryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private func regularContent(for game: UpcomingGamesWidgetGame) -> some View {
-        let statusStyle = game.statusStyle
+    private func regularContent(for game: UpcomingGamesWidgetGame, referenceDate: Date) -> some View {
+        let statusLabel = game.effectiveStatusLabel(referenceDate: referenceDate)
+        let statusStyle = game.statusStyle(referenceDate: referenceDate)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 15, weight: .black))
                     .foregroundStyle(Color.green)
-                Text("Ближайшая игра")
+                Text(game.isPersonalEvent ? "Ближайший визит" : "Ближайшая игра")
                     .font(.system(size: 11, weight: .black, design: .rounded))
                     .textCase(.uppercase)
                     .foregroundStyle(.white.opacity(0.62))
@@ -478,7 +678,7 @@ struct UpcomingGamesWidgetEntryView: View {
 
                 Spacer(minLength: 8)
 
-                Text(game.statusLabel)
+                Text(statusLabel)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(statusStyle.foreground)
                     .lineLimit(1)
@@ -602,6 +802,35 @@ private struct WidgetStatusStyle {
 }
 
 private extension UpcomingGamesWidgetGame {
+    var isPersonalEvent: Bool {
+        eventType == "personal"
+    }
+
+    func effectiveStatusLabel(referenceDate: Date) -> String {
+        guard let startsAt else {
+            return statusLabel
+        }
+
+        if ["Отменена", "Отменён", "Игра прошла", "Не сыграли", "Визит завершён"].contains(statusLabel) {
+            return statusLabel
+        }
+
+        let duration = TimeInterval((durationMinutes ?? 90) * 60)
+        let secondsUntilStart = startsAt.timeIntervalSince(referenceDate)
+        if secondsUntilStart > 0 {
+            return secondsUntilStart <= 2 * 60 * 60 ? "Скоро начнется" : statusLabel
+        }
+
+        let secondsSinceStart = referenceDate.timeIntervalSince(startsAt)
+        if secondsSinceStart <= 10 * 60 {
+            return isPersonalEvent ? "Визит начался" : "Игра началась"
+        }
+        if secondsSinceStart < duration {
+            return isPersonalEvent ? "Визит идет" : "Игра идет"
+        }
+        return isPersonalEvent ? "Визит завершён" : "Игра закончилась"
+    }
+
     var compactVenueLine: String {
         let normalizedCourtName = courtName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedCourtName.isEmpty else {
@@ -611,35 +840,40 @@ private extension UpcomingGamesWidgetGame {
         return "\(sportTitle) · \(normalizedCourtName)"
     }
 
-    var compactStatusLabel: String {
-        switch statusLabel {
+    func compactStatusLabel(referenceDate: Date) -> String {
+        let label = effectiveStatusLabel(referenceDate: referenceDate)
+        switch label {
         case "Ждём подтверждение", "Ждёт подтверждения", "Требуется ответ", "Ожидает подтверждения":
             return "Ждём"
         case "Игра подтверждена":
             return "Подтв."
         case "Скоро начнется":
             return "Скоро"
-        case "Игра началась":
+        case "Игра началась", "Визит начался":
             return "Старт"
-        case "Игра идет":
+        case "Игра идет", "Визит идет":
             return "Идёт"
         case "Игра закончилась":
             return "Финиш"
         case "Игра прошла":
             return "Прошла"
+        case "Визит запланирован":
+            return "Визит"
+        case "Визит завершён":
+            return "Готово"
         default:
-            return statusLabel
+            return label
         }
     }
 
-    var statusStyle: WidgetStatusStyle {
-        switch statusLabel {
+    func statusStyle(referenceDate: Date) -> WidgetStatusStyle {
+        switch effectiveStatusLabel(referenceDate: referenceDate) {
         case "Ждём подтверждение", "Ждёт подтверждения", "Требуется ответ", "Ожидает подтверждения":
             return WidgetStatusStyle(
                 foreground: Color(red: 0.49, green: 0.45, blue: 0.78),
                 background: Color(red: 0.91, green: 0.90, blue: 0.99)
             )
-        case "Игра подтверждена", "Игра прошла":
+        case "Игра подтверждена", "Игра прошла", "Визит запланирован":
             return WidgetStatusStyle(
                 foreground: Color(red: 0.16, green: 0.58, blue: 0.33),
                 background: Color(red: 0.86, green: 0.95, blue: 0.89)
@@ -649,12 +883,12 @@ private extension UpcomingGamesWidgetGame {
                 foreground: Color(red: 0.78, green: 0.52, blue: 0.18),
                 background: Color(red: 0.99, green: 0.94, blue: 0.83)
             )
-        case "Игра началась", "Игра идет":
+        case "Игра началась", "Игра идет", "Визит начался", "Визит идет":
             return WidgetStatusStyle(
                 foreground: Color(red: 0.17, green: 0.50, blue: 0.72),
                 background: Color(red: 0.86, green: 0.93, blue: 0.98)
             )
-        case "Игра закончилась", "Не сыграли":
+        case "Игра закончилась", "Не сыграли", "Визит завершён":
             return WidgetStatusStyle(
                 foreground: Color(red: 0.33, green: 0.33, blue: 0.38),
                 background: Color(red: 0.90, green: 0.90, blue: 0.92)
@@ -673,7 +907,6 @@ private extension UpcomingGamesWidgetGame {
     }
 }
 
-@main
 struct UpcomingGamesWidget: Widget {
     let kind = "UpcomingGamesWidget"
 
@@ -684,5 +917,242 @@ struct UpcomingGamesWidget: Widget {
         .configurationDisplayName("Ближайшие игры")
         .description("Показывает следующую подтвержденную игру SportSearch.")
         .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+struct UpcomingGameLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: UpcomingGameLiveActivityAttributes.self) { context in
+            TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                UpcomingGameLiveActivityLockScreenView(context: context, referenceDate: timeline.date)
+                    .activityBackgroundTint(Color.black.opacity(0.92))
+                    .activitySystemActionForegroundColor(.white)
+            }
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(context.state.liveStatusLabel(referenceDate: timeline.date))
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(context.state.liveActivityAccent(referenceDate: timeline.date))
+                            Text(context.state.sportTitle)
+                                .font(.headline.weight(.black))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                DynamicIslandExpandedRegion(.trailing) {
+                    TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(context.state.livePhaseTitle(referenceDate: timeline.date))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.58))
+                            liveCountdown(for: context.state, referenceDate: timeline.date)
+                                .font(.headline.weight(.black))
+                                .foregroundStyle(.white)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+
+                DynamicIslandExpandedRegion(.bottom) {
+                    Text("\(context.state.title) · \(context.state.courtName)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.76))
+                        .lineLimit(1)
+                }
+            } compactLeading: {
+                Image(systemName: context.state.liveActivitySportSymbol)
+                    .foregroundStyle(context.state.liveActivityAccent(referenceDate: Date()))
+            } compactTrailing: {
+                liveCountdown(for: context.state, referenceDate: Date())
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .frame(maxWidth: 42)
+            } minimal: {
+                Image(systemName: context.state.liveActivitySportSymbol)
+                    .foregroundStyle(context.state.liveActivityAccent(referenceDate: Date()))
+            }
+            .widgetURL(URL(string: "sportsearch://upcoming"))
+        }
+    }
+
+    @ViewBuilder
+    private func liveCountdown(for state: UpcomingGameLiveActivityAttributes.ContentState, referenceDate: Date) -> some View {
+        if state.startsAt > referenceDate {
+            Text(timerInterval: referenceDate ... state.startsAt, countsDown: true)
+        } else if referenceDate < state.endsAt {
+            Text("Идёт")
+        } else {
+            Text("Финиш")
+        }
+    }
+}
+
+private struct UpcomingGameLiveActivityLockScreenView: View {
+    let context: ActivityViewContext<UpcomingGameLiveActivityAttributes>
+    let referenceDate: Date
+
+    private var state: UpcomingGameLiveActivityAttributes.ContentState {
+        context.state
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(state.liveStatusLabel(referenceDate: referenceDate))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(state.liveActivityAccent(referenceDate: referenceDate))
+                    .lineLimit(1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state.livePhaseTitle(referenceDate: referenceDate))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+
+                    liveCountdown
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+
+                Text("\(state.sportTitle) · \(state.courtName)")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                if let address = state.courtAddress?.trimmingCharacters(in: .whitespacesAndNewlines), !address.isEmpty {
+                    Text(address)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.48))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 10)
+
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.09))
+                    .frame(width: 74, height: 74)
+
+                Circle()
+                    .trim(from: 0.12, to: 0.12 + 0.80 * state.preStartProgress(referenceDate: referenceDate))
+                    .stroke(
+                        state.liveActivityAccent(referenceDate: referenceDate),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 56, height: 56)
+
+                Image(systemName: state.liveActivitySportSymbol)
+                    .font(.system(size: 25, weight: .black))
+                    .foregroundStyle(state.liveActivityAccent(referenceDate: referenceDate))
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color(red: 0.08, green: 0.09, blue: 0.09).opacity(0.96))
+        )
+    }
+
+    @ViewBuilder
+    private var liveCountdown: some View {
+        if state.startsAt > referenceDate {
+            Text(timerInterval: referenceDate ... state.startsAt, countsDown: true)
+        } else if referenceDate < state.endsAt {
+            Text("Идёт")
+        } else {
+            Text("Финиш")
+        }
+    }
+}
+
+private extension UpcomingGameLiveActivityAttributes.ContentState {
+    func liveStatusLabel(referenceDate: Date) -> String {
+        if ["Отменена", "Игра прошла", "Не сыграли"].contains(statusLabel) {
+            return statusLabel
+        }
+
+        if referenceDate < startsAt {
+            return statusLabel
+        }
+
+        let secondsSinceStart = referenceDate.timeIntervalSince(startsAt)
+        if secondsSinceStart <= 10 * 60 {
+            return "Игра началась"
+        }
+        if referenceDate < endsAt {
+            return "Игра идет"
+        }
+        return "Игра закончилась"
+    }
+
+    func livePhaseTitle(referenceDate: Date) -> String {
+        if referenceDate < startsAt {
+            return "До игры"
+        }
+        if referenceDate < endsAt {
+            return "Игра идет"
+        }
+        return "Игра закончилась"
+    }
+
+    func preStartProgress(referenceDate: Date) -> Double {
+        let secondsUntilStart = startsAt.timeIntervalSince(referenceDate)
+        guard secondsUntilStart > 0 else {
+            return 0
+        }
+
+        return min(max(secondsUntilStart / (60 * 60), 0), 1)
+    }
+
+    func liveActivityAccent(referenceDate: Date) -> Color {
+        switch liveStatusLabel(referenceDate: referenceDate) {
+        case "Ждём подтверждение", "Ждёт подтверждения", "Требуется ответ", "Ожидает подтверждения":
+            return Color(red: 1.0, green: 0.73, blue: 0.26)
+        case "Отменена":
+            return Color(red: 1.0, green: 0.31, blue: 0.35)
+        case "Игра началась", "Игра идет":
+            return Color(red: 0.39, green: 0.78, blue: 1.0)
+        default:
+            return Color(red: 0.18, green: 0.85, blue: 0.47)
+        }
+    }
+
+    var liveActivitySportSymbol: String {
+        switch sportTitle.lowercased() {
+        case let value where value.contains("падел"):
+            return "tennis.racket"
+        case let value where value.contains("футбол"):
+            return "soccerball"
+        case let value where value.contains("волейбол"):
+            return "volleyball.fill"
+        case let value where value.contains("баскет"):
+            return "basketball.fill"
+        case let value where value.contains("фитнес"):
+            return "dumbbell.fill"
+        default:
+            return "figure.tennis"
+        }
+    }
+}
+
+@main
+struct SportSearchWidgets: WidgetBundle {
+    var body: some Widget {
+        UpcomingGamesWidget()
+        UpcomingGameLiveActivityWidget()
     }
 }

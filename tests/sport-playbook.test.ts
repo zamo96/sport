@@ -16,6 +16,7 @@ describe("sport playbook (canonical defaults)", () => {
     expect(getSportFormatOptions(Sport.squash)).toEqual([PlayFormat.singles]);
     expect(getSportFormatOptions(Sport.football)).toEqual([PlayFormat.doubles]);
     expect(getSportFormatOptions(Sport.volleyball)).toEqual([PlayFormat.doubles]);
+    expect(getSportFormatOptions(Sport.supboard)).toEqual([PlayFormat.singles, PlayFormat.both]);
   });
 
   it("resolves an invalid format to sport default", () => {
@@ -32,6 +33,7 @@ describe("sport playbook (canonical defaults)", () => {
     expect(getDefaultDurationMinutes(Sport.squash)).toBe(60);
     expect(getDefaultDurationMinutes(Sport.table_tennis)).toBe(60);
     expect(getDefaultDurationMinutes(Sport.football)).toBe(90);
+    expect(getDefaultDurationMinutes(Sport.supboard)).toBe(60);
   });
 
   it("keeps key players-needed defaults stable", () => {
@@ -40,5 +42,6 @@ describe("sport playbook (canonical defaults)", () => {
     expect(getDefaultPlayersNeeded(Sport.padel, PlayFormat.singles)).toBe(3);
     expect(getDefaultPlayersNeeded(Sport.football, PlayFormat.singles)).toBe(9);
     expect(getDefaultPlayersNeeded(Sport.volleyball, PlayFormat.both)).toBe(5);
+    expect(getDefaultPlayersNeeded(Sport.supboard, PlayFormat.singles)).toBe(1);
   });
 });

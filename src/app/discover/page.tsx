@@ -141,10 +141,12 @@ export default async function DiscoverPage({
               name: participant.name ?? null
             }))
         : [],
-    proposedCourt: {
-      name: game.proposedCourt.name,
-      address: game.proposedCourt.address
-    }
+    proposedCourt: game.proposedCourt
+      ? {
+          name: game.proposedCourt.name,
+          address: game.proposedCourt.address
+        }
+      : null
   }));
   const urgentCount = incomingLikesCount + hotCount;
   const regularSearchCount = seekingPlayers.filter(

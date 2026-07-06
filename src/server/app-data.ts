@@ -1,3 +1,5 @@
+import { CourtStatus } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
 import {
@@ -9,6 +11,8 @@ import {
 import { courtSupportsSport } from "@/lib/courts";
 import { DAY_LABELS, SPORT_LABELS, getTimePreferenceLabel } from "@/lib/constants";
 import { getDiscoverCandidates } from "@/server/discover";
+import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
+import { gameReportInclude } from "@/server/game-reports";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { normalizeSports } from "@/lib/sport-levels";
 import { serializeUserPreview } from "@/server/serializers";
@@ -447,7 +451,15 @@ export async function getNotificationsForUser(userId: string) {
   const notificationsSeenAt = viewer.lastNotificationsSeenAt ?? new Date(0);
   const viewerSports = normalizeSports(viewer.preferredSports);
 
-  const [incomingLikes, searchResponsesToMySearches, myApplicationUpdates, hotEvents, newMatches, unreadMessages] = await Promise.all([
+  const [
+    incomingLikes,
+    searchResponsesToMySearches,
+    myApplicationUpdates,
+    hotEvents,
+    newMatches,
+    unreadMessages,
+    unreadSearchMessages
+  ] = await Promise.all([
     prisma.swipe.findMany({
       where: {
         toUserId: userId,
@@ -586,6 +598,45 @@ export async function getNotificationsForUser(userId: string) {
           },
           take: 50
         })
+      : Promise.resolve([]),
+    viewer.notificationMessages
+      ? prisma.gameSearchMessage.findMany({
+          where: {
+            createdAt: {
+              gt: notificationsSeenAt
+            },
+            senderUserId: {
+              not: userId
+            },
+            gameSearch: {
+              OR: [
+                { createdByUserId: userId },
+                {
+                  responses: {
+                    some: {
+                      responderUserId: userId,
+                      status: {
+                        in: ["approved"]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          include: {
+            senderUser: true,
+            gameSearch: {
+              include: {
+                preferredCourt: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 50
+        })
       : Promise.resolve([])
   ]);
 
@@ -606,6 +657,14 @@ export async function getNotificationsForUser(userId: string) {
 
     if (!latestUnreadMessagesByConversation.has(conversationKey)) {
       latestUnreadMessagesByConversation.set(conversationKey, message);
+    }
+  }
+
+  const latestUnreadSearchMessagesBySearch = new Map<string, (typeof unreadSearchMessages)[number]>();
+
+  for (const message of unreadSearchMessages) {
+    if (!latestUnreadSearchMessagesBySearch.has(message.gameSearchId)) {
+      latestUnreadSearchMessagesBySearch.set(message.gameSearchId, message);
     }
   }
 
@@ -636,6 +695,14 @@ export async function getNotificationsForUser(userId: string) {
         href: message.gameRequestId ? `/play/games/${message.gameRequestId}` : `/inbox/${message.matchId}`
       };
     }),
+    ...Array.from(latestUnreadSearchMessagesBySearch.values()).map((message) => ({
+      id: `search-message-${message.id}`,
+      type: "new_message" as const,
+      createdAt: message.createdAt,
+      title: `Новое сообщение в лобби от ${message.senderUser.name ?? "игрока"}`,
+      description: message.text.length > 120 ? `${message.text.slice(0, 117)}...` : message.text,
+      href: `/play/searches/${message.gameSearchId}`
+    })),
     ...incomingLikes
       .filter((like) => !respondedIds.has(like.fromUserId))
       .map((like) => ({
@@ -652,7 +719,7 @@ export async function getNotificationsForUser(userId: string) {
       createdAt: response.createdAt,
       title: `${response.responderUser.name ?? "Игрок"} откликнулся на твой поиск`,
       description: "Можно открыть свои поиски и решить, подтверждать ли отклик.",
-      href: "/play/searches"
+      href: `/play/searches/${response.gameSearchId}`
     })),
     ...myApplicationUpdates.map((response) => ({
       id: `application-${response.id}`,
@@ -675,8 +742,8 @@ export async function getNotificationsForUser(userId: string) {
         response.status === "approved"
           ? response.gameSearch.regularPair?.matchId
             ? `/inbox/${response.gameSearch.regularPair.matchId}`
-            : `/discover?view=seeking&highlight=${response.gameSearch.id}`
-          : `/discover?view=seeking&highlight=${response.gameSearch.id}`
+            : `/play/searches/${response.gameSearch.id}`
+          : `/play/searches/${response.gameSearch.id}`
     })),
     ...hotEvents.map((search) => ({
       id: `hot-${search.id}`,
@@ -726,6 +793,8 @@ function buildNotificationSearchTime(search: {
 }
 
 export async function getUpcomingGamesForUser(userId: string) {
+  await runGameRequestMaintenance({ sendReminders: false });
+
   const pairIds = await prisma.regularPair.findMany({
     where: {
       status: "active",
@@ -825,9 +894,10 @@ export async function getUpcomingGamesForUser(userId: string) {
     sourceType: "regular_occurrence" as const
   }));
 
-  const searchLobbyIdsByRequestId = await resolveUpcomingSearchLobbyIds(gameRequests);
+  const visibleGameRequests = gameRequests.filter((request) => !request.sharedRootId || request.matchedUserId === userId);
+  const searchLobbyIdsByRequestId = await resolveUpcomingSearchLobbyIds(visibleGameRequests);
 
-  const normalizedRequests = gameRequests.map((request) => ({
+  const normalizedRequests = visibleGameRequests.map((request) => ({
     ...request,
     searchLobbyId: searchLobbyIdsByRequestId.get(request.id) ?? null,
     participants: [
@@ -964,6 +1034,9 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
     },
     include: {
       proposedCourt: true,
+      report: {
+        include: gameReportInclude
+      },
       messages: {
         include: {
           senderUser: true
@@ -1035,6 +1108,7 @@ export async function getCourtsForUser(
   const courts = await prisma.court.findMany({
     where: {
       city: filters.city,
+      status: CourtStatus.active,
       ...(filters.district ? { district: filters.district } : {}),
       ...(filters.q
         ? {
@@ -1056,6 +1130,28 @@ export async function getCourtsForUser(
                   contains: filters.q,
                   mode: "insensitive"
                 }
+              },
+              {
+                nearestMetro: {
+                  is: {
+                    name: {
+                      contains: filters.q,
+                      mode: "insensitive"
+                    }
+                  }
+                }
+              },
+              {
+                metroLinks: {
+                  some: {
+                    metro: {
+                      name: {
+                        contains: filters.q,
+                        mode: "insensitive"
+                      }
+                    }
+                  }
+                }
               }
             ]
           }
@@ -1063,6 +1159,14 @@ export async function getCourtsForUser(
     },
     include: {
       nearestMetro: true,
+      metroLinks: {
+        include: {
+          metro: true
+        },
+        orderBy: {
+          position: "asc"
+        }
+      },
       members: {
         where: {
           userId: {

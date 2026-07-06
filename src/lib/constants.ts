@@ -6,13 +6,17 @@ export const AUTH_CODE_TTL_MINUTES = 10;
 
 export const DEFAULT_CITY = "Санкт-Петербург";
 export const DEFAULT_CITY_COORDINATES = { lat: 59.9386, lng: 30.3141 } as const;
-export const AVAILABLE_CITIES = [DEFAULT_CITY] as const;
+export const AVAILABLE_CITIES = [DEFAULT_CITY, "Москва", "Казань"] as const;
 
 export const CITY_PRESETS = {
   "Санкт-Петербург": DEFAULT_CITY_COORDINATES,
   "Санкт Петербург": DEFAULT_CITY_COORDINATES,
   "Saint Petersburg": DEFAULT_CITY_COORDINATES,
-  "St. Petersburg": DEFAULT_CITY_COORDINATES
+  "St. Petersburg": DEFAULT_CITY_COORDINATES,
+  "Москва": { lat: 55.7558, lng: 37.6173 },
+  "Moscow": { lat: 55.7558, lng: 37.6173 },
+  "Казань": { lat: 55.7961, lng: 49.1064 },
+  "Kazan": { lat: 55.7961, lng: 49.1064 }
 } as const;
 
 export const DISTRICT_OPTIONS = [
@@ -373,7 +377,9 @@ export const SPORT_OPTIONS = [
   "fitness",
   "boxing",
   "yoga",
-  "football"
+  "football",
+  "running",
+  "supboard"
 ] as const satisfies readonly Sport[];
 
 export const SPORT_LABELS = {
@@ -386,7 +392,9 @@ export const SPORT_LABELS = {
   fitness: "Фитнесс (Спортзал)",
   boxing: "Бокс",
   yoga: "Йога",
-  football: "Футбол"
+  football: "Футбол",
+  running: "Бег",
+  supboard: "Сапборд"
 } as const;
 
 export const SPORT_EMOJIS: Record<Sport, string> = {
@@ -399,7 +407,9 @@ export const SPORT_EMOJIS: Record<Sport, string> = {
   fitness: "🏋️",
   boxing: "🥊",
   yoga: "🧘",
-  football: "⚽"
+  football: "⚽",
+  running: "🏃",
+  supboard: "🏄"
 };
 
 export const SPORT_SEARCH_LABELS: Record<
@@ -492,6 +502,22 @@ export const SPORT_SEARCH_LABELS: Record<
     bookedHint: "Включи, если аренда футбольного поля уже подтверждена.",
     regularPlaceholder: "Ищу игроков на футбол в удобное время.",
     hotPlaceholder: "Игрок сорвался, аренда поля уже оплачена, нужен человек срочно."
+  },
+  running: {
+    centerLabel: "Маршрут или место старта",
+    anyCenterLabel: "Любой маршрут",
+    bookedTitle: "Маршрут уже выбран",
+    bookedHint: "Включи, если маршрут уже понятен и нужен партнёр на пробежку.",
+    regularPlaceholder: "Ищу партнёра для регулярных пробежек в удобное время.",
+    hotPlaceholder: "Ищу партнёра на пробежку сегодня. Маршрут укажу в описании."
+  },
+  supboard: {
+    centerLabel: "Маршрут или место старта",
+    anyCenterLabel: "Любой маршрут",
+    bookedTitle: "Маршрут уже выбран",
+    bookedHint: "Включи, если маршрут по воде уже понятен и нужен партнёр.",
+    regularPlaceholder: "Ищу партнёра для прогулок на сапборде в удобное время.",
+    hotPlaceholder: "Ищу партнёра на сапборд сегодня. Маршрут укажу на карте."
   }
 };
 

@@ -15,6 +15,9 @@ export function getSportVenueShortLabelRu(sport: Sport): string {
       return "Зал";
     case Sport.yoga:
       return "Студия";
+    case Sport.running:
+    case Sport.supboard:
+      return "Маршрут";
     case Sport.football:
       return "Поле";
     case Sport.volleyball:
@@ -28,6 +31,10 @@ export function getSportVenueShortLabelRu(sport: Sport): string {
     default:
       return "Корт";
   }
+}
+
+export function isRouteSport(sport: Sport | string | null | undefined): boolean {
+  return sport === Sport.running || sport === Sport.supboard;
 }
 
 export type SportPlayFormatLabelOptions = {

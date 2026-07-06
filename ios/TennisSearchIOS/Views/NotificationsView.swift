@@ -173,75 +173,11 @@ struct NotificationsView: View {
     }
 
     private func openNotification(_ item: AppNotification) {
-        guard let route = NotificationRoute(notification: item) else {
+        guard let target = AppNavigationTarget(notificationHref: item.href) else {
             return
         }
-        appModel.navigate(to: route.navigationTarget)
+        appModel.navigate(to: target)
         dismiss()
-    }
-}
-
-private enum NotificationRoute {
-    case discover(DiscoverTab, highlightedUserID: String?, highlightedSearchID: String?)
-    case matches
-    case searches
-    case chat(String)
-
-    var navigationTarget: AppNavigationTarget {
-        switch self {
-        case .discover(let tab, let highlightedUserID, let highlightedSearchID):
-            return .discover(tab, highlightedUserID: highlightedUserID, highlightedSearchID: highlightedSearchID)
-        case .matches:
-            return .matches
-        case .searches:
-            return .searches
-        case .chat(let matchId):
-            return .chat(matchId)
-        }
-    }
-
-    init?(notification: AppNotification) {
-        guard let components = URLComponents(string: notification.href) else {
-            return nil
-        }
-
-        let path = components.path
-        let queryItems = components.queryItems ?? []
-
-        if path.hasPrefix("/inbox/") {
-            self = .chat(String(path.dropFirst("/inbox/".count)))
-            return
-        }
-
-        if path.hasPrefix("/discover") {
-            let view = queryItems.first(where: { $0.name == "view" })?.value ?? "swipe"
-            let highlight = queryItems.first(where: { $0.name == "highlight" })?.value
-            switch view {
-            case "likes":
-                self = .discover(.likes, highlightedUserID: highlight, highlightedSearchID: nil)
-            case "hot":
-                self = .discover(.hot, highlightedUserID: nil, highlightedSearchID: highlight)
-            case "upcoming":
-                self = .discover(.upcoming, highlightedUserID: nil, highlightedSearchID: highlight)
-            case "seeking", "regular":
-                self = .discover(.seeking, highlightedUserID: nil, highlightedSearchID: highlight)
-            default:
-                self = .discover(.swipe, highlightedUserID: nil, highlightedSearchID: highlight)
-            }
-            return
-        }
-
-        if path.hasPrefix("/searches") {
-            self = .searches
-            return
-        }
-
-        if path.hasPrefix("/matches") || path.hasPrefix("/inbox") {
-            self = .matches
-            return
-        }
-
-        return nil
     }
 }
 

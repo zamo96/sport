@@ -12,6 +12,7 @@ export type CourtSmartPickerOption = {
   address: string;
   district?: string | null;
   nearestMetroName?: string | null;
+  metroNames?: string[];
 };
 
 type CourtSmartPickerProps = {
@@ -54,6 +55,7 @@ export function CourtSmartPicker({
           address: court.address,
           district: court.district,
           nearestMetroName: court.nearestMetroName,
+          metroNames: courtMetroNames(court),
           sports: []
         }),
         normalizedQuery
@@ -105,7 +107,7 @@ export function CourtSmartPicker({
               key={court.id}
               title={court.name}
               metaItems={[
-                court.nearestMetroName ? { icon: "metro", text: court.nearestMetroName } : null,
+                courtMetroLabel(court) ? { icon: "metro", text: courtMetroLabel(court) ?? "" } : null,
                 getDistrictLabel(court.district) ? { icon: "district", text: getDistrictLabel(court.district) ?? "" } : null,
                 court.address ? { icon: "address", text: court.address } : null
               ].filter((item): item is { icon: "metro" | "district" | "address" | "mappin"; text: string } => Boolean(item))}
@@ -117,6 +119,17 @@ export function CourtSmartPicker({
       </div>
     </div>
   );
+}
+
+function courtMetroNames(court: CourtSmartPickerOption) {
+  return Array.from(
+    new Set([...(court.metroNames ?? []), court.nearestMetroName].filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))
+  ).slice(0, 8);
+}
+
+function courtMetroLabel(court: CourtSmartPickerOption) {
+  const names = courtMetroNames(court);
+  return names.length > 0 ? names.join(" · ") : null;
 }
 
 function CourtSmartPickerRow({

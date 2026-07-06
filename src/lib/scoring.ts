@@ -28,6 +28,8 @@ export type CandidateUser = Pick<
 > & {
   district?: User["district"] | null;
   preferredDistricts?: User["preferredDistricts"] | null;
+  lastActiveAt?: User["lastActiveAt"] | null;
+  createdAt?: User["createdAt"] | null;
 };
 
 export type DiscoverFilters = {

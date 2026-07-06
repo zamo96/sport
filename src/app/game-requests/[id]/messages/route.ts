@@ -5,7 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
-import { publishRealtimeEventToUsers } from "@/server/realtime";
+import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 
 async function getGameRequestForUser(gameRequestId: string, userId: string) {
   return prisma.gameRequest.findFirst({
@@ -99,7 +99,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     });
 
-    if (recipient?.notificationMessages) {
+    const recipientActiveInChat = await isUserActiveInChat(recipientUserId, [
+      `game:${gameRequest.id}`,
+      `match:${gameRequest.matchId}`
+    ]);
+
+    if (recipient?.notificationMessages && !recipientActiveInChat) {
       await sendPushToUser({
         userId: recipient.id,
         title: `Сообщение по игре от ${user.name ?? "игрока"}`,

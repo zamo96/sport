@@ -97,7 +97,7 @@ private enum MainTab: String, CaseIterable, Identifiable {
         case .matches:
             return "Мэтчи"
         case .searches:
-            return "Поиски"
+            return "Мои поиски"
         case .courts:
             return "Центры"
         case .profile:
@@ -117,6 +117,21 @@ private enum MainTab: String, CaseIterable, Identifiable {
             return "map"
         case .profile:
             return "person"
+        }
+    }
+
+    var loadingTitle: String {
+        switch self {
+        case .discover:
+            return "Обновляем игроков"
+        case .matches:
+            return "Загружаем мэтчи"
+        case .searches:
+            return "Загружаем поиски"
+        case .courts:
+            return "Загружаем центры"
+        case .profile:
+            return "Загружаем профиль"
         }
     }
 }
@@ -146,6 +161,11 @@ private struct MainTabView: View {
 
             currentTabScreen
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if shouldShowTabLoading {
+                MenuTabLoadingOverlay(title: selectedTab.loadingTitle)
+                    .transition(.opacity)
+            }
         }
         .background(Color.black.ignoresSafeArea())
         .toolbarBackground(Color.black, for: .navigationBar)
@@ -156,6 +176,13 @@ private struct MainTabView: View {
         }
         .onChange(of: appModel.pendingNavigationTarget) { target in
             handlePendingNavigation(target)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tennisNotificationRouteRequested)) { notification in
+            guard let href = notification.object as? String,
+                  let target = AppNavigationTarget(notificationHref: href) else {
+                return
+            }
+            appModel.navigate(to: target)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomBar
@@ -326,7 +353,7 @@ private struct MainTabView: View {
                     }
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
                         if let pendingTab {
-                            selectedTab = pendingTab
+                            activateTab(pendingTab, source: .tap)
                         }
                         self.pendingTab = nil
                         isSlidingTabs = false
@@ -372,6 +399,10 @@ private struct MainTabView: View {
             return pendingTab
         }
         return selectedTab
+    }
+
+    private var shouldShowTabLoading: Bool {
+        appModel.isTabContentLoading(selectedTab.rawValue)
     }
 
     private func tab(at x: CGFloat, tabWidth: CGFloat) -> MainTab {
@@ -424,6 +455,10 @@ private struct MainTabView: View {
         case .searches:
             searchesStackID = UUID()
             selectedTab = .searches
+        case .searchLobby(let searchId):
+            appModel.pendingSearchLobbyID = searchId
+            searchesStackID = UUID()
+            selectedTab = .searches
         case .courts(let sport):
             courtsInitialSport = sport
             courtsStackID = UUID()
@@ -461,6 +496,72 @@ private struct MainTabView: View {
             profileStackID = UUID()
         }
         selectedTab = tab
+    }
+}
+
+private struct MenuTabLoadingOverlay: View {
+    let title: String
+    @State private var isAnimating = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72)
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                HStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { index in
+                        loadingBall(index: index)
+                    }
+                }
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.76))
+                    .opacity(isAnimating ? 0.9 : 0.62)
+            }
+            .padding(.bottom, 54)
+        }
+        .animation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true), value: isAnimating)
+        .onAppear {
+            isAnimating = true
+        }
+    }
+
+    private func loadingBall(index: Int) -> some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 212 / 255, green: 245 / 255, blue: 65 / 255),
+                        Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: 22, height: 22)
+            .overlay(
+                Capsule()
+                    .stroke(.white.opacity(0.72), lineWidth: 1.4)
+                    .frame(width: 4, height: 24)
+                    .rotationEffect(.degrees(28))
+            )
+            .scaleEffect(isAnimating ? 1.04 : 0.76)
+            .offset(y: isAnimating ? -10 : 10)
+            .rotationEffect(.degrees(isAnimating ? 360 : 0))
+            .shadow(
+                color: Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(isAnimating ? 0.44 : 0.2),
+                radius: isAnimating ? 14 : 6,
+                x: 0,
+                y: 6
+            )
+            .animation(
+                .easeInOut(duration: 0.58)
+                    .repeatForever(autoreverses: true)
+                    .delay(Double(index) * 0.16),
+                value: isAnimating
+            )
     }
 }
 

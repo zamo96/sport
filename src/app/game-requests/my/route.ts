@@ -1,7 +1,10 @@
+import { Prisma } from "@prisma/client";
+
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { ensureGroupSearchLobby } from "@/server/game-request-lobbies";
+import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { serializeGameRequest, serializeUserPreview } from "@/server/serializers";
 
@@ -10,9 +13,68 @@ type ChildRequest = RequestWithRelations["sharedInvites"][number];
 type SerializedGameRequest = ReturnType<typeof serializeRequest>;
 type SerializedRegularOccurrence = ReturnType<typeof serializeRegularOccurrence>;
 
+const gameRequestListInclude = {
+  proposedCourt: true,
+  report: {
+    include: {
+      createdByUser: true,
+      photos: {
+        orderBy: {
+          position: "asc"
+        }
+      },
+      confirmations: {
+        include: {
+          user: true
+        }
+      }
+    }
+  },
+  createdByUser: true,
+  matchedUser: true,
+  match: {
+    include: {
+      user1: true,
+      user2: true
+    }
+  },
+  sharedInvites: {
+    include: {
+      proposedCourt: true,
+      report: {
+        include: {
+          createdByUser: true,
+          photos: {
+            orderBy: {
+              position: "asc"
+            }
+          },
+          confirmations: {
+            include: {
+              user: true
+            }
+          }
+        }
+      },
+      createdByUser: true,
+      matchedUser: true,
+      match: {
+        include: {
+          user1: true,
+          user2: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  }
+} satisfies Prisma.GameRequestInclude;
+
 export async function GET() {
   try {
     const user = await requireSessionUser();
+    await runGameRequestMaintenance({ sendReminders: false });
     const pairIds = await prisma.regularPair.findMany({
       where: {
         OR: [{ createdByUserId: user.id }, { partnerUserId: user.id }]
@@ -29,6 +91,13 @@ export async function GET() {
 
     const grouped: Array<SerializedGameRequest | SerializedRegularOccurrence> = gameRequests
       .filter((gameRequest) => {
+        const isDirectlyVisible =
+          gameRequest.createdByUserId === user.id || gameRequest.matchedUserId === user.id;
+
+        if (!isDirectlyVisible) {
+          return false;
+        }
+
         if (!gameRequest.sharedRootId) {
           return true;
         }
@@ -57,11 +126,11 @@ export async function GET() {
           invitees: groupRequests
             .filter((request) => request.id !== primaryRequest.id)
             .map((invite) => ({
-            id: invite.id,
-            matchId: invite.matchId,
-            status: invite.status,
-            user: serializeUserPreview(invite.matchedUser)
-          }))
+              id: invite.id,
+              matchId: invite.matchId,
+              status: invite.status,
+              user: serializeUserPreview(invite.matchedUser)
+            }))
         });
       });
 
@@ -124,41 +193,51 @@ function buildRequestGroups(gameRequests: RequestWithRelations[]) {
 }
 
 async function loadGameRequests(userId: string) {
-  return prisma.gameRequest.findMany({
+  const directRequests = await prisma.gameRequest.findMany({
     where: {
       OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
     },
-    include: {
-      proposedCourt: true,
-      createdByUser: true,
-      matchedUser: true,
-      match: {
-        include: {
-          user1: true,
-          user2: true
-        }
-      },
-      sharedInvites: {
-        include: {
-          proposedCourt: true,
-          createdByUser: true,
-          matchedUser: true,
-          match: {
-            include: {
-              user1: true,
-              user2: true
-            }
-          }
-        },
-        orderBy: {
-          createdAt: "desc"
-        }
-      }
-    },
+    include: gameRequestListInclude,
     orderBy: {
       createdAt: "desc"
     }
   });
+
+  const rootIds = Array.from(
+    new Set(directRequests.map((request) => request.sharedRootId).filter((id): id is string => Boolean(id)))
+  );
+
+  if (rootIds.length === 0) {
+    return directRequests;
+  }
+
+  const relatedGroupRequests = await prisma.gameRequest.findMany({
+    where: {
+      OR: [
+        {
+          id: {
+            in: rootIds
+          }
+        },
+        {
+          sharedRootId: {
+            in: rootIds
+          }
+        }
+      ]
+    },
+    include: gameRequestListInclude,
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  const merged = new Map(directRequests.map((request) => [request.id, request]));
+  for (const request of relatedGroupRequests) {
+    merged.set(request.id, request);
+  }
+
+  return Array.from(merged.values()).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
 }
 
 async function loadConfirmedRegularOccurrences(userId: string) {

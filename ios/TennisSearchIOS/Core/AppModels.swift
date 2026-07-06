@@ -57,6 +57,20 @@ enum Gender: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum PlayerMediaKind: String {
+    case photo
+    case video
+}
+
+struct PlayerMediaItem: Identifiable, Hashable {
+    let kind: PlayerMediaKind
+    let path: String
+
+    var id: String {
+        "\(kind.rawValue)-\(path)"
+    }
+}
+
 enum Sport: String, Codable, CaseIterable, Identifiable {
     case tableTennis = "table_tennis"
     case tennis
@@ -68,6 +82,8 @@ enum Sport: String, Codable, CaseIterable, Identifiable {
     case boxing
     case yoga
     case football
+    case running
+    case supboard
 
     var id: String { rawValue }
 
@@ -93,6 +109,10 @@ enum Sport: String, Codable, CaseIterable, Identifiable {
             return "Йога"
         case .football:
             return "Футбол"
+        case .running:
+            return "Бег"
+        case .supboard:
+            return "Сапборд"
         }
     }
 }
@@ -164,7 +184,7 @@ extension Sport {
                 defaultPlayersNeededByFormat: [.singles: 5, .doubles: 5, .both: 5],
                 maxPlayersNeeded: 12
             )
-        case .fitness, .boxing, .yoga:
+        case .fitness, .boxing, .yoga, .running, .supboard:
             return SportPlaybook(
                 allowedFormats: [.singles, .both],
                 defaultFormat: .singles,
@@ -201,7 +221,21 @@ extension Sport {
             return "Зал"
         case .yoga:
             return "Студия"
+        case .running, .supboard:
+            return "Маршрут"
         }
+    }
+
+    var isRouteSport: Bool {
+        self == .running || self == .supboard
+    }
+
+    var routeFollowsRoads: Bool {
+        self == .running
+    }
+
+    var routeDefaultTitle: String {
+        self == .supboard ? "Маршрут по воде" : "Маршрут бега"
     }
 
     var venueFieldTitle: String {
@@ -265,7 +299,7 @@ extension Sport {
         }
 
         switch self {
-        case .fitness, .boxing, .yoga:
+        case .fitness, .boxing, .yoga, .running, .supboard:
             return isGroup ? "Групповая" : "Индивидуально"
         default:
             if isGroup, resolvedPlayersNeeded > 3 {
@@ -490,7 +524,7 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static var userVisibleCases: [DiscoverTab] {
-        [.upcoming, .swipe, .likes, .hot]
+        [.upcoming, .hot, .swipe, .likes]
     }
 
     var title: String {
@@ -504,7 +538,7 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
         case .seeking:
             return "Регулярно"
         case .hot:
-            return "Срочно"
+            return "Поиски"
         }
     }
 
@@ -519,7 +553,7 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
         case .seeking:
             return "calendar"
         case .hot:
-            return "flame"
+            return "magnifyingglass"
         }
     }
 }
@@ -532,6 +566,21 @@ enum AuthStep: String, Identifiable {
     case code
 
     var id: String { rawValue }
+}
+
+enum LegalDocuments {
+    static let userAgreementVersion = "2026-07-05"
+    static let acceptanceError = "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных."
+
+    static var userAgreementURL: URL? {
+        if let baseURL = AppConfig.apiBaseURL {
+            return baseURL
+                .appendingPathComponent("legal")
+                .appendingPathComponent("terms")
+        }
+
+        return URL(string: "https://sportsearch.shop/legal/terms")
+    }
 }
 
 struct SessionUser: Codable {
@@ -603,7 +652,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
         name: "",
         age: 0,
         gender: nil,
-        city: "Санкт-Петербург",
+        city: "",
         district: nil,
         preferredDistricts: [],
         preferredSports: [],
@@ -646,7 +695,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         age = try container.decodeIfPresent(Int.self, forKey: .age) ?? 0
         gender = try container.decodeIfPresent(Gender.self, forKey: .gender)
-        city = try container.decodeIfPresent(String.self, forKey: .city) ?? "Санкт-Петербург"
+        city = try container.decodeIfPresent(String.self, forKey: .city) ?? ""
         district = try container.decodeIfPresent(String.self, forKey: .district)
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
@@ -673,6 +722,8 @@ struct UserProfile: Codable, Identifiable {
     var preferredDistricts: [String]
     var bio: String?
     var avatarUrl: String?
+    var profilePhotoUrls: [String]
+    var profileVideoUrls: [String]
     var tennisLevel: Int?
     var preferredSports: [Sport]
     var sportLevels: [String: Int]
@@ -701,6 +752,8 @@ struct UserProfile: Codable, Identifiable {
         preferredDistricts: [String] = [],
         bio: String? = nil,
         avatarUrl: String? = nil,
+        profilePhotoUrls: [String] = [],
+        profileVideoUrls: [String] = [],
         tennisLevel: Int? = nil,
         preferredSports: [Sport] = [],
         sportLevels: [String: Int] = [:],
@@ -728,6 +781,8 @@ struct UserProfile: Codable, Identifiable {
         self.preferredDistricts = preferredDistricts
         self.bio = bio
         self.avatarUrl = avatarUrl
+        self.profilePhotoUrls = profilePhotoUrls
+        self.profileVideoUrls = profileVideoUrls
         self.tennisLevel = tennisLevel
         self.preferredSports = preferredSports
         self.sportLevels = sportLevels
@@ -757,6 +812,8 @@ struct UserProfile: Codable, Identifiable {
         case preferredDistricts
         case bio
         case avatarUrl
+        case profilePhotoUrls
+        case profileVideoUrls
         case tennisLevel
         case preferredSports
         case sportLevels
@@ -787,6 +844,8 @@ struct UserProfile: Codable, Identifiable {
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         bio = try container.decodeIfPresent(String.self, forKey: .bio)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        profilePhotoUrls = try container.decodeIfPresent([String].self, forKey: .profilePhotoUrls) ?? []
+        profileVideoUrls = try container.decodeIfPresent([String].self, forKey: .profileVideoUrls) ?? []
         tennisLevel = try container.decodeIfPresent(Int.self, forKey: .tennisLevel)
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
         sportLevels = try container.decodeFlexibleIntDictionary(forKey: .sportLevels)
@@ -816,6 +875,9 @@ struct DiscoverUser: Codable, Identifiable {
     let preferredDistricts: [String]
     let bio: String?
     let avatarUrl: String?
+    let profilePhotoUrls: [String]
+    let profileVideoUrls: [String]
+    let lastActiveAt: String?
     let tennisLevel: Int?
     let preferredSports: [Sport]
     let sportLevels: [String: Int]
@@ -838,6 +900,9 @@ struct DiscoverUser: Codable, Identifiable {
         case preferredDistricts
         case bio
         case avatarUrl
+        case profilePhotoUrls
+        case profileVideoUrls
+        case lastActiveAt
         case tennisLevel
         case preferredSports
         case sportLevels
@@ -862,6 +927,9 @@ struct DiscoverUser: Codable, Identifiable {
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         bio = try container.decodeIfPresent(String.self, forKey: .bio)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        profilePhotoUrls = try container.decodeIfPresent([String].self, forKey: .profilePhotoUrls) ?? []
+        profileVideoUrls = try container.decodeIfPresent([String].self, forKey: .profileVideoUrls) ?? []
+        lastActiveAt = try container.decodeIfPresent(String.self, forKey: .lastActiveAt)
         tennisLevel = try container.decodeIfPresent(Int.self, forKey: .tennisLevel)
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
         sportLevels = try container.decodeFlexibleIntDictionary(forKey: .sportLevels)
@@ -873,6 +941,44 @@ struct DiscoverUser: Codable, Identifiable {
         score = try container.decodeFlexibleDoubleIfPresent(forKey: .score)
         explainabilityReasons = try container.decodeIfPresent([String].self, forKey: .explainabilityReasons) ?? []
         gameSearches = try container.decodeIfPresent([GameSearch].self, forKey: .gameSearches) ?? []
+    }
+}
+
+extension DiscoverUser {
+    var lastActiveDate: Date? {
+        lastActiveAt?.parsedISODateValue()
+    }
+
+    var isOnline: Bool {
+        guard let lastActiveDate else {
+            return false
+        }
+
+        return Date().timeIntervalSince(lastActiveDate) <= 5 * 60
+    }
+
+    var presenceLabel: String {
+        guard let lastActiveDate else {
+            return "Был недавно"
+        }
+
+        if isOnline {
+            return "Онлайн"
+        }
+
+        let minutes = Int(Date().timeIntervalSince(lastActiveDate) / 60)
+        if minutes < 60 {
+            return "Был \(max(minutes, 1)) мин назад"
+        }
+
+        if Calendar.current.isDateInToday(lastActiveDate) {
+            return "Был \(lastActiveDate.formattedHourMinute())"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.setLocalizedDateFormatFromTemplate("d MMM")
+        return "Был \(formatter.string(from: lastActiveDate))"
     }
 }
 
@@ -888,9 +994,26 @@ struct MatchSummary: Codable, Identifiable {
 struct ChatMessage: Codable, Identifiable {
     let id: String
     let senderUserId: String
+    let gameRequestId: String?
     let text: String
     let createdAt: String
     let senderUser: ChatSender?
+
+    init(
+        id: String,
+        senderUserId: String,
+        gameRequestId: String? = nil,
+        text: String,
+        createdAt: String,
+        senderUser: ChatSender?
+    ) {
+        self.id = id
+        self.senderUserId = senderUserId
+        self.gameRequestId = gameRequestId
+        self.text = text
+        self.createdAt = createdAt
+        self.senderUser = senderUser
+    }
 }
 
 struct ChatSender: Codable {
@@ -973,6 +1096,7 @@ struct SearchSlotProposalSummary: Codable, Identifiable {
 struct SearchLobbyGameSearch: Codable, Identifiable {
     let id: String
     let createdByUserId: String
+    let createdByUser: DiscoverUser?
     let searchType: SearchType
     let status: String
     let isActive: Bool
@@ -1005,6 +1129,7 @@ extension SearchLobbyGameSearch {
     enum CodingKeys: String, CodingKey {
         case id
         case createdByUserId
+        case createdByUser
         case searchType
         case status
         case isActive
@@ -1032,6 +1157,7 @@ extension SearchLobbyGameSearch {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         createdByUserId = try container.decode(String.self, forKey: .createdByUserId)
+        createdByUser = try container.decodeIfPresent(DiscoverUser.self, forKey: .createdByUser)
         searchType = try container.decodeIfPresent(SearchType.self, forKey: .searchType) ?? .regular
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? "active"
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
@@ -1145,8 +1271,11 @@ struct MatchGameRequest: Codable, Identifiable {
     let durationMinutes: Int?
     let comment: String?
     let outcome: String?
+    let report: GameReport?
     let sport: Sport
     let format: PlayFormat
+    let runningRoute: String?
+    let runningRoutePoints: [RunningRoutePoint]
     let proposedCourt: Court?
     let createdByUser: ChatSender?
     let matchedUser: ChatSender?
@@ -1167,8 +1296,11 @@ struct MatchGameRequest: Codable, Identifiable {
         case durationMinutes
         case comment
         case outcome
+        case report
         case sport
         case format
+        case runningRoute
+        case runningRoutePoints
         case proposedCourt
         case createdByUser
         case matchedUser
@@ -1192,11 +1324,14 @@ struct MatchGameRequest: Codable, Identifiable {
         outcome: String?,
         sport: Sport,
         format: PlayFormat,
+        runningRoute: String? = nil,
+        runningRoutePoints: [RunningRoutePoint] = [],
         proposedCourt: Court?,
         createdByUser: ChatSender?,
         matchedUser: ChatSender?,
         participants: [DiscoverUser] = [],
-        invitees: [GameRequestInvitee] = []
+        invitees: [GameRequestInvitee] = [],
+        report: GameReport? = nil
     ) {
         self.id = id
         self.matchId = matchId
@@ -1211,8 +1346,11 @@ struct MatchGameRequest: Codable, Identifiable {
         self.durationMinutes = durationMinutes
         self.comment = comment
         self.outcome = outcome
+        self.report = report
         self.sport = sport
         self.format = format
+        self.runningRoute = runningRoute
+        self.runningRoutePoints = runningRoutePoints
         self.proposedCourt = proposedCourt
         self.createdByUser = createdByUser
         self.matchedUser = matchedUser
@@ -1235,14 +1373,138 @@ struct MatchGameRequest: Codable, Identifiable {
         durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes)
         comment = try container.decodeIfPresent(String.self, forKey: .comment)
         outcome = try container.decodeIfPresent(String.self, forKey: .outcome)
+        report = try container.decodeIfPresent(GameReport.self, forKey: .report)
         sport = try container.decodeIfPresent(Sport.self, forKey: .sport) ?? .tennis
         format = try container.decodeIfPresent(PlayFormat.self, forKey: .format) ?? .singles
+        runningRoute = try container.decodeIfPresent(String.self, forKey: .runningRoute)
+        runningRoutePoints = try container.decodeIfPresent([RunningRoutePoint].self, forKey: .runningRoutePoints) ?? []
         proposedCourt = try container.decodeIfPresent(Court.self, forKey: .proposedCourt)
         createdByUser = try container.decodeIfPresent(ChatSender.self, forKey: .createdByUser)
         matchedUser = try container.decodeIfPresent(ChatSender.self, forKey: .matchedUser)
         participants = try container.decodeIfPresent([DiscoverUser].self, forKey: .participants) ?? []
         invitees = try container.decodeIfPresent([GameRequestInvitee].self, forKey: .invitees) ?? []
     }
+
+    var effectivePlayersNeeded: Int {
+        max(participants.count - 1, 1)
+    }
+
+    var effectiveFormatTitle: String {
+        sport.formatTitle(format: format, playersNeeded: effectivePlayersNeeded)
+    }
+}
+
+struct GameReport: Codable, Identifiable {
+    let id: String
+    let gameRequestId: String
+    let createdByUserId: String
+    let comment: String?
+    let visibility: String
+    let status: String
+    let createdAt: String
+    let updatedAt: String
+    let createdByUser: DiscoverUser?
+    let photos: [GameReportPhoto]
+    let confirmations: [GameReportConfirmation]
+
+    var photoUrls: [String] {
+        photos.sorted { $0.position < $1.position }.map(\.url)
+    }
+
+    var confirmedCount: Int {
+        confirmations.filter { $0.status.lowercased() == "confirmed" }.count
+    }
+
+    var statusTitle: String {
+        switch status.lowercased() {
+        case "confirmed":
+            return "Фотоотчёт сохранён"
+        case "disputed":
+            return "Есть спор"
+        default:
+            return "Фотоотчёт сохранён"
+        }
+    }
+}
+
+struct GameReportPhoto: Codable, Identifiable {
+    let id: String
+    let url: String
+    let position: Int
+}
+
+struct GameReportConfirmation: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let status: String
+    let user: DiscoverUser?
+}
+
+struct PersonalActivity: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let courtId: String
+    let sport: Sport
+    let scheduledAt: String
+    let durationMinutes: Int?
+    let comment: String?
+    let status: String
+    let reportComment: String?
+    let createdAt: String?
+    let updatedAt: String?
+    let court: Court?
+    let photos: [PersonalActivityPhoto]
+
+    var scheduledDate: Date? {
+        scheduledAt.parsedISODateValue()
+    }
+
+    var hasEnded: Bool {
+        guard let scheduledDate else {
+            return false
+        }
+        let duration = TimeInterval((durationMinutes ?? sport.defaultDurationMinutes) * 60)
+        return Date().timeIntervalSince(scheduledDate) >= duration
+    }
+
+    var isArchivedForTimeline: Bool {
+        let rawStatus = status.lowercased()
+        if rawStatus == "canceled" {
+            return true
+        }
+        return false
+    }
+
+    var canComplete: Bool {
+        status.lowercased() == "planned" && hasEnded
+    }
+
+    var photoUrls: [String] {
+        photos.sorted { $0.position < $1.position }.map(\.url)
+    }
+}
+
+struct PersonalActivityPhoto: Codable, Identifiable {
+    let id: String
+    let url: String
+    let position: Int
+}
+
+struct PersonalActivityDraft {
+    var courtId: String
+    var sport: Sport
+    var scheduledAt: Date
+    var durationMinutes: Int?
+    var comment: String
+}
+
+struct PersonalActivityUpdateDraft {
+    var scheduledAt: Date?
+    var durationMinutes: Int?
+    var comment: String?
+    var status: String?
+    var reportComment: String?
+    var photoUrls: [String]?
 }
 
 struct GameRequestInvitee: Codable, Identifiable {
@@ -1253,7 +1515,7 @@ struct GameRequestInvitee: Codable, Identifiable {
 }
 
 struct GameProposalDraft {
-    var proposedCourtId: String
+    var proposedCourtId: String?
     var proposedDatetime: Date
     var durationMinutes: Int?
     var levelRangeMin: Int?
@@ -1265,6 +1527,7 @@ struct GameProposalDraft {
 
 struct GameSearch: Codable, Identifiable {
     let id: String
+    let createdByUserId: String?
     let inviteSlug: String?
     let status: String
     let searchType: SearchType
@@ -1285,6 +1548,10 @@ struct GameSearch: Codable, Identifiable {
     let isActive: Bool?
     let isExpired: Bool?
     let preferredCourt: Court?
+    let customVenueTitle: String?
+    let customVenueAddress: String?
+    let runningRoute: String?
+    let runningRoutePoints: [RunningRoutePoint]
     let preferredDistricts: [String]
     let activeSlotProposal: SearchSlotProposalSummary?
     let regularPair: RegularPairSummary?
@@ -1292,6 +1559,7 @@ struct GameSearch: Codable, Identifiable {
 
     init(
         id: String,
+        createdByUserId: String? = nil,
         inviteSlug: String? = nil,
         status: String,
         searchType: SearchType,
@@ -1312,12 +1580,17 @@ struct GameSearch: Codable, Identifiable {
         isActive: Bool?,
         isExpired: Bool?,
         preferredCourt: Court?,
+        customVenueTitle: String? = nil,
+        customVenueAddress: String? = nil,
+        runningRoute: String? = nil,
+        runningRoutePoints: [RunningRoutePoint] = [],
         preferredDistricts: [String] = [],
         activeSlotProposal: SearchSlotProposalSummary? = nil,
         regularPair: RegularPairSummary?,
         responses: [SearchResponse]
     ) {
         self.id = id
+        self.createdByUserId = createdByUserId
         self.inviteSlug = inviteSlug
         self.status = status
         self.searchType = searchType
@@ -1338,6 +1611,10 @@ struct GameSearch: Codable, Identifiable {
         self.isActive = isActive
         self.isExpired = isExpired
         self.preferredCourt = preferredCourt
+        self.customVenueTitle = customVenueTitle
+        self.customVenueAddress = customVenueAddress
+        self.runningRoute = runningRoute
+        self.runningRoutePoints = runningRoutePoints
         self.preferredDistricts = preferredDistricts
         self.activeSlotProposal = activeSlotProposal
         self.regularPair = regularPair
@@ -1346,6 +1623,7 @@ struct GameSearch: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case createdByUserId
         case inviteSlug
         case status
         case searchType
@@ -1366,6 +1644,10 @@ struct GameSearch: Codable, Identifiable {
         case isActive
         case isExpired
         case preferredCourt
+        case customVenueTitle
+        case customVenueAddress
+        case runningRoute
+        case runningRoutePoints
         case preferredDistricts
         case activeSlotProposal
         case regularPair
@@ -1375,6 +1657,7 @@ struct GameSearch: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        createdByUserId = try container.decodeIfPresent(String.self, forKey: .createdByUserId)
         inviteSlug = try container.decodeIfPresent(String.self, forKey: .inviteSlug)
         status = try container.decode(String.self, forKey: .status)
         searchType = try container.decode(SearchType.self, forKey: .searchType)
@@ -1395,10 +1678,44 @@ struct GameSearch: Codable, Identifiable {
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive)
         isExpired = try container.decodeIfPresent(Bool.self, forKey: .isExpired)
         preferredCourt = try container.decodeIfPresent(Court.self, forKey: .preferredCourt)
+        customVenueTitle = try container.decodeIfPresent(String.self, forKey: .customVenueTitle)
+        customVenueAddress = try container.decodeIfPresent(String.self, forKey: .customVenueAddress)
+        runningRoute = try container.decodeIfPresent(String.self, forKey: .runningRoute)
+        runningRoutePoints = try container.decodeIfPresent([RunningRoutePoint].self, forKey: .runningRoutePoints) ?? []
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         activeSlotProposal = try container.decodeIfPresent(SearchSlotProposalSummary.self, forKey: .activeSlotProposal)
         regularPair = try container.decodeIfPresent(RegularPairSummary.self, forKey: .regularPair)
         responses = try container.decodeIfPresent([SearchResponse].self, forKey: .responses) ?? []
+    }
+}
+
+struct RunningRoutePoint: Codable, Hashable, Identifiable {
+    let lat: Double
+    let lng: Double
+
+    var id: String {
+        "\(lat.rounded(toPlaces: 6)):\(lng.rounded(toPlaces: 6))"
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: lat, longitude: lng)
+    }
+
+    init(lat: Double, lng: Double) {
+        self.lat = lat
+        self.lng = lng
+    }
+
+    init(coordinate: CLLocationCoordinate2D) {
+        lat = coordinate.latitude
+        lng = coordinate.longitude
+    }
+}
+
+extension Double {
+    func rounded(toPlaces places: Int) -> Double {
+        let divisor = pow(10.0, Double(places))
+        return (self * divisor).rounded() / divisor
     }
 }
 
@@ -1442,6 +1759,7 @@ extension GameSearch {
 
         return GameSearch(
             id: id,
+            createdByUserId: createdByUserId,
             inviteSlug: inviteSlug,
             status: nextStatus,
             searchType: searchType,
@@ -1462,6 +1780,10 @@ extension GameSearch {
             isActive: nextIsActive,
             isExpired: isExpired,
             preferredCourt: preferredCourt,
+            customVenueTitle: customVenueTitle,
+            customVenueAddress: customVenueAddress,
+            runningRoute: runningRoute,
+            runningRoutePoints: runningRoutePoints,
             preferredDistricts: preferredDistricts,
             activeSlotProposal: activeSlotProposal,
             regularPair: regularPair,
@@ -1490,6 +1812,7 @@ extension SearchLobbyGameSearch {
         return SearchLobbyGameSearch(
             id: id,
             createdByUserId: createdByUserId,
+            createdByUser: createdByUser,
             searchType: searchType,
             status: nextStatus,
             isActive: nextIsActive,
@@ -1519,17 +1842,23 @@ struct Court: Codable, Identifiable {
     let id: String
     let name: String
     let address: String
+    let city: String?
     let district: String?
     let locationLat: Double
     let locationLng: Double
     let distanceLabel: String?
     let nearestMetroName: String?
+    let metroNames: [String]
     let supportedSports: [Sport]?
     let phone: String?
     let workingHours: String?
     let yandexMapsUrl: String?
     let websiteUrl: String?
     let bookingUrl: String?
+    let about: String?
+    let amenities: [String]
+    let messengerType: String?
+    let messengerUrl: String?
     let photoUrl: String?
     let photoUrls: [String]
     let priceRange: String?
@@ -1546,21 +1875,31 @@ struct Court: Codable, Identifiable {
         photoUrls.first ?? photoUrl
     }
 
+    var metroDisplayName: String? {
+        metroNames.isEmpty ? nil : metroNames.joined(separator: " · ")
+    }
+
     init(
         id: String,
         name: String,
         address: String,
+        city: String? = nil,
         district: String?,
         locationLat: Double,
         locationLng: Double,
         distanceLabel: String?,
         nearestMetroName: String?,
+        metroNames: [String] = [],
         supportedSports: [Sport]?,
         phone: String? = nil,
         workingHours: String? = nil,
         yandexMapsUrl: String? = nil,
         websiteUrl: String? = nil,
         bookingUrl: String? = nil,
+        about: String? = nil,
+        amenities: [String] = [],
+        messengerType: String? = nil,
+        messengerUrl: String? = nil,
         photoUrl: String? = nil,
         photoUrls: [String] = [],
         priceRange: String? = nil,
@@ -1572,17 +1911,24 @@ struct Court: Codable, Identifiable {
         self.id = id
         self.name = name
         self.address = address
+        self.city = city
         self.district = district
         self.locationLat = locationLat
         self.locationLng = locationLng
         self.distanceLabel = distanceLabel
-        self.nearestMetroName = nearestMetroName
+        let normalizedMetroNames = Self.normalizedTextValues(metroNames + [nearestMetroName].compactMap { $0 }, limit: 8)
+        self.nearestMetroName = nearestMetroName ?? normalizedMetroNames.first
+        self.metroNames = normalizedMetroNames
         self.supportedSports = supportedSports
         self.phone = phone
         self.workingHours = workingHours
         self.yandexMapsUrl = yandexMapsUrl
         self.websiteUrl = websiteUrl
         self.bookingUrl = bookingUrl
+        self.about = about
+        self.amenities = Self.normalizedTextValues(amenities, limit: 12)
+        self.messengerType = messengerType
+        self.messengerUrl = messengerUrl
         self.photoUrl = photoUrl
         self.photoUrls = Self.normalizedPhotoUrls(photoUrls, fallback: photoUrl)
         self.priceRange = priceRange
@@ -1596,17 +1942,23 @@ struct Court: Codable, Identifiable {
         case id
         case name
         case address
+        case city
         case district
         case locationLat
         case locationLng
         case distanceLabel
         case nearestMetroName
+        case metroNames
         case supportedSports
         case phone
         case workingHours
         case yandexMapsUrl
         case websiteUrl
         case bookingUrl
+        case about
+        case amenities
+        case messengerType
+        case messengerUrl
         case photoUrl
         case photoUrls
         case priceRange
@@ -1621,17 +1973,26 @@ struct Court: Codable, Identifiable {
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         address = try container.decode(String.self, forKey: .address)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
         district = try container.decodeIfPresent(String.self, forKey: .district)
         locationLat = try container.decode(Double.self, forKey: .locationLat)
         locationLng = try container.decode(Double.self, forKey: .locationLng)
         distanceLabel = try container.decodeIfPresent(String.self, forKey: .distanceLabel)
-        nearestMetroName = try container.decodeIfPresent(String.self, forKey: .nearestMetroName)
+        let decodedNearestMetroName = try container.decodeIfPresent(String.self, forKey: .nearestMetroName)
+        let decodedMetroNames = (try? container.decode([String].self, forKey: .metroNames)) ?? []
+        let normalizedMetroNames = Self.normalizedTextValues(decodedMetroNames + [decodedNearestMetroName].compactMap { $0 }, limit: 8)
+        nearestMetroName = decodedNearestMetroName ?? normalizedMetroNames.first
+        metroNames = normalizedMetroNames
         supportedSports = try container.decodeFlexibleSportArrayIfPresent(forKey: .supportedSports)
         phone = try container.decodeIfPresent(String.self, forKey: .phone)
         workingHours = try container.decodeIfPresent(String.self, forKey: .workingHours)
         yandexMapsUrl = try container.decodeIfPresent(String.self, forKey: .yandexMapsUrl)
         websiteUrl = try container.decodeIfPresent(String.self, forKey: .websiteUrl)
         bookingUrl = try container.decodeIfPresent(String.self, forKey: .bookingUrl)
+        about = try container.decodeIfPresent(String.self, forKey: .about)
+        amenities = Self.normalizedTextValues((try? container.decode([String].self, forKey: .amenities)) ?? [], limit: 12)
+        messengerType = try container.decodeIfPresent(String.self, forKey: .messengerType)
+        messengerUrl = try container.decodeIfPresent(String.self, forKey: .messengerUrl)
         let legacyPhotoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
         let decodedPhotoUrls = (try? container.decode([String].self, forKey: .photoUrls)) ?? []
         photoUrls = Self.normalizedPhotoUrls(decodedPhotoUrls, fallback: legacyPhotoUrl)
@@ -1660,11 +2021,41 @@ struct Court: Codable, Identifiable {
 
         return result
     }
+
+    private static func normalizedTextValues(_ values: [String], limit: Int) -> [String] {
+        var result: [String] = []
+
+        for value in values {
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, !result.contains(normalized) else {
+                continue
+            }
+            result.append(normalized)
+            if result.count >= limit {
+                break
+            }
+        }
+
+        return result
+    }
+}
+
+struct AddressSuggestion: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let address: String
+    let subtitle: String?
+    let lat: Double?
+    let lng: Double?
 }
 
 struct SearchDraft: Codable {
     var inviteSlug: String?
     var preferredCourtId: String?
+    var customVenueTitle: String? = nil
+    var customVenueAddress: String? = nil
+    var runningRoute: String? = nil
+    var runningRoutePoints: [RunningRoutePoint]? = nil
     var preferredDistricts: [String]
     var preferredDays: [String]
     var preferredTimeRanges: [String]
@@ -1711,6 +2102,7 @@ struct RealtimeEvent: Codable, Identifiable {
     let body: String?
     let href: String?
     let matchId: String?
+    let searchId: String?
     let messageId: String?
     let gameRequestId: String?
     let status: String?
@@ -1718,6 +2110,7 @@ struct RealtimeEvent: Codable, Identifiable {
 
 extension Notification.Name {
     static let tennisRealtimeEventReceived = Notification.Name("TennisSearchRealtimeEventReceived")
+    static let tennisNotificationRouteRequested = Notification.Name("TennisSearchNotificationRouteRequested")
 }
 
 struct ActivitySummary: Codable {
@@ -1826,6 +2219,19 @@ extension DiscoverUser {
             return "\(sport.title) \(level)"
         }
     }
+
+    var profilePhotoPaths: [String] {
+        uniqueNonEmptyMediaPaths(profilePhotoUrls + [avatarUrl].compactMap { $0 })
+    }
+
+    var profileHeroImagePath: String? {
+        profilePhotoPaths.first
+    }
+
+    var playerCardMediaItems: [PlayerMediaItem] {
+        profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
+            + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) }
+    }
 }
 
 extension UserProfile {
@@ -1834,6 +2240,27 @@ extension UserProfile {
             return name
         }
         return email ?? "Профиль"
+    }
+
+    var profilePhotoPaths: [String] {
+        uniqueNonEmptyMediaPaths(profilePhotoUrls + [avatarUrl].compactMap { $0 })
+    }
+
+    var profileHeroImagePath: String? {
+        profilePhotoPaths.first
+    }
+
+    var playerCardMediaItems: [PlayerMediaItem] {
+        profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
+            + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) }
+    }
+}
+
+private func uniqueNonEmptyMediaPaths(_ paths: [String]) -> [String] {
+    paths.reduce(into: [String]()) { result, path in
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+        result.append(trimmed)
     }
 }
 
@@ -1984,7 +2411,8 @@ extension MatchGameRequest {
         }
 
         let duration = TimeInterval((durationMinutes ?? 90) * 60)
-        return Date().timeIntervalSince(proposedDate) >= duration
+        let postGameDisplayInterval: TimeInterval = 2 * 60 * 60
+        return Date().timeIntervalSince(proposedDate) >= duration + postGameDisplayInterval
     }
 
     func hasEnded(referenceDate: Date = Date()) -> Bool {
@@ -2002,6 +2430,18 @@ extension MatchGameRequest {
             return false
         }
         return outcome == nil && hasEnded()
+    }
+
+    var canAddPhotoReport: Bool {
+        let rawStatus = status.lowercased()
+        guard rawStatus == "accepted" || rawStatus == "approved" else {
+            return false
+        }
+        return report == nil && outcome != "not_played" && hasEnded()
+    }
+
+    var hasPhotoReport: Bool {
+        report != nil
     }
 
     var outcomeLabel: String? {
@@ -2237,7 +2677,7 @@ extension GameRequestInvitee {
 }
 
 extension Sport {
-    static let defaultAuthSports: [Sport] = [.tennis, .padel, .squash, .badminton, .tableTennis, .volleyball, .fitness, .boxing, .yoga, .football]
+    static let defaultAuthSports: [Sport] = [.tennis, .padel, .running, .supboard, .squash, .badminton, .tableTennis, .volleyball, .fitness, .boxing, .yoga, .football]
 }
 
 extension String {

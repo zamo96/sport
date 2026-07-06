@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 
-import { createSession, signInWithAppleIdentityToken } from "@/lib/auth";
+import {
+  createSession,
+  getLegalAcceptanceRequestMeta,
+  recordUserAgreementAcceptance,
+  signInWithAppleIdentityToken
+} from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { appleAuthSchema } from "@/lib/validators";
@@ -14,9 +19,14 @@ export async function POST(request: NextRequest) {
       familyName: body.familyName
     });
 
-    const sessionToken = await createSession(user.id);
+    const userWithAgreement = await recordUserAgreementAcceptance(
+      user.id,
+      "apple",
+      getLegalAcceptanceRequestMeta(request)
+    );
+    const sessionToken = await createSession(userWithAgreement.id);
     await prisma.user.update({
-      where: { id: user.id },
+      where: { id: userWithAgreement.id },
       data: {
         lastActiveAt: new Date()
       }
@@ -25,9 +35,9 @@ export async function POST(request: NextRequest) {
     return ok({
       ok: true,
       user: {
-        id: user.id,
-        email: user.email,
-        onboardingCompleted: user.onboardingCompleted
+        id: userWithAgreement.id,
+        email: userWithAgreement.email,
+        onboardingCompleted: userWithAgreement.onboardingCompleted
       },
       sessionToken
     });

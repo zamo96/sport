@@ -18,6 +18,8 @@ type CourtOption = {
   name: string;
   address: string;
   district?: string | null;
+  nearestMetroName?: string | null;
+  metroNames?: string[];
   locationLat: number;
   locationLng: number;
   supportedSports?: Sport[];

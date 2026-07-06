@@ -15,12 +15,16 @@ final class NotificationManager: NSObject, ObservableObject {
     private var realtimeTask: Task<Void, Never>?
     private var hasCompletedInitialSync = false
     private var repository: (any TennisRepository)?
+    private var mutedNotificationHrefs: Set<String> = []
 
     private let storedIDsKey = "ios.notification.delivered.ids"
     private let realtimeLastEventIDKey = "ios.realtime.last_event.id"
     private let seenHotEventIDsKey = "ios.notification.hot.seen.ids"
     private let storedAPNSTokenKey = "ios.apns.token"
-    private let gameReminderPrefix = "ios.game.reminder.2h."
+    private let gameReminderPrefix = "ios.game.reminder.1h."
+    private let legacyGameReminderPrefixes = ["ios.game.reminder.2h."]
+    private let scheduledGameReminderIDsKey = "ios.game.reminder.scheduled.ids.v1"
+    private let gameReminderLeadTime: TimeInterval = 60 * 60
     private let monitorIntervalNanoseconds: UInt64 = 5_000_000_000
 
     override init() {
@@ -120,29 +124,42 @@ final class NotificationManager: NSObject, ObservableObject {
                 return nil
             }
 
-            let reminderDate = startDate.addingTimeInterval(-2 * 60 * 60)
+            let reminderDate = startDate.addingTimeInterval(-gameReminderLeadTime)
             let effectiveReminderDate = reminderDate > now
                 ? reminderDate
                 : now.addingTimeInterval(10)
 
-            return ("\(gameReminderPrefix)\(request.id)", request, effectiveReminderDate)
+            return (gameReminderIdentifier(for: request, startDate: startDate), request, effectiveReminderDate)
         }
 
         let desiredIDs = Set(reminders.map(\.id))
         let pendingReminderIDs = await center.pendingNotificationRequests()
             .map(\.identifier)
-            .filter { $0.hasPrefix(gameReminderPrefix) }
+            .filter(isGameReminderIdentifier)
+        let pendingReminderIDSet = Set(pendingReminderIDs)
         center.removePendingNotificationRequests(
             withIdentifiers: pendingReminderIDs.filter { !desiredIDs.contains($0) }
         )
 
         for reminder in reminders {
-            await scheduleGameReminder(
+            if scheduledGameReminderIDs.contains(reminder.id) {
+                continue
+            }
+
+            if pendingReminderIDSet.contains(reminder.id) {
+                rememberScheduledGameReminder(id: reminder.id)
+                continue
+            }
+
+            let didSchedule = await scheduleGameReminder(
                 identifier: reminder.id,
                 request: reminder.request,
                 reminderDate: reminder.reminderDate,
                 playSound: playSound
             )
+            if didSchedule {
+                rememberScheduledGameReminder(id: reminder.id)
+            }
         }
     }
 
@@ -166,6 +183,14 @@ final class NotificationManager: NSObject, ObservableObject {
 
         summary = summary.removingHotEvents()
         applyBadge(summary: summary)
+    }
+
+    func setNotificationMuted(href: String, isMuted: Bool) {
+        if isMuted {
+            mutedNotificationHrefs.insert(href)
+        } else {
+            mutedNotificationHrefs.remove(href)
+        }
     }
 
     private func sync(repository: TennisRepository) async {
@@ -263,9 +288,9 @@ final class NotificationManager: NSObject, ObservableObject {
         request: MatchGameRequest,
         reminderDate: Date,
         playSound: Bool
-    ) async {
+    ) async -> Bool {
         guard let startDate = request.proposedDate else {
-            return
+            return false
         }
 
         let content = UNMutableNotificationContent()
@@ -284,7 +309,7 @@ final class NotificationManager: NSObject, ObservableObject {
         ]
 
         let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute],
+            [.year, .month, .day, .hour, .minute, .second],
             from: reminderDate
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
@@ -296,9 +321,19 @@ final class NotificationManager: NSObject, ObservableObject {
 
         do {
             try await center.add(notificationRequest)
+            return true
         } catch {
             print("game reminder schedule error:", error.localizedDescription)
+            return false
         }
+    }
+
+    private func gameReminderIdentifier(for request: MatchGameRequest, startDate: Date) -> String {
+        "\(gameReminderPrefix)\(request.id).\(Int(startDate.timeIntervalSince1970))"
+    }
+
+    private func isGameReminderIdentifier(_ identifier: String) -> Bool {
+        identifier.hasPrefix(gameReminderPrefix) || legacyGameReminderPrefixes.contains { identifier.hasPrefix($0) }
     }
 
     private func applyBadge(summary: ActivitySummary) {
@@ -334,6 +369,20 @@ final class NotificationManager: NSObject, ObservableObject {
         Set(defaults.stringArray(forKey: storedIDsKey) ?? [])
     }
 
+    private var scheduledGameReminderIDs: Set<String> {
+        Set(defaults.stringArray(forKey: scheduledGameReminderIDsKey) ?? [])
+    }
+
+    private func rememberScheduledGameReminder(id: String) {
+        var ids = scheduledGameReminderIDs
+        guard !ids.contains(id) else {
+            return
+        }
+
+        ids.insert(id)
+        defaults.set(Array(ids.sorted().suffix(200)), forKey: scheduledGameReminderIDsKey)
+    }
+
     private func rememberDelivered(id: String) {
         var ids = deliveredIDs
         guard !ids.contains(id) else {
@@ -346,6 +395,10 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     private func shouldScheduleLocalNotification(for item: AppNotification) -> Bool {
+        if mutedNotificationHrefs.contains(item.href) {
+            return false
+        }
+
         switch item.type {
         case .new_match, .new_message, .incoming_like, .search_response, .application_result, .hot_event:
             return true
@@ -405,5 +458,20 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list, .sound])
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let href = response.notification.request.content.userInfo["href"] as? String
+
+        DispatchQueue.main.async {
+            if let href {
+                NotificationCenter.default.post(name: .tennisNotificationRouteRequested, object: href)
+            }
+            completionHandler()
+        }
     }
 }

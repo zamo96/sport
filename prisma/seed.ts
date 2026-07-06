@@ -19,14 +19,33 @@ import { buildGeneratedDemoUsers, GENERATED_DEMO_USER_COUNT, runDemoActivitySimu
 import { importClubsFromWorkbook, resolveClubsImportFile } from "./import-clubs";
 
 async function main() {
+  await prisma.gameReportConfirmation.deleteMany();
+  await prisma.gameReportPhoto.deleteMany();
+  await prisma.gameReport.deleteMany();
   await prisma.chatMessage.deleteMany();
+  await prisma.regularPairOccurrenceConfirmation.deleteMany();
+  await prisma.gameSearchSlotVote.deleteMany();
+  await prisma.gameSearchSlotOption.deleteMany();
+  await prisma.gameSearchSlotProposal.deleteMany();
+  await prisma.gameSearchMessage.deleteMany();
+  await prisma.gameSearchResponse.deleteMany();
+  await prisma.personalActivityPhoto.deleteMany();
+  await prisma.personalActivity.deleteMany();
   await prisma.gameRequest.deleteMany();
+  await prisma.regularPairOccurrence.deleteMany();
+  await prisma.regularPair.deleteMany();
   await prisma.gameSearch.deleteMany();
   await prisma.match.deleteMany();
   await prisma.swipe.deleteMany();
+  await prisma.block.deleteMany();
+  await prisma.pushDevice.deleteMany();
   await prisma.authCode.deleteMany();
   await prisma.session.deleteMany();
+  await prisma.userCourt.deleteMany();
+  await prisma.courtMetro.deleteMany();
   await prisma.court.deleteMany();
+  await prisma.discoverImpression.deleteMany();
+  await prisma.hotSearchDigestDelivery.deleteMany();
   await prisma.user.deleteMany();
   await prisma.metro.deleteMany();
   await prisma.district.deleteMany();

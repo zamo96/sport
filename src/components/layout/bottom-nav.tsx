@@ -17,7 +17,7 @@ const items = [
   { href: "/settings", label: "Ещё", icon: Settings2 }
 ];
 
-const hiddenRoutes = ["/auth", "/onboarding", "/offline"];
+const hiddenRoutes = ["/admin", "/auth", "/onboarding", "/offline", "/legal"];
 
 export function BottomNav() {
   const pathname = usePathname();

@@ -102,6 +102,8 @@ Recommended smoke test:
 - `npm run prisma:push` - push the Prisma schema to the database
 - `npm run prisma:seed` - seed demo data
 - `npm run clubs:import` - import sports centers from the configured file
+- `npm run clubs:report` - print the latest sports center sync report
+- `npm run clubs:sync` - sync sports centers from the configured external provider
 - `npm run simulate:agents` - run the agent simulator
 - `npm run simulate:live` - run live simulation data updates
 - `npm run build` - production build
@@ -195,6 +197,7 @@ xcodebuild -project ios/TennisSearchIOS.xcodeproj -scheme TennisSearchIOS -confi
 
 - Production environment examples are in [.env.production.example](.env.production.example).
 - Railway deployment notes are in [docs/production-rollout-railway.md](docs/production-rollout-railway.md).
+- Yandex Cloud club sync setup is documented in [docs/yandex-cloud-club-sync.md](docs/yandex-cloud-club-sync.md).
 - Yandex Object Storage setup for avatars is documented in [docs/yandex-object-storage-avatars.md](docs/yandex-object-storage-avatars.md).
 - Yandex Postbox setup for OTP email is documented in [docs/yandex-postbox-otp.md](docs/yandex-postbox-otp.md).
 - Deployment assets include [Dockerfile](Dockerfile), [docker-compose.prod.yml](docker-compose.prod.yml), and [deploy/nginx/tennis-search.conf](deploy/nginx/tennis-search.conf).

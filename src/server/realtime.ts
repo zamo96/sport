@@ -5,6 +5,7 @@ export type RealtimeEventType =
   | "chat_message_created"
   | "game_request_created"
   | "game_request_updated"
+  | "game_report_updated"
   | "match_created";
 
 export type RealtimeEventPayload = {
@@ -14,6 +15,7 @@ export type RealtimeEventPayload = {
   body?: string;
   href?: string;
   matchId?: string | null;
+  searchId?: string | null;
   messageId?: string | null;
   gameRequestId?: string | null;
   status?: string | null;
@@ -25,10 +27,16 @@ declare global {
 }
 
 const STREAM_PREFIX = "tennis:realtime:user";
+const ACTIVE_CHAT_PREFIX = "tennis:active-chat";
 const STREAM_MAXLEN = Number(process.env.REALTIME_STREAM_MAXLEN ?? 1000);
+const ACTIVE_CHAT_TTL_SECONDS = 90;
 
 export function getRealtimeStreamKey(userId: string) {
   return `${STREAM_PREFIX}:${userId}`;
+}
+
+function getActiveChatKey(userId: string, conversationId: string) {
+  return `${ACTIVE_CHAT_PREFIX}:${userId}:${conversationId}`;
 }
 
 export function getRealtimeRedis() {
@@ -90,4 +98,46 @@ export async function publishRealtimeEventToUsers(
   const uniqueUserIds = Array.from(new Set(userIds.filter((userId): userId is string => Boolean(userId))));
 
   await Promise.all(uniqueUserIds.map((userId) => publishRealtimeEvent(userId, payload)));
+}
+
+export async function setActiveChatPresence(userId: string, conversationId: string) {
+  const redis = getRealtimeRedis();
+  if (!redis) {
+    return;
+  }
+
+  try {
+    await redis.set(getActiveChatKey(userId, conversationId), "1", "EX", ACTIVE_CHAT_TTL_SECONDS);
+  } catch (error) {
+    console.error("redis active chat set error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function clearActiveChatPresence(userId: string, conversationId: string) {
+  const redis = getRealtimeRedis();
+  if (!redis) {
+    return;
+  }
+
+  try {
+    await redis.del(getActiveChatKey(userId, conversationId));
+  } catch (error) {
+    console.error("redis active chat clear error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function isUserActiveInChat(userId: string, conversationIds: string[]) {
+  const redis = getRealtimeRedis();
+  if (!redis || conversationIds.length === 0) {
+    return false;
+  }
+
+  try {
+    const keys = conversationIds.map((conversationId) => getActiveChatKey(userId, conversationId));
+    const values = await redis.mget(keys);
+    return values.some(Boolean);
+  } catch (error) {
+    console.error("redis active chat read error:", error instanceof Error ? error.message : error);
+    return false;
+  }
 }

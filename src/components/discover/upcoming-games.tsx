@@ -28,7 +28,7 @@ type UpcomingGame = {
   proposedCourt: {
     name: string;
     address: string;
-  };
+  } | null;
 };
 
 export function UpcomingGames({ currentUserId, games }: { currentUserId: string; games: UpcomingGame[] }) {

@@ -31,6 +31,7 @@ type CourtOption = {
   address: string;
   district?: string | null;
   nearestMetroName?: string | null;
+  metroNames?: string[];
   locationLat: number;
   locationLng: number;
   supportedSports?: Sport[];
@@ -606,7 +607,7 @@ export function GameSearchForm({
               <div className="rounded-[24px] bg-cream/80 p-3">
                 <div className="text-sm font-semibold text-ink">{selectedCourt.name}</div>
                 <div className="mt-1 text-xs leading-5 text-ink/60">
-                  {[selectedCourt.nearestMetroName, getDistrictLabel(selectedCourt.district), selectedCourt.address].filter(Boolean).join(" · ")}
+                  {[courtMetroLabel(selectedCourt), getDistrictLabel(selectedCourt.district), selectedCourt.address].filter(Boolean).join(" · ")}
                 </div>
               </div>
               <CourtsMap courts={[selectedCourt]} compact />
@@ -655,6 +656,14 @@ function normalizeAvailabilityByDay(value: unknown) {
   return Object.fromEntries(
     Object.entries(value).filter(([, ranges]) => Array.isArray(ranges) && ranges.length > 0)
   ) as AvailabilityByDay;
+}
+
+function courtMetroLabel(court: Pick<CourtOption, "metroNames" | "nearestMetroName">) {
+  const names = Array.from(
+    new Set([...(court.metroNames ?? []), court.nearestMetroName].filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))
+  ).slice(0, 8);
+
+  return names.length > 0 ? names.join(" · ") : null;
 }
 
 function getTimeRangeFromTime(value: string) {

@@ -19,8 +19,24 @@ type UploadCourtPhotoInput = UploadImageInput & {
   objectKey?: string;
 };
 
+type UploadGameReportPhotoInput = UploadImageInput & {
+  gameRequestId: string;
+  userId: string;
+};
+
+type UploadPersonalActivityPhotoInput = UploadImageInput & {
+  activityId: string;
+  userId: string;
+};
+
+type UploadProfileMediaInput = UploadImageInput & {
+  userId: string;
+};
+
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ALLOWED_VIDEO_CONTENT_TYPES = new Set(["video/mp4", "video/quicktime", "video/mpeg"]);
 
 let s3Client: S3Client | null = null;
 
@@ -56,6 +72,43 @@ function sanitizeExtension(originalName: string, contentType?: string) {
   }
 }
 
+function sanitizeProfileMediaExtension(originalName: string, contentType?: string) {
+  const rawExtension = originalName.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (rawExtension && ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "mpeg", "mpg"].includes(rawExtension)) {
+    if (rawExtension === "jpeg") {
+      return "jpg";
+    }
+    if (rawExtension === "mpg") {
+      return "mpeg";
+    }
+    return rawExtension;
+  }
+
+  switch (contentType) {
+    case "video/mp4":
+      return "mp4";
+    case "video/quicktime":
+      return "mov";
+    case "video/mpeg":
+      return "mpeg";
+    default:
+      return sanitizeExtension(originalName, contentType);
+  }
+}
+
+function inferProfileMediaType(originalName: string, contentType?: string): "photo" | "video" {
+  if (contentType?.startsWith("video/")) {
+    return "video";
+  }
+
+  const extension = originalName.split(".").pop()?.toLowerCase();
+  if (extension && ["mp4", "mov", "mpeg", "mpg"].includes(extension)) {
+    return "video";
+  }
+
+  return "photo";
+}
+
 function validateImage(bytes: Buffer, contentType?: string) {
   if (bytes.length === 0) {
     throw new Error("Файл пустой");
@@ -68,6 +121,29 @@ function validateImage(bytes: Buffer, contentType?: string) {
   if (contentType && !ALLOWED_CONTENT_TYPES.has(contentType)) {
     throw new Error("Поддерживаются только JPG, PNG, WEBP или GIF");
   }
+}
+
+function validateProfileMedia(bytes: Buffer, originalName: string, contentType?: string) {
+  const mediaType = inferProfileMediaType(originalName, contentType);
+
+  if (mediaType === "photo") {
+    validateImage(bytes, contentType);
+    return mediaType;
+  }
+
+  if (bytes.length === 0) {
+    throw new Error("Файл пустой");
+  }
+
+  if (bytes.length > MAX_VIDEO_BYTES) {
+    throw new Error("Видео должно быть не больше 60 МБ");
+  }
+
+  if (contentType && !ALLOWED_VIDEO_CONTENT_TYPES.has(contentType)) {
+    throw new Error("Поддерживаются только MP4, MOV или MPEG");
+  }
+
+  return mediaType;
 }
 
 function getS3Client() {
@@ -143,6 +219,29 @@ async function uploadImageToS3({
   return buildPublicObjectUrl(bucket, key);
 }
 
+async function uploadProfileMediaToS3({
+  bytes,
+  originalName,
+  contentType,
+  keyPrefix
+}: UploadImageInput & { keyPrefix: string }) {
+  const bucket = requiredEnv("S3_BUCKET");
+  const extension = sanitizeProfileMediaExtension(originalName, contentType);
+  const key = `${keyPrefix.replace(/^\/+|\/+$/g, "")}/${randomUUID()}.${extension}`;
+
+  await getS3Client().send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: bytes,
+      ContentType: contentType || "application/octet-stream",
+      CacheControl: "public, max-age=31536000, immutable"
+    })
+  );
+
+  return buildPublicObjectUrl(bucket, key);
+}
+
 async function uploadImageLocally({
   bytes,
   originalName,
@@ -158,6 +257,22 @@ async function uploadImageLocally({
   await writeFile(filePath, bytes);
 
   return `/uploads/${fileName}`;
+}
+
+async function uploadProfileMediaLocally({
+  bytes,
+  originalName,
+  contentType,
+  objectKey
+}: UploadImageInput & { objectKey: string }) {
+  const extension = sanitizeProfileMediaExtension(originalName, contentType);
+  const uploadsDir = path.join(process.cwd(), "public", "uploads");
+  const filePath = path.join(uploadsDir, `${objectKey}.${extension}`);
+
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, bytes);
+
+  return `/uploads/${objectKey}.${extension}`;
 }
 
 export async function uploadAvatar(input: UploadAvatarInput) {
@@ -180,6 +295,42 @@ export async function uploadCourtPhoto(input: UploadCourtPhotoInput) {
   }
 
   return uploadImageLocally(input);
+}
+
+export async function uploadGameReportPhoto(input: UploadGameReportPhotoInput) {
+  validateImage(input.bytes, input.contentType);
+
+  const keyPrefix = `game-reports/${input.gameRequestId}/${input.userId}`;
+
+  if (resolveUploadsProvider() === "s3") {
+    return uploadImageToS3({ ...input, keyPrefix });
+  }
+
+  return uploadImageLocally({ ...input, objectKey: `${keyPrefix}/${randomUUID()}.${sanitizeExtension(input.originalName, input.contentType)}` });
+}
+
+export async function uploadPersonalActivityPhoto(input: UploadPersonalActivityPhotoInput) {
+  validateImage(input.bytes, input.contentType);
+
+  const keyPrefix = `personal-activities/${input.activityId}/${input.userId}`;
+
+  if (resolveUploadsProvider() === "s3") {
+    return uploadImageToS3({ ...input, keyPrefix });
+  }
+
+  return uploadImageLocally({ ...input, objectKey: `${keyPrefix}/${randomUUID()}.${sanitizeExtension(input.originalName, input.contentType)}` });
+}
+
+export async function uploadProfileMedia(input: UploadProfileMediaInput) {
+  const mediaType = validateProfileMedia(input.bytes, input.originalName, input.contentType);
+  const keyPrefix = `profile-media/${input.userId}/${mediaType}s`;
+
+  const url =
+    resolveUploadsProvider() === "s3"
+      ? await uploadProfileMediaToS3({ ...input, keyPrefix })
+      : await uploadProfileMediaLocally({ ...input, objectKey: `${keyPrefix}/${randomUUID()}` });
+
+  return { mediaType, url };
 }
 
 export function resolveUploadedObjectUrl(objectKey: string) {

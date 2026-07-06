@@ -1,26 +1,43 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { CourtSetting, Sport, Surface } from "@prisma/client";
+import { Sport } from "@prisma/client";
 import * as XLSX from "xlsx";
 
 import { DEFAULT_CITY } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { resolveUploadedObjectUrl, uploadCourtPhoto } from "@/lib/uploads";
+import { syncClubRecords } from "@/server/club-sync";
 
 type ClubRow = {
   name?: string;
   address?: string;
+  city?: string;
   sports?: string;
   phone?: string;
   working_hours?: string;
   yandex_maps_url?: string;
   website_url?: string;
+  booking_url?: string;
+  booking_form_url?: string;
+  online_booking_url?: string;
+  about?: string;
+  about_club?: string;
+  description?: string;
+  amenities?: string;
+  amenity?: string;
+  facilities?: string;
+  messenger_type?: string;
+  messenger?: string;
+  messenger_url?: string;
+  telegram_url?: string;
+  max_url?: string;
   photo_url?: string;
   photo_file?: string;
   photo_path?: string;
   photo_s3_key?: string;
   metro?: string;
+  metros?: string;
   district?: string;
   district_label?: string;
   lat?: number | string;
@@ -35,6 +52,7 @@ const METROS_REFERENCE_PATH = path.join(process.cwd(), "docs/import/metros-spb.r
 const DEFAULT_CLUBS_XLSX_PATH = path.join(process.cwd(), "docs/import/clubs.xlsx");
 const IMPORT_SOURCE_TYPE = "xlsx-import";
 const MAX_COURT_PHOTOS = 8;
+const MAX_COURT_AMENITIES = 12;
 const VALID_SPORTS = new Set(Object.values(Sport));
 
 const SPORT_ALIASES: Record<string, Sport> = {
@@ -60,7 +78,15 @@ const SPORT_ALIASES: Record<string, Sport> = {
   yoga: Sport.yoga,
   йога: Sport.yoga,
   football: Sport.football,
-  футбол: Sport.football
+  футбол: Sport.football,
+  running: Sport.running,
+  run: Sport.running,
+  бег: Sport.running,
+  пробежка: Sport.running,
+  supboard: Sport.supboard,
+  sup: Sport.supboard,
+  сапборд: Sport.supboard,
+  "сап борд": Sport.supboard
 };
 
 export async function importClubsFromWorkbook(filePath: string) {
@@ -94,17 +120,20 @@ export async function importClubsFromWorkbook(filePath: string) {
           {
             code: row.district as string,
             name: row.districtLabel || districtNameByCode.get(row.district as string) || row.district as string,
-            city: DEFAULT_CITY
+            city: row.city
           }
         ])
     ).values()
   );
 
-  const metroNames = Array.from(
-    new Set([
-      ...metrosReference.map((row) => row.name),
-      ...rows.map((row) => row.metro).filter((metro): metro is string => Boolean(metro))
-    ])
+  const metroRows = Array.from(
+    new Map(
+      [
+        ...metrosReference.map((row) => ({ name: row.name, city: DEFAULT_CITY })),
+        ...rows
+          .flatMap((row) => row.metros.map((metro) => ({ name: metro, city: row.city })))
+      ].map((metro) => [metro.name.toLowerCase(), metro])
+    ).values()
   );
 
   await prisma.district.createMany({
@@ -113,22 +142,14 @@ export async function importClubsFromWorkbook(filePath: string) {
   });
 
   await prisma.metro.createMany({
-    data: metroNames.map((name) => ({
-      name,
-      city: DEFAULT_CITY
-    })),
+    data: metroRows,
     skipDuplicates: true
   });
-
-  const metros = await prisma.metro.findMany({
-    where: { city: DEFAULT_CITY }
-  });
-  const metroByName = new Map(metros.map((metro) => [metro.name.toLowerCase(), metro.id]));
 
   const dedupedRows = Array.from(
     new Map(
       rows.map((row) => [
-        `${row.name.toLowerCase()}::${row.address.toLowerCase()}`,
+        courtImportKey(row),
         row
       ])
     ).values()
@@ -137,36 +158,38 @@ export async function importClubsFromWorkbook(filePath: string) {
     dedupedRows.map((row) => resolveImportedPhotos(row, path.dirname(filePath)))
   );
 
-  await prisma.court.deleteMany({
-    where: {
-      sourceType: IMPORT_SOURCE_TYPE
-    }
-  });
-
-  await prisma.court.createMany({
-    data: rowsWithPhotos.map((row) => ({
+  const summary = await syncClubRecords(
+    rowsWithPhotos.map((row) => ({
+      sourceType: IMPORT_SOURCE_TYPE,
+      sourceExternalId: courtImportKey(row),
+      sourceUrl: row.yandexMapsUrl ?? row.websiteUrl,
       name: row.name,
       address: row.address,
-      city: DEFAULT_CITY,
+      city: row.city,
       district: row.district,
-      nearestMetroId: row.metro ? metroByName.get(row.metro.toLowerCase()) ?? null : null,
-      locationLat: row.lat,
-      locationLng: row.lng,
-      surface: Surface.any,
-      setting: CourtSetting.indoor,
-      supportedSports: row.sports,
+      sports: row.sports,
       phone: row.phone,
       workingHours: row.workingHours,
       yandexMapsUrl: row.yandexMapsUrl,
       websiteUrl: row.websiteUrl,
+      bookingUrl: row.bookingUrl,
+      about: row.about,
+      amenities: row.amenities,
+      messengerType: row.messengerType,
+      messengerUrl: row.messengerUrl,
       photoUrl: row.photoUrl,
       photoUrls: row.photoUrls,
-      priceRange: "Не указано",
-      rating: null,
+      metroNames: row.metros,
+      locationLat: row.lat,
+      locationLng: row.lng
+    })),
+    {
+      city: DEFAULT_CITY,
       sourceType: IMPORT_SOURCE_TYPE,
-      bookingUrl: row.websiteUrl
-    }))
-  });
+      autoPublishNew: true,
+      prisma
+    }
+  );
 
   const importedCount = await prisma.court.count({
     where: { sourceType: IMPORT_SOURCE_TYPE }
@@ -180,7 +203,9 @@ export async function importClubsFromWorkbook(filePath: string) {
     }
   });
 
-  console.log(`Импорт завершен. Загружено клубов: ${importedCount}`);
+  console.log(
+    `Импорт завершен. Клубов в источнике: ${importedCount}. Создано: ${summary.createdCount}, обновлено: ${summary.updatedCount}, без изменений: ${summary.unchangedCount}`
+  );
   console.log("По районам:");
   for (const row of groupedByDistrict.sort((left, right) => (right._count._all ?? 0) - (left._count._all ?? 0))) {
     console.log(`- ${row.district ?? "Без района"}: ${row._count._all}`);
@@ -205,16 +230,22 @@ export async function resolveClubsImportFile(preferredPath?: string | null) {
 type NormalizedClubRow = {
   name: string;
   address: string;
+  city: string;
   sports: Sport[];
   phone: string | null;
   workingHours: string | null;
   yandexMapsUrl: string | null;
   websiteUrl: string | null;
+  bookingUrl: string | null;
+  about: string | null;
+  amenities: string[];
+  messengerType: string | null;
+  messengerUrl: string | null;
   photoUrl: string | null;
   photoUrls: string[];
   photoFiles: string[];
   photoS3Keys: string[];
-  metro: string | null;
+  metros: string[];
   district: string | null;
   districtLabel: string | null;
   lat: number;
@@ -227,6 +258,7 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
   const sports = normalizeSports(row.sports);
   const lat = parseCoordinate(row.lat);
   const lng = parseCoordinate(row.lng);
+  const messenger = normalizeMessenger(row);
 
   if (!name || !address || sports.length === 0 || lat == null || lng == null) {
     return null;
@@ -235,16 +267,22 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
   return {
     name,
     address,
+    city: normalizeText(row.city) ?? DEFAULT_CITY,
     sports,
     phone: normalizeText(row.phone),
     workingHours: normalizeText(row.working_hours),
     yandexMapsUrl: normalizeUrl(row.yandex_maps_url),
     websiteUrl: normalizeUrl(row.website_url),
+    bookingUrl: normalizeFirstUrl(row, "booking_url", "booking_form_url", "online_booking_url", "бронь", "ссылка_брони"),
+    about: normalizeFirstText(row, "about", "about_club", "description", "о_клубе"),
+    amenities: normalizeAmenities(row),
+    messengerType: messenger.type,
+    messengerUrl: messenger.url,
     photoUrl: null,
     photoUrls: normalizeUrlValues(row, "photo_url", "photo_urls"),
     photoFiles: normalizeTextValues(row, "photo_file", "photo_files", "photo_path", "photo_paths"),
     photoS3Keys: normalizeS3KeyValues(row, "photo_s3_key", "photo_s3_keys"),
-    metro: normalizeText(row.metro),
+    metros: normalizeMetroValues(row),
     district: normalizeDistrictCode(row.district),
     districtLabel: normalizeText(row.district_label),
     lat,
@@ -261,7 +299,11 @@ async function resolveImportedPhotos(row: NormalizedClubRow, workbookDir: string
     }
 
     const filePath = resolveImportAssetPath(photoFile, workbookDir);
-    const bytes = await readFile(filePath);
+    const bytes = await readImportAsset(filePath);
+    if (!bytes) {
+      console.warn(`Фото пропущено: файл не найден ${filePath}`);
+      continue;
+    }
     const objectKey = row.photoS3Keys[index] ?? defaultCourtPhotoObjectKey(row, filePath, index);
     const photoUrl = await uploadCourtPhoto({
       bytes,
@@ -288,6 +330,18 @@ async function resolveImportedPhotos(row: NormalizedClubRow, workbookDir: string
     photoUrl: dedupedPhotoUrls[0] ?? null,
     photoUrls: dedupedPhotoUrls
   };
+}
+
+async function readImportAsset(filePath: string) {
+  try {
+    return await readFile(filePath);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 function resolveImportAssetPath(value: string, workbookDir: string) {
@@ -365,6 +419,47 @@ function normalizeS3KeyValues(row: ClubRow, singularKey: string, pluralKey: stri
     .slice(0, MAX_COURT_PHOTOS);
 }
 
+function normalizeAmenities(row: ClubRow) {
+  return uniqueNonEmpty([
+    ...normalizeColumnValues(row, "amenity", "amenities"),
+    ...normalizeColumnValues(row, "facility", "facilities"),
+    ...splitCellValues(row["удобства"])
+  ]).slice(0, MAX_COURT_AMENITIES);
+}
+
+function normalizeMetroValues(row: ClubRow) {
+  return uniqueNonEmpty([
+    ...normalizeColumnValues(row, "metro", "metros"),
+    ...splitCellValues(row["метро"])
+  ]);
+}
+
+function courtImportKey(row: Pick<NormalizedClubRow, "name" | "address" | "city">) {
+  return `${row.name.toLowerCase()}::${row.address.toLowerCase()}::${row.city.toLowerCase()}`;
+}
+
+function normalizeFirstText(row: ClubRow, ...keys: string[]) {
+  for (const key of keys) {
+    const value = normalizeText(row[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function normalizeFirstUrl(row: ClubRow, ...keys: string[]) {
+  for (const key of keys) {
+    const value = normalizeUrl(row[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function normalizeColumnValues(row: ClubRow, singularKey: string, pluralKey: string) {
   const values: unknown[] = [
     row[singularKey],
@@ -373,6 +468,60 @@ function normalizeColumnValues(row: ClubRow, singularKey: string, pluralKey: str
   ];
 
   return uniqueNonEmpty(values.flatMap(splitCellValues));
+}
+
+function normalizeMessenger(row: ClubRow): { type: string | null; url: string | null } {
+  const explicitUrl = normalizeUrl(row.messenger_url);
+  const telegramUrl = normalizeUrl(row.telegram_url);
+  const maxUrl = normalizeUrl(row.max_url);
+  const url = explicitUrl ?? telegramUrl ?? maxUrl;
+
+  if (!url) {
+    return { type: null, url: null };
+  }
+
+  const explicitType = normalizeMessengerType(row.messenger_type ?? row.messenger);
+  const inferredType =
+    telegramUrl === url
+      ? "telegram"
+      : maxUrl === url
+        ? "max"
+        : inferMessengerType(url);
+
+  return {
+    type: explicitType ?? inferredType,
+    url
+  };
+}
+
+function normalizeMessengerType(value: unknown) {
+  const text = normalizeText(value)?.toLowerCase();
+  if (!text) {
+    return null;
+  }
+
+  if (["telegram", "tg", "телеграм", "телеграмм"].includes(text)) {
+    return "telegram";
+  }
+
+  if (["max", "макс", "мax"].includes(text)) {
+    return "max";
+  }
+
+  return text.replace(/\s+/g, "_").slice(0, 32);
+}
+
+function inferMessengerType(url: string) {
+  const normalized = url.toLowerCase();
+  if (normalized.includes("t.me") || normalized.includes("telegram")) {
+    return "telegram";
+  }
+
+  if (normalized.includes("max")) {
+    return "max";
+  }
+
+  return "messenger";
 }
 
 function splitCellValues(value: unknown) {

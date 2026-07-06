@@ -159,6 +159,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
                                 body: nil,
                                 href: nil,
                                 matchId: nil,
+                                searchId: nil,
                                 messageId: nil,
                                 gameRequestId: nil,
                                 status: nil
@@ -363,26 +364,39 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
-    func requestCode(email: String) async throws -> AuthChallenge {
+    func requestCode(email: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> AuthChallenge {
         let response: AuthRequestEnvelope = try await client.request(
             path: "auth/request-link",
             method: "POST",
-            body: AuthRequest(email: email)
+            body: AuthRequest(
+                email: email,
+                userAgreement: UserAgreementAcceptanceRequest(
+                    accepted: userAgreementAccepted,
+                    version: userAgreementVersion
+                )
+            )
         )
         return AuthChallenge(message: response.message, debugCode: response.debugCode)
     }
 
-    func verifyCode(email: String, code: String) async throws -> SessionUser {
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
         let response: VerifyEnvelope = try await client.request(
             path: "auth/verify",
             method: "POST",
-            body: VerifyRequest(email: email, code: code)
+            body: VerifyRequest(
+                email: email,
+                code: code,
+                userAgreement: UserAgreementAcceptanceRequest(
+                    accepted: userAgreementAccepted,
+                    version: userAgreementVersion
+                )
+            )
         )
         client.setSessionToken(response.sessionToken)
         return response.user
     }
 
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?) async throws -> SessionUser {
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
         let response: VerifyEnvelope = try await client.request(
             path: "auth/apple",
             method: "POST",
@@ -390,7 +404,11 @@ final class LiveTennisRepository: TennisRepository {
                 identityToken: identityToken,
                 email: email,
                 givenName: givenName,
-                familyName: familyName
+                familyName: familyName,
+                userAgreement: UserAgreementAcceptanceRequest(
+                    accepted: userAgreementAccepted,
+                    version: userAgreementVersion
+                )
             )
         )
         client.setSessionToken(response.sessionToken)
@@ -425,6 +443,16 @@ final class LiveTennisRepository: TennisRepository {
             data: data
         )
         return response.avatarUrl
+    }
+
+    func uploadProfileMedia(data: Data, fileName: String, mimeType: String) async throws -> ProfileMediaUploadResult {
+        try await client.uploadMultipart(
+            path: "uploads/profile-media",
+            fieldName: "file",
+            fileName: fileName,
+            mimeType: mimeType,
+            data: data
+        )
     }
 
     func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
@@ -552,6 +580,69 @@ final class LiveTennisRepository: TennisRepository {
         return response.gameRequest
     }
 
+    func uploadGameReportPhoto(gameRequestId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        let response: GameReportPhotoUploadEnvelope = try await client.uploadMultipart(
+            path: "uploads/game-reports/\(gameRequestId)",
+            fieldName: "file",
+            fileName: fileName,
+            mimeType: mimeType,
+            data: data
+        )
+        return response.photoUrl
+    }
+
+    func createGameReport(gameRequestId: String, photoUrls: [String], comment: String, visibility: String) async throws -> MatchGameRequest {
+        let response: GameRequestEnvelope = try await client.request(
+            path: "game-requests/\(gameRequestId)/report",
+            method: "POST",
+            body: CreateGameReportRequest(photoUrls: photoUrls, comment: comment, visibility: visibility)
+        )
+        return response.gameRequest
+    }
+
+    func updateGameReportConfirmation(gameRequestId: String, status: String) async throws -> MatchGameRequest {
+        let response: GameRequestEnvelope = try await client.request(
+            path: "game-requests/\(gameRequestId)/report/confirmation",
+            method: "PATCH",
+            body: UpdateGameReportConfirmationRequest(status: status)
+        )
+        return response.gameRequest
+    }
+
+    func fetchPersonalActivities() async throws -> [PersonalActivity] {
+        let response: PersonalActivitiesEnvelope = try await client.request(path: "personal-activities")
+        return response.personalActivities
+    }
+
+    func createPersonalActivity(_ draft: PersonalActivityDraft) async throws -> PersonalActivity {
+        let response: PersonalActivityEnvelope = try await client.request(
+            path: "personal-activities",
+            method: "POST",
+            body: CreatePersonalActivityRequest(draft: draft)
+        )
+        return response.personalActivity
+    }
+
+    func updatePersonalActivity(activityId: String, draft: PersonalActivityUpdateDraft) async throws -> PersonalActivity {
+        let response: PersonalActivityEnvelope = try await client.request(
+            path: "personal-activities/\(activityId)",
+            method: "PATCH",
+            body: UpdatePersonalActivityRequest(draft: draft)
+        )
+        return response.personalActivity
+    }
+
+    func uploadPersonalActivityPhoto(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        let response: PersonalActivityPhotoUploadEnvelope = try await client.uploadMultipart(
+            path: "uploads/personal-activities/\(activityId)",
+            fieldName: "file",
+            fileName: fileName,
+            mimeType: mimeType,
+            data: data
+        )
+        return response.photoUrl
+    }
+
     func fetchSearches() async throws -> [GameSearch] {
         let response: SearchesEnvelope = try await client.request(path: "game-searches/my")
         return response.gameSearches
@@ -623,7 +714,7 @@ final class LiveTennisRepository: TennisRepository {
         return response.proposal
     }
 
-    func scheduleSearchGame(searchId: String, courtId: String, scheduledAt: Date, durationMinutes: Int) async throws -> SearchGameScheduleResult {
+    func scheduleSearchGame(searchId: String, courtId: String?, scheduledAt: Date, durationMinutes: Int) async throws -> SearchGameScheduleResult {
         try await client.request(
             path: "game-searches/\(searchId)",
             method: "PATCH",
@@ -706,6 +797,19 @@ final class LiveTennisRepository: TennisRepository {
         return response.court
     }
 
+    func fetchAddressSuggestions(query: String, city: String?) async throws -> [AddressSuggestion] {
+        var queryItems = [URLQueryItem(name: "q", value: query)]
+        if let city, !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "city", value: city))
+        }
+
+        let response: AddressSuggestionsEnvelope = try await client.request(
+            path: "addresses/suggest",
+            queryItems: queryItems
+        )
+        return response.suggestions
+    }
+
     func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court {
         let response: CourtEnvelope = try await client.request(
             path: "courts/\(courtId)/membership",
@@ -741,6 +845,22 @@ final class LiveTennisRepository: TennisRepository {
         let _: SuccessEnvelope = try await client.request(path: "activity/notifications-seen", method: "POST", body: EmptyRequest())
     }
 
+    func setActiveChat(matchId: String?, gameRequestId: String?, isActive: Bool) async throws {
+        let _: SuccessEnvelope = try await client.request(
+            path: "activity/active-chat",
+            method: "POST",
+            body: ActiveChatRequest(matchId: matchId, gameRequestId: gameRequestId, searchId: nil, isActive: isActive)
+        )
+    }
+
+    func setActiveSearchLobby(searchId: String, isActive: Bool) async throws {
+        let _: SuccessEnvelope = try await client.request(
+            path: "activity/active-chat",
+            method: "POST",
+            body: ActiveChatRequest(matchId: nil, gameRequestId: nil, searchId: searchId, isActive: isActive)
+        )
+    }
+
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?) async throws {
         let _: RegisterPushDeviceEnvelope = try await client.request(
             path: "devices/apns",
@@ -762,11 +882,13 @@ private struct ErrorEnvelope: Decodable {
 
 private struct AuthRequest: Encodable {
     let email: String
+    let userAgreement: UserAgreementAcceptanceRequest
 }
 
 private struct VerifyRequest: Encodable {
     let email: String
     let code: String
+    let userAgreement: UserAgreementAcceptanceRequest
 }
 
 private struct AppleAuthRequest: Encodable {
@@ -774,6 +896,12 @@ private struct AppleAuthRequest: Encodable {
     let email: String?
     let givenName: String?
     let familyName: String?
+    let userAgreement: UserAgreementAcceptanceRequest
+}
+
+private struct UserAgreementAcceptanceRequest: Encodable {
+    let accepted: Bool
+    let version: String
 }
 
 private struct SwipeRequest: Encodable {
@@ -787,7 +915,7 @@ private struct SendMessageRequest: Encodable {
 
 private struct CreateGameRequestRequest: Encodable {
     let matchId: String
-    let proposedCourtId: String
+    let proposedCourtId: String?
     let proposedDatetime: String
     let durationMinutes: Int?
     let levelRangeMin: Int?
@@ -822,7 +950,7 @@ private struct UpdateSearchActiveRequest: Encodable {
 }
 
 private struct ScheduleSearchGameRequest: Encodable {
-    let scheduledCourtId: String
+    let scheduledCourtId: String?
     let scheduledAt: String
     let scheduledDurationMinutes: Int
 }
@@ -874,6 +1002,20 @@ private struct UpdateGameRequestRequest: Encodable {
     let sport: String?
     let format: String?
     let comment: String?
+    private let includesDraftFields: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case outcome
+        case proposedCourtId
+        case proposedDatetime
+        case durationMinutes
+        case levelRangeMin
+        case levelRangeMax
+        case sport
+        case format
+        case comment
+    }
 
     init(status: String) {
         self.status = status
@@ -886,6 +1028,7 @@ private struct UpdateGameRequestRequest: Encodable {
         sport = nil
         format = nil
         comment = nil
+        includesDraftFields = false
     }
 
     init(outcome: String) {
@@ -899,6 +1042,7 @@ private struct UpdateGameRequestRequest: Encodable {
         sport = nil
         format = nil
         comment = nil
+        includesDraftFields = false
     }
 
     init(draft: GameProposalDraft) {
@@ -912,6 +1056,71 @@ private struct UpdateGameRequestRequest: Encodable {
         sport = draft.sport.rawValue
         format = draft.format.rawValue
         comment = draft.comment
+        includesDraftFields = true
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(outcome, forKey: .outcome)
+        if includesDraftFields {
+            if let proposedCourtId {
+                try container.encode(proposedCourtId, forKey: .proposedCourtId)
+            } else {
+                try container.encodeNil(forKey: .proposedCourtId)
+            }
+            try container.encodeIfPresent(proposedDatetime, forKey: .proposedDatetime)
+            try container.encodeIfPresent(durationMinutes, forKey: .durationMinutes)
+            try container.encodeIfPresent(levelRangeMin, forKey: .levelRangeMin)
+            try container.encodeIfPresent(levelRangeMax, forKey: .levelRangeMax)
+            try container.encodeIfPresent(sport, forKey: .sport)
+            try container.encodeIfPresent(format, forKey: .format)
+            try container.encodeIfPresent(comment, forKey: .comment)
+        }
+    }
+}
+
+private struct CreateGameReportRequest: Encodable {
+    let photoUrls: [String]
+    let comment: String
+    let visibility: String
+}
+
+private struct UpdateGameReportConfirmationRequest: Encodable {
+    let status: String
+}
+
+private struct CreatePersonalActivityRequest: Encodable {
+    let courtId: String
+    let sport: String
+    let scheduledAt: String
+    let durationMinutes: Int?
+    let comment: String
+
+    init(draft: PersonalActivityDraft) {
+        courtId = draft.courtId
+        sport = draft.sport.rawValue
+        scheduledAt = draft.scheduledAt.serverISOString()
+        durationMinutes = draft.durationMinutes
+        comment = draft.comment
+    }
+}
+
+private struct UpdatePersonalActivityRequest: Encodable {
+    let scheduledAt: String?
+    let durationMinutes: Int?
+    let comment: String?
+    let status: String?
+    let reportComment: String?
+    let photoUrls: [String]?
+
+    init(draft: PersonalActivityUpdateDraft) {
+        scheduledAt = draft.scheduledAt?.serverISOString()
+        durationMinutes = draft.durationMinutes
+        comment = draft.comment
+        status = draft.status
+        reportComment = draft.reportComment
+        photoUrls = draft.photoUrls
     }
 }
 
@@ -924,6 +1133,8 @@ private struct UpdateProfileRequest: Encodable {
     let preferredDistricts: [String]
     let bio: String?
     let avatarUrl: String?
+    let profilePhotoUrls: [String]
+    let profileVideoUrls: [String]
     let tennisLevel: Int?
     let preferredSports: [String]
     let sportLevels: [String: Int]
@@ -948,6 +1159,8 @@ private struct UpdateProfileRequest: Encodable {
         preferredDistricts = profile.preferredDistricts
         bio = profile.bio
         avatarUrl = profile.avatarUrl
+        profilePhotoUrls = profile.profilePhotoUrls
+        profileVideoUrls = profile.profileVideoUrls
         tennisLevel = profile.tennisLevel
         preferredSports = profile.preferredSports.map(\.rawValue)
         sportLevels = profile.sportLevels
@@ -1071,6 +1284,22 @@ private struct GameRequestEnvelope: Decodable {
     let gameRequest: MatchGameRequest
 }
 
+private struct GameReportPhotoUploadEnvelope: Decodable {
+    let photoUrl: String
+}
+
+private struct PersonalActivitiesEnvelope: Decodable {
+    let personalActivities: [PersonalActivity]
+}
+
+private struct PersonalActivityEnvelope: Decodable {
+    let personalActivity: PersonalActivity
+}
+
+private struct PersonalActivityPhotoUploadEnvelope: Decodable {
+    let photoUrl: String
+}
+
 private struct SwipeEnvelope: Decodable {
     let match: MatchReference?
 }
@@ -1119,6 +1348,10 @@ private struct CourtEnvelope: Decodable {
     let court: Court
 }
 
+private struct AddressSuggestionsEnvelope: Decodable {
+    let suggestions: [AddressSuggestion]
+}
+
 private struct CourtMembershipRequest: Encodable {
     let isMember: Bool
 }
@@ -1132,6 +1365,13 @@ private struct SuccessEnvelope: Decodable {
 }
 
 private struct EmptyRequest: Encodable {}
+
+private struct ActiveChatRequest: Encodable {
+    let matchId: String?
+    let gameRequestId: String?
+    let searchId: String?
+    let isActive: Bool
+}
 
 private struct RegisterPushDeviceRequest: Encodable {
     let token: String

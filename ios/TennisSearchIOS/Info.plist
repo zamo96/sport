@@ -63,6 +63,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>НаТреню использует геолокацию, чтобы показывать игроков и спортивные центры рядом с вами.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

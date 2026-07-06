@@ -33,6 +33,8 @@ type CourtOption = {
   address: string;
   phone?: string | null;
   district?: string | null;
+  nearestMetroName?: string | null;
+  metroNames?: string[];
   locationLat: number;
   locationLng: number;
   supportedSports?: Sport[];
@@ -41,7 +43,7 @@ type CourtOption = {
 type EditingGameRequest = {
   id: string;
   matchId: string;
-  proposedCourtId: string;
+  proposedCourtId?: string | null;
   proposedDatetime: string;
   durationMinutes?: number | null;
   levelRangeMin?: number | null;
@@ -78,7 +80,7 @@ export function GameRequestForm({
   );
   const [matchId, setMatchId] = useState(editingGameRequest?.matchId ?? defaultMatchId ?? matches[0]?.id ?? "");
   const [sport, setSport] = useState<Sport>(initialSport);
-  const [proposedCourtId, setProposedCourtId] = useState(editingGameRequest?.proposedCourtId ?? defaultCourtId ?? courts[0]?.id ?? "");
+  const [proposedCourtId, setProposedCourtId] = useState(editingGameRequest?.proposedCourtId ?? defaultCourtId ?? "");
   const [courtQuery, setCourtQuery] = useState("");
   const [showCourtSuggestions, setShowCourtSuggestions] = useState(false);
   const [proposedDatetime, setProposedDatetime] = useState(() => {
@@ -118,7 +120,8 @@ export function GameRequestForm({
           name: court.name,
           address: court.address,
           district: court.district,
-          nearestMetroName: null,
+          nearestMetroName: court.nearestMetroName,
+          metroNames: courtMetroNames(court),
           sports: court.supportedSports ?? []
         }),
         normalized
@@ -127,8 +130,8 @@ export function GameRequestForm({
   }, [courtQuery, visibleCourts]);
 
   const disabled = useMemo(
-    () => !proposedCourtId || !proposedDatetime || (proposalMode === "match" && !matchId),
-    [matchId, proposalMode, proposedCourtId, proposedDatetime]
+    () => !proposedDatetime || (proposalMode === "match" && !matchId),
+    [matchId, proposalMode, proposedDatetime]
   );
 
   useEffect(() => {
@@ -146,7 +149,7 @@ export function GameRequestForm({
         await apiFetch(`/game-requests/${editingGameRequest.id}`, {
           method: "PATCH",
           body: JSON.stringify({
-            proposedCourtId,
+            proposedCourtId: proposedCourtId || null,
             proposedDatetime: new Date(proposedDatetime).toISOString(),
             levelRangeMin: Number(levelRangeMin),
             levelRangeMax: Number(levelRangeMax),
@@ -161,7 +164,7 @@ export function GameRequestForm({
           method: "POST",
           body: JSON.stringify({
             matchId,
-            proposedCourtId,
+            proposedCourtId: proposedCourtId || null,
             proposedDatetime: new Date(proposedDatetime).toISOString(),
             levelRangeMin: Number(levelRangeMin),
             levelRangeMax: Number(levelRangeMax),
@@ -184,7 +187,7 @@ export function GameRequestForm({
         await apiFetch("/game-searches", {
           method: "POST",
           body: JSON.stringify({
-            preferredCourtId: proposedCourtId,
+            preferredCourtId: proposedCourtId || null,
             preferredDays: [dayKey],
             preferredTimeRanges: [timeRange],
             searchType: hotWindow ? "hot" : "regular",
@@ -279,7 +282,7 @@ export function GameRequestForm({
               )
             ) : (
               <div className="rounded-[20px] bg-cream/80 px-4 py-3 text-sm leading-6 text-ink/68">
-                Мы создадим открытый поиск игры с выбранным клубом, датой и видом спорта. На него смогут откликнуться другие игроки.
+                Мы создадим открытый поиск игры с выбранной датой и видом спорта. Клуб можно будет уточнить позже.
               </div>
             )}
           </div>
@@ -325,6 +328,23 @@ export function GameRequestForm({
                   </div>
                 </div>
               ) : null}
+              {proposedCourtId ? (
+                <button
+                  type="button"
+                  className="mt-2 rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink/62 transition hover:text-ink"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setProposedCourtId("");
+                    setCourtQuery("");
+                  }}
+                >
+                  Назначить без места
+                </button>
+              ) : (
+                <div className="mt-2 rounded-[18px] bg-cream/70 px-3 py-2 text-xs font-semibold text-ink/58">
+                  Место можно уточнить позже в чате игры.
+                </div>
+              )}
             </div>
             <Link href={`/play/courts${sport ? `?sport=${sport}` : ""}`} className="inline-flex items-center gap-2 text-sm font-semibold text-court">
               <CalendarDays className="h-4 w-4" />
@@ -335,7 +355,9 @@ export function GameRequestForm({
             <div className="mt-3 space-y-2">
               <div className="rounded-[24px] bg-cream/80 p-3">
                 <div className="text-sm font-semibold text-ink">{selectedCourt.name}</div>
-                <div className="mt-1 text-xs leading-5 text-ink/60">{selectedCourt.address}</div>
+                <div className="mt-1 text-xs leading-5 text-ink/60">
+                  {[courtMetroLabel(selectedCourt), selectedCourt.address].filter(Boolean).join(" · ")}
+                </div>
                 {selectedCourt.phone ? (
                   <a
                     href={buildPhoneHref(selectedCourt.phone)}
@@ -415,6 +437,17 @@ function toDatetimeLocalValue(value: string) {
   const date = new Date(value);
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return localDate.toISOString().slice(0, 16);
+}
+
+function courtMetroNames(court: Pick<CourtOption, "metroNames" | "nearestMetroName">) {
+  return Array.from(
+    new Set([...(court.metroNames ?? []), court.nearestMetroName].filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))
+  ).slice(0, 8);
+}
+
+function courtMetroLabel(court: Pick<CourtOption, "metroNames" | "nearestMetroName">) {
+  const names = courtMetroNames(court);
+  return names.length > 0 ? names.join(" · ") : null;
 }
 
 function buildPhoneHref(phone: string) {

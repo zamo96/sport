@@ -2,16 +2,29 @@ import SwiftUI
 import PhotosUI
 import CoreImage.CIFilterBuiltins
 import UIKit
+import UniformTypeIdentifiers
+import AVFoundation
+import AVKit
 
 struct ProfileView: View {
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
 
     @State private var draft: UserProfile?
     @State private var guestDraft: GuestOnboardingDraft = .default
     @State private var selectedAvatarItem: PhotosPickerItem?
+    @State private var selectedProfilePhotoItems: [PhotosPickerItem] = []
+    @State private var selectedProfileVideoItems: [PhotosPickerItem] = []
     @State private var isUploadingAvatar = false
+    @State private var isUploadingProfileMedia = false
+    @State private var isPreparingProfileVideo = false
+    @State private var selectedProfileMediaPreview: PlayerMediaItem?
+    @State private var pendingVideoTrimQueue: [PhotosPickerItem] = []
+    @State private var pendingVideoTrimDraft: ProfileVideoTrimDraft?
     @State private var saveToastMessage: String?
+    @State private var gameFeedRequests: [MatchGameRequest] = []
+    @State private var isGameFeedLoading = false
     @State private var isDeleteConfirmationPresented = false
     @State private var isEditorPresented = false
     @AppStorage("profile.visibilityMode") private var visibilityModeRaw = ProfileVisibilityMode.publicProfile.rawValue
@@ -41,9 +54,18 @@ struct ProfileView: View {
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
             if let saveToastMessage {
-                InlineStatusToast(message: saveToastMessage)
+                ProfileSaveSuccessToast(message: saveToastMessage)
                     .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .overlay {
+            if isPreparingProfileVideo {
+                ProfileMediaProgressOverlay(
+                    title: "Видео загружается",
+                    subtitle: "Открываем ролик и готовим редактор обрезки."
+                )
+                .transition(.opacity)
             }
         }
         .task {
@@ -52,10 +74,42 @@ struct ProfileView: View {
             }
             guestDraft = appModel.guestDraft
             await notificationManager.refreshAuthorizationStatus()
+            if appModel.isAuthenticated {
+                await loadProfileGameFeed()
+            }
         }
         .onChange(of: selectedAvatarItem) { newValue in
             guard let newValue else { return }
             Task { await uploadAvatar(from: newValue) }
+        }
+        .onChange(of: selectedProfilePhotoItems) { newValue in
+            guard !newValue.isEmpty else { return }
+            Task { await uploadProfileMedia(from: newValue, preferredKind: .photo) }
+        }
+        .onChange(of: selectedProfileVideoItems) { newValue in
+            guard !newValue.isEmpty else { return }
+            pendingVideoTrimQueue.append(contentsOf: newValue)
+            selectedProfileVideoItems = []
+            Task { await prepareNextVideoTrimDraft() }
+        }
+        .sheet(item: $selectedProfileMediaPreview) { item in
+            PlayerMediaPreviewSheet(item: item)
+        }
+        .sheet(item: $pendingVideoTrimDraft) { trimDraft in
+            ProfileVideoTrimEditorSheet(
+                draft: trimDraft,
+                isUploading: isUploadingProfileMedia,
+                onCancel: {
+                    if let pendingVideoTrimDraft {
+                        try? FileManager.default.removeItem(at: pendingVideoTrimDraft.sourceURL)
+                    }
+                    pendingVideoTrimDraft = nil
+                    pendingVideoTrimQueue.removeAll()
+                },
+                onConfirm: { startTime in
+                    Task { await uploadTrimmedProfileVideo(trimDraft, startTime: startTime) }
+                }
+            )
         }
         .sheet(isPresented: $isEditorPresented) {
             if let draftBinding {
@@ -93,9 +147,24 @@ struct ProfileView: View {
                 onEdit: { isEditorPresented = true }
             )
 
+            ProfileSelectionMediaCard(
+                profile: profile,
+                isUploading: isUploadingProfileMedia,
+                selectedPhotoItems: $selectedProfilePhotoItems,
+                selectedVideoItems: $selectedProfileVideoItems,
+                onPreview: { selectedProfileMediaPreview = $0 },
+                onRemove: removeProfileMedia
+            )
+
             ProfileCompletenessCard(
                 percent: profileCompleteness(for: profile),
                 missingText: profileMissingHint(for: profile)
+            )
+
+            ProfileGameFeedSection(
+                requests: profileGameFeedRequests,
+                currentUserId: appModel.currentUser?.id,
+                isLoading: isGameFeedLoading
             )
 
             ProfileMenuGroup {
@@ -150,7 +219,7 @@ struct ProfileView: View {
 
             ProfileMenuGroup {
                 NavigationLink {
-                    profileEditor(for: draftBinding, initialTitle: "Уведомления")
+                    notificationProfileEditor(for: draftBinding)
                 } label: {
                     ProfileMenuRow(
                         icon: "bell",
@@ -174,7 +243,12 @@ struct ProfileView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    accountScreen
+                    ProfileAccountScreen(
+                        email: appModel.currentUser?.email,
+                        isVerified: appModel.currentUser?.isVerified == true,
+                        onLogout: { appModel.logout() },
+                        onDelete: { isDeleteConfirmationPresented = true }
+                    )
                 } label: {
                     ProfileMenuRow(
                         icon: "person",
@@ -213,13 +287,6 @@ struct ProfileView: View {
                 .buttonStyle(.plain)
             }
 
-            Button {
-                AppHaptics.selection()
-                isEditorPresented = true
-            } label: {
-                ProfileHeaderButton(systemImage: "gearshape", tint: .white.opacity(0.76))
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -293,7 +360,7 @@ struct ProfileView: View {
             subtitle: "Настрой виды спорта и уровень.",
             systemImage: "tennis.racket",
             tint: AppTheme.court,
-            onSave: { Task { await save() } }
+            onSave: { await save() }
         ) {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
@@ -325,7 +392,7 @@ struct ProfileView: View {
             subtitle: "Отметь дни и окна времени, когда реально удобно играть.",
             systemImage: "clock.badge.checkmark",
             tint: Color.green,
-            onSave: { Task { await save() } }
+            onSave: { await save() }
         ) {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
@@ -347,7 +414,7 @@ struct ProfileView: View {
             subtitle: "Районы используются в подборе игроков и центров.",
             systemImage: "mappin.and.ellipse",
             tint: Color.green,
-            onSave: { Task { await save() } }
+            onSave: { await save() }
         ) {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
@@ -381,6 +448,58 @@ struct ProfileView: View {
         }
     }
 
+    private func notificationProfileEditor(for profile: Binding<UserProfile>) -> some View {
+        ProfileEditorScreen(
+            title: "Уведомления",
+            subtitle: "Оставляем только события, где тебе нужно увидеть действие или ответ.",
+            systemImage: "bell.badge",
+            tint: Color.yellow,
+            onSave: { await save(successMessage: "Настройки уведомлений сохранены") }
+        ) {
+            ProfileDarkPanel {
+                VStack(alignment: .leading, spacing: 16) {
+                    ProfileEditorMetricStrip(items: [
+                        .init(title: "Push", value: notificationManager.authorizationStatus.title, icon: "bell.badge"),
+                        .init(title: "Событий", value: "\(enabledNotificationCount(for: profile.wrappedValue))/3", icon: "checklist")
+                    ])
+
+                    ProfileEmbeddedLightCard(title: "Системный доступ", subtitle: "Без разрешения iOS уведомления не появятся на заблокированном экране.") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                AppInlineChip(
+                                    text: notificationManager.authorizationStatus.title,
+                                    tint: notificationStatusTint,
+                                    foreground: notificationStatusForeground
+                                )
+
+                                Text(notificationAuthorizationHint)
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.ink.opacity(0.62))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            notificationAuthorizationButton
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+
+                    ProfileEmbeddedLightCard(title: "События", subtitle: "Здесь только реальные уведомления, а не настройки профиля.") {
+                        ToggleCard(title: "Новые мэтчи", subtitle: "Сообщать, когда появляется взаимный интерес.", isOn: profile.notificationMatches)
+                        ToggleCard(title: "Сообщения", subtitle: "Показывать новые сообщения и ответы в чате.", isOn: profile.notificationMessages)
+                        ToggleCard(title: "Игры и предложения", subtitle: "Отклики, подтверждения, отмены и изменения игр.", isOn: profile.notificationGames)
+                    }
+
+                    ProfileEmbeddedLightCard(title: "Звук", subtitle: "Отдельно регулирует звуковой сигнал внутри приложения.") {
+                        ToggleCard(title: "Звуковые сигналы", subtitle: "Воспроизводить звук системного уведомления.", isOn: profile.notificationSound)
+                    }
+                }
+            }
+        }
+        .task {
+            await notificationManager.refreshAuthorizationStatus()
+        }
+    }
+
     private func profileEditor(for profile: Binding<UserProfile>, initialTitle: String = "Редактировать профиль") -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -411,33 +530,13 @@ struct ProfileView: View {
                         availabilitySummary(for: profile.wrappedValue.availabilityByDay)
                     }
 
-                    SectionCard(title: "Уведомления", subtitle: "Какие события подсвечивать в аккаунте.") {
-                        ToggleCard(title: "Новые мэтчи", subtitle: "Сообщать, когда появляется взаимный интерес.", isOn: profile.notificationMatches)
-                        ToggleCard(title: "Сообщения", subtitle: "Показывать новые сообщения и ответы в чате.", isOn: profile.notificationMessages)
-                        ToggleCard(title: "Игры и предложения", subtitle: "Уведомления по поискам, играм и предложениям.", isOn: profile.notificationGames)
-                        ToggleCard(title: "Звук", subtitle: "Воспроизводить звук системного уведомления.", isOn: profile.notificationSound)
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Системный доступ")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.ink)
-                                Text(notificationManager.authorizationStatus.title)
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.ink.opacity(0.62))
-                            }
-                            Spacer()
-                            Button("Разрешить") {
-                                Task { await notificationManager.requestAuthorization() }
-                            }
-                            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
-                            .frame(width: 128)
-                        }
-                    }
-
                     HStack(spacing: 12) {
                         Button("Сохранить профиль") {
-                            Task { await save() }
+                            Task {
+                                if await save() {
+                                    isEditorPresented = false
+                                }
+                            }
                         }
                         .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
 
@@ -461,39 +560,7 @@ struct ProfileView: View {
         .onDisappear {
             appModel.bottomBarDisplayMode = .expanded
         }
-    }
-
-    private var accountScreen: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Аккаунт")
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(.white)
-
-                ProfileDarkPanel {
-                    VStack(spacing: 0) {
-                        ProfileInfoLine(title: "Почта", value: appModel.currentUser?.email ?? "Не указана")
-                        ProfileInfoLine(title: "Статус", value: appModel.currentUser?.isVerified == true ? "Подтверждён" : "Не подтверждён")
-                    }
-                }
-
-                Button("Выйти") {
-                    appModel.logout()
-                }
-                .buttonStyle(SecondaryActionButtonStyle(tint: .white))
-
-                Button("Удалить профиль") {
-                    isDeleteConfirmationPresented = true
-                }
-                .buttonStyle(SecondaryActionButtonStyle(tint: .red))
-
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-        }
-        .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { isEditorPresented = false }
     }
 
     @ViewBuilder
@@ -551,6 +618,63 @@ struct ProfileView: View {
     @ViewBuilder
     private func profileVisibilitySection(for profile: Binding<UserProfile>) -> some View {
         ToggleCard(title: "Ищу игру сейчас", subtitle: "Показывать тебя в активной подборке игроков.", isOn: profile.isLookingForGame)
+    }
+
+    @ViewBuilder
+    private var notificationAuthorizationButton: some View {
+        switch notificationManager.authorizationStatus {
+        case .notDetermined:
+            Button("Разрешить") {
+                Task { await notificationManager.requestAuthorization() }
+            }
+            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
+        case .denied:
+            Button("Настройки") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                openURL(settingsURL)
+            }
+            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
+        default:
+            Button("Проверить") {
+                Task { await notificationManager.refreshAuthorizationStatus() }
+            }
+            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
+        }
+    }
+
+    private var notificationAuthorizationHint: String {
+        switch notificationManager.authorizationStatus {
+        case .notDetermined:
+            return "Разреши push-уведомления, чтобы получать сообщения и действия по играм вне приложения."
+        case .denied:
+            return "Уведомления отключены в настройках iOS. Их нужно включить вручную."
+        case .authorized, .provisional, .ephemeral:
+            return "Системный доступ включён. Типы событий можно настроить ниже."
+        @unknown default:
+            return "Не удалось точно определить статус доступа. Проверь настройки iOS."
+        }
+    }
+
+    private var notificationStatusTint: Color {
+        switch notificationManager.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return AppTheme.mint
+        case .denied:
+            return Color.red.opacity(0.14)
+        default:
+            return AppTheme.cream
+        }
+    }
+
+    private var notificationStatusForeground: Color {
+        switch notificationManager.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return AppTheme.court
+        case .denied:
+            return .red
+        default:
+            return AppTheme.ink
+        }
     }
 
     private var guestBasicsSection: some View {
@@ -636,6 +760,36 @@ struct ProfileView: View {
         )
     }
 
+    private var profileGameFeedRequests: [MatchGameRequest] {
+        Array(
+            gameFeedRequests
+                .filter { request in
+                    guard request.hasEnded() else { return false }
+                    if let report = request.report {
+                        return report.visibility == "profile"
+                    }
+                    return request.outcome == "played"
+                }
+                .sorted { ($0.proposedDate ?? .distantPast) > ($1.proposedDate ?? .distantPast) }
+                .prefix(6)
+        )
+    }
+
+    private func loadProfileGameFeed() async {
+        guard !isGameFeedLoading else { return }
+        isGameFeedLoading = true
+        defer { isGameFeedLoading = false }
+
+        do {
+            gameFeedRequests = try await appModel.repository.fetchMyGameRequests()
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
+    }
+
     private func persistGuestDraft() {
         let normalized = normalizedGuestDraft(guestDraft)
         guestDraft = normalized
@@ -651,15 +805,16 @@ struct ProfileView: View {
         return next
     }
 
-    private func save() async {
-        guard let draft else { return }
+    @discardableResult
+    private func save(successMessage: String = "Профиль сохранён") async -> Bool {
+        guard let draft else { return false }
 
         await appModel.saveProfile(draft)
         self.draft = appModel.currentUser
-        guard appModel.errorMessage == nil else { return }
+        guard appModel.errorMessage == nil else { return false }
         AppHaptics.notification(.success)
-        showSaveToast("Профиль сохранён")
-        isEditorPresented = false
+        showSaveToast(successMessage)
+        return true
     }
 
     private func deleteProfile() async {
@@ -713,8 +868,222 @@ struct ProfileView: View {
         }
     }
 
+    private func uploadProfileMedia(from items: [PhotosPickerItem], preferredKind: PlayerMediaKind) async {
+        guard !isUploadingProfileMedia else { return }
+
+        isUploadingProfileMedia = true
+        defer {
+            isUploadingProfileMedia = false
+            if preferredKind == .photo {
+                selectedProfilePhotoItems = []
+            } else {
+                selectedProfileVideoItems = []
+            }
+        }
+
+        do {
+            for (index, item) in items.enumerated() {
+                let payload = try await profileMediaPayload(from: item, preferredKind: preferredKind, index: index)
+                let result = try await appModel.repository.uploadProfileMedia(
+                    data: payload.data,
+                    fileName: payload.fileName,
+                    mimeType: payload.mimeType
+                )
+
+                applyProfileMediaUpload(result)
+            }
+
+            AppHaptics.notification(.success)
+            showSaveToast(preferredKind == .video ? "Видео добавлено" : "Фото добавлено")
+        } catch {
+            guard !error.isCancellationLike else { return }
+            appModel.present(error: error)
+        }
+    }
+
+    private func prepareNextVideoTrimDraft() async {
+        guard pendingVideoTrimDraft == nil, !pendingVideoTrimQueue.isEmpty else { return }
+
+        let item = pendingVideoTrimQueue.removeFirst()
+        isPreparingProfileVideo = true
+        defer {
+            isPreparingProfileVideo = false
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw APIError.invalidPayload("Не удалось прочитать выбранное видео")
+            }
+
+            let contentType = item.supportedContentTypes.first
+            let fileExtension = preferredProfileMediaExtension(for: contentType, preferredKind: .video)
+            let sourceURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("profile-video-source-\(UUID().uuidString)")
+                .appendingPathExtension(fileExtension)
+
+            try data.write(to: sourceURL, options: [.atomic])
+
+            let asset = AVURLAsset(url: sourceURL)
+            let duration = CMTimeGetSeconds(asset.duration)
+
+            guard duration.isFinite, duration > 0 else {
+                throw APIError.invalidPayload("Не удалось определить длительность видео")
+            }
+
+            pendingVideoTrimDraft = ProfileVideoTrimDraft(
+                sourceURL: sourceURL,
+                duration: duration,
+                fileName: "profile-video-\(UUID().uuidString)"
+            )
+        } catch {
+            guard !error.isCancellationLike else { return }
+            appModel.present(error: error)
+            await prepareNextVideoTrimDraft()
+        }
+    }
+
+    private func uploadTrimmedProfileVideo(_ trimDraft: ProfileVideoTrimDraft, startTime: TimeInterval) async {
+        guard !isUploadingProfileMedia else { return }
+
+        isUploadingProfileMedia = true
+        defer {
+            isUploadingProfileMedia = false
+        }
+
+        do {
+            let payload = try await trimmedVideoPayload(from: trimDraft, startTime: startTime)
+            let result = try await appModel.repository.uploadProfileMedia(
+                data: payload.data,
+                fileName: "\(trimDraft.fileName).\(payload.fileExtension)",
+                mimeType: payload.mimeType
+            )
+
+            applyProfileMediaUpload(result)
+            try? FileManager.default.removeItem(at: trimDraft.sourceURL)
+            pendingVideoTrimDraft = nil
+
+            AppHaptics.notification(.success)
+            showSaveToast("Видео добавлено")
+            await prepareNextVideoTrimDraft()
+        } catch {
+            guard !error.isCancellationLike else { return }
+            appModel.present(error: error)
+        }
+    }
+
+    private func trimmedVideoPayload(
+        from trimDraft: ProfileVideoTrimDraft,
+        startTime: TimeInterval
+    ) async throws -> ProfileTrimmedVideoPayload {
+        let asset = AVURLAsset(url: trimDraft.sourceURL)
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetMediumQuality) else {
+            throw APIError.invalidPayload("Не удалось подготовить видео к обрезке")
+        }
+
+        let outputType: AVFileType = exportSession.supportedFileTypes.contains(.mp4) ? .mp4 : .mov
+        let outputExtension = outputType == .mp4 ? "mp4" : "mov"
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("profile-video-trimmed-\(UUID().uuidString)")
+            .appendingPathExtension(outputExtension)
+
+        let safeStart = min(max(startTime, 0), max(trimDraft.duration - 0.2, 0))
+        let clipDuration = min(10, max(trimDraft.duration - safeStart, 0.2))
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = outputType
+        exportSession.timeRange = CMTimeRange(
+            start: CMTime(seconds: safeStart, preferredTimescale: 600),
+            duration: CMTime(seconds: clipDuration, preferredTimescale: 600)
+        )
+
+        return try await withCheckedThrowingContinuation { continuation in
+            exportSession.exportAsynchronously {
+                switch exportSession.status {
+                case .completed:
+                    do {
+                        let data = try Data(contentsOf: outputURL)
+                        try? FileManager.default.removeItem(at: outputURL)
+                        continuation.resume(returning: ProfileTrimmedVideoPayload(
+                            data: data,
+                            fileExtension: outputExtension,
+                            mimeType: outputType == .mp4 ? "video/mp4" : "video/quicktime"
+                        ))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                case .failed, .cancelled:
+                    continuation.resume(throwing: exportSession.error ?? APIError.invalidPayload("Не удалось обрезать видео"))
+                default:
+                    continuation.resume(throwing: APIError.invalidPayload("Не удалось обрезать видео"))
+                }
+            }
+        }
+    }
+
+    private func profileMediaPayload(
+        from item: PhotosPickerItem,
+        preferredKind: PlayerMediaKind,
+        index: Int
+    ) async throws -> (data: Data, fileName: String, mimeType: String) {
+        guard let data = try await item.loadTransferable(type: Data.self) else {
+            throw APIError.invalidPayload("Не удалось прочитать выбранный файл")
+        }
+
+        let contentType = item.supportedContentTypes.first
+
+        if preferredKind == .photo, let image = UIImage(data: data), let jpegData = image.jpegData(compressionQuality: 0.88) {
+            return (jpegData, "profile-photo-\(index + 1).jpg", "image/jpeg")
+        }
+
+        let mimeType = contentType?.preferredMIMEType ?? (preferredKind == .video ? "video/quicktime" : "image/jpeg")
+        let fileExtension = preferredProfileMediaExtension(for: contentType, preferredKind: preferredKind)
+        return (data, "profile-\(preferredKind.rawValue)-\(index + 1).\(fileExtension)", mimeType)
+    }
+
+    private func preferredProfileMediaExtension(for contentType: UTType?, preferredKind: PlayerMediaKind) -> String {
+        if let preferredFilenameExtension = contentType?.preferredFilenameExtension {
+            return preferredFilenameExtension
+        }
+
+        return preferredKind == .video ? "mov" : "jpg"
+    }
+
+    private func applyProfileMediaUpload(_ result: ProfileMediaUploadResult) {
+        if var updatedDraft = draft {
+            updatedDraft.profilePhotoUrls = result.profilePhotoUrls
+            updatedDraft.profileVideoUrls = result.profileVideoUrls
+            updatedDraft.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first ?? updatedDraft.avatarUrl
+            draft = updatedDraft
+            appModel.currentUser = updatedDraft
+        } else if var currentUser = appModel.currentUser {
+            currentUser.profilePhotoUrls = result.profilePhotoUrls
+            currentUser.profileVideoUrls = result.profileVideoUrls
+            currentUser.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first ?? currentUser.avatarUrl
+            draft = currentUser
+            appModel.currentUser = currentUser
+        }
+    }
+
+    private func removeProfileMedia(_ item: PlayerMediaItem) {
+        guard var updatedDraft = draft ?? appModel.currentUser else { return }
+
+        switch item.kind {
+        case .photo:
+            updatedDraft.profilePhotoUrls.removeAll { $0 == item.path }
+            if updatedDraft.avatarUrl == item.path {
+                updatedDraft.avatarUrl = updatedDraft.profilePhotoUrls.first
+            }
+        case .video:
+            updatedDraft.profileVideoUrls.removeAll { $0 == item.path }
+        }
+
+        draft = updatedDraft
+        appModel.currentUser = updatedDraft
+    }
+
     private func showSaveToast(_ message: String) {
-        saveToastMessage = message
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            saveToastMessage = message
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             withAnimation(.easeInOut(duration: 0.22)) {
                 if saveToastMessage == message {
@@ -733,15 +1102,19 @@ struct ProfileView: View {
             !profile.preferredSports.isEmpty,
             !profile.availabilityByDay.isEmpty,
             profile.bio?.isEmpty == false,
-            profile.avatarUrl?.isEmpty == false
+            profile.avatarUrl?.isEmpty == false || !profile.profilePhotoUrls.isEmpty,
+            !profile.profileVideoUrls.isEmpty
         ]
         let done = checks.filter { $0 }.count
         return Int((Double(done) / Double(checks.count) * 100).rounded())
     }
 
     private func profileMissingHint(for profile: UserProfile) -> String {
-        if profile.avatarUrl?.isEmpty != false {
-            return "Осталось добавить фото в деле."
+        if profile.avatarUrl?.isEmpty != false && profile.profilePhotoUrls.isEmpty {
+            return "Осталось добавить фото для карточки."
+        }
+        if profile.profileVideoUrls.isEmpty {
+            return "Добавь короткое видео — карточку будут лучше понимать."
         }
         if profile.bio?.isEmpty != false {
             return "Осталось заполнить описание."
@@ -768,8 +1141,13 @@ struct ProfileView: View {
     }
 
     private func notificationsSummary(for profile: UserProfile) -> String {
-        let enabled = [profile.notificationMatches, profile.notificationMessages, profile.notificationGames].filter { $0 }.count
-        return enabled == 0 ? "Выключены" : "Мэтчи, сообщения и игры включены"
+        let enabled = enabledNotificationCount(for: profile)
+        guard enabled > 0 else { return "Все события выключены" }
+        return "\(enabled) из 3 событий, звук \(profile.notificationSound ? "включён" : "выключен")"
+    }
+
+    private func enabledNotificationCount(for profile: UserProfile) -> Int {
+        [profile.notificationMatches, profile.notificationMessages, profile.notificationGames].filter { $0 }.count
     }
 
     private func availabilityHeadline(for availabilityByDay: [String: [String]]) -> String {
@@ -812,12 +1190,13 @@ struct ProfileView: View {
 private struct ProfileEditorScreen<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
+    @State private var isSaving = false
 
     let title: String
     let subtitle: String
     let systemImage: String
     let tint: Color
-    let onSave: () -> Void
+    let onSave: () async -> Bool
     let content: Content
 
     init(
@@ -825,7 +1204,7 @@ private struct ProfileEditorScreen<Content: View>: View {
         subtitle: String,
         systemImage: String,
         tint: Color,
-        onSave: @escaping () -> Void,
+        onSave: @escaping () async -> Bool,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
@@ -849,12 +1228,19 @@ private struct ProfileEditorScreen<Content: View>: View {
                     content
 
                     Button {
-                        onSave()
+                        performSave()
                     } label: {
-                        Text("Сохранить")
-                            .frame(maxWidth: .infinity)
+                        if isSaving {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Сохранить")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                     .buttonStyle(ProfileFilledButtonStyle(tint: AppTheme.court))
+                    .disabled(isSaving)
                     .padding(.top, 2)
                 }
                 .padding(.horizontal, 18)
@@ -872,6 +1258,85 @@ private struct ProfileEditorScreen<Content: View>: View {
         .onDisappear {
             appModel.bottomBarDisplayMode = .expanded
         }
+        .profileBackSwipe { dismiss() }
+    }
+
+    private func performSave() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task { @MainActor in
+            let shouldDismiss = await onSave()
+            isSaving = false
+            if shouldDismiss {
+                dismiss()
+            }
+        }
+    }
+}
+
+private struct ProfileAccountScreen: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let email: String?
+    let isVerified: Bool
+    let onLogout: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                ProfileSubscreenHeader(title: "Аккаунт", onBack: { dismiss() })
+
+                ProfileDarkPanel {
+                    VStack(spacing: 0) {
+                        ProfileInfoLine(title: "Почта", value: email ?? "Не указана")
+                        ProfileInfoLine(title: "Статус", value: isVerified ? "Подтверждён" : "Не подтверждён")
+                    }
+                }
+
+                Button("Выйти") {
+                    onLogout()
+                }
+                .buttonStyle(SecondaryActionButtonStyle(tint: .white))
+
+                Button("Удалить профиль") {
+                    onDelete()
+                }
+                .buttonStyle(SecondaryActionButtonStyle(tint: .red))
+
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { dismiss() }
+    }
+}
+
+private struct ProfileBackSwipeModifier: ViewModifier {
+    let onBack: () -> Void
+
+    func body(content: Content) -> some View {
+        content.simultaneousGesture(
+            DragGesture(minimumDistance: 28, coordinateSpace: .local)
+                .onEnded { value in
+                    let startsNearLeftEdge = value.startLocation.x <= 34
+                    let movesRight = value.translation.width >= 82
+                    let mostlyHorizontal = abs(value.translation.height) <= 72
+                    guard startsNearLeftEdge && movesRight && mostlyHorizontal else { return }
+                    AppHaptics.selection()
+                    onBack()
+                }
+        )
+    }
+}
+
+private extension View {
+    func profileBackSwipe(onBack: @escaping () -> Void) -> some View {
+        modifier(ProfileBackSwipeModifier(onBack: onBack))
     }
 }
 
@@ -1101,6 +1566,229 @@ private struct ProfileDistrictPickerCard: View {
     }
 }
 
+private struct ProfileVideoTrimDraft: Identifiable {
+    let id = UUID()
+    let sourceURL: URL
+    let duration: TimeInterval
+    let fileName: String
+}
+
+private struct ProfileTrimmedVideoPayload {
+    let data: Data
+    let fileExtension: String
+    let mimeType: String
+}
+
+private struct ProfileMediaProgressOverlay: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.15)
+
+                VStack(spacing: 5) {
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.66))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 20)
+            .frame(maxWidth: 280)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.36), radius: 24, x: 0, y: 14)
+        }
+    }
+}
+
+private struct ProfileVideoTrimEditorSheet: View {
+    let draft: ProfileVideoTrimDraft
+    let isUploading: Bool
+    let onCancel: () -> Void
+    let onConfirm: (TimeInterval) -> Void
+
+    @State private var startTime: TimeInterval = 0
+    @State private var player: AVPlayer?
+    @State private var didSubmit = false
+
+    private var maxStartTime: TimeInterval {
+        max(draft.duration - 10, 0)
+    }
+
+    private var isProcessing: Bool {
+        isUploading || didSubmit
+    }
+
+    private var selectedDuration: TimeInterval {
+        min(10, max(draft.duration - startTime, 0))
+    }
+
+    private var endTime: TimeInterval {
+        min(startTime + selectedDuration, draft.duration)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Обрезать видео")
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text("Выберите фрагмент до 10 секунд")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+
+                    Spacer()
+
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.white.opacity(0.1), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                VideoPlayer(player: player)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(.white.opacity(0.12), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("\(formatTime(startTime)) - \(formatTime(endTime))")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Text("\(Int(ceil(selectedDuration))) сек")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.mint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(AppTheme.court.opacity(0.28), in: Capsule())
+                    }
+
+                    trimTimeline
+
+                    Slider(value: $startTime, in: 0 ... maxStartTime)
+                        .tint(AppTheme.mint)
+                        .disabled(maxStartTime <= 0)
+                        .onChange(of: startTime) { newValue in
+                            seekPlayer(to: newValue)
+                        }
+
+                    Text(maxStartTime <= 0 ? "Видео короче 10 секунд, можно загрузить целиком." : "Передвиньте шкалу, чтобы выбрать начало 10-секундного фрагмента.")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+                .padding(16)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                Button {
+                    guard !isProcessing else { return }
+                    didSubmit = true
+                    player?.pause()
+                    onConfirm(startTime)
+                } label: {
+                    HStack {
+                        if isProcessing {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(isProcessing ? "Готовим видео..." : "Использовать фрагмент")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ProfileFilledButtonStyle(tint: AppTheme.court))
+                .disabled(isProcessing)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 22)
+            .padding(.bottom, 28)
+
+            if isProcessing {
+                ProfileMediaProgressOverlay(
+                    title: "Видео загружается",
+                    subtitle: "Сохраняем выбранный фрагмент в карточку."
+                )
+                .transition(.opacity)
+            }
+        }
+        .onAppear {
+            let nextPlayer = AVPlayer(url: draft.sourceURL)
+            nextPlayer.isMuted = true
+            player = nextPlayer
+            seekPlayer(to: startTime)
+            nextPlayer.play()
+        }
+        .onDisappear {
+            player?.pause()
+        }
+        .onChange(of: isUploading) { uploading in
+            if !uploading {
+                didSubmit = false
+            }
+        }
+    }
+
+    private var trimTimeline: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let selectedWidth = width * CGFloat(selectedDuration / max(draft.duration, 0.1))
+            let selectedOffset = width * CGFloat(startTime / max(draft.duration, 0.1))
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.white.opacity(0.22))
+                    .frame(height: 16)
+
+                Capsule()
+                    .fill(AppTheme.mint)
+                    .frame(width: max(selectedWidth, 22), height: 16)
+                    .offset(x: min(selectedOffset, max(width - selectedWidth, 0)))
+                    .shadow(color: AppTheme.mint.opacity(0.32), radius: 10, x: 0, y: 0)
+            }
+        }
+        .frame(height: 20)
+    }
+
+    private func seekPlayer(to seconds: TimeInterval) {
+        player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = max(Int(seconds.rounded(.down)), 0)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+}
+
 private struct ProfileOverviewCard: View {
     let profile: UserProfile
     let isUploadingAvatar: Bool
@@ -1109,15 +1797,16 @@ private struct ProfileOverviewCard: View {
 
     var body: some View {
         ProfileDarkPanel {
-            VStack(spacing: 20) {
-                HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 16) {
                     PhotosPicker(selection: $selectedAvatarItem, matching: .images, photoLibrary: .shared()) {
                         ZStack(alignment: .bottomTrailing) {
-                            RemoteAvatarView(name: profile.displayName, path: profile.avatarUrl, size: 86)
+                            ProfileHeroImage(name: profile.displayName, path: profile.profileHeroImagePath, height: 118)
+                                .frame(width: 112)
 
                             Circle()
                                 .fill(isUploadingAvatar ? AppTheme.court : Color.green)
-                                .frame(width: 18, height: 18)
+                                .frame(width: 20, height: 20)
                                 .overlay(Circle().stroke(Color.black, lineWidth: 3))
 
                             if isUploadingAvatar {
@@ -1135,10 +1824,10 @@ private struct ProfileOverviewCard: View {
                             Text(profile.displayName)
                                 .font(.title2.weight(.bold))
                                 .foregroundStyle(.white)
-                                .lineLimit(1)
+                                .lineLimit(2)
                                 .minimumScaleFactor(0.82)
                             if profile.isLookingForGame {
-                                ProfileCapsule(text: "Ищу игру сейчас", tint: AppTheme.court)
+                                ProfileCapsule(text: "Ищу игру", tint: AppTheme.court)
                             }
                         }
 
@@ -1153,6 +1842,11 @@ private struct ProfileOverviewCard: View {
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
+
+                        Text(profile.bio ?? "Добавь пару строк о себе и короткие видео с тренировок.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                            .lineLimit(2)
                     }
 
                     Spacer(minLength: 0)
@@ -1164,21 +1858,13 @@ private struct ProfileOverviewCard: View {
                     }
                 }
 
-                HStack(spacing: 10) {
-                    Button(action: onEdit) {
-                        Label("Редактировать", systemImage: "pencil")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(ProfileFilledButtonStyle(tint: AppTheme.court))
-
-                    NavigationLink {
-                        QRProfileView(profile: profile, visibilityMode: .publicProfile)
-                    } label: {
-                        Label("QR-профиль", systemImage: "qrcode")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(ProfileSoftButtonStyle())
+                NavigationLink {
+                    QRProfileView(profile: profile, visibilityMode: .publicProfile)
+                } label: {
+                    Label("QR-профиль", systemImage: "qrcode")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(ProfileSoftButtonStyle())
             }
         }
     }
@@ -1190,6 +1876,322 @@ private struct ProfileOverviewCard: View {
         }
         parts.append(profile.city ?? "Санкт-Петербург")
         return parts.joined(separator: " · ")
+    }
+}
+
+private struct ProfileSelectionMediaCard: View {
+    let profile: UserProfile
+    let isUploading: Bool
+    @Binding var selectedPhotoItems: [PhotosPickerItem]
+    @Binding var selectedVideoItems: [PhotosPickerItem]
+    let onPreview: (PlayerMediaItem) -> Void
+    let onRemove: (PlayerMediaItem) -> Void
+
+    private var mediaItems: [PlayerMediaItem] {
+        profile.playerCardMediaItems
+    }
+
+    private var remainingPhotoSlots: Int {
+        max(6 - profile.profilePhotoUrls.count, 0)
+    }
+
+    private var remainingVideoSlots: Int {
+        max(4 - profile.profileVideoUrls.count, 0)
+    }
+
+    var body: some View {
+        ProfileDarkPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Карточка в подборе")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text("Так вашу карточку увидят другие игроки")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+
+                    Spacer()
+
+                    if isUploading {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+
+                ZStack(alignment: .bottomLeading) {
+                    ProfileHeroImage(name: profile.displayName, path: profile.profileHeroImagePath, height: 248)
+
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.82)],
+                        startPoint: .center,
+                        endPoint: .bottom
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text(profile.age.map { "\(profile.displayName), \($0)" } ?? profile.displayName)
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(AppTheme.mint)
+                        }
+
+                        if let sport = profile.preferredSports.first {
+                            Text("\(sport.title) · \(profile.sportLevels[sport.rawValue] ?? profile.tennisLevel ?? 5) уровень · \(profile.city ?? "Санкт-Петербург")")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.mint)
+                                .lineLimit(2)
+                        }
+
+                        Text(profile.bio ?? "Люблю быстрые партии после работы. Открыт к регулярным тренировкам.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(2)
+                    }
+                    .padding(16)
+
+                    if remainingPhotoSlots > 0 {
+                        PhotosPicker(
+                            selection: $selectedPhotoItems,
+                            maxSelectionCount: remainingPhotoSlots,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            Label("Изменить фото", systemImage: "pencil")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 8)
+                                .background(.black.opacity(0.48), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Фото и видео для карточки")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Text("\(profile.profileVideoUrls.count)/4 видео")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(mediaItems) { item in
+                                ProfileMediaTile(
+                                    item: item,
+                                    canRemove: item.kind == .video || profile.profilePhotoUrls.contains(item.path),
+                                    onPreview: onPreview,
+                                    onRemove: onRemove
+                                )
+                            }
+
+                            if remainingPhotoSlots > 0 {
+                                PhotosPicker(
+                                    selection: $selectedPhotoItems,
+                                    maxSelectionCount: remainingPhotoSlots,
+                                    matching: .images,
+                                    photoLibrary: .shared()
+                                ) {
+                                    ProfileAddMediaTile(title: "Фото", systemImage: "camera.fill")
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            if remainingVideoSlots > 0 {
+                                PhotosPicker(
+                                    selection: $selectedVideoItems,
+                                    maxSelectionCount: remainingVideoSlots,
+                                    matching: .videos,
+                                    photoLibrary: .shared()
+                                ) {
+                                    ProfileAddMediaTile(title: "Видео до 10 сек", systemImage: "play.rectangle.fill")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                ProfileMediaAdviceRow()
+            }
+        }
+    }
+}
+
+private struct ProfileHeroImage: View {
+    let name: String
+    let path: String?
+    let height: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let url = resolveAppRemoteURL(path) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private var fallback: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AppTheme.court.opacity(0.85), AppTheme.ink],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Text(initials)
+                .font(.system(size: min(height * 0.28, 46), weight: .bold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var initials: String {
+        let parts = name
+            .split(separator: " ")
+            .prefix(2)
+            .map { String($0.prefix(1)).uppercased() }
+        return parts.isEmpty ? "TS" : parts.joined()
+    }
+}
+
+private struct ProfileMediaTile: View {
+    let item: PlayerMediaItem
+    let canRemove: Bool
+    let onPreview: (PlayerMediaItem) -> Void
+    let onRemove: (PlayerMediaItem) -> Void
+
+    var body: some View {
+        ZStack {
+            thumbnail
+                .frame(width: 92, height: 120)
+                .clipped()
+
+            if canRemove {
+                Button {
+                    onRemove(item)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(.black.opacity(0.58), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(6)
+            }
+        }
+        .frame(width: 92, height: 120)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppTheme.court.opacity(0.55), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            onPreview(item)
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        if item.kind == .video, let url = resolveAppRemoteURL(item.path) {
+            MutedLoopingVideoView(url: url)
+        } else if item.kind == .photo, let url = resolveAppRemoteURL(item.path) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    tileFallback
+                }
+            }
+        } else {
+            tileFallback
+        }
+    }
+
+    private var tileFallback: some View {
+        LinearGradient(
+            colors: [AppTheme.court.opacity(0.28), Color.white.opacity(0.08)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay(
+            Image(systemName: item.kind == .video ? "play.rectangle.fill" : "photo.fill")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.8))
+        )
+    }
+}
+
+private struct ProfileAddMediaTile: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.bold))
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(.white.opacity(0.86))
+        .frame(width: 92, height: 120)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.16), style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+        )
+    }
+}
+
+private struct ProfileMediaAdviceRow: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(AppTheme.court)
+                .padding(.top, 1)
+            Text("Добавьте фото в хорошем освещении и короткие видео с игры или тренировки.")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.64))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -1225,6 +2227,374 @@ private struct ProfileCompletenessCard: View {
                     .foregroundStyle(.white.opacity(0.58))
             }
         }
+    }
+}
+
+private struct ProfileGameFeedSection: View {
+    let requests: [MatchGameRequest]
+    let currentUserId: String?
+    let isLoading: Bool
+    @State private var selectedReport: GameReport?
+
+    var body: some View {
+        ProfileDarkPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Лента игр")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text(feedSubtitle)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    Spacer()
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    } else if !requests.isEmpty {
+                        Text("\(requests.count)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.court)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(AppTheme.court.opacity(0.14), in: Capsule())
+                    }
+                }
+
+                if requests.isEmpty && !isLoading {
+                    Text("После завершённой игры добавь фотоотчёт — она появится здесь.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(requests) { request in
+                            ProfileGameFeedRow(
+                                request: request,
+                                currentUserId: currentUserId,
+                                onOpenReport: { selectedReport = $0 }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(item: $selectedReport) { report in
+            GameReportPhotoGallerySheet(report: report)
+        }
+    }
+
+    private var feedSubtitle: String {
+        if requests.isEmpty {
+            return "Фотоотчёты и подтверждённые тренировки"
+        }
+        let reportCount = requests.filter { $0.report != nil }.count
+        return "\(requests.count) игр · \(reportCount) фотоотчётов"
+    }
+}
+
+private struct ProfileGameFeedRow: View {
+    let request: MatchGameRequest
+    let currentUserId: String?
+    let onOpenReport: (GameReport) -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProfileGameFeedPreview(report: request.report, sport: request.sport)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    SportIconView(sport: request.sport, color: AppTheme.court, size: 16)
+                    Text("\(request.sport.title) · \(request.proposedDatetime.formattedDateTime())")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                }
+
+                Text(feedDetails)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(2)
+
+                if let report = request.report {
+                    HStack(spacing: 8) {
+                        Text(report.statusTitle)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(report.status.lowercased() == "confirmed" ? AppTheme.court : Color.orange)
+
+                        if !report.photoUrls.isEmpty {
+                            Label("\(report.photoUrls.count) фото", systemImage: "photo.stack")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                    }
+                } else if let outcome = request.outcomeLabel {
+                    Text(outcome)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.court)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.white.opacity(0.07), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            guard let report = request.report, !report.photoUrls.isEmpty else { return }
+            onOpenReport(report)
+        }
+    }
+
+    private var feedDetails: String {
+        let people = request.participantNamesLine(currentUserId: currentUserId)
+        let court = request.proposedCourt?.name
+        return [court, people].compactMap { value in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }.joined(separator: " · ")
+    }
+}
+
+private struct ProfileGameFeedPreview: View {
+    let report: GameReport?
+    let sport: Sport
+
+    private var photoPaths: [String] {
+        Array((report?.photoUrls ?? []).prefix(4))
+    }
+
+    private var extraPhotoCount: Int {
+        max((report?.photoUrls.count ?? 0) - 4, 0)
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.court.opacity(0.16))
+
+            if photoPaths.isEmpty {
+                fallbackIcon
+            } else {
+                collage
+            }
+        }
+        .frame(width: 76, height: 76)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var fallbackIcon: some View {
+        SportIconView(sport: sport, color: AppTheme.court, size: 24)
+    }
+
+    @ViewBuilder
+    private var collage: some View {
+        GeometryReader { geometry in
+            let gap: CGFloat = 2
+            let halfWidth = (geometry.size.width - gap) / 2
+            let halfHeight = (geometry.size.height - gap) / 2
+
+            switch photoPaths.count {
+            case 1:
+                photoTile(path: photoPaths[0], showsMoreOverlay: false)
+            case 2:
+                HStack(spacing: gap) {
+                    photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                        .frame(width: halfWidth, height: geometry.size.height)
+                    photoTile(path: photoPaths[1], showsMoreOverlay: extraPhotoCount > 0)
+                        .frame(width: halfWidth, height: geometry.size.height)
+                }
+            case 3:
+                HStack(spacing: gap) {
+                    photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                        .frame(width: halfWidth, height: geometry.size.height)
+                    VStack(spacing: gap) {
+                        photoTile(path: photoPaths[1], showsMoreOverlay: false)
+                            .frame(width: halfWidth, height: halfHeight)
+                        photoTile(path: photoPaths[2], showsMoreOverlay: extraPhotoCount > 0)
+                            .frame(width: halfWidth, height: halfHeight)
+                    }
+                }
+            default:
+                VStack(spacing: gap) {
+                    HStack(spacing: gap) {
+                        photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                            .frame(width: halfWidth, height: halfHeight)
+                        photoTile(path: photoPaths[1], showsMoreOverlay: false)
+                            .frame(width: halfWidth, height: halfHeight)
+                    }
+                    HStack(spacing: gap) {
+                        photoTile(path: photoPaths[2], showsMoreOverlay: false)
+                            .frame(width: halfWidth, height: halfHeight)
+                        photoTile(path: photoPaths[3], showsMoreOverlay: extraPhotoCount > 0)
+                            .frame(width: halfWidth, height: halfHeight)
+                    }
+                }
+            }
+        }
+    }
+
+    private func photoTile(path: String, showsMoreOverlay: Bool) -> some View {
+        ZStack {
+            if let url = resolveAppRemoteURL(path) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallbackIcon
+                    }
+                }
+            } else {
+                fallbackIcon
+            }
+
+            if showsMoreOverlay {
+                Color.black.opacity(0.45)
+                Text("+\(extraPhotoCount)")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white)
+            }
+        }
+        .clipped()
+    }
+}
+
+private struct GameReportPhotoGallerySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let report: GameReport
+    @State private var selectedIndex = 0
+
+    private var photoUrls: [String] {
+        report.photoUrls
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                header
+
+                if photoUrls.isEmpty {
+                    emptyState
+                } else {
+                    TabView(selection: $selectedIndex) {
+                        ForEach(Array(photoUrls.enumerated()), id: \.offset) { index, path in
+                            GameReportGalleryPhoto(path: path)
+                                .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                }
+
+                footer
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Фотоотчёт")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(report.statusTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.mint)
+            }
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(.white.opacity(0.10), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !photoUrls.isEmpty {
+                HStack {
+                    Text("\(selectedIndex + 1) / \(photoUrls.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.78))
+                    Spacer()
+                    Image(systemName: "photo.stack")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+
+            if let comment = report.comment, !comment.isEmpty {
+                Text(comment)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(18)
+        .background(.black.opacity(0.82))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "photo")
+                .font(.system(size: 44, weight: .semibold))
+            Text("Фото недоступны")
+                .font(.headline.weight(.bold))
+        }
+        .foregroundStyle(.white.opacity(0.74))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct GameReportGalleryPhoto: View {
+    let path: String
+
+    var body: some View {
+        ZStack {
+            if let url = resolveAppRemoteURL(path) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    default:
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 12)
     }
 }
 
@@ -1308,6 +2678,7 @@ private struct QRProfileView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { dismiss() }
         .overlay(alignment: .top) {
             if let toast {
                 InlineStatusToast(message: toast)
@@ -1371,6 +2742,7 @@ private struct VisibilitySettingsView: View {
             .padding(.top, 16)
         }
         .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { dismiss() }
     }
 }
 
@@ -1406,6 +2778,7 @@ private struct PublicProfilePreviewView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { dismiss() }
     }
 }
 
@@ -1654,8 +3027,7 @@ private struct ProfileSportChip: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: sport.profileIcon)
-                .foregroundStyle(sport == .tennis ? .yellow : AppTheme.court)
+            SportIconView(sport: sport, color: sport == .tennis ? .yellow : AppTheme.court, size: 15)
             Text("\(sport.shortTitle) \(levelText)")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
@@ -1917,7 +3289,7 @@ private extension Sport {
         case .tennis:
             return "tennisball.fill"
         case .padel, .badminton, .squash, .tableTennis:
-            return "tennis.racket"
+            return appSystemIconName
         case .volleyball:
             return "volleyball.fill"
         case .fitness:
@@ -1928,6 +3300,10 @@ private extension Sport {
             return "figure.yoga"
         case .football:
             return "soccerball"
+        case .running:
+            return "figure.run"
+        case .supboard:
+            return "water.waves"
         }
     }
 }
@@ -1938,6 +3314,66 @@ private extension Binding where Value == String? {
             get: { wrappedValue ?? "" },
             set: { wrappedValue = $0.isEmpty ? nil : $0 }
         )
+    }
+}
+
+private struct ProfileSaveSuccessToast: View {
+    let message: String
+
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(.white)
+                    .scaleEffect(isAnimating ? 1 : 0.62)
+                    .rotationEffect(.degrees(isAnimating ? 0 : -18))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Успешно сохранено")
+                    .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
+                    .tracking(1.3)
+                    .foregroundStyle(Color(red: 0.76, green: 0.97, blue: 0.80))
+
+                Text(message)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.86)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.07, green: 0.17, blue: 0.12), Color(red: 0.10, green: 0.30, blue: 0.20)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color(red: 0.37, green: 0.78, blue: 0.56).opacity(0.8), lineWidth: 1.2)
+        )
+        .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 12)
+        .padding(.horizontal, 16)
+        .scaleEffect(isAnimating ? 1 : 0.96)
+        .onAppear {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
+                isAnimating = true
+            }
+        }
     }
 }
 

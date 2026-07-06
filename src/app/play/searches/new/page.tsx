@@ -1,4 +1,4 @@
-import { type GameSearchType, type Sport } from "@prisma/client";
+import { CourtStatus, type GameSearchType, type Sport } from "@prisma/client";
 
 import { getSessionUser } from "@/lib/auth";
 import { DEFAULT_CITY, SPORT_OPTIONS } from "@/lib/constants";
@@ -20,7 +20,19 @@ export default async function NewGameSearchPage({
     ? await getCourtsForUser(user.id)
     : await prisma.court.findMany({
         where: {
-          city: DEFAULT_CITY
+          city: DEFAULT_CITY,
+          status: CourtStatus.active
+        },
+        include: {
+          nearestMetro: true,
+          metroLinks: {
+            include: {
+              metro: true
+            },
+            orderBy: {
+              position: "asc"
+            }
+          }
         },
         orderBy: [{ rating: "desc" }, { name: "asc" }]
       });
@@ -52,6 +64,8 @@ export default async function NewGameSearchPage({
             address: court.address,
             district: court.district,
             nearestMetroName: (court as { nearestMetro?: { name?: string | null } }).nearestMetro?.name ?? null,
+            metroNames:
+              (court as { metroLinks?: Array<{ metro: { name: string } }> }).metroLinks?.map((link) => link.metro.name) ?? [],
             locationLat: court.locationLat,
             locationLng: court.locationLng,
             supportedSports: Array.isArray(court.supportedSports)
@@ -69,6 +83,8 @@ export default async function NewGameSearchPage({
             address: court.address,
             district: court.district,
             nearestMetroName: (court as { nearestMetro?: { name?: string | null } }).nearestMetro?.name ?? null,
+            metroNames:
+              (court as { metroLinks?: Array<{ metro: { name: string } }> }).metroLinks?.map((link) => link.metro.name) ?? [],
             locationLat: court.locationLat,
             locationLng: court.locationLng,
             supportedSports: Array.isArray(court.supportedSports)

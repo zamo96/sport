@@ -74,6 +74,8 @@ export default async function NewProposalPage({
           address: court.address,
           phone: court.phone,
           district: court.district,
+          nearestMetroName: court.nearestMetro?.name ?? null,
+          metroNames: court.metroLinks?.map((link) => link.metro.name) ?? [],
           locationLat: court.locationLat,
           locationLng: court.locationLng,
           supportedSports: Array.isArray(court.supportedSports)

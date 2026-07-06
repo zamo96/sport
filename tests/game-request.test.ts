@@ -6,6 +6,11 @@ import {
   getGameRequestNextStep,
   isAcceptedUpcomingGameRequest
 } from "@/lib/game-requests";
+import {
+  buildAutoConfirmedGameReportConfirmations,
+  buildCompletedGameSimulationDatetime,
+  hasGameRequestEnded
+} from "@/server/game-reports";
 
 describe("game request helpers", () => {
   it("recognizes accepted upcoming games", () => {
@@ -53,5 +58,32 @@ describe("game request helpers", () => {
     ).toContain("Игра подтверждена");
 
     vi.useRealTimers();
+  });
+});
+
+describe("game report helpers", () => {
+  it("requires the proposed duration to elapse before a game report is allowed", () => {
+    const gameRequest = {
+      proposedDatetime: new Date("2026-04-20T10:00:00.000Z"),
+      durationMinutes: 90
+    };
+
+    expect(hasGameRequestEnded(gameRequest, new Date("2026-04-20T11:29:00.000Z"))).toBe(false);
+    expect(hasGameRequestEnded(gameRequest, new Date("2026-04-20T11:30:00.000Z"))).toBe(true);
+  });
+
+  it("builds a simulated start time that is already past the game end", () => {
+    const now = new Date("2026-04-20T12:00:00.000Z");
+    const proposedDatetime = buildCompletedGameSimulationDatetime(60, now);
+
+    expect(proposedDatetime.toISOString()).toBe("2026-04-20T10:55:00.000Z");
+    expect(hasGameRequestEnded({ proposedDatetime, durationMinutes: 60 }, now)).toBe(true);
+  });
+
+  it("auto-confirms report confirmations for every participant", () => {
+    expect(buildAutoConfirmedGameReportConfirmations(["user-1", "user-2"])).toEqual([
+      { userId: "user-1", status: "confirmed" },
+      { userId: "user-2", status: "confirmed" }
+    ]);
   });
 });

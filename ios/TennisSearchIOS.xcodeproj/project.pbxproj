@@ -36,8 +36,11 @@
 		A1000000000000000000011B /* hero-football.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000220 /* hero-football.jpg */; };
 		A1000000000000000000011C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000221 /* Assets.xcassets */; };
 		A1000000000000000000011D /* UpcomingGamesWidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */; };
+		A1000000000000000000011E /* UpcomingGameLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000223 /* UpcomingGameLiveActivity.swift */; };
+		A1000000000000000000011F /* hero-run.png in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000224 /* hero-run.png */; };
 		A20000000000000000000101 /* UpcomingGamesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000201 /* UpcomingGamesWidget.swift */; };
 		A20000000000000000000102 /* UpcomingGamesWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000203 /* UpcomingGamesWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A20000000000000000000103 /* UpcomingGameLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000223 /* UpcomingGameLiveActivity.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +102,8 @@
 		A10000000000000000000220 /* hero-football.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "hero-football.jpg"; sourceTree = "<group>"; };
 		A10000000000000000000221 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingGamesWidgetStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000223 /* UpcomingGameLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingGameLiveActivity.swift; sourceTree = "<group>"; };
+		A10000000000000000000224 /* hero-run.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "hero-run.png"; sourceTree = "<group>"; };
 		A20000000000000000000201 /* UpcomingGamesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingGamesWidget.swift; sourceTree = "<group>"; };
 		A20000000000000000000202 /* TennisSearchUpcomingWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TennisSearchUpcomingWidget.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000203 /* UpcomingGamesWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpcomingGamesWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -170,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000203 /* AppModels.swift */,
+				A10000000000000000000223 /* UpcomingGameLiveActivity.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -235,6 +241,7 @@
 				A1000000000000000000021E /* hero-boxing.jpg */,
 				A1000000000000000000021F /* hero-yoga.jpg */,
 				A10000000000000000000220 /* hero-football.jpg */,
+				A10000000000000000000224 /* hero-run.png */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -336,6 +343,7 @@
 				A10000000000000000000119 /* hero-boxing.jpg in Resources */,
 				A1000000000000000000011A /* hero-yoga.jpg in Resources */,
 				A1000000000000000000011B /* hero-football.jpg in Resources */,
+				A1000000000000000000011F /* hero-run.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -371,6 +379,7 @@
 				A10000000000000000000110 /* NotificationsView.swift in Sources */,
 				A10000000000000000000111 /* AppDelegate.swift in Sources */,
 				A1000000000000000000011D /* UpcomingGamesWidgetStore.swift in Sources */,
+				A1000000000000000000011E /* UpcomingGameLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,6 +388,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000101 /* UpcomingGamesWidget.swift in Sources */,
+				A20000000000000000000103 /* UpcomingGameLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -432,7 +442,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026062501;
+				CURRENT_PROJECT_VERSION = 2026070601;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -457,7 +467,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026062501;
+				CURRENT_PROJECT_VERSION = 2026070601;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -483,7 +493,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026062501;
+				CURRENT_PROJECT_VERSION = 2026070601;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
@@ -510,7 +520,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026062501;
+				CURRENT_PROJECT_VERSION = 2026070601;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;

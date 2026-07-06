@@ -13,11 +13,13 @@ struct CourtsView: View {
     @State private var isLoadingCourts = false
     @State private var selectedCourtForDetail: Court?
     @State private var selectedCourtForSearch: Court?
+    @State private var selectedCourtForPersonalVisit: Court?
     @State private var selectedCourtPlayerProposal: CourtPlayerProposalContext?
     @State private var focusedDistrictId: String?
     @State private var mapFocusRevision = 0
     @State private var isMapScrolledAway = false
     @State private var showFavoritesOnly = false
+    @StateObject private var locationProvider = UserLocationProvider()
     @AppStorage("savedCourtIDs") private var savedCourtIDsRaw = ""
     @FocusState private var isSearchFocused: Bool
 
@@ -110,7 +112,7 @@ struct CourtsView: View {
 
         let prefixMatches = filteredCourts.filter { $0.name.lowercased().hasPrefix(normalizedQuery) }
         let metroMatches = filteredCourts.filter { court in
-            guard let metro = court.nearestMetroName?.lowercased() else { return false }
+            guard let metro = court.metroDisplayName?.lowercased() else { return false }
             return metro.contains(normalizedQuery) && !prefixMatches.contains(where: { $0.id == court.id })
         }
         let districtMatches = filteredCourts.filter { court in
@@ -136,6 +138,20 @@ struct CourtsView: View {
     }
 
     private var mapPreviewCourts: [Court] {
+        if focusedDistrictId != nil {
+            let highlightedIDs = Set(preferredVisibleDistrictIDs)
+            let districtCourts = sportFilteredCourts.filter { court in
+                guard let district = court.district?.lowercased() else {
+                    return false
+                }
+                return highlightedIDs.contains(district)
+            }
+
+            if !districtCourts.isEmpty {
+                return districtCourts
+            }
+        }
+
         var items: [Court] = []
 
         if let focusedCourt {
@@ -156,8 +172,42 @@ struct CourtsView: View {
         Set(savedCourtIDsRaw.split(separator: ",").map(String.init))
     }
 
+    private func courtAccessLabel(_ court: Court) -> String? {
+        if let currentCoordinate = locationProvider.coordinate {
+            let distanceKm = haversineDistanceKm(from: currentCoordinate, to: court.coordinate)
+            let distance = formattedDistance(distanceKm)
+            let driveMinutes = estimatedDriveMinutes(distanceKm)
+            return "\(distance) · на машине \(driveMinutes) мин"
+        }
+
+        return court.distanceLabel
+    }
+
+    private func formattedDistance(_ distanceKm: Double) -> String {
+        if distanceKm < 1 {
+            return "\(max(Int((distanceKm * 1_000).rounded()), 50)) м"
+        }
+
+        return String(format: "%.1f км", distanceKm)
+    }
+
+    private func estimatedDriveMinutes(_ distanceKm: Double) -> Int {
+        max(5, Int(ceil((distanceKm / 28) * 60 + 3)))
+    }
+
     private var preferredDistrictId: String? {
         preferredDistrictIDs.first { districtAreasByID[$0.lowercased()] != nil }
+    }
+
+    private var preferredVisibleDistrictIDs: [String] {
+        preferredDistrictIDs
+            .map { $0.lowercased() }
+            .filter { districtAreasByID[$0] != nil }
+            .reduce(into: [String]()) { result, district in
+                if !result.contains(district) {
+                    result.append(district)
+                }
+            }
     }
 
     private var darkStroke: Color {
@@ -252,11 +302,13 @@ struct CourtsView: View {
         .onAppear {
             isSearchFocused = false
             selectedSport = initialSport
+            locationProvider.requestCurrentLocation()
         }
         .sheet(item: $selectedCourtForDetail) { court in
             CourtDetailSheet(
                 court: court,
                 isSaved: savedCourtIDs.contains(court.id),
+                accessLabel: courtAccessLabel(court),
                 onToggleSave: {
                     toggleSavedCourt(court)
                 },
@@ -265,6 +317,9 @@ struct CourtsView: View {
                 },
                 onProposeGame: {
                     presentSearchComposer(for: court)
+                },
+                onPlanPersonalVisit: {
+                    presentPersonalVisitComposer(for: court)
                 },
                 onProposeToPlayer: { player in
                     presentPlayerProposal(to: player, at: court)
@@ -279,6 +334,15 @@ struct CourtsView: View {
                 appModel.navigate(to: .discover(search.searchType == .hot ? .hot : .seeking, highlightedSearchID: search.id))
             }
             .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
+        .sheet(item: $selectedCourtForPersonalVisit) { court in
+            PersonalActivityComposerSheet(court: court, initialSport: selectedSport ?? court.primarySport) {
+                selectedCourtForPersonalVisit = nil
+                appModel.navigate(to: .discover(.upcoming))
+            }
+            .presentationDetents([.fraction(0.72), .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
         }
@@ -363,9 +427,9 @@ struct CourtsView: View {
     private func focusPreferredDistrict(on proxy: ScrollViewProxy) {
         isSearchFocused = false
 
-        if let preferredDistrictId {
+        if !preferredVisibleDistrictIDs.isEmpty {
             selectedCourtId = nil
-            focusedDistrictId = preferredDistrictId
+            focusedDistrictId = preferredVisibleDistrictIDs[0]
             mapFocusRevision += 1
         }
 
@@ -427,6 +491,14 @@ struct CourtsView: View {
         }
     }
 
+    private func presentPersonalVisitComposer(for court: Court) {
+        selectedCourtForDetail = nil
+        AppHaptics.impact(.medium)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            selectedCourtForPersonalVisit = court
+        }
+    }
+
     private func presentPlayerProposal(to player: DiscoverUser, at court: Court) {
         AppHaptics.impact(.medium)
         Task {
@@ -475,8 +547,9 @@ struct CourtsView: View {
     private func searchableText(for court: Court) -> String {
         [
             court.name,
+            court.city,
             court.address,
-            court.nearestMetroName,
+            court.metroDisplayName,
             localizedDistrictName(court.district),
             court.supportedSports?.map { [$0.title, $0.rawValue] }.flatMap { $0 }.joined(separator: " ")
         ]
@@ -498,7 +571,7 @@ struct CourtsView: View {
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
-                                Text(court.nearestMetroName ?? localizedDistrictName(court.district) ?? court.address)
+                                Text(court.metroDisplayName ?? localizedDistrictName(court.district) ?? court.address)
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(.white.opacity(0.5))
                                     .lineLimit(1)
@@ -541,8 +614,11 @@ struct CourtsView: View {
         } label: {
             HStack(spacing: 8) {
                 if let sport {
-                    Image(systemName: sportSymbolName(for: sport))
-                        .font(.system(size: 12, weight: .bold))
+                    SportIconView(
+                        sport: sport,
+                        color: isSelected ? .black : .white,
+                        size: 14
+                    )
                 }
                 Text(title)
                     .font(.subheadline.weight(.semibold))
@@ -591,6 +667,7 @@ struct CourtsView: View {
                     courts: mapPreviewCourts,
                     focusedCourt: focusedCourt,
                     focusedDistrictID: focusedDistrictId,
+                    highlightedDistrictIDs: focusedDistrictId == nil ? [] : preferredVisibleDistrictIDs,
                     focusRevision: mapFocusRevision,
                     onSelectCourt: { courtId in
                         selectedCourtId = courtId
@@ -660,7 +737,8 @@ struct CourtsView: View {
 
         if let focusedDistrictId,
            let area = districtAreasByID[focusedDistrictId.lowercased()] {
-            return area.label
+            let labels = preferredVisibleDistrictIDs.compactMap { districtAreasByID[$0]?.label }
+            return labels.isEmpty ? area.label : labels.prefix(3).joined(separator: ", ")
         }
 
         return "Санкт-Петербург"
@@ -728,10 +806,12 @@ struct CourtsView: View {
                     Spacer(minLength: 6)
 
                     VStack(alignment: .trailing, spacing: 5) {
-                        if let distance = court.distanceLabel {
-                            Text(distance)
+                        if let access = courtAccessLabel(court) {
+                            Text(access)
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.62))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.trailing)
                         }
                         if let rating = court.rating {
                             HStack(spacing: 4) {
@@ -746,12 +826,12 @@ struct CourtsView: View {
                     }
                 }
 
-                Label(court.nearestMetroName ?? localizedDistrictName(court.district) ?? "Метро не указано", systemImage: "mappin.and.ellipse")
+                Label(court.metroDisplayName ?? localizedDistrictName(court.district) ?? "Метро не указано", systemImage: "mappin.and.ellipse")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(1)
 
-                Text(court.address)
+                Text(court.displayAddress)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .lineLimit(2)
@@ -1045,9 +1125,11 @@ struct CourtImageTile: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: sportSymbolName(for: court.primarySport ?? .tennis))
-                .font(.system(size: size * 0.32, weight: .bold))
-                .foregroundStyle(.white.opacity(0.84))
+            SportIconView(
+                sport: court.primarySport ?? .tennis,
+                color: .white.opacity(0.84),
+                size: size * 0.34
+            )
         }
     }
 }
@@ -1055,9 +1137,11 @@ struct CourtImageTile: View {
 private struct CourtDetailSheet: View {
     let court: Court
     let isSaved: Bool
+    let accessLabel: String?
     let onToggleSave: () -> Void
     let onToggleMembership: () async -> Void
     let onProposeGame: () -> Void
+    let onPlanPersonalVisit: () -> Void
     let onProposeToPlayer: (DiscoverUser) -> Void
     @Environment(\.openURL) private var openURL
     @State private var isUpdatingMembership = false
@@ -1087,6 +1171,7 @@ private struct CourtDetailSheet: View {
                     playersBlock
                     sportsBlock
                     amenitiesBlock
+                    personalVisitButton
                     proposeButton
                 }
                 .padding(.horizontal, 18)
@@ -1163,20 +1248,20 @@ private struct CourtDetailSheet: View {
                 .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
 
             Label(
-                [court.nearestMetroName, court.distanceLabel].compactMap { $0 }.joined(separator: " · "),
+                [court.metroDisplayName, accessLabel ?? court.distanceLabel].compactMap { $0 }.joined(separator: " · "),
                 systemImage: "mappin.and.ellipse"
             )
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(.white.opacity(0.72))
 
-            Text(court.address)
+            Text(court.displayAddress)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.56))
         }
     }
 
     private var actionGrid: some View {
-        HStack(spacing: 10) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             CourtDetailActionButton(
                 title: "Позвонить",
                 subtitle: court.phone ?? "Нет номера",
@@ -1188,11 +1273,29 @@ private struct CourtDetailSheet: View {
 
             CourtDetailActionButton(
                 title: "Забронировать",
-                subtitle: court.websiteHostLabel ?? "Сайт не указан",
-                icon: "globe",
+                subtitle: court.bookingHostLabel ?? "Нет онлайн-брони",
+                icon: "calendar.badge.plus",
                 isEnabled: court.bookingLinkURL != nil
             ) {
                 open(court.bookingLinkURL)
+            }
+
+            CourtDetailActionButton(
+                title: "Сайт",
+                subtitle: court.websiteHostLabel ?? "Не указан",
+                icon: "globe",
+                isEnabled: court.websiteLinkURL != nil
+            ) {
+                open(court.websiteLinkURL)
+            }
+
+            CourtDetailActionButton(
+                title: court.messengerTitle,
+                subtitle: court.messengerSubtitle,
+                icon: "paperplane.fill",
+                isEnabled: court.messengerLinkURL != nil
+            ) {
+                open(court.messengerLinkURL)
             }
 
             CourtDetailActionButton(
@@ -1431,9 +1534,7 @@ private struct CourtDetailSheet: View {
                             .foregroundStyle(.white)
 
                         HStack(spacing: 10) {
-                            Image(systemName: sportSymbolName(for: primarySport))
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(AppTheme.court)
+                            SportIconView(sport: primarySport, color: AppTheme.court, size: 20)
                                 .frame(width: 42, height: 42)
                                 .background(Color.white.opacity(0.08), in: Circle())
 
@@ -1494,9 +1595,11 @@ private struct CourtDetailSheet: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], spacing: 12) {
                 ForEach((court.supportedSports ?? [.tennis])) { sport in
                     HStack(spacing: 10) {
-                        Image(systemName: sportSymbolName(for: sport))
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                        SportIconView(
+                            sport: sport,
+                            color: Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255),
+                            size: 18
+                        )
                             .frame(width: 36, height: 36)
                             .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.14), in: Circle())
                         Text(sport.title)
@@ -1558,6 +1661,43 @@ private struct CourtDetailSheet: View {
         .buttonStyle(.plain)
     }
 
+    private var personalVisitButton: some View {
+        Button {
+            onPlanPersonalVisit()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "figure.run.circle.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
+                    .frame(width: 52, height: 52)
+                    .background(Color.white.opacity(0.08), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Запланировать визит")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Без поиска игроков: тренировка, зал или индивидуальная игра.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.28), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func open(_ url: URL?) {
         guard let url else { return }
         openURL(url)
@@ -1573,6 +1713,274 @@ private struct CourtDetailSheet: View {
         if lowercased.contains("wi") { return "wifi" }
         if lowercased.contains("арен") { return "tennis.racket" }
         return "checkmark.circle"
+    }
+}
+
+private struct PersonalActivityComposerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+
+    let court: Court
+    let onCreated: () -> Void
+
+    @State private var selectedSport: Sport
+    @State private var selectedDate: Date
+    @State private var selectedTime = "09:00"
+    @State private var durationMinutes: Int
+    @State private var comment = ""
+    @State private var isSaving = false
+
+    private var availableSports: [Sport] {
+        let sports = court.supportedSports ?? []
+        return sports.isEmpty ? [.tennis] : sports
+    }
+
+    private var quickTimes: [String] {
+        stride(from: 9 * 60, through: 23 * 60 + 30, by: 30)
+            .map { minutes in
+                String(format: "%02d:%02d", minutes / 60, minutes % 60)
+            }
+    }
+
+    init(court: Court, initialSport: Sport?, onCreated: @escaping () -> Void) {
+        self.court = court
+        self.onCreated = onCreated
+        let sports = court.supportedSports ?? []
+        let resolvedSport = initialSport.flatMap { sports.isEmpty || sports.contains($0) ? $0 : nil } ?? sports.first ?? .tennis
+        _selectedSport = State(initialValue: resolvedSport)
+        _durationMinutes = State(initialValue: resolvedSport.defaultDurationMinutes)
+        _selectedDate = State(initialValue: Self.defaultVisitDate())
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    courtBlock
+                    sportSection
+                    dateSection
+                    timeSection
+                    durationSection
+                    commentSection
+                    saveButton
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 34)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+            Text("Личный визит")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+            Spacer()
+            Color.clear.frame(width: 40, height: 40)
+        }
+    }
+
+    private var courtBlock: some View {
+        HStack(spacing: 14) {
+            CourtImageTile(court: court, size: 72)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(court.name)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Text([court.metroDisplayName, localizedDistrictName(court.district)].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.court)
+                    .lineLimit(2)
+                Text(court.displayAddress)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .lineLimit(2)
+            }
+        }
+        .padding(14)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private var sportSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Что планируете?")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(availableSports) { sport in
+                        let selected = selectedSport == sport
+                        Button {
+                            selectedSport = sport
+                            durationMinutes = sport.defaultDurationMinutes
+                            AppHaptics.selection()
+                        } label: {
+                            HStack(spacing: 8) {
+                                SportIconView(sport: sport, color: selected ? .black : .white, size: 15)
+                                Text(sport.title)
+                            }
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(selected ? .black : .white)
+                            .padding(.horizontal, 14)
+                            .frame(height: 42)
+                            .background(selected ? AppTheme.court : Color.white.opacity(0.08), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var dateSection: some View {
+        FieldShell(title: "Дата") {
+            DatePicker(
+                "",
+                selection: $selectedDate,
+                in: Date()...,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .tint(AppTheme.court)
+        }
+    }
+
+    private var timeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Время")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(quickTimes, id: \.self) { time in
+                        let selected = selectedTime == time
+                        Button {
+                            selectedTime = time
+                            AppHaptics.selection()
+                        } label: {
+                            Text(time)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(selected ? .black : .white)
+                                .frame(width: 84, height: 48)
+                                .background(selected ? AppTheme.court : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(selected ? AppTheme.court.opacity(0.42) : Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var durationSection: some View {
+        FieldShell(title: "Длительность") {
+            Stepper(value: $durationMinutes, in: 15 ... 360, step: 15) {
+                Text("\(durationMinutes) мин")
+                    .font(.headline)
+            }
+        }
+    }
+
+    private var commentSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Заметка")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+            TextField("Например: тренировка ног, дорожка 40 минут", text: $comment, axis: .vertical)
+                .lineLimit(3 ... 5)
+                .textInputAutocapitalization(.sentences)
+                .padding(14)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var saveButton: some View {
+        Button {
+            Task { await save() }
+        } label: {
+            HStack(spacing: 10) {
+                if isSaving {
+                    ProgressView()
+                        .tint(.white)
+                }
+                Text(isSaving ? "Сохраняем..." : "Запланировать визит")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
+        .disabled(isSaving)
+    }
+
+    private func save() async {
+        guard !isSaving else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            _ = try await appModel.repository.createPersonalActivity(
+                PersonalActivityDraft(
+                    courtId: court.id,
+                    sport: selectedSport,
+                    scheduledAt: combinedDateTime,
+                    durationMinutes: durationMinutes,
+                    comment: comment
+                )
+            )
+            AppHaptics.notification(.success)
+            onCreated()
+            dismiss()
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            appModel.present(error: error)
+        }
+    }
+
+    private var combinedDateTime: Date {
+        let calendar = Calendar.current
+        let timeParts = selectedTime.split(separator: ":").compactMap { Int($0) }
+        return calendar.date(
+            bySettingHour: timeParts.first ?? 9,
+            minute: timeParts.dropFirst().first ?? 0,
+            second: 0,
+            of: selectedDate
+        ) ?? selectedDate
+    }
+
+    private static func defaultVisitDate() -> Date {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date().addingTimeInterval(24 * 60 * 60)
+        return Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
     }
 }
 
@@ -1803,7 +2211,7 @@ private final class CourtAnnotation: NSObject, MKAnnotation {
         self.court = court
         coordinate = court.coordinate
         title = court.name
-        subtitle = [localizedDistrictName(court.district), court.address]
+        subtitle = [localizedDistrictName(court.district), court.displayAddress]
             .compactMap { $0 }
             .joined(separator: " · ")
         super.init()
@@ -1838,6 +2246,57 @@ private final class SportCourtAnnotationView: MKAnnotationView {
 
         image = sportMarkerImage(for: annotation.court.primarySport)
     }
+}
+
+private final class UserLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var coordinate: CLLocationCoordinate2D?
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    func requestCurrentLocation() {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        default:
+            break
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        coordinate = locations.last?.coordinate
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+}
+
+func haversineDistanceKm(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) -> Double {
+    let radius = 6_371.0
+    let lat1 = start.latitude * .pi / 180
+    let lat2 = end.latitude * .pi / 180
+    let deltaLat = (end.latitude - start.latitude) * .pi / 180
+    let deltaLon = (end.longitude - start.longitude) * .pi / 180
+    let a = sin(deltaLat / 2) * sin(deltaLat / 2)
+        + cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2)
+    let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return radius * c
 }
 
 struct DistrictMapArea {
@@ -2010,28 +2469,7 @@ func sportMarkerImage(for sport: Sport?) -> UIImage? {
 }
 
 func sportSymbolName(for sport: Sport) -> String {
-    switch sport {
-    case .tableTennis:
-        return "circle.grid.cross"
-    case .tennis:
-        return "tennis.racket"
-    case .padel:
-        return "sportscourt"
-    case .squash:
-        return "figure.racquetball"
-    case .badminton:
-        return "bird"
-    case .volleyball:
-        return "volleyball"
-    case .fitness:
-        return "dumbbell"
-    case .boxing:
-        return "figure.boxing"
-    case .yoga:
-        return "figure.mind.and.body"
-    case .football:
-        return "soccerball"
-    }
+    sport.appSystemIconName
 }
 
 private func sportTint(for sport: Sport?) -> Color {
@@ -2054,6 +2492,10 @@ private func sportUIColor(for sport: Sport?) -> UIColor {
         return UIColor(red: 0.24, green: 0.58, blue: 0.96, alpha: 1)
     case .football:
         return UIColor(red: 0.19, green: 0.63, blue: 0.37, alpha: 1)
+    case .running:
+        return UIColor(red: 0.13, green: 0.71, blue: 0.49, alpha: 1)
+    case .supboard:
+        return UIColor(red: 0.13, green: 0.58, blue: 0.78, alpha: 1)
     case .volleyball:
         return UIColor(red: 0.71, green: 0.53, blue: 0.18, alpha: 1)
     case .fitness:
@@ -2079,7 +2521,23 @@ extension Court {
             .joined(separator: " · ")
     }
 
+    var displayAddress: String {
+        guard let city, !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return address
+        }
+
+        if address.localizedCaseInsensitiveContains(city) {
+            return address
+        }
+
+        return "\(city), \(address)"
+    }
+
     var displayTags: [String] {
+        if !amenities.isEmpty {
+            return Array(amenities.prefix(8))
+        }
+
         var tags: [String] = []
 
         if let workingHours, !workingHours.isEmpty {
@@ -2101,8 +2559,12 @@ extension Court {
     }
 
     var detailDescription: String {
+        if let about, !about.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return about
+        }
+
         let sports = sportsTitle(fallback: nil).lowercased()
-        let place = nearestMetroName ?? localizedDistrictName(district) ?? "Санкт-Петербурге"
+        let place = metroDisplayName ?? localizedDistrictName(district) ?? "Санкт-Петербурге"
         return "Клуб для игры в \(sports) рядом с \(place). Контакты и ссылка на бронирование вынесены выше, чтобы быстро связаться с клубом и уточнить свободное время."
     }
 
@@ -2128,17 +2590,47 @@ extension Court {
 
     var bookingLinkURL: URL? {
         guard let bookingUrl, let url = URL(string: bookingUrl) else {
-            return websiteLinkURL
+            return nil
         }
         return url
     }
 
-    var websiteHostLabel: String? {
-        if let bookingHost = bookingLinkURL?.host, !bookingHost.isEmpty {
-            return bookingHost.replacingOccurrences(of: "www.", with: "")
+    var messengerLinkURL: URL? {
+        guard let messengerUrl, let url = URL(string: messengerUrl) else {
+            return nil
+        }
+        return url
+    }
+
+    var messengerTitle: String {
+        switch messengerType?.lowercased() {
+        case "telegram", "tg":
+            return "Telegram"
+        case "max":
+            return "МАКС"
+        default:
+            return "Мессенджер"
+        }
+    }
+
+    var messengerSubtitle: String {
+        guard messengerLinkURL != nil else {
+            return "Не указан"
         }
 
+        return "Написать"
+    }
+
+    var websiteHostLabel: String? {
         guard let host = websiteLinkURL?.host, !host.isEmpty else {
+            return nil
+        }
+
+        return host.replacingOccurrences(of: "www.", with: "")
+    }
+
+    var bookingHostLabel: String? {
+        guard let host = bookingLinkURL?.host, !host.isEmpty else {
             return nil
         }
 

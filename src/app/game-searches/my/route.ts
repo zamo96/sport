@@ -18,9 +18,19 @@ export async function GET() {
     await Promise.all(pairIds.map((pair) => syncRegularPairOccurrences(prisma, pair.id)));
     const gameSearches = await prisma.gameSearch.findMany({
       where: {
-        createdByUserId: user.id
+        OR: [
+          { createdByUserId: user.id },
+          {
+            responses: {
+              some: {
+                responderUserId: user.id
+              }
+            }
+          }
+        ]
       },
       include: {
+        createdByUser: true,
         preferredCourt: true,
         slotProposals: {
           where: {

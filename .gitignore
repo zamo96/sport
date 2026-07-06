@@ -11,6 +11,7 @@ public/uploads
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
+~$*.xlsx
 .artifacts/
 .derived-ios/
 config/*.local.json

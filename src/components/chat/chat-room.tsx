@@ -53,7 +53,7 @@ type ChatRoomProps = {
     proposedCourt: {
       name: string;
       address: string;
-    };
+    } | null;
   }>;
   showLatestRequest?: boolean;
 };

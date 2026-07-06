@@ -25,6 +25,8 @@ enum Sport {
   boxing
   yoga
   football
+  running
+  supboard
 }
 
 enum PlayFormat {
@@ -43,6 +45,13 @@ enum Surface {
 enum CourtSetting {
   indoor
   outdoor
+}
+
+enum CourtStatus {
+  active
+  needs_review
+  hidden
+  archived
 }
 
 enum SwipeAction {
@@ -66,6 +75,30 @@ enum GameRequestStatus {
 enum GameRequestOutcome {
   played
   not_played
+}
+
+enum GameReportStatus {
+  pending
+  confirmed
+  disputed
+}
+
+enum GameReportConfirmationStatus {
+  pending
+  confirmed
+  disputed
+}
+
+enum GameReportVisibility {
+  profile
+  participants
+  private
+}
+
+enum PersonalActivityStatus {
+  planned
+  completed
+  canceled
 }
 
 enum GameSearchStatus {
@@ -148,6 +181,7 @@ model Metro {
   name      String  @unique
   city      String
   courts    Court[] @relation("CourtNearestMetro")
+  courtLinks CourtMetro[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -173,6 +207,8 @@ model User {
   preferredSurface     Surface       @default(any)
   bio                  String?
   avatarUrl            String?
+  profilePhotoUrls     Json?
+  profileVideoUrls     Json?
   searchRadiusKm       Int           @default(20)
   availableDays        Json?
   availableTimeRanges  Json?
@@ -197,6 +233,7 @@ model User {
   matchesAsUser2       Match[]       @relation("MatchUser2")
   sessions             Session[]
   authCodes            AuthCode[]
+  agreementAcceptances UserAgreementAcceptance[]
   sentMessages         ChatMessage[]
   gameRequestsCreated  GameRequest[] @relation("GameRequestCreator")
   gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
@@ -207,10 +244,41 @@ model User {
   regularPairsCreated  RegularPair[] @relation("RegularPairCreator")
   regularPairsPartner  RegularPair[] @relation("RegularPairPartner")
   regularPairOccurrenceConfirmations RegularPairOccurrenceConfirmation[]
+  gameReportsCreated   GameReport[] @relation("GameReportCreator")
+  gameReportConfirmations GameReportConfirmation[]
+  personalActivities   PersonalActivity[]
   pushDevices          PushDevice[]
   courtMemberships     UserCourt[]
   blockedUsers         Block[]       @relation("BlockerUser")
   blockingUsers        Block[]       @relation("BlockedUser")
+}
+
+model DiscoverImpression {
+  id              String   @id @default(cuid())
+  viewerUserId    String
+  candidateUserId String
+  source          String   @default("discover")
+  rank            Int
+  baseScore       Float?
+  finalScore      Float?
+  createdAt       DateTime @default(now())
+
+  @@index([viewerUserId, createdAt])
+  @@index([candidateUserId, createdAt])
+  @@index([viewerUserId, candidateUserId, createdAt])
+  @@index([source, createdAt])
+}
+
+model HotSearchDigestDelivery {
+  id             String   @id @default(cuid())
+  userId         String
+  slotKey        String
+  searchIds      Json
+  deliveredCount Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, slotKey])
+  @@index([createdAt])
 }
 
 model Court {
@@ -224,16 +292,31 @@ model Court {
   locationLng     Float
   surface         Surface
   setting         CourtSetting
+  status          CourtStatus   @default(active)
   supportedSports Json?
   phone           String?
   workingHours    String?
   yandexMapsUrl   String?
   websiteUrl      String?
+  about           String?
+  amenities       Json?
+  messengerType   String?
+  messengerUrl    String?
   photoUrl        String?
   photoUrls       Json?
   priceRange      String
   rating          Float?
   sourceType      String
+  sourceExternalId String?
+  sourceUrl       String?
+  normalizedName  String?
+  normalizedAddress String?
+  syncHash        String?
+  lastCheckedAt   DateTime?
+  lastSeenAt      DateTime?
+  websiteContentHash String?
+  websiteLastCheckedAt DateTime?
+  websiteLastChangedAt DateTime?
   bookingUrl      String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -245,10 +328,110 @@ model Court {
   gameSearchSlotOptions GameSearchSlotOption[]
   regularPairs    RegularPair[]
   regularPairOccurrences RegularPairOccurrence[]
+  personalActivities PersonalActivity[]
   members         UserCourt[]
+  metroLinks      CourtMetro[]
+  syncChanges     CourtChangeProposal[]
+  websiteChecks   CourtWebsiteCheck[]
 
   @@index([district])
   @@index([nearestMetroId])
+  @@index([status, city])
+  @@index([sourceType, sourceExternalId])
+  @@index([normalizedName, normalizedAddress, city])
+}
+
+model CourtSyncRun {
+  id             String   @id @default(cuid())
+  sourceType     String
+  city           String
+  status         String   @default("running")
+  startedAt      DateTime @default(now())
+  finishedAt     DateTime?
+  fetchedCount   Int      @default(0)
+  createdCount   Int      @default(0)
+  updatedCount   Int      @default(0)
+  unchangedCount Int      @default(0)
+  proposedCount  Int      @default(0)
+  hiddenCount    Int      @default(0)
+  websiteCheckedCount Int @default(0)
+  websiteChangedCount Int @default(0)
+  websiteFailedCount Int @default(0)
+  errorMessage   String?
+  metadata       Json?
+  changes        CourtChangeProposal[]
+  websiteChecks   CourtWebsiteCheck[]
+
+  @@index([sourceType, startedAt])
+  @@index([city, startedAt])
+  @@index([status, startedAt])
+}
+
+model CourtChangeProposal {
+  id               String   @id @default(cuid())
+  runId            String?
+  courtId          String?
+  sourceType       String
+  sourceExternalId String?
+  action           String
+  status           String   @default("pending")
+  confidence       Float    @default(0)
+  reason           String
+  before           Json?
+  after            Json
+  createdAt        DateTime @default(now())
+  appliedAt        DateTime?
+  run              CourtSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  court            Court?   @relation(fields: [courtId], references: [id], onDelete: SetNull)
+
+  @@index([runId, status])
+  @@index([courtId, status])
+  @@index([sourceType, sourceExternalId])
+  @@index([status, createdAt])
+}
+
+model CourtWebsiteCheck {
+  id                  String   @id @default(cuid())
+  runId               String?
+  courtId             String
+  url                 String
+  status              String
+  checkedAt           DateTime @default(now())
+  httpStatus          Int?
+  contentHash         String?
+  title               String?
+  description         String?
+  detectedPhones      Json?
+  detectedBookingUrls Json?
+  closureSignals      Json?
+  analystProvider     String?
+  analystModel        String?
+  analystStatus       String?
+  analystErrorMessage String?
+  screenshotStatus    String?
+  screenshotErrorMessage String?
+  changed             Boolean  @default(false)
+  errorMessage        String?
+  run                 CourtSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  court               Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status])
+  @@index([courtId, checkedAt])
+  @@index([status, checkedAt])
+}
+
+model CourtMetro {
+  id        String   @id @default(cuid())
+  courtId   String
+  metroId   String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  court     Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  metro     Metro    @relation(fields: [metroId], references: [id], onDelete: Cascade)
+
+  @@unique([courtId, metroId])
+  @@index([courtId, position])
+  @@index([metroId])
 }
 
 model UserCourt {
@@ -304,13 +487,15 @@ model GameRequest {
   regularPairOccurrenceId String?    @unique
   createdByUserId  String
   matchedUserId    String
-  proposedCourtId  String
+  proposedCourtId  String?
   proposedDatetime DateTime
   durationMinutes  Int?
   levelRangeMin    Int?
   levelRangeMax    Int?
   sport            Sport             @default(tennis)
   format           PlayFormat
+  runningRoute     String?
+  runningRoutePoints Json?
   comment          String?
   status           GameRequestStatus @default(pending)
   outcome          GameRequestOutcome?
@@ -323,8 +508,9 @@ model GameRequest {
   regularPairOccurrence RegularPairOccurrence? @relation(fields: [regularPairOccurrenceId], references: [id], onDelete: SetNull)
   createdByUser    User              @relation("GameRequestCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   matchedUser      User              @relation("GameRequestRecipient", fields: [matchedUserId], references: [id], onDelete: Cascade)
-  proposedCourt    Court             @relation(fields: [proposedCourtId], references: [id], onDelete: Restrict)
+  proposedCourt    Court?            @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
   messages         ChatMessage[]
+  report           GameReport?
 
   @@index([matchedUserId, status])
   @@index([createdByUserId, status])
@@ -346,11 +532,90 @@ model ChatMessage {
   @@index([gameRequestId, createdAt])
 }
 
+model GameReport {
+  id              String                   @id @default(cuid())
+  gameRequestId   String                   @unique
+  createdByUserId String
+  comment         String?
+  visibility      GameReportVisibility     @default(profile)
+  status          GameReportStatus         @default(pending)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  gameRequest     GameRequest              @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
+  createdByUser   User                     @relation("GameReportCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  photos          GameReportPhoto[]
+  confirmations   GameReportConfirmation[]
+
+  @@index([createdByUserId, createdAt])
+  @@index([status, createdAt])
+}
+
+model GameReportPhoto {
+  id        String     @id @default(cuid())
+  reportId  String
+  url       String
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+  report    GameReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, position])
+}
+
+model GameReportConfirmation {
+  id        String                       @id @default(cuid())
+  reportId  String
+  userId    String
+  status    GameReportConfirmationStatus @default(pending)
+  createdAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
+  report    GameReport                   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, userId])
+  @@index([userId, status])
+}
+
+model PersonalActivity {
+  id              String                 @id @default(cuid())
+  userId          String
+  courtId         String
+  sport           Sport                  @default(tennis)
+  scheduledAt     DateTime
+  durationMinutes Int?
+  comment         String?
+  status          PersonalActivityStatus @default(planned)
+  reportComment   String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  court           Court                  @relation(fields: [courtId], references: [id], onDelete: Restrict)
+  photos          PersonalActivityPhoto[]
+
+  @@index([userId, scheduledAt])
+  @@index([courtId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+model PersonalActivityPhoto {
+  id         String           @id @default(cuid())
+  activityId String
+  url        String
+  position   Int              @default(0)
+  createdAt  DateTime         @default(now())
+  activity   PersonalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId, position])
+}
+
 model GameSearch {
   id                  String               @id @default(cuid())
   inviteSlug          String?              @unique
   createdByUserId     String
   preferredCourtId    String?
+  customVenueTitle    String?
+  customVenueAddress  String?
+  runningRoute        String?
+  runningRoutePoints  Json?
   preferredDistricts  Json?
   scheduledCourtId    String?
   preferredDays       Json
@@ -550,6 +815,22 @@ model AuthCode {
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([email, createdAt])
+}
+
+model UserAgreementAcceptance {
+  id                         String   @id @default(cuid())
+  userId                     String
+  agreementKey               String
+  agreementVersion           String
+  personalDataConsentVersion String?
+  acceptedVia                String
+  acceptedAt                 DateTime @default(now())
+  ipAddress                  String?
+  userAgent                  String?
+  user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agreementKey, agreementVersion])
+  @@index([userId, agreementKey, acceptedAt])
 }
 
 model PushDevice {

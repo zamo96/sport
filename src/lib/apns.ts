@@ -20,6 +20,13 @@ type APNSConfig = {
   privateKey: string;
 };
 
+type PushDeviceTarget = {
+  id: string;
+  token: string;
+  bundleId: string;
+  environment: PushEnvironment;
+};
+
 let cachedAuthToken: { value: string; expiresAt: number } | null = null;
 
 function getAPNSConfig(): APNSConfig | null {
@@ -136,6 +143,78 @@ function parseAPNSFailureReason(body: string, fallback: string) {
   }
 }
 
+function alternateAPNSEnvironment(environment: PushEnvironment): PushEnvironment {
+  return environment === "production" ? "development" : "production";
+}
+
+function isEnvironmentMismatchReason(reason: string) {
+  return reason.includes("BadDeviceToken") || reason.includes("DeviceTokenNotForTopic");
+}
+
+function shouldDeactivateAPNSDevice(status: number, reason: string) {
+  return status === 410 || reason.includes("BadDeviceToken") || reason.includes("Unregistered");
+}
+
+async function deliverAPNSToDevice(
+  device: PushDeviceTarget,
+  environment: PushEnvironment,
+  payload: PushPayload
+) {
+  return new Promise<{ status: number; body: string; environment: PushEnvironment }>((resolve, reject) => {
+    const authToken = getAPNSAuthToken();
+    if (!authToken) {
+      reject(new Error("APNs не настроен: отсутствуют TEAM_ID / KEY_ID / PRIVATE_KEY"));
+      return;
+    }
+
+    const client = http2Connect(getAPNSHost(environment));
+    client.on("error", reject);
+
+    const request = client.request({
+      [http2Constants.HTTP2_HEADER_SCHEME]: "https",
+      [http2Constants.HTTP2_HEADER_METHOD]: "POST",
+      [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${device.token}`,
+      authorization: `bearer ${authToken}`,
+      "apns-topic": device.bundleId,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "apns-id": randomUUID()
+    });
+
+    const apnsPayload = JSON.stringify({
+      aps: {
+        alert: {
+          title: payload.title,
+          body: payload.body
+        },
+        sound: payload.sound === false ? undefined : "default"
+      },
+      href: payload.href
+    });
+
+    let responseBody = "";
+    let responseStatus = 500;
+
+    request.setEncoding("utf8");
+    request.on("response", (headers) => {
+      responseStatus = Number(headers[http2Constants.HTTP2_HEADER_STATUS] ?? 500);
+    });
+    request.on("data", (chunk) => {
+      responseBody += chunk;
+    });
+    request.on("error", (error) => {
+      client.close();
+      reject(error);
+    });
+    request.on("end", () => {
+      client.close();
+      resolve({ status: responseStatus, body: responseBody, environment });
+    });
+
+    request.end(apnsPayload);
+  });
+}
+
 export async function sendPushToUser(payload: PushPayload) {
   await publishRealtimeEvent(payload.userId, {
     type: "notification",
@@ -169,64 +248,25 @@ export async function sendPushToUser(payload: PushPayload) {
   await Promise.all(
     devices.map(async (device) => {
       try {
-        const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-          const authToken = getAPNSAuthToken();
-          if (!authToken) {
-            reject(new Error("APNs не настроен: отсутствуют TEAM_ID / KEY_ID / PRIVATE_KEY"));
-            return;
+        let response = await deliverAPNSToDevice(device, device.environment, payload);
+        let reason = parseAPNSFailureReason(response.body, `APNs HTTP ${response.status}`);
+
+        if (isEnvironmentMismatchReason(reason)) {
+          const fallbackEnvironment = alternateAPNSEnvironment(device.environment);
+          const fallbackResponse = await deliverAPNSToDevice(device, fallbackEnvironment, payload);
+          const fallbackReason = parseAPNSFailureReason(fallbackResponse.body, `APNs HTTP ${fallbackResponse.status}`);
+
+          if (fallbackResponse.status >= 200 && fallbackResponse.status < 300) {
+            response = fallbackResponse;
+            reason = fallbackReason;
           }
-
-          const client = http2Connect(getAPNSHost(device.environment));
-          client.on("error", reject);
-
-          const request = client.request({
-            [http2Constants.HTTP2_HEADER_SCHEME]: "https",
-            [http2Constants.HTTP2_HEADER_METHOD]: "POST",
-            [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${device.token}`,
-            authorization: `bearer ${authToken}`,
-            "apns-topic": device.bundleId,
-            "apns-push-type": "alert",
-            "apns-priority": "10",
-            "apns-id": randomUUID()
-          });
-
-          const apnsPayload = JSON.stringify({
-            aps: {
-              alert: {
-                title: payload.title,
-                body: payload.body
-              },
-              sound: payload.sound === false ? undefined : "default"
-            },
-            href: payload.href
-          });
-
-          let responseBody = "";
-          let responseStatus = 500;
-
-          request.setEncoding("utf8");
-          request.on("response", (headers) => {
-            responseStatus = Number(headers[http2Constants.HTTP2_HEADER_STATUS] ?? 500);
-          });
-          request.on("data", (chunk) => {
-            responseBody += chunk;
-          });
-          request.on("error", (error) => {
-            client.close();
-            reject(error);
-          });
-          request.on("end", () => {
-            client.close();
-            resolve({ status: responseStatus, body: responseBody });
-          });
-
-          request.end(apnsPayload);
-        });
+        }
 
         if (response.status >= 200 && response.status < 300) {
           await prisma.pushDevice.update({
             where: { id: device.id },
             data: {
+              environment: response.environment,
               lastDeliveredAt: new Date(),
               lastFailureAt: null,
               lastFailureReason: null
@@ -235,13 +275,12 @@ export async function sendPushToUser(payload: PushPayload) {
           return;
         }
 
-        const reason = parseAPNSFailureReason(response.body, `APNs HTTP ${response.status}`);
-        const shouldDeactivate = response.status === 410 || reason.includes("BadDeviceToken") || reason.includes("Unregistered");
+        const shouldDeactivate = shouldDeactivateAPNSDevice(response.status, reason);
 
         console.error("APNs push failed", {
           userId: payload.userId,
           deviceId: device.id,
-          environment: device.environment,
+          environment: response.environment,
           bundleId: device.bundleId,
           status: response.status,
           reason

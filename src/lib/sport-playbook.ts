@@ -129,6 +129,30 @@ const PLAYBOOK: Record<Sport, SportPlaybookEntry> = {
       both: 1
     },
     maxPlayersNeeded: 8
+  },
+  running: {
+    sport: "running",
+    allowedFormats: [PlayFormat.singles, PlayFormat.both],
+    defaultFormat: PlayFormat.singles,
+    defaultDurationMinutes: 60,
+    defaultPlayersNeededByFormat: {
+      singles: 1,
+      doubles: 1,
+      both: 1
+    },
+    maxPlayersNeeded: 8
+  },
+  supboard: {
+    sport: "supboard",
+    allowedFormats: [PlayFormat.singles, PlayFormat.both],
+    defaultFormat: PlayFormat.singles,
+    defaultDurationMinutes: 60,
+    defaultPlayersNeededByFormat: {
+      singles: 1,
+      doubles: 1,
+      both: 1
+    },
+    maxPlayersNeeded: 8
   }
 };
 

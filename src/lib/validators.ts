@@ -1,10 +1,13 @@
 import {
   GameRequestOutcome,
+  GameReportConfirmationStatus,
+  GameReportVisibility,
   Gender,
   GameRequestStatus,
   GameSearchResponseStatus,
   GameSearchType,
   HotSearchWindow,
+  PersonalActivityStatus,
   PlayFormat,
   Sport,
   Surface,
@@ -12,10 +15,12 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 
-import { DAY_OPTIONS, DEFAULT_CITY, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { LEGAL_ACCEPTANCE_ERROR, USER_AGREEMENT_VERSION } from "@/lib/legal-contract";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 
 const dayEnum = z.enum(DAY_OPTIONS);
+const cityEnum = z.enum(AVAILABLE_CITIES);
 const timeRangeEnum = z.enum(TIME_RANGE_OPTIONS);
 const exactTimeSlotSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Укажи время в формате ЧЧ:ММ");
 const pairedTimeSlotSchema = z
@@ -71,13 +76,22 @@ function parseAvailabilityByDayValue(value: unknown) {
   return value;
 }
 
+const userAgreementAcceptanceSchema = z.object({
+  accepted: z.boolean().refine((value) => value, LEGAL_ACCEPTANCE_ERROR),
+  version: z
+    .preprocess((value) => (typeof value === "string" ? value.trim() : ""), z.string().min(1, "Нужно принять актуальную редакцию пользовательского соглашения"))
+    .refine((value) => value === USER_AGREEMENT_VERSION, "Нужно принять актуальную редакцию пользовательского соглашения")
+});
+
 export const requestLinkSchema = z.object({
-  email: z.string().email().transform((value) => value.toLowerCase())
+  email: z.string().email().transform((value) => value.toLowerCase()),
+  userAgreement: userAgreementAcceptanceSchema
 });
 
 export const verifySchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
-  code: z.string().length(6)
+  code: z.string().length(6),
+  userAgreement: userAgreementAcceptanceSchema
 });
 
 export const appleAuthSchema = z.object({
@@ -88,14 +102,15 @@ export const appleAuthSchema = z.object({
     .transform((value) => value.toLowerCase())
     .optional(),
   givenName: z.string().trim().max(80).optional(),
-  familyName: z.string().trim().max(80).optional()
+  familyName: z.string().trim().max(80).optional(),
+  userAgreement: userAgreementAcceptanceSchema
 });
 
 export const updateMeSchema = z.object({
   name: z.string().min(2).max(40),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  city: z.literal(DEFAULT_CITY),
+  city: cityEnum,
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
   tennisLevel: z.number().int().min(1).max(10),
@@ -126,6 +141,8 @@ export const updateMeSchema = z.object({
     )
     .default({}),
   avatarUrl: z.string().max(300).optional().nullable(),
+  profilePhotoUrls: z.array(z.string().min(1).max(600)).max(6).optional(),
+  profileVideoUrls: z.array(z.string().min(1).max(600)).max(4).optional(),
   isLookingForGame: z.boolean().optional(),
   notificationMatches: z.boolean().optional(),
   notificationMessages: z.boolean().optional(),
@@ -137,7 +154,7 @@ export const guestOnboardingDraftSchema = z.object({
   name: z.string().min(2).max(40),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  city: z.literal(DEFAULT_CITY),
+  city: cityEnum,
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
@@ -172,7 +189,7 @@ export const discoverFiltersSchema = z.object({
   levelMin: z.coerce.number().int().min(1).max(10).optional(),
   levelMax: z.coerce.number().int().min(1).max(10).optional(),
   distanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: z.preprocess((value) => parseOptionalText(value), z.literal(DEFAULT_CITY).optional()),
+  city: z.preprocess((value) => parseOptionalText(value), cityEnum.optional()),
   gender: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Gender)).default([])),
   sport: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Sport)).default([])),
   format: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(PlayFormat)).default([])),
@@ -208,13 +225,13 @@ export const courtsQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   district: z.enum(DISTRICT_OPTIONS).optional(),
   maxDistanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: z.literal(DEFAULT_CITY).optional()
+  city: cityEnum.optional()
 });
 
 export const createGameRequestSchema = z
   .object({
     matchId: z.string().min(1),
-    proposedCourtId: z.string().min(1),
+    proposedCourtId: z.string().min(1).nullable().optional(),
     proposedDatetime: z.string().datetime(),
     durationMinutes: z.number().int().min(30).max(240).optional().nullable(),
     levelRangeMin: z.number().int().min(1).max(10).optional().nullable(),
@@ -245,7 +262,7 @@ export const updateGameRequestSchema = z
   .object({
     status: z.nativeEnum(GameRequestStatus).optional(),
     outcome: z.nativeEnum(GameRequestOutcome).nullable().optional(),
-    proposedCourtId: z.string().min(1).optional(),
+    proposedCourtId: z.string().min(1).nullable().optional(),
     proposedDatetime: z.string().datetime().optional(),
     durationMinutes: z.number().int().min(30).max(240).nullable().optional(),
     levelRangeMin: z.number().int().min(1).max(10).nullable().optional(),
@@ -309,10 +326,54 @@ export const shareGameRequestSchema = z.object({
   matchIds: z.array(z.string().min(1)).min(1).max(20)
 });
 
+export const createGameReportSchema = z.object({
+  photoUrls: z.array(z.string().min(1).max(600)).min(1).max(5),
+  comment: z.string().trim().max(240).optional().default(""),
+  visibility: z.nativeEnum(GameReportVisibility).optional().default(GameReportVisibility.profile)
+});
+
+export const updateGameReportConfirmationSchema = z.object({
+  status: z.nativeEnum(GameReportConfirmationStatus)
+});
+
+const runningRoutePointSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180)
+});
+
+export const createPersonalActivitySchema = z.object({
+  courtId: z.string().min(1),
+  sport: z.nativeEnum(Sport).default(Sport.tennis),
+  scheduledAt: z.string().datetime(),
+  durationMinutes: z.number().int().min(15).max(360).optional().nullable(),
+  comment: z.string().trim().max(240).optional().default("")
+}).superRefine((value, ctx) => {
+  if (!isFutureDateTime(value.scheduledAt)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["scheduledAt"],
+      message: "Выбери будущую дату и время"
+    });
+  }
+});
+
+export const updatePersonalActivitySchema = z.object({
+  scheduledAt: z.string().datetime().optional(),
+  durationMinutes: z.number().int().min(15).max(360).optional().nullable(),
+  comment: z.string().trim().max(240).optional(),
+  status: z.nativeEnum(PersonalActivityStatus).optional(),
+  reportComment: z.string().trim().max(240).optional().nullable(),
+  photoUrls: z.array(z.string().min(1).max(600)).max(8).optional()
+});
+
 export const createGameSearchSchema = z
   .object({
     inviteSlug: z.string().trim().min(6).max(120).optional().nullable(),
     preferredCourtId: z.string().min(1).optional().nullable(),
+    customVenueTitle: z.string().trim().max(100).optional().nullable(),
+    customVenueAddress: z.string().trim().max(240).optional().nullable(),
+    runningRoute: z.string().trim().max(500).optional().nullable(),
+    runningRoutePoints: z.array(runningRoutePointSchema).max(80).optional().nullable(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
     preferredTimeRanges: z.array(timePreferenceSchema).min(1),
@@ -393,6 +454,10 @@ export const updateGameSearchSchema = z
     scheduledAt: z.string().datetime().nullable().optional(),
     scheduledDurationMinutes: z.number().int().min(30).max(240).nullable().optional(),
     preferredCourtId: z.string().min(1).nullable().optional(),
+    customVenueTitle: z.string().trim().max(100).nullable().optional(),
+    customVenueAddress: z.string().trim().max(240).nullable().optional(),
+    runningRoute: z.string().trim().max(500).nullable().optional(),
+    runningRoutePoints: z.array(runningRoutePointSchema).max(80).nullable().optional(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).optional()),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).optional(),
     preferredTimeRanges: z.array(timePreferenceSchema).min(1).optional(),

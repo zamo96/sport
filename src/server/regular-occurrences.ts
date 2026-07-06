@@ -423,7 +423,7 @@ export async function updateRegularPairOccurrenceConfirmation(
       data: {
         matchId: updatedOccurrence.regularPair.matchId,
         senderUserId: updatedOccurrence.regularPair.createdByUserId,
-        text: `Ближайшая регулярная игра подтверждена: ${scheduleText} · ${createdGameRequest.proposedCourt.name}.`
+        text: `Ближайшая регулярная игра подтверждена: ${scheduleText} · ${createdGameRequest.proposedCourt?.name ?? "Место уточняется"}.`
       }
     });
 

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
           matchId: match.id,
           createdByUserId: user.id,
           matchedUserId,
-          proposedCourtId: body.proposedCourtId,
+          proposedCourtId: body.proposedCourtId ?? null,
           proposedDatetime: new Date(body.proposedDatetime),
           durationMinutes: body.durationMinutes ?? null,
           levelRangeMin: body.levelRangeMin ?? null,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       await sendPushToUser({
         userId: recipient.id,
         title: `Предложение игры от ${user.name ?? "игрока"}`,
-        body: `Подтверди: ${gameRequest.proposedCourt.name} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
+        body: `Подтверди: ${gameRequest.proposedCourt?.name ?? "Место уточняется"} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true
       });
