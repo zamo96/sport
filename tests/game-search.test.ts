@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isExpiredHotSearch, resolveHotSearchStartAt, resolveSearchDays, resolveSearchNextStep } from "@/lib/game-search";
+import {
+  canAcceptGameSearchResponse,
+  isExpiredHotSearch,
+  resolveHotSearchStartAt,
+  resolveSearchDays,
+  resolveSearchNextStep
+} from "@/lib/game-search";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
 
 describe("game search helpers", () => {
@@ -31,6 +37,14 @@ describe("game search helpers", () => {
     expect(isExpiredHotSearch("2026-03-17T10:01:00.000Z")).toBe(false);
 
     vi.useRealTimers();
+  });
+
+  it("accepts responses only while the search remains open", () => {
+    expect(canAcceptGameSearchResponse({ isActive: true, status: "active" })).toBe(true);
+    expect(canAcceptGameSearchResponse({ isActive: true, status: "in_review" })).toBe(true);
+    expect(canAcceptGameSearchResponse({ isActive: true, status: "matched" })).toBe(false);
+    expect(canAcceptGameSearchResponse({ isActive: true, status: "closed" })).toBe(false);
+    expect(canAcceptGameSearchResponse({ isActive: false, status: "active" })).toBe(false);
   });
 
   it("requires explicit sport and level in profile before creating search", () => {

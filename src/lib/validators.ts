@@ -1,4 +1,7 @@
 import {
+  AccountStatus,
+  CourtSetting,
+  CourtStatus,
   GameRequestOutcome,
   GameReportConfirmationStatus,
   GameReportVisibility,
@@ -149,6 +152,144 @@ export const updateMeSchema = z.object({
   notificationGames: z.boolean().optional(),
   notificationSound: z.boolean().optional()
 });
+
+export const adminPlayersQuerySchema = z.object({
+  q: z.string().trim().max(120).optional().default(""),
+  status: z.union([z.literal("all"), z.nativeEnum(AccountStatus)]).optional().default("all"),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(24)
+});
+
+const adminPlayerProfileFieldsSchema = z
+  .object({
+    name: z.string().trim().min(2).max(40).nullable().optional(),
+    age: z.number().int().min(18).max(100).nullable().optional(),
+    gender: z.nativeEnum(Gender).nullable().optional(),
+    city: cityEnum.nullable().optional(),
+    district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
+    preferredDistricts: z.preprocess(
+      (value) => parseMultiValue(value),
+      z.array(z.enum(DISTRICT_OPTIONS)).max(DISTRICT_OPTIONS.length)
+    ).optional(),
+    tennisLevel: z.number().int().min(1).max(10).nullable().optional(),
+    preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1).optional(),
+    sportLevels: z
+      .preprocess((value) => parseSportLevelsValue(value), z.record(z.string(), sportLevelValueSchema))
+      .refine(
+        (value) => Object.keys(value).every((key) => SPORT_OPTIONS.includes(key as (typeof SPORT_OPTIONS)[number])),
+        "Некорректные виды спорта в уровнях"
+      )
+      .optional(),
+    preferredPlayFormat: z.nativeEnum(PlayFormat).optional(),
+    preferredSurface: z.nativeEnum(Surface).optional(),
+    bio: z.string().trim().max(220).nullable().optional(),
+    avatarUrl: z.string().trim().max(300).nullable().optional(),
+    profilePhotoUrls: z.array(z.string().trim().min(1).max(600)).max(6).optional(),
+    profileVideoUrls: z.array(z.string().trim().min(1).max(600)).max(4).optional(),
+    searchRadiusKm: z.number().int().min(1).max(100).optional(),
+    availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).optional(),
+    availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).optional(),
+    availabilityByDay: z
+      .record(z.string(), z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length))
+      .refine(
+        (value) => Object.keys(value).every((key) => DAY_OPTIONS.includes(key as (typeof DAY_OPTIONS)[number])),
+        "Некорректные дни в доступности"
+      )
+      .optional(),
+    isLookingForGame: z.boolean().optional()
+  })
+  .strict()
+  .refine((profile) => Object.keys(profile).length > 0, "Укажи хотя бы одно изменение профиля");
+
+export const adminPlayerProfilePatchSchema = z.object({
+  expectedUpdatedAt: z.string().datetime(),
+  profile: adminPlayerProfileFieldsSchema
+}).strict();
+
+export const adminPlayerStatusPatchSchema = z
+  .object({
+    status: z.nativeEnum(AccountStatus),
+    reason: z.string().trim().min(3, "Укажи причину изменения статуса").max(500),
+    expectedUpdatedAt: z.string().datetime()
+  })
+  .strict();
+
+export type AdminPlayerProfilePatch = z.infer<typeof adminPlayerProfilePatchSchema>;
+export type AdminPlayerStatusPatch = z.infer<typeof adminPlayerStatusPatchSchema>;
+
+const httpUrlOrNullSchema = z
+  .union([z.string().trim().url(), z.null()])
+  .refine((value) => value == null || value.startsWith("http://") || value.startsWith("https://"), "Разрешены только http/https ссылки");
+
+const uniqueStrings = (max: number) =>
+  z
+    .array(z.string().trim().min(1).max(600))
+    .max(max)
+    .transform((items) => Array.from(new Set(items)));
+
+export const adminClubsQuerySchema = z
+  .object({
+    q: z.string().trim().max(160).optional().default(""),
+    status: z.union([z.literal("all"), z.nativeEnum(CourtStatus)]).optional().default("all"),
+    city: z.string().trim().max(100).optional().default("all"),
+    sport: z.union([z.literal("all"), z.nativeEnum(Sport)]).optional().default("all"),
+    sourceType: z.string().trim().max(100).optional().default("all"),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(24)
+  })
+  .strict();
+
+export const adminClubProfilePatchSchema = z
+  .object({
+    expectedUpdatedAt: z.string().datetime(),
+    profile: z
+      .object({
+        name: z.string().trim().min(1).max(160).optional(),
+        address: z.string().trim().min(1).max(300).optional(),
+        city: z.string().trim().min(1).max(100).optional(),
+        district: z.string().trim().min(1).max(100).nullable().optional(),
+        locationLat: z.number().finite().min(-90).max(90).optional(),
+        locationLng: z.number().finite().min(-180).max(180).optional(),
+        surface: z.nativeEnum(Surface).optional(),
+        setting: z.nativeEnum(CourtSetting).optional(),
+        supportedSports: z.array(z.nativeEnum(Sport)).min(1).transform((items) => Array.from(new Set(items))).optional(),
+        phone: z.string().trim().max(100).nullable().optional(),
+        workingHours: z.string().trim().max(500).nullable().optional(),
+        yandexMapsUrl: httpUrlOrNullSchema.optional(),
+        websiteUrl: httpUrlOrNullSchema.optional(),
+        bookingUrl: httpUrlOrNullSchema.optional(),
+        about: z.string().trim().max(3000).nullable().optional(),
+        amenities: uniqueStrings(12).optional(),
+        messengerType: z.string().trim().max(80).nullable().optional(),
+        messengerUrl: httpUrlOrNullSchema.optional(),
+        photoUrl: httpUrlOrNullSchema.optional(),
+        photoUrls: uniqueStrings(8)
+          .refine((items) => items.every((item) => item.startsWith("http://") || item.startsWith("https://")), "Разрешены только http/https ссылки")
+          .optional(),
+        priceRange: z.string().trim().min(1).max(160).optional(),
+        metroIds: uniqueStrings(8).optional()
+      })
+      .strict()
+      .refine(
+        (profile) => (profile.locationLat === undefined) === (profile.locationLng === undefined),
+        "Широту и долготу нужно изменять вместе"
+      )
+      .refine((profile) => Object.keys(profile).length > 0, "Укажи хотя бы одно изменение клуба"),
+    moderationNote: z.string().trim().max(500).optional()
+  })
+  .strict();
+
+export const adminClubStatusPatchSchema = z
+  .object({
+    expectedUpdatedAt: z.string().datetime(),
+    status: z.nativeEnum(CourtStatus),
+    reason: z.string().trim().min(3, "Укажи причину изменения статуса").max(500)
+  })
+  .strict();
+
+export type AdminClubsQuery = z.infer<typeof adminClubsQuerySchema>;
+export type AdminClubProfilePatch = z.infer<typeof adminClubProfilePatchSchema>;
+export type AdminClubStatusPatch = z.infer<typeof adminClubStatusPatchSchema>;
 
 export const guestOnboardingDraftSchema = z.object({
   name: z.string().min(2).max(40),

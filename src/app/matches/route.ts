@@ -6,6 +6,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { ensureMatchForUsers } from "@/server/matching";
+import { lockActiveUsersForMutation } from "@/server/account-status";
 import { otherUserFromMatch } from "@/server/serializers";
 import {
   chatMessageAttachmentsInclude,
@@ -87,28 +88,28 @@ export async function POST(request: NextRequest) {
       return fail("Нельзя создать мэтч с собой");
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: body.userId }
-    });
-
-    if (!targetUser) {
-      return fail("Игрок не найден", 404);
-    }
-
-    const existingBlock = await prisma.block.findFirst({
-      where: {
-        OR: [
-          { blockerUserId: user.id, blockedUserId: body.userId },
-          { blockerUserId: body.userId, blockedUserId: user.id }
-        ]
-      }
-    });
-
-    if (existingBlock) {
-      return fail("Взаимодействие с этим пользователем недоступно");
-    }
-
     const match = await prisma.$transaction(async (tx) => {
+      const lockedUserIds = await lockActiveUsersForMutation(tx, [user.id, body.userId]);
+      if (!lockedUserIds.has(user.id)) {
+        throw new Error("ACCOUNT_DEACTIVATED");
+      }
+      if (!lockedUserIds.has(body.userId)) {
+        throw new Error("PLAYER_UNAVAILABLE");
+      }
+
+      const existingBlock = await tx.block.findFirst({
+        where: {
+          OR: [
+            { blockerUserId: user.id, blockedUserId: body.userId },
+            { blockerUserId: body.userId, blockedUserId: user.id }
+          ]
+        }
+      });
+
+      if (existingBlock) {
+        throw new Error("INTERACTION_UNAVAILABLE");
+      }
+
       const ensured = await ensureMatchForUsers(tx, user.id, body.userId);
       return tx.match.findUnique({
         where: { id: ensured.id },
@@ -160,6 +161,18 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "ACCOUNT_DEACTIVATED") {
+      return fail("Аккаунт деактивирован", 403);
+    }
+
+    if (getErrorMessage(error) === "PLAYER_UNAVAILABLE") {
+      return fail("Игрок не найден", 404);
+    }
+
+    if (getErrorMessage(error) === "INTERACTION_UNAVAILABLE") {
+      return fail("Взаимодействие с этим пользователем недоступно");
+    }
+
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

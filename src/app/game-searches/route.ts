@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { hasExplicitSportProfile } from "@/lib/sport-levels";
 import { isRouteSport } from "@/lib/sport-semantics";
 import { createGameSearchSchema } from "@/lib/validators";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +37,16 @@ export async function POST(request: NextRequest) {
     }
 
     const gameSearch = await prisma.$transaction(async (tx) => {
+      const activeAccount = await tx.user.updateMany({
+        where: { id: user.id, accountStatus: "active" },
+        data: { isLookingForGame: true }
+      });
+
+      if (activeAccount.count !== 1) {
+        throw new Error("ACCOUNT_DEACTIVATED");
+      }
+      await assertActiveCourtIds(tx, [body.preferredCourtId]);
+
       const preferredDistricts = body.preferredDistricts ?? [];
       const customVenueTitle = normalizeOptionalText(body.customVenueTitle);
       const customVenueAddress = normalizeOptionalText(body.customVenueAddress);
@@ -74,12 +85,6 @@ export async function POST(request: NextRequest) {
           preferredCourt: true
         }
       });
-
-      await tx.user.update({
-        where: { id: user.id },
-        data: { isLookingForGame: true }
-      });
-
       return created;
     });
 
@@ -92,6 +97,14 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "ACCOUNT_DEACTIVATED") {
+      return fail("Аккаунт деактивирован", 403);
+    }
+
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
+
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

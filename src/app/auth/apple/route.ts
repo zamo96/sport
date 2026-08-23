@@ -44,6 +44,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = getErrorMessage(error);
     console.warn("[auth/apple] rejected Apple sign-in:", message);
-    return fail(message, 401);
+    return fail(message === "ACCOUNT_DEACTIVATED" ? "Аккаунт деактивирован" : message, message === "ACCOUNT_DEACTIVATED" ? 403 : 401);
   }
 }

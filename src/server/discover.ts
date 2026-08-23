@@ -45,6 +45,7 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
   const keepsSearchCandidatesVisible = filters.view === "seeking" || filters.view === "hot";
   const candidates = await prisma.user.findMany({
     where: {
+      accountStatus: "active",
       ...(viewerId ? { id: { not: viewerId } } : {}),
       onboardingCompleted: true,
       isVerified: true,

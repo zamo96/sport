@@ -6,6 +6,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { shareGameRequestSchema } from "@/lib/validators";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
+import { assertActiveCourtIds } from "@/server/court-status";
 import { serializeGameRequest, serializeUserPreview } from "@/server/serializers";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const sharedGameRequests = await prisma.$transaction(async (tx) => {
+      await assertActiveCourtIds(tx, [sourceRequest.proposedCourtId]);
       const createdRequests = [];
 
       for (const targetMatch of targetMatches) {
@@ -172,6 +174,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }))
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

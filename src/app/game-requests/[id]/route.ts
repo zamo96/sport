@@ -12,6 +12,7 @@ import { ensureGroupSearchLobby } from "@/server/game-request-lobbies";
 import { canTransitionGameRequest, canUpdateGameRequestOutcome } from "@/server/matching";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { serializeGameRequest } from "@/server/serializers";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 const gameRequestInclude = {
   proposedCourt: true,
@@ -153,6 +154,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     let searchLobbyRealtimeUserIds: string[] = [];
 
     const updated = await prisma.$transaction(async (tx) => {
+      if (body.proposedCourtId !== undefined && body.proposedCourtId !== gameRequest.proposedCourtId) {
+        await assertActiveCourtIds(tx, [body.proposedCourtId]);
+      }
       const shouldCascadeGroupCancellation =
         statusRequested &&
         !statusNoOp &&
@@ -660,6 +664,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       gameRequest: serializeGameRequest(updated)
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

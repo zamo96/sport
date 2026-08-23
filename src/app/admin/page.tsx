@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
+  Building2,
   Clock3,
   Database,
   GitBranch,
@@ -62,6 +63,22 @@ export default async function AdminPage({
             </p>
           </div>
           <div className="flex flex-col gap-2 text-sm text-ink/65 md:items-end">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                href="/admin/players"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-semibold text-white"
+              >
+                <Users2 className="h-4 w-4" />
+                Модерация игроков
+              </Link>
+              <Link
+                href="/admin/clubs"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-court px-4 font-semibold text-white"
+              >
+                <Building2 className="h-4 w-4" />
+                Модерация клубов
+              </Link>
+            </div>
             <div className="inline-flex items-center gap-2 rounded-md bg-cream px-3 py-2 font-semibold text-ink">
               <Clock3 className="h-4 w-4" />
               {formatDateTime(dashboard.generatedAt)}

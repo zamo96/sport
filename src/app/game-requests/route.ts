@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { createGameRequestSchema } from "@/lib/validators";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
+import { lockActiveUsersForMutation } from "@/server/account-status";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +30,15 @@ export async function POST(request: NextRequest) {
     const matchedUserId = match.user1Id === user.id ? match.user2Id : match.user1Id;
 
     const gameRequest = await prisma.$transaction(async (tx) => {
+      const lockedUserIds = await lockActiveUsersForMutation(tx, [user.id, matchedUserId]);
+      if (!lockedUserIds.has(user.id)) {
+        throw new Error("ACCOUNT_DEACTIVATED");
+      }
+      if (!lockedUserIds.has(matchedUserId)) {
+        throw new Error("PLAYER_UNAVAILABLE");
+      }
+      await assertActiveCourtIds(tx, [body.proposedCourtId]);
+
       const created = await tx.gameRequest.create({
         data: {
           matchId: match.id,
@@ -116,6 +127,18 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "ACCOUNT_DEACTIVATED") {
+      return fail("Аккаунт деактивирован", 403);
+    }
+
+    if (getErrorMessage(error) === "PLAYER_UNAVAILABLE") {
+      return fail("Игрок недоступен для нового предложения", 409);
+    }
+
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
+
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

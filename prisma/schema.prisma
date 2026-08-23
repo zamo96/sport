@@ -160,6 +160,22 @@ enum PushEnvironment {
   production
 }
 
+enum AccountStatus {
+  active
+  deactivated
+}
+
+enum AdminAuditAction {
+  PROFILE_UPDATED
+  ACCOUNT_DEACTIVATED
+  ACCOUNT_REACTIVATED
+}
+
+enum AdminCourtAuditAction {
+  PROFILE_UPDATED
+  STATUS_CHANGED
+}
+
 model District {
   id          String  @id @default(cuid())
   code        String  @unique
@@ -221,6 +237,9 @@ model User {
   notificationMessages Boolean       @default(true)
   notificationGames    Boolean       @default(true)
   notificationSound    Boolean       @default(true)
+  accountStatus        AccountStatus @default(active)
+  deactivatedAt        DateTime?
+  deactivationReason   String?
   lastInboxSeenAt      DateTime?
   lastNotificationsSeenAt DateTime?
   lastActiveAt         DateTime?
@@ -252,6 +271,24 @@ model User {
   courtMemberships     UserCourt[]
   blockedUsers         Block[]       @relation("BlockerUser")
   blockingUsers        Block[]       @relation("BlockedUser")
+
+  @@index([accountStatus, createdAt])
+}
+
+model AdminAuditLog {
+  id          String           @id @default(cuid())
+  actorUserId String
+  actorEmail  String
+  targetUserId String
+  targetEmail String
+  action      AdminAuditAction
+  reason      String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime         @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model DiscoverImpression {
@@ -319,6 +356,10 @@ model Court {
   websiteLastCheckedAt DateTime?
   websiteLastChangedAt DateTime?
   bookingUrl      String?
+  manualOverrideFields Json?
+  manualStatusOverride Boolean @default(false)
+  moderatedAt     DateTime?
+  moderatedByEmail String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   districtRef     District?     @relation("CourtDistrict", fields: [district], references: [code], onDelete: SetNull)
@@ -340,6 +381,23 @@ model Court {
   @@index([status, city])
   @@index([sourceType, sourceExternalId])
   @@index([normalizedName, normalizedAddress, city])
+}
+
+model AdminCourtAuditLog {
+  id          String                @id @default(cuid())
+  actorUserId String
+  actorEmail  String
+  courtId     String
+  courtName   String
+  action      AdminCourtAuditAction
+  reason      String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime              @default(now())
+
+  @@index([courtId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 model CourtSyncRun {

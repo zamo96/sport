@@ -6,6 +6,50 @@ import {
   normalizeClubSyncRecord,
   scoreClubCourtMatch
 } from "@/lib/club-sync";
+import {
+  applyManualCourtOverridesForSync,
+  buildCourtSyncCandidateWhere,
+  resolveSyncedCourtStatus,
+  shouldSyncCourtMetroLinks
+} from "@/server/club-sync";
+
+describe("club sync moderation locks", () => {
+  it("keeps manually overridden fields and their normalized identities out of sync updates", () => {
+    expect(
+      applyManualCourtOverridesForSync(["name", "phone", "metroIds"], {
+        name: "Импортное имя",
+        normalizedName: "импортное имя",
+        phone: "+70000000000",
+        bookingUrl: "https://example.com/book"
+      })
+    ).toEqual({ bookingUrl: "https://example.com/book" });
+  });
+
+  it("does not reactivate a status changed by a moderator", () => {
+    expect(resolveSyncedCourtStatus("hidden", true)).toBe("hidden");
+    expect(resolveSyncedCourtStatus("archived", true)).toBe("archived");
+    expect(resolveSyncedCourtStatus("hidden", false)).toBe("needs_review");
+  });
+
+  it("does not replace metro links after a moderator locks them", () => {
+    expect(shouldSyncCourtMetroLinks(["name", "metroIds"])).toBe(false);
+    expect(shouldSyncCourtMetroLinks(["name"])).toBe(true);
+  });
+
+  it("loads a stable source id across cities after a moderator changes city", () => {
+    expect(
+      buildCourtSyncCandidateWhere("Москва", [
+        { sourceType: "yandex-places", sourceExternalId: "stable-123" },
+        { sourceType: "yandex-places", sourceExternalId: "stable-123" }
+      ])
+    ).toEqual({
+      OR: [
+        { city: "Москва" },
+        { sourceType: "yandex-places", sourceExternalId: "stable-123" }
+      ]
+    });
+  });
+});
 
 describe("club sync normalization", () => {
   it("normalizes external club records into the court contract", () => {

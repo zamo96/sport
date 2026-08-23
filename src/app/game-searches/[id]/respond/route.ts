@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
+import { Prisma, type GameSearchStatus } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameSearchResponseSchema } from "@/lib/validators";
+import { canAcceptGameSearchResponse } from "@/lib/game-search";
+import { lockActiveUsersForMutation } from "@/server/account-status";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -21,19 +24,48 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return fail("Поиск игры не найден", 404);
     }
 
-    if (gameSearch.createdByUserId === user.id) {
-      return fail("Нельзя откликнуться на свой собственный поиск");
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      const lockedUserIds = await lockActiveUsersForMutation(tx, [user.id, gameSearch.createdByUserId]);
+      if (!lockedUserIds.has(user.id)) {
+        throw new Error("ACCOUNT_DEACTIVATED");
+      }
+      if (!lockedUserIds.has(gameSearch.createdByUserId)) {
+        throw new Error("SEARCH_OWNER_UNAVAILABLE");
+      }
 
-    if (!gameSearch.isActive || gameSearch.status === "matched" || gameSearch.status === "closed") {
-      return fail("Этот поиск уже не активен", 400);
-    }
+      const lockedSearches = await tx.$queryRaw<Array<{
+        id: string;
+        createdByUserId: string;
+        isActive: boolean;
+        status: GameSearchStatus;
+      }>>(Prisma.sql`
+        SELECT "id", "createdByUserId", "isActive", "status"
+        FROM "GameSearch"
+        WHERE "id" = ${params.id}
+        FOR UPDATE
+      `);
+      const lockedSearch = lockedSearches[0];
 
-    const response = await prisma.$transaction(async (tx) => {
+      if (!lockedSearch) {
+        throw new Error("SEARCH_NOT_FOUND");
+      }
+
+      if (lockedSearch.createdByUserId !== gameSearch.createdByUserId) {
+        throw new Error("SEARCH_CHANGED");
+      }
+
+      if (lockedSearch.createdByUserId === user.id) {
+        throw new Error("OWN_SEARCH_RESPONSE");
+      }
+
+      if (!canAcceptGameSearchResponse(lockedSearch)) {
+        throw new Error("SEARCH_INACTIVE");
+      }
+
       const created = await tx.gameSearchResponse.upsert({
         where: {
           gameSearchId_responderUserId: {
-            gameSearchId: gameSearch.id,
+            gameSearchId: lockedSearch.id,
             responderUserId: user.id
           }
         },
@@ -42,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           status: "pending"
         },
         create: {
-          gameSearchId: gameSearch.id,
+          gameSearchId: lockedSearch.id,
           responderUserId: user.id,
           message: body.message,
           status: "pending"
@@ -52,16 +84,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         }
       });
 
-      await tx.gameSearch.update({
-        where: { id: gameSearch.id },
-        data: {
-          status: "in_review"
+      if (lockedSearch.status === "active") {
+        const transitioned = await tx.gameSearch.updateMany({
+          where: { id: lockedSearch.id, isActive: true, status: "active" },
+          data: { status: "in_review" }
+        });
+
+        if (transitioned.count !== 1) {
+          throw new Error("SEARCH_CHANGED");
         }
-      });
+      }
 
       await tx.gameSearchMessage.create({
         data: {
-          gameSearchId: gameSearch.id,
+          gameSearchId: lockedSearch.id,
           senderUserId: user.id,
           text: body.message.trim()
             ? `Откликнулся(ась) на поиск: ${body.message.trim()}`
@@ -69,11 +105,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         }
       });
 
-      return created;
+      return { response: created, gameSearch: lockedSearch };
     });
 
+    const { response, gameSearch: lockedSearch } = result;
+
     const owner = await prisma.user.findUnique({
-      where: { id: gameSearch.createdByUserId },
+      where: { id: lockedSearch.createdByUserId },
       select: {
         id: true,
         notificationGames: true,
@@ -86,7 +124,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         userId: owner.id,
         title: `${user.name ?? "Игрок"} откликнулся на твой поиск`,
         body: body.message.trim() || "Открой поиск и реши, подтверждать ли отклик.",
-        href: `/play/searches/${gameSearch.id}`,
+        href: `/play/searches/${lockedSearch.id}`,
         sound: owner.notificationSound ?? true
       });
     }
@@ -99,6 +137,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "ACCOUNT_DEACTIVATED") {
+      return fail("Аккаунт деактивирован", 403);
+    }
+
+    if (getErrorMessage(error) === "SEARCH_NOT_FOUND") {
+      return fail("Поиск игры не найден", 404);
+    }
+
+    if (getErrorMessage(error) === "OWN_SEARCH_RESPONSE") {
+      return fail("Нельзя откликнуться на свой собственный поиск");
+    }
+
+    if (getErrorMessage(error) === "SEARCH_INACTIVE" || getErrorMessage(error) === "SEARCH_CHANGED") {
+      return fail("Этот поиск уже не активен", 400);
+    }
+
+    if (getErrorMessage(error) === "SEARCH_OWNER_UNAVAILABLE") {
+      return fail("Владелец поиска недоступен", 409);
+    }
+
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

@@ -1,4 +1,4 @@
-import { HotSearchWindow, type GameSearchType } from "@prisma/client";
+import { HotSearchWindow, type GameSearchStatus, type GameSearchType } from "@prisma/client";
 
 import { DAY_OPTIONS } from "@/lib/constants";
 
@@ -52,6 +52,10 @@ export function isExpiredHotSearch(startsAt: string | Date | null | undefined) {
   }
 
   return new Date(startsAt).getTime() <= Date.now();
+}
+
+export function canAcceptGameSearchResponse(search: { isActive: boolean; status: GameSearchStatus }) {
+  return search.isActive && (search.status === "active" || search.status === "in_review");
 }
 
 export function formatTimeUntilHotSearch(startsAt: string | Date | null | undefined) {

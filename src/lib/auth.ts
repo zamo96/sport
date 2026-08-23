@@ -1,4 +1,4 @@
-import { Gender, PlayFormat, Sport, Surface } from "@prisma/client";
+import { AccountStatus, Gender, PlayFormat, Prisma, Sport, Surface } from "@prisma/client";
 import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type JsonWebKey as CryptoJsonWebKey } from "crypto";
 
 import { cookies, headers } from "next/headers";
@@ -421,20 +421,34 @@ export async function signInWithAppleIdentityToken(identityToken: string, profil
 
 export async function createSession(userId: string) {
   const token = randomUUID();
+  const expiresAt = sessionExpiresAt();
 
-  await prisma.session.create({
-    data: {
-      userId,
-      token,
-      expiresAt: sessionExpiresAt()
+  await prisma.$transaction(async (tx) => {
+    const activeUsers = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${userId} AND "accountStatus" = 'active'
+      FOR UPDATE
+    `);
+
+    if (activeUsers.length !== 1) {
+      throw new Error("ACCOUNT_DEACTIVATED");
     }
+
+    await tx.session.create({
+      data: {
+        userId,
+        token,
+        expiresAt
+      }
+    });
   });
 
   cookies().set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    expires: sessionExpiresAt(),
+    expires: expiresAt,
     path: "/"
   });
 
@@ -474,7 +488,7 @@ export async function getSessionUser() {
     include: { user: true }
   });
 
-  if (!session || session.expiresAt < new Date()) {
+  if (!session || session.expiresAt < new Date() || session.user.accountStatus !== AccountStatus.active) {
     return null;
   }
 

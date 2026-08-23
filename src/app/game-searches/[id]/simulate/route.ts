@@ -12,6 +12,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -178,6 +179,10 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
       if (!gameSearch) {
         throw new Error("Регулярный поиск не найден");
       }
+      await assertActiveCourtIds(tx, [
+        gameSearch.preferredCourtId,
+        ...gameSearch.slotProposals.flatMap((proposal) => proposal.options.map((option) => option.proposedCourtId))
+      ]);
 
       const activeProposal = gameSearch.slotProposals[0] ?? null;
       const approvedResponses = gameSearch.responses.filter((response) => response.status === GameSearchResponseStatus.approved);
@@ -347,6 +352,9 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
 
     return ok(result);
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

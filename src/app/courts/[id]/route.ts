@@ -48,7 +48,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
       }
     });
 
-    if (!court) {
+    if (!court || court.status !== "active") {
       return fail("Корт не найден", 404);
     }
     const membership = user

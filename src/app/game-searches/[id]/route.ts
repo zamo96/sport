@@ -11,6 +11,7 @@ import { isRouteSport } from "@/lib/sport-semantics";
 import { updateGameSearchSchema } from "@/lib/validators";
 import { ensureMatchForUsers } from "@/server/matching";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 type RouteSearchSource = {
   sport: string;
@@ -146,6 +147,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           : null;
 
     const { updated, confirmedGameRequestId } = await prisma.$transaction(async (tx) => {
+      await assertActiveCourtIds(tx, [
+        body.preferredCourtId !== undefined ? body.preferredCourtId : null,
+        body.scheduledCourtId !== undefined ? body.scheduledCourtId : null
+      ]);
       const updated = await tx.gameSearch.update({
         where: { id: gameSearch.id },
         data: {
@@ -817,6 +822,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       gameRequestId: confirmedGameRequestId
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

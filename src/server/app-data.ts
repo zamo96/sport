@@ -103,6 +103,7 @@ export async function getIncomingLikePlayers(userId: string, filters: DiscoverFi
         in: ["like", "superlike"]
       },
       fromUser: {
+        accountStatus: "active",
         onboardingCompleted: true,
         isVerified: true,
         blockedUsers: {
@@ -349,6 +350,9 @@ export async function getIncomingLikesCount(userId: string) {
       toUserId: userId,
       action: {
         in: ["like", "superlike"]
+      },
+      fromUser: {
+        accountStatus: "active"
       }
     },
     select: {

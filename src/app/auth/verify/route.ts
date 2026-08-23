@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       sessionToken
     });
   } catch (error) {
-    return fail(getErrorMessage(error));
+    const message = getErrorMessage(error);
+    return message === "ACCOUNT_DEACTIVATED" ? fail("Аккаунт деактивирован", 403) : fail(message);
   }
 }

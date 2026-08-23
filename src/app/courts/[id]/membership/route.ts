@@ -7,6 +7,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { emptyCourtActiveSearchSummary, getCourtActiveSearchSummaries } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 const courtMembershipSchema = z.object({
   isMember: z.boolean()
@@ -18,26 +19,33 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const body = courtMembershipSchema.parse(await request.json());
     const court = await prisma.court.findUnique({
       where: { id: params.id },
-      select: { id: true }
+      select: { id: true, status: true }
     });
 
     if (!court) {
       return fail("Клуб не найден", 404);
     }
 
+    if (body.isMember && court.status !== "active") {
+      return fail("Клуб временно недоступен", 409);
+    }
+
     if (body.isMember) {
-      await prisma.userCourt.upsert({
-        where: {
-          userId_courtId: {
+      await prisma.$transaction(async (tx) => {
+        await assertActiveCourtIds(tx, [params.id]);
+        await tx.userCourt.upsert({
+          where: {
+            userId_courtId: {
+              userId: user.id,
+              courtId: params.id
+            }
+          },
+          create: {
             userId: user.id,
             courtId: params.id
-          }
-        },
-        create: {
-          userId: user.id,
-          courtId: params.id
-        },
-        update: {}
+          },
+          update: {}
+        });
       });
     } else {
       await prisma.userCourt.deleteMany({
@@ -99,6 +107,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       })
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

@@ -4,9 +4,13 @@ export function normalizeMatchPair(userAId: string, userBId: string) {
   return [userAId, userBId].sort();
 }
 
-export async function createSwipeAndMaybeMatch(fromUserId: string, toUserId: string, action: SwipeAction) {
-  const { prisma } = await import("@/lib/prisma");
-  const swipe = await prisma.swipe.upsert({
+export async function createSwipeAndMaybeMatch(
+  db: Pick<Prisma.TransactionClient, "swipe" | "match">,
+  fromUserId: string,
+  toUserId: string,
+  action: SwipeAction
+) {
+  const swipe = await db.swipe.upsert({
     where: {
       fromUserId_toUserId: {
         fromUserId,
@@ -27,7 +31,7 @@ export async function createSwipeAndMaybeMatch(fromUserId: string, toUserId: str
     return { swipe, match: null };
   }
 
-  const reverse = await prisma.swipe.findUnique({
+  const reverse = await db.swipe.findUnique({
     where: {
       fromUserId_toUserId: {
         fromUserId: toUserId,
@@ -42,7 +46,7 @@ export async function createSwipeAndMaybeMatch(fromUserId: string, toUserId: str
 
   const [user1Id, user2Id] = normalizeMatchPair(fromUserId, toUserId);
 
-  const match = await prisma.match.upsert({
+  const match = await db.match.upsert({
     where: {
       user1Id_user2Id: {
         user1Id,

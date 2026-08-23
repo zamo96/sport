@@ -9,6 +9,7 @@ import {
   updateRegularPairOccurrenceConfirmation,
   updateRegularPairOccurrenceProposal
 } from "@/server/regular-occurrences";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 export async function PATCH(
   request: NextRequest,
@@ -37,6 +38,9 @@ export async function PATCH(
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      if (body.proposedCourtId !== undefined) {
+        await assertActiveCourtIds(tx, [body.proposedCourtId]);
+      }
       let nextOccurrence = null;
 
       if (
@@ -79,6 +83,9 @@ export async function PATCH(
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

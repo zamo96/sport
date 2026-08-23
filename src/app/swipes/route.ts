@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { swipeSchema } from "@/lib/validators";
 import { createSwipeAndMaybeMatch } from "@/server/matching";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
+import { lockActiveUsersForMutation } from "@/server/account-status";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,28 +18,34 @@ export async function POST(request: NextRequest) {
       return fail("Нельзя свайпнуть самого себя");
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: body.toUserId }
-    });
-
-    if (!targetUser) {
-      return fail("Игрок не найден", 404);
-    }
-
-    const existingBlock = await prisma.block.findFirst({
-      where: {
-        OR: [
-          { blockerUserId: user.id, blockedUserId: body.toUserId },
-          { blockerUserId: body.toUserId, blockedUserId: user.id }
-        ]
+    const { targetUser, result } = await prisma.$transaction(async (tx) => {
+      const lockedUserIds = await lockActiveUsersForMutation(tx, [user.id, body.toUserId]);
+      if (!lockedUserIds.has(user.id)) {
+        throw new Error("ACCOUNT_DEACTIVATED");
       }
+      if (!lockedUserIds.has(body.toUserId)) {
+        throw new Error("PLAYER_UNAVAILABLE");
+      }
+
+      const target = await tx.user.findUniqueOrThrow({ where: { id: body.toUserId } });
+      const existingBlock = await tx.block.findFirst({
+        where: {
+          OR: [
+            { blockerUserId: user.id, blockedUserId: body.toUserId },
+            { blockerUserId: body.toUserId, blockedUserId: user.id }
+          ]
+        }
+      });
+
+      if (existingBlock) {
+        throw new Error("INTERACTION_UNAVAILABLE");
+      }
+
+      return {
+        targetUser: target,
+        result: await createSwipeAndMaybeMatch(tx, user.id, body.toUserId, body.action)
+      };
     });
-
-    if (existingBlock) {
-      return fail("Взаимодействие с этим пользователем недоступно");
-    }
-
-    const result = await createSwipeAndMaybeMatch(user.id, body.toUserId, body.action);
 
     if (result.match && targetUser.notificationMatches) {
       await sendPushToUser({
@@ -71,6 +78,18 @@ export async function POST(request: NextRequest) {
       match: result.match
     });
   } catch (error) {
+    if (getErrorMessage(error) === "ACCOUNT_DEACTIVATED") {
+      return fail("Аккаунт деактивирован", 403);
+    }
+
+    if (getErrorMessage(error) === "PLAYER_UNAVAILABLE") {
+      return fail("Игрок не найден", 404);
+    }
+
+    if (getErrorMessage(error) === "INTERACTION_UNAVAILABLE") {
+      return fail("Взаимодействие с этим пользователем недоступно");
+    }
+
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

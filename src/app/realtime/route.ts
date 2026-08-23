@@ -3,6 +3,7 @@ import type Redis from "ioredis";
 
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage } from "@/lib/http";
+import { prisma } from "@/lib/prisma";
 import { getRealtimeRedis, getRealtimeStreamKey } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
 
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
 
     let cursor = normalizeCursor(initialCursor);
     let isClosed = false;
+    let lastAccountCheckAt = Date.now();
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -57,6 +59,20 @@ export async function GET(request: NextRequest) {
               streamKey,
               cursor
             )) as RedisStreamReadResult;
+
+            if (Date.now() - lastAccountCheckAt >= HEARTBEAT_MS) {
+              lastAccountCheckAt = Date.now();
+              const activeAccount = await prisma.user.findFirst({
+                where: { id: user.id, accountStatus: "active" },
+                select: { id: true }
+              });
+
+              if (!activeAccount) {
+                isClosed = true;
+                controller.close();
+                break;
+              }
+            }
 
             if (!result) {
               safeEnqueue(controller, ": keepalive\n\n");

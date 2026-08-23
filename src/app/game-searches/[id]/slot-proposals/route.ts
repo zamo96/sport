@@ -6,6 +6,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameSearchSlotProposalSchema } from "@/lib/validators";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+import { assertActiveCourtIds } from "@/server/court-status";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const proposal = await prisma.$transaction(async (tx) => {
+      await assertActiveCourtIds(tx, [gameSearch.preferredCourtId, ...body.options.map((option) => option.proposedCourtId)]);
       const weeklySchedule = buildWeeklySchedule(body.options);
       const preferredDays = weeklySchedule.preferredDays.length
         ? weeklySchedule.preferredDays
@@ -203,6 +205,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     });
   } catch (error) {
+    if (getErrorMessage(error) === "COURT_UNAVAILABLE") {
+      return fail("Клуб временно недоступен", 409);
+    }
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

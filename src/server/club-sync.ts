@@ -82,6 +82,9 @@ type CourtForSync = ClubCourtMatchCandidate & {
   sourceUrl: string | null;
   syncHash: string | null;
   lastSeenAt: Date | null;
+  manualOverrideFields: Prisma.JsonValue | null;
+  manualStatusOverride: boolean;
+  updatedAt: Date;
 };
 
 type WebsiteProposedField = {
@@ -202,7 +205,7 @@ export async function syncClubRecords(records: ClubSyncSourceRecord[], options: 
 
   try {
     const metroByName = await ensureMetroMap(prisma, normalized, city);
-    const courts = await loadCourtsForSync(prisma, city);
+    const courts = await loadCourtsForSync(prisma, city, normalized);
     const seenCourtIds = new Set<string>();
 
     for (const record of dedupeRecords(normalized)) {
@@ -493,7 +496,9 @@ async function runWebsiteChecksForRun(
       websiteUrl: true,
       sourceType: true,
       sourceExternalId: true,
-      websiteContentHash: true
+      websiteContentHash: true,
+      manualOverrideFields: true,
+      updatedAt: true
     },
     orderBy: [
       {
@@ -553,6 +558,8 @@ async function checkCourtWebsite(
     sourceType: string;
     sourceExternalId: string | null;
     websiteContentHash: string | null;
+    manualOverrideFields: Prisma.JsonValue | null;
+    updatedAt: Date;
     runId: string;
     autoApplyWebsiteChanges: boolean;
   }
@@ -580,7 +587,15 @@ async function checkCourtWebsite(
     const analystReview = mergeClubWebsiteAnalystReviews(rulesReview, llmResult.review);
     const proposedFields = buildWebsiteProposedFields(analystReview);
     const shouldPropose = proposedFields.length > 0;
-    const proposalStatus = court.autoApplyWebsiteChanges && canAutoApplyWebsiteFields(proposedFields) ? "applied" : "pending";
+    const unlockedProposedFields = proposedFields.filter(
+      (field) => !stringArray(court.manualOverrideFields).includes(field.field)
+    );
+    const proposalStatus =
+      court.autoApplyWebsiteChanges &&
+      unlockedProposedFields.length === proposedFields.length &&
+      canAutoApplyWebsiteFields(unlockedProposedFields)
+        ? "applied"
+        : "pending";
     let proposalCreated = false;
 
     await prisma.courtWebsiteCheck.create({
@@ -607,6 +622,17 @@ async function checkCourtWebsite(
       }
     });
 
+    const courtUpdate = await prisma.court.updateMany({
+      where: { id: court.id, updatedAt: court.updatedAt },
+      data: {
+        websiteContentHash: snapshot.contentHash,
+        websiteLastCheckedAt: checkedAt,
+        ...(changed ? { websiteLastChangedAt: checkedAt } : {}),
+        ...(proposalStatus === "applied" ? buildWebsiteAutoUpdateData(unlockedProposedFields) : {})
+      }
+    });
+    const effectiveProposalStatus = courtUpdate.count === 1 ? proposalStatus : "pending";
+
     if (shouldPropose) {
       proposalCreated = await createWebsiteChangeProposal(prisma, {
         court,
@@ -623,26 +649,14 @@ async function checkCourtWebsite(
         },
         proposedFields,
         changed,
-        status: proposalStatus
+        status: effectiveProposalStatus
       });
     }
-
-    await prisma.court.update({
-      where: { id: court.id },
-      data: {
-        websiteContentHash: snapshot.contentHash,
-        websiteLastCheckedAt: checkedAt,
-        ...(changed ? { websiteLastChangedAt: checkedAt } : {}),
-        ...(court.autoApplyWebsiteChanges && canAutoApplyWebsiteFields(proposedFields)
-          ? buildWebsiteAutoUpdateData(proposedFields)
-          : {})
-      }
-    });
 
     return {
       changed: changed || proposedFields.length > 0,
       failed: false,
-      proposed: proposalCreated && proposalStatus === "pending"
+      proposed: proposalCreated && effectiveProposalStatus === "pending"
     };
   } catch (error) {
     await prisma.courtWebsiteCheck.create({
@@ -824,9 +838,35 @@ function buildWebsiteAutoUpdateData(fields: WebsiteProposedField[]): Prisma.Cour
   );
 }
 
-async function loadCourtsForSync(prisma: PrismaClient, city: string): Promise<CourtForSync[]> {
+export function buildCourtSyncCandidateWhere(
+  city: string,
+  records: readonly Pick<NormalizedClubSyncRecord, "sourceType" | "sourceExternalId">[] = []
+): Prisma.CourtWhereInput {
+  const stableSources = Array.from(
+    new Map(
+      records
+        .filter((record): record is typeof record & { sourceExternalId: string } => Boolean(record.sourceExternalId))
+        .map((record) => [`${record.sourceType}:${record.sourceExternalId}`, record])
+    ).values()
+  );
+  return {
+    OR: [
+      { city },
+      ...stableSources.map((record) => ({
+        sourceType: record.sourceType,
+        sourceExternalId: record.sourceExternalId
+      }))
+    ]
+  };
+}
+
+async function loadCourtsForSync(
+  prisma: Pick<PrismaClient, "court">,
+  city: string,
+  records: readonly Pick<NormalizedClubSyncRecord, "sourceType" | "sourceExternalId">[] = []
+): Promise<CourtForSync[]> {
   const courts = await prisma.court.findMany({
-    where: { city },
+    where: buildCourtSyncCandidateWhere(city, records),
     select: {
       id: true,
       name: true,
@@ -856,7 +896,10 @@ async function loadCourtsForSync(prisma: PrismaClient, city: string): Promise<Co
       normalizedName: true,
       normalizedAddress: true,
       syncHash: true,
-      lastSeenAt: true
+      lastSeenAt: true,
+      manualOverrideFields: true,
+      manualStatusOverride: true,
+      updatedAt: true
     }
   });
 
@@ -928,7 +971,8 @@ async function updateSyncedCourt(
   metroByName: Map<string, string>,
   options: { now: Date; runId: string; confidence: number; reason: string }
 ) {
-  const riskyFields = getRiskyChangedFields(existing, record);
+  const lockedConflictFields = getLockedChangedFields(existing, record);
+  const riskyFields = Array.from(new Set([...getRiskyChangedFields(existing, record), ...lockedConflictFields]));
   const hasNewSnapshot = existing.syncHash !== record.syncHash;
   const hasSafeIdentityDrift = riskyFields.length === 0 && hasDisplayIdentityDrift(existing, record);
   const updateData = buildSafeUpdateData(existing, record, options.now, riskyFields.length === 0);
@@ -937,43 +981,22 @@ async function updateSyncedCourt(
 
   let updatedCourt = existing;
   if (shouldUpdate) {
-    const updated = await prisma.court.update({
-      where: { id: existing.id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        address: true,
-        city: true,
-        district: true,
-        nearestMetroId: true,
-        locationLat: true,
-        locationLng: true,
-        status: true,
-        supportedSports: true,
-        phone: true,
-        workingHours: true,
-        yandexMapsUrl: true,
-        websiteUrl: true,
-        bookingUrl: true,
-        about: true,
-        amenities: true,
-        messengerType: true,
-        messengerUrl: true,
-        photoUrl: true,
-        photoUrls: true,
-        rating: true,
-        sourceType: true,
-        sourceExternalId: true,
-        sourceUrl: true,
-        normalizedName: true,
-        normalizedAddress: true,
-        syncHash: true,
-        lastSeenAt: true
+    const outcome = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.court.updateMany({
+        where: { id: existing.id, updatedAt: existing.updatedAt },
+        data: updateData
+      });
+      const refreshed = (await loadCourtsForSync(tx, existing.city)).find((court) => court.id === existing.id);
+      if (!refreshed) throw new Error("Synced court disappeared during update");
+      if (updateResult.count !== 1) return { court: refreshed, updated: false };
+      if (shouldSyncCourtMetroLinks(stringArray(existing.manualOverrideFields))) {
+        await syncCourtMetroLinks(tx, existing.id, record.metroNames, metroByName);
       }
+      const afterMetro = (await loadCourtsForSync(tx, existing.city)).find((court) => court.id === existing.id);
+      return { court: afterMetro ?? refreshed, updated: true };
     });
-    updatedCourt = updated;
-    await syncCourtMetroLinks(prisma, existing.id, record.metroNames, metroByName);
+    if (!outcome.updated) return { court: outcome.court, updated: false, proposed: false };
+    updatedCourt = outcome.court;
   } else {
     await prisma.court.update({
       where: { id: existing.id },
@@ -985,27 +1008,34 @@ async function updateSyncedCourt(
     });
   }
 
-  if (riskyFields.length > 0 && hasNewSnapshot) {
-    await prisma.courtChangeProposal.create({
-      data: {
-        runId: options.runId,
-        courtId: existing.id,
-        sourceType: record.sourceType,
-        sourceExternalId: record.sourceExternalId,
-        action: "update",
-        status: "pending",
-        confidence: options.confidence,
-        reason: `${options.reason}:${riskyFields.join(",")}`,
-        before: proposalBefore(existing),
-        after: proposalAfter(record)
-      }
+  const shouldPropose = riskyFields.length > 0 && (hasNewSnapshot || lockedConflictFields.length > 0);
+  if (shouldPropose) {
+    const existingPending = await prisma.courtChangeProposal.findFirst({
+      where: { courtId: existing.id, sourceType: record.sourceType, action: "update", status: "pending" },
+      select: { id: true }
     });
+    if (!existingPending) {
+      await prisma.courtChangeProposal.create({
+        data: {
+          runId: options.runId,
+          courtId: existing.id,
+          sourceType: record.sourceType,
+          sourceExternalId: record.sourceExternalId,
+          action: "update",
+          status: "pending",
+          confidence: options.confidence,
+          reason: `${options.reason}:${riskyFields.join(",")}`,
+          before: proposalBefore(existing),
+          after: proposalAfter(record)
+        }
+      });
+    }
   }
 
   return {
     court: updatedCourt,
     updated: shouldUpdate,
-    proposed: riskyFields.length > 0 && hasNewSnapshot
+    proposed: shouldPropose
   };
 }
 
@@ -1015,12 +1045,10 @@ function buildSafeUpdateData(
   now: Date,
   allowIdentityUpdates: boolean
 ): Prisma.CourtUncheckedUpdateInput {
-  const status =
-    existing.status === CourtStatus.hidden || existing.status === CourtStatus.archived
-      ? CourtStatus.needs_review
-      : existing.status;
+  const locks = lockedFields(existing);
+  const status = resolveSyncedCourtStatus(existing.status, existing.manualStatusOverride);
 
-  return {
+  const data: Prisma.CourtUncheckedUpdateInput = {
     ...(allowIdentityUpdates
       ? {
           name: record.name,
@@ -1055,6 +1083,67 @@ function buildSafeUpdateData(
     lastCheckedAt: now,
     lastSeenAt: now
   };
+  return applyManualCourtOverridesForSync(Array.from(locks), data) as Prisma.CourtUncheckedUpdateInput;
+}
+
+export function resolveSyncedCourtStatus(status: CourtStatus, manualStatusOverride: boolean) {
+  return !manualStatusOverride && (status === CourtStatus.hidden || status === CourtStatus.archived)
+    ? CourtStatus.needs_review
+    : status;
+}
+
+export function applyManualCourtOverridesForSync<T extends Record<string, unknown>>(
+  manualOverrideFields: readonly string[],
+  input: T
+) {
+  const data: Record<string, unknown> = { ...input };
+  const locks = new Set(manualOverrideFields);
+  for (const field of locks) {
+    if (field !== "metroIds" && field in data) delete data[field];
+  }
+  if (locks.has("name")) delete data.normalizedName;
+  if (locks.has("address")) delete data.normalizedAddress;
+  return data;
+}
+
+export function shouldSyncCourtMetroLinks(manualOverrideFields: readonly string[]) {
+  return !manualOverrideFields.includes("metroIds");
+}
+
+function lockedFields(existing: Pick<CourtForSync, "manualOverrideFields">) {
+  return new Set(stringArray(existing.manualOverrideFields));
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function getLockedChangedFields(existing: CourtForSync, record: NormalizedClubSyncRecord) {
+  const incoming: Record<string, unknown> = {
+    name: record.name,
+    address: record.address,
+    city: record.city,
+    district: record.district,
+    locationLat: record.locationLat,
+    locationLng: record.locationLng,
+    supportedSports: record.sports,
+    phone: record.phone,
+    workingHours: record.workingHours,
+    yandexMapsUrl: record.yandexMapsUrl,
+    websiteUrl: record.websiteUrl,
+    bookingUrl: record.bookingUrl,
+    about: record.about,
+    amenities: record.amenities,
+    messengerType: record.messengerType,
+    messengerUrl: record.messengerUrl,
+    photoUrl: record.photoUrl,
+    photoUrls: record.photoUrls
+  };
+  return Array.from(lockedFields(existing)).filter((field) => {
+    if (!(field in incoming) || incoming[field] == null) return false;
+    const current = existing[field as keyof CourtForSync];
+    return JSON.stringify(current) !== JSON.stringify(incoming[field]);
+  });
 }
 
 function getRiskyChangedFields(existing: CourtForSync, record: NormalizedClubSyncRecord) {
@@ -1116,7 +1205,7 @@ async function ensureMetroMap(prisma: PrismaClient, records: NormalizedClubSyncR
 }
 
 async function syncCourtMetroLinks(
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, "court" | "courtMetro">,
   courtId: string,
   metroNames: string[],
   metroByName: Map<string, string>
@@ -1168,6 +1257,7 @@ async function handleStaleCourts(
       status: {
         in: [CourtStatus.active, CourtStatus.needs_review]
       },
+      manualStatusOverride: false,
       lastSeenAt: {
         lt: cutoff
       }
@@ -1179,7 +1269,8 @@ async function handleStaleCourts(
       address: true,
       city: true,
       status: true,
-      lastSeenAt: true
+      lastSeenAt: true,
+      updatedAt: true
     }
   });
 
@@ -1187,6 +1278,13 @@ async function handleStaleCourts(
   let proposedCount = 0;
 
   for (const court of candidates) {
+    const hidden = options.autoHideStale
+      ? await prisma.court.updateMany({
+          where: { id: court.id, updatedAt: court.updatedAt, manualStatusOverride: false },
+          data: { status: CourtStatus.hidden, lastCheckedAt: options.now }
+        })
+      : { count: 0 };
+    const applied = hidden.count === 1;
     await prisma.courtChangeProposal.create({
       data: {
         runId: options.runId,
@@ -1194,8 +1292,8 @@ async function handleStaleCourts(
         sourceType: options.sourceType,
         sourceExternalId: court.sourceExternalId,
         action: "hide",
-        status: options.autoHideStale ? "applied" : "pending",
-        appliedAt: options.autoHideStale ? options.now : null,
+        status: applied ? "applied" : "pending",
+        appliedAt: applied ? options.now : null,
         confidence: 0.6,
         reason: `not_seen_for_${options.staleAfterDays}_days`,
         before: {
@@ -1213,14 +1311,7 @@ async function handleStaleCourts(
       }
     });
 
-    if (options.autoHideStale) {
-      await prisma.court.update({
-        where: { id: court.id },
-        data: {
-          status: CourtStatus.hidden,
-          lastCheckedAt: options.now
-        }
-      });
+    if (applied) {
       hiddenCount += 1;
     } else {
       proposedCount += 1;
@@ -1273,7 +1364,10 @@ function toCourtForSync(court: Awaited<ReturnType<typeof createSyncedCourt>>): C
     normalizedName: court.normalizedName,
     normalizedAddress: court.normalizedAddress,
     syncHash: court.syncHash,
-    lastSeenAt: court.lastSeenAt
+    lastSeenAt: court.lastSeenAt,
+    manualOverrideFields: court.manualOverrideFields,
+    manualStatusOverride: court.manualStatusOverride,
+    updatedAt: court.updatedAt
   };
 }
 

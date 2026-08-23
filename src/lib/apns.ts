@@ -216,6 +216,22 @@ async function deliverAPNSToDevice(
 }
 
 export async function sendPushToUser(payload: PushPayload) {
+  const activeUser = await prisma.user.findFirst({
+    where: {
+      id: payload.userId,
+      accountStatus: "active"
+    },
+    select: { id: true }
+  });
+
+  if (!activeUser) {
+    console.warn("Push skipped: user account is not active", {
+      userId: payload.userId,
+      href: payload.href
+    });
+    return;
+  }
+
   await publishRealtimeEvent(payload.userId, {
     type: "notification",
     title: payload.title,
