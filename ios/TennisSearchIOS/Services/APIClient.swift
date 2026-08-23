@@ -1,6 +1,8 @@
 import Foundation
 
 enum APIError: LocalizedError {
+    private static let genericServerMessage = "Сервис временно отвечает нестабильно. Попробуй ещё раз через пару секунд."
+
     case invalidBaseURL
     case invalidResponse
     case server(String)
@@ -13,10 +15,53 @@ enum APIError: LocalizedError {
         case .invalidResponse:
             return "Некорректный ответ сервера"
         case .server(let message):
-            return message
+            return Self.sanitizedServerMessage(message)
         case .invalidPayload(let message):
             return message
         }
+    }
+
+    var isInternalServerMessage: Bool {
+        guard case .server(let message) = self else {
+            return false
+        }
+        return Self.isInternalServerMessage(message)
+    }
+
+    private static func sanitizedServerMessage(_ message: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return genericServerMessage
+        }
+        return isInternalServerMessage(trimmed) ? genericServerMessage : trimmed
+    }
+
+    private static func isInternalServerMessage(_ message: String) -> Bool {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else {
+            return true
+        }
+
+        let internalMarkers = [
+            "<!doctype",
+            "<html",
+            "text/html",
+            "body:",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+            "prisma.",
+            "prismaclient",
+            "invalid `prisma",
+            "unique constraint failed",
+            "foreign key constraint",
+            "constraint failed",
+            "next-hide-fouc",
+            "stack trace"
+        ]
+
+        return internalMarkers.contains { normalized.contains($0) }
     }
 }
 
@@ -114,6 +159,25 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             data: data
         )
         return try await perform(request)
+    }
+
+    func download(path: String) async throws -> Data {
+        let request: URLRequest
+        if let absoluteURL = URL(string: path), absoluteURL.scheme != nil {
+            request = URLRequest(url: absoluteURL)
+        } else {
+            let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+            request = makeRequest(path: relativePath, method: "GET", queryItems: [])
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw APIError.server("HTTP \(httpResponse.statusCode)")
+        }
+        return data
     }
 
     func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error> {
@@ -455,6 +519,29 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
+    func removeProfileMedia(mediaUrl: String) async throws -> ProfileMediaUploadResult {
+        try await client.request(
+            path: "uploads/profile-media",
+            method: "DELETE",
+            body: RemoveProfileMediaRequest(mediaUrl: mediaUrl)
+        )
+    }
+
+    func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment {
+        let response: ChatMediaUploadEnvelope = try await client.uploadMultipart(
+            path: "uploads/chat-media",
+            fieldName: "file",
+            fileName: fileName,
+            mimeType: mimeType,
+            data: data
+        )
+        return response.asset
+    }
+
+    func fetchChatMedia(path: String) async throws -> Data {
+        try await client.download(path: path)
+    }
+
     func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
         let response: DiscoverEnvelope
         switch view {
@@ -526,11 +613,11 @@ final class LiveTennisRepository: TennisRepository {
         return response.messages
     }
 
-    func sendMessage(matchId: String, text: String) async throws -> ChatMessage {
+    func sendMessage(matchId: String, text: String, attachmentIds: [String]) async throws -> ChatMessage {
         let response: SendMessageEnvelope = try await client.request(
             path: "matches/\(matchId)/messages",
             method: "POST",
-            body: SendMessageRequest(text: text)
+            body: SendMessageRequest(text: text, attachmentIds: attachmentIds)
         )
         return response.message
     }
@@ -679,11 +766,11 @@ final class LiveTennisRepository: TennisRepository {
         try await client.request(path: "game-searches/\(searchId)")
     }
 
-    func sendSearchLobbyMessage(searchId: String, text: String) async throws -> SearchLobbyMessage {
+    func sendSearchLobbyMessage(searchId: String, text: String, attachmentIds: [String]) async throws -> SearchLobbyMessage {
         let response: SearchLobbyMessageEnvelope = try await client.request(
             path: "game-searches/\(searchId)/messages",
             method: "POST",
-            body: SendMessageRequest(text: text)
+            body: SendMessageRequest(text: text, attachmentIds: attachmentIds)
         )
         return response.message
     }
@@ -787,8 +874,15 @@ final class LiveTennisRepository: TennisRepository {
         try await client.request(path: "game-searches/\(searchId)/simulate", method: "POST", body: EmptyRequest())
     }
 
-    func fetchCourts() async throws -> [Court] {
-        let response: CourtsEnvelope = try await client.request(path: "courts")
+    func fetchCourts(city: String?) async throws -> [Court] {
+        let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queryItems = normalizedCity?.isEmpty == false
+            ? [URLQueryItem(name: "city", value: normalizedCity)]
+            : []
+        let response: CourtsEnvelope = try await client.request(
+            path: "courts",
+            queryItems: queryItems
+        )
         return response.courts
     }
 
@@ -911,6 +1005,7 @@ private struct SwipeRequest: Encodable {
 
 private struct SendMessageRequest: Encodable {
     let text: String
+    let attachmentIds: [String]
 }
 
 private struct CreateGameRequestRequest: Encodable {
@@ -1135,7 +1230,7 @@ private struct UpdateProfileRequest: Encodable {
     let avatarUrl: String?
     let profilePhotoUrls: [String]
     let profileVideoUrls: [String]
-    let tennisLevel: Int?
+    let tennisLevel: Int
     let preferredSports: [String]
     let sportLevels: [String: Int]
     let preferredPlayFormat: String
@@ -1161,7 +1256,9 @@ private struct UpdateProfileRequest: Encodable {
         avatarUrl = profile.avatarUrl
         profilePhotoUrls = profile.profilePhotoUrls
         profileVideoUrls = profile.profileVideoUrls
-        tennisLevel = profile.tennisLevel
+        let primarySportLevel = profile.preferredSports.first
+            .flatMap { profile.sportLevels[$0.rawValue] }
+        tennisLevel = Self.normalizedLevel(primarySportLevel ?? profile.tennisLevel ?? 5)
         preferredSports = profile.preferredSports.map(\.rawValue)
         sportLevels = profile.sportLevels
         preferredPlayFormat = profile.preferredPlayFormat.rawValue
@@ -1175,6 +1272,10 @@ private struct UpdateProfileRequest: Encodable {
         notificationMessages = profile.notificationMessages
         notificationGames = profile.notificationGames
         notificationSound = profile.notificationSound
+    }
+
+    private static func normalizedLevel(_ value: Int) -> Int {
+        min(max(value, 1), 10)
     }
 }
 
@@ -1272,6 +1373,10 @@ private struct MessagesEnvelope: Decodable {
     let messages: [ChatMessage]
 }
 
+private struct ChatMediaUploadEnvelope: Decodable {
+    let asset: ChatMediaAttachment
+}
+
 private struct SendMessageEnvelope: Decodable {
     let message: ChatMessage
 }
@@ -1365,6 +1470,10 @@ private struct SuccessEnvelope: Decodable {
 }
 
 private struct EmptyRequest: Encodable {}
+
+private struct RemoveProfileMediaRequest: Encodable {
+    let mediaUrl: String
+}
 
 private struct ActiveChatRequest: Encodable {
     let matchId: String?

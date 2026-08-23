@@ -6,10 +6,31 @@ import UniformTypeIdentifiers
 import AVFoundation
 import AVKit
 
+private enum ProfileScreenMode: String, CaseIterable, Identifiable {
+    case editing = "Редактирование"
+    case preview = "Как видят другие"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .editing: return "pencil"
+        case .preview: return "eye"
+        }
+    }
+}
+
+private struct ProfileCompletionStatus {
+    let percent: Int
+    let missingSteps: [String]
+}
+
 struct ProfileView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
+
+    private let profileTopAnchor = "profile-top"
 
     @State private var draft: UserProfile?
     @State private var guestDraft: GuestOnboardingDraft = .default
@@ -18,8 +39,11 @@ struct ProfileView: View {
     @State private var selectedProfileVideoItems: [PhotosPickerItem] = []
     @State private var isUploadingAvatar = false
     @State private var isUploadingProfileMedia = false
+    @State private var profileMediaMutationCount = 0
+    @State private var profileMediaMutationTail: Task<Void, Never>?
     @State private var isPreparingProfileVideo = false
     @State private var selectedProfileMediaPreview: PlayerMediaItem?
+    @State private var pendingProfileVideoRemoval: PlayerMediaItem?
     @State private var pendingVideoTrimQueue: [PhotosPickerItem] = []
     @State private var pendingVideoTrimDraft: ProfileVideoTrimDraft?
     @State private var saveToastMessage: String?
@@ -27,6 +51,7 @@ struct ProfileView: View {
     @State private var isGameFeedLoading = false
     @State private var isDeleteConfirmationPresented = false
     @State private var isEditorPresented = false
+    @State private var profileScreenMode: ProfileScreenMode = .editing
     @AppStorage("profile.visibilityMode") private var visibilityModeRaw = ProfileVisibilityMode.publicProfile.rawValue
 
     private var visibilityMode: ProfileVisibilityMode {
@@ -37,19 +62,27 @@ struct ProfileView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    if appModel.isAuthenticated {
-                        authenticatedContent
-                    } else {
-                        guestContent
+            ScrollViewReader { scrollProxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if appModel.isAuthenticated {
+                            authenticatedContent
+                        } else {
+                            guestContent
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 116)
+                    .id(profileTopAnchor)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: profileScreenMode) { _ in
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        scrollProxy.scrollTo(profileTopAnchor, anchor: .top)
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 116)
             }
-            .scrollDismissesKeyboard(.interactively)
         }
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
@@ -84,7 +117,11 @@ struct ProfileView: View {
         }
         .onChange(of: selectedProfilePhotoItems) { newValue in
             guard !newValue.isEmpty else { return }
-            Task { await uploadProfileMedia(from: newValue, preferredKind: .photo) }
+            let capturedItems = newValue
+            selectedProfilePhotoItems = []
+            enqueueProfileMediaMutation {
+                await uploadProfileMedia(from: capturedItems, preferredKind: .photo)
+            }
         }
         .onChange(of: selectedProfileVideoItems) { newValue in
             guard !newValue.isEmpty else { return }
@@ -132,132 +169,162 @@ struct ProfileView: View {
         } message: {
             Text("Это действие необратимо. Аккаунт, поиски, мэтчи и история будут удалены.")
         }
+        .confirmationDialog(
+            "Удалить видео из карточки?",
+            isPresented: Binding(
+                get: { pendingProfileVideoRemoval != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingProfileVideoRemoval = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Удалить видео", role: .destructive) {
+                if let item = pendingProfileVideoRemoval {
+                    removeProfileMediaPersistently(item)
+                }
+                pendingProfileVideoRemoval = nil
+            }
+            Button("Отмена", role: .cancel) {
+                pendingProfileVideoRemoval = nil
+            }
+        } message: {
+            Text("Видео исчезнет из карточки профиля. Остальные фото и данные профиля останутся.")
+        }
     }
 
     @ViewBuilder
     private var authenticatedContent: some View {
         if let draftBinding {
             let profile = draftBinding.wrappedValue
+            let completion = profileCompletionStatus(for: profile)
 
             profileHeader
-            ProfileOverviewCard(
-                profile: profile,
-                isUploadingAvatar: isUploadingAvatar,
-                selectedAvatarItem: $selectedAvatarItem,
-                onEdit: { isEditorPresented = true }
-            )
+            ProfileScreenModePicker(selection: $profileScreenMode)
 
-            ProfileSelectionMediaCard(
-                profile: profile,
-                isUploading: isUploadingProfileMedia,
-                selectedPhotoItems: $selectedProfilePhotoItems,
-                selectedVideoItems: $selectedProfileVideoItems,
-                onPreview: { selectedProfileMediaPreview = $0 },
-                onRemove: removeProfileMedia
-            )
+            if profileScreenMode == .editing {
+                ProfileSelectionMediaCard(
+                    profile: profile,
+                    isUploadingAvatar: isUploadingAvatar,
+                    isUploading: profileMediaMutationCount > 0 || isUploadingProfileMedia,
+                    selectedAvatarItem: $selectedAvatarItem,
+                    selectedPhotoItems: $selectedProfilePhotoItems,
+                    selectedVideoItems: $selectedProfileVideoItems,
+                    onEdit: { isEditorPresented = true },
+                    onPreview: { selectedProfileMediaPreview = $0 },
+                    onRemove: requestProfileMediaRemoval
+                )
 
-            ProfileCompletenessCard(
-                percent: profileCompleteness(for: profile),
-                missingText: profileMissingHint(for: profile)
-            )
+                ProfileCompletenessCard(
+                    percent: completion.percent,
+                    missingSteps: completion.missingSteps,
+                    hasVideoBonus: !profile.profileVideoUrls.isEmpty
+                )
 
-            ProfileGameFeedSection(
-                requests: profileGameFeedRequests,
-                currentUserId: appModel.currentUser?.id,
-                isLoading: isGameFeedLoading
-            )
+                ProfileGameFeedSection(
+                    requests: profileGameFeedRequests,
+                    currentUserId: appModel.currentUser?.id,
+                    isLoading: isGameFeedLoading
+                )
 
-            ProfileMenuGroup {
-                NavigationLink {
-                    sportsProfileEditor(for: draftBinding)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "tennis.racket",
-                        tint: AppTheme.court,
-                        title: "Спортивный профиль",
-                        subtitle: sportsSummary(for: profile)
-                    )
+                ProfileMenuGroup {
+                    NavigationLink {
+                        sportsProfileEditor(for: draftBinding)
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "tennis.racket",
+                            tint: AppTheme.court,
+                            title: "Спортивный профиль",
+                            subtitle: sportsSummary(for: profile)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        availabilityProfileEditor(for: draftBinding)
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "clock",
+                            tint: .green,
+                            title: "Доступность",
+                            subtitle: availabilityHeadline(for: profile.availabilityByDay)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        locationProfileEditor(for: draftBinding)
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "mappin.and.ellipse",
+                            tint: .green,
+                            title: "Где удобно играть",
+                            subtitle: playLocationSummary(for: profile)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            profileScreenMode = .preview
+                        }
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "eye.fill",
+                            tint: .yellow,
+                            title: "Посмотреть карточку",
+                            subtitle: activitySummary(for: profile)
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
-                NavigationLink {
-                    availabilityProfileEditor(for: draftBinding)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "clock",
-                        tint: .green,
-                        title: "Доступность",
-                        subtitle: availabilityHeadline(for: profile.availabilityByDay)
-                    )
-                }
-                .buttonStyle(.plain)
+                ProfileMenuGroup {
+                    NavigationLink {
+                        notificationProfileEditor(for: draftBinding)
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "bell",
+                            tint: .white.opacity(0.82),
+                            title: "Уведомления",
+                            subtitle: notificationsSummary(for: profile)
+                        )
+                    }
+                    .buttonStyle(.plain)
 
-                NavigationLink {
-                    locationProfileEditor(for: draftBinding)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "mappin.and.ellipse",
-                        tint: .green,
-                        title: "Где удобно играть",
-                        subtitle: playLocationSummary(for: profile)
-                    )
-                }
-                .buttonStyle(.plain)
+                    NavigationLink {
+                        VisibilitySettingsView(selectionRaw: $visibilityModeRaw)
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "lock",
+                            tint: .white.opacity(0.82),
+                            title: "Приватность",
+                            subtitle: visibilityMode.title
+                        )
+                    }
+                    .buttonStyle(.plain)
 
-                NavigationLink {
-                    PublicProfilePreviewView(profile: profile, visibilityMode: visibilityMode)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "star.fill",
-                        tint: .yellow,
-                        title: "Моя активность",
-                        subtitle: activitySummary(for: profile)
-                    )
+                    NavigationLink {
+                        ProfileAccountScreen(
+                            email: appModel.currentUser?.email,
+                            isVerified: appModel.currentUser?.isVerified == true,
+                            onLogout: { appModel.logout() },
+                            onDelete: { isDeleteConfirmationPresented = true }
+                        )
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "person",
+                            tint: .white.opacity(0.82),
+                            title: "Аккаунт",
+                            subtitle: profile.email ?? "Почта, телефон, безопасность"
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            }
-
-            ProfileMenuGroup {
-                NavigationLink {
-                    notificationProfileEditor(for: draftBinding)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "bell",
-                        tint: .white.opacity(0.82),
-                        title: "Уведомления",
-                        subtitle: notificationsSummary(for: profile)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink {
-                    VisibilitySettingsView(selectionRaw: $visibilityModeRaw)
-                } label: {
-                    ProfileMenuRow(
-                        icon: "lock",
-                        tint: .white.opacity(0.82),
-                        title: "Приватность",
-                        subtitle: visibilityMode.title
-                    )
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink {
-                    ProfileAccountScreen(
-                        email: appModel.currentUser?.email,
-                        isVerified: appModel.currentUser?.isVerified == true,
-                        onLogout: { appModel.logout() },
-                        onDelete: { isDeleteConfirmationPresented = true }
-                    )
-                } label: {
-                    ProfileMenuRow(
-                        icon: "person",
-                        tint: .white.opacity(0.82),
-                        title: "Аккаунт",
-                        subtitle: profile.email ?? "Почта, телефон, безопасность"
-                    )
-                }
-                .buttonStyle(.plain)
+            } else {
+                ProfileSwipeCardPreview(profile: profile)
             }
         } else {
             ProfileDarkPanel {
@@ -424,11 +491,35 @@ struct ProfileView: View {
                         .init(title: "Город", value: profile.wrappedValue.city ?? "СПб", icon: "building.2")
                     ])
 
-                    ProfileDistrictPickerCard(
-                        selectedDistricts: profile.preferredDistricts,
-                        primaryDistrict: profile.district,
-                        districts: profileDistrictOptions
-                    )
+                    ProfileEmbeddedLightCard(title: "Город", subtitle: "Клубы и игроки подбираются внутри выбранного города.") {
+                        Picker("Город", selection: supportedCityBinding(for: profile)) {
+                            ForEach(SupportedCity.selectableCases) { city in
+                                Text(city.rawValue).tag(city)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(AppTheme.court)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if supportedCityBinding(for: profile).wrappedValue.supportsDistrictSelection {
+                        ProfileDistrictPickerCard(
+                            selectedDistricts: profile.preferredDistricts,
+                            primaryDistrict: profile.district,
+                            districts: profileDistrictOptions(
+                                for: supportedCityBinding(for: profile).wrappedValue
+                            )
+                        )
+                    } else {
+                        ProfileEmbeddedLightCard(
+                            title: "Районы",
+                            subtitle: "Для \(supportedCityBinding(for: profile).wrappedValue.rawValue) пока используем выбранный радиус и расстояние до места."
+                        ) {
+                            Label("Районы города добавим постепенно", systemImage: "map")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.ink.opacity(0.62))
+                        }
+                    }
 
                     ProfileEmbeddedLightCard(title: "Радиус поиска", subtitle: "Если районов нет, расстояние станет главным сигналом.") {
                         FieldShell(title: "\(profile.wrappedValue.searchRadiusKm) км") {
@@ -592,15 +683,20 @@ struct ProfileView: View {
         }
 
         FieldShell(title: "Город") {
-            TextField("Санкт-Петербург", text: profile.city.orEmpty)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
+            Picker("Город", selection: supportedCityBinding(for: profile)) {
+                ForEach(SupportedCity.selectableCases) { city in
+                    Text(city.rawValue).tag(city)
+                }
+            }
+            .pickerStyle(.menu)
         }
 
-        FieldShell(title: "Район") {
-            TextField("Например: Приморский", text: profile.district.orEmpty)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
+        if supportedCityBinding(for: profile).wrappedValue.supportsDistrictSelection {
+            FieldShell(title: "Район") {
+                TextField("Например: Приморский", text: profile.district.orEmpty)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+            }
         }
 
         FieldShell(title: "О себе", caption: "Коротко опиши себя или с кем хочешь играть.") {
@@ -786,7 +882,7 @@ struct ProfileView: View {
             guard !error.isCancellationLike else {
                 return
             }
-            appModel.present(error: error)
+            gameFeedRequests = []
         }
     }
 
@@ -809,9 +905,10 @@ struct ProfileView: View {
     private func save(successMessage: String = "Профиль сохранён") async -> Bool {
         guard let draft else { return false }
 
-        await appModel.saveProfile(draft)
+        let didSave = await appModel.saveProfile(draft)
+        guard didSave else { return false }
+
         self.draft = appModel.currentUser
-        guard appModel.errorMessage == nil else { return false }
         AppHaptics.notification(.success)
         showSaveToast(successMessage)
         return true
@@ -869,16 +966,9 @@ struct ProfileView: View {
     }
 
     private func uploadProfileMedia(from items: [PhotosPickerItem], preferredKind: PlayerMediaKind) async {
-        guard !isUploadingProfileMedia else { return }
-
         isUploadingProfileMedia = true
         defer {
             isUploadingProfileMedia = false
-            if preferredKind == .photo {
-                selectedProfilePhotoItems = []
-            } else {
-                selectedProfileVideoItems = []
-            }
         }
 
         do {
@@ -943,8 +1033,12 @@ struct ProfileView: View {
     }
 
     private func uploadTrimmedProfileVideo(_ trimDraft: ProfileVideoTrimDraft, startTime: TimeInterval) async {
-        guard !isUploadingProfileMedia else { return }
+        enqueueProfileMediaMutation {
+            await performTrimmedProfileVideoUpload(trimDraft, startTime: startTime)
+        }
+    }
 
+    private func performTrimmedProfileVideoUpload(_ trimDraft: ProfileVideoTrimDraft, startTime: TimeInterval) async {
         isUploadingProfileMedia = true
         defer {
             isUploadingProfileMedia = false
@@ -1051,19 +1145,48 @@ struct ProfileView: View {
         if var updatedDraft = draft {
             updatedDraft.profilePhotoUrls = result.profilePhotoUrls
             updatedDraft.profileVideoUrls = result.profileVideoUrls
-            updatedDraft.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first ?? updatedDraft.avatarUrl
+            updatedDraft.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first
             draft = updatedDraft
             appModel.currentUser = updatedDraft
         } else if var currentUser = appModel.currentUser {
             currentUser.profilePhotoUrls = result.profilePhotoUrls
             currentUser.profileVideoUrls = result.profileVideoUrls
-            currentUser.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first ?? currentUser.avatarUrl
+            currentUser.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first
             draft = currentUser
             appModel.currentUser = currentUser
         }
     }
 
-    private func removeProfileMedia(_ item: PlayerMediaItem) {
+    private func requestProfileMediaRemoval(_ item: PlayerMediaItem) {
+        guard item.kind == .video else {
+            removeProfileMediaPersistently(item)
+            return
+        }
+
+        pendingProfileVideoRemoval = item
+    }
+
+    private func removeProfileMediaPersistently(_ item: PlayerMediaItem) {
+        guard profileMediaMutationCount == 0,
+              let snapshot = draft ?? appModel.currentUser else { return }
+
+        applyOptimisticProfileMediaRemoval(item)
+        enqueueProfileMediaMutation {
+            do {
+                let result = try await appModel.repository.removeProfileMedia(mediaUrl: item.path)
+                applyProfileMediaUpload(result)
+                AppHaptics.notification(.success)
+                showSaveToast(item.kind == .video ? "Видео удалено" : "Фото удалено")
+            } catch {
+                draft = snapshot
+                appModel.currentUser = snapshot
+                guard !error.isCancellationLike else { return }
+                appModel.present(error: error)
+            }
+        }
+    }
+
+    private func applyOptimisticProfileMediaRemoval(_ item: PlayerMediaItem) {
         guard var updatedDraft = draft ?? appModel.currentUser else { return }
 
         switch item.kind {
@@ -1080,6 +1203,16 @@ struct ProfileView: View {
         appModel.currentUser = updatedDraft
     }
 
+    private func enqueueProfileMediaMutation(_ operation: @escaping @MainActor () async -> Void) {
+        let precedingMutation = profileMediaMutationTail
+        profileMediaMutationCount += 1
+        profileMediaMutationTail = Task { @MainActor in
+            await precedingMutation?.value
+            await operation()
+            profileMediaMutationCount = max(profileMediaMutationCount - 1, 0)
+        }
+    }
+
     private func showSaveToast(_ message: String) {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
             saveToastMessage = message
@@ -1093,36 +1226,38 @@ struct ProfileView: View {
         }
     }
 
-    private func profileCompleteness(for profile: UserProfile) -> Int {
-        let checks = [
-            profile.name?.isEmpty == false,
-            profile.age != nil,
-            profile.city?.isEmpty == false,
-            profile.district?.isEmpty == false || !profile.preferredDistricts.isEmpty,
-            !profile.preferredSports.isEmpty,
-            !profile.availabilityByDay.isEmpty,
-            profile.bio?.isEmpty == false,
-            profile.avatarUrl?.isEmpty == false || !profile.profilePhotoUrls.isEmpty,
-            !profile.profileVideoUrls.isEmpty
-        ]
-        let done = checks.filter { $0 }.count
-        return Int((Double(done) / Double(checks.count) * 100).rounded())
-    }
+    private func profileCompletionStatus(for profile: UserProfile) -> ProfileCompletionStatus {
+        let city = SupportedCity.resolve(profile.city)
+        let hasDistrict = profile.district?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || !profile.preferredDistricts.isEmpty
+        let hasLevels = !profile.preferredSports.isEmpty && profile.preferredSports.allSatisfy { sport in
+            profile.sportLevels[sport.rawValue] != nil || (sport == .tennis && profile.tennisLevel != nil)
+        }
+        let hasAvailability = profile.availabilityByDay.values.contains { !$0.isEmpty }
+        let hasPhoto = profile.avatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || !profile.profilePhotoUrls.isEmpty
 
-    private func profileMissingHint(for profile: UserProfile) -> String {
-        if profile.avatarUrl?.isEmpty != false && profile.profilePhotoUrls.isEmpty {
-            return "Осталось добавить фото для карточки."
+        var requirements: [(isComplete: Bool, step: String)] = [
+            (profile.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, "Добавьте имя"),
+            (profile.age != nil, "Укажите возраст"),
+            (city != nil, "Выберите город"),
+            (hasPhoto, "Добавьте основное фото"),
+            (!profile.preferredSports.isEmpty, "Выберите хотя бы один вид спорта"),
+            (hasLevels, "Укажите уровень для выбранных видов спорта"),
+            (hasAvailability, "Отметьте удобные дни и время"),
+            (profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, "Расскажите о себе")
+        ]
+
+        if city == .saintPetersburg {
+            requirements.append((hasDistrict, "Выберите район Санкт-Петербурга"))
         }
-        if profile.profileVideoUrls.isEmpty {
-            return "Добавь короткое видео — карточку будут лучше понимать."
-        }
-        if profile.bio?.isEmpty != false {
-            return "Осталось заполнить описание."
-        }
-        if profile.availabilityByDay.isEmpty {
-            return "Осталось указать удобное время."
-        }
-        return "Отлично! Карточка выглядит полной."
+
+        let completedCount = requirements.filter(\.isComplete).count
+        let percent = Int((Double(completedCount) / Double(requirements.count) * 100).rounded())
+        return ProfileCompletionStatus(
+            percent: percent,
+            missingSteps: requirements.filter { !$0.isComplete }.map(\.step)
+        )
     }
 
     private func sportsSummary(for profile: UserProfile) -> String {
@@ -1157,10 +1292,29 @@ struct ProfileView: View {
         return "\(daysCount) дней, \(ranges.sorted().joined(separator: ", "))"
     }
 
-    private var profileDistrictOptions: [String] {
+    private func profileDistrictOptions(for city: SupportedCity) -> [String] {
         districtAreasByID.values
+            .filter { $0.city == city }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
             .map(\.id)
+    }
+
+    private func supportedCityBinding(for profile: Binding<UserProfile>) -> Binding<SupportedCity> {
+        Binding(
+            get: {
+                SupportedCity.resolve(profile.wrappedValue.city) ?? .saintPetersburg
+            },
+            set: { city in
+                let previousCity = SupportedCity.resolve(profile.wrappedValue.city)
+                profile.wrappedValue.city = city.rawValue
+                guard previousCity != city else {
+                    return
+                }
+
+                profile.wrappedValue.district = nil
+                profile.wrappedValue.preferredDistricts.removeAll()
+            }
+        )
     }
 
     private func activeProfileDistricts(for profile: UserProfile) -> [String] {
@@ -1789,6 +1943,83 @@ private struct ProfileVideoTrimEditorSheet: View {
     }
 }
 
+private struct ProfileScreenModePicker: View {
+    @Binding var selection: ProfileScreenMode
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(ProfileScreenMode.allCases) { mode in
+                Button {
+                    AppHaptics.selection()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selection = mode
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: mode.icon)
+                            .font(.caption.weight(.bold))
+                        Text(mode.rawValue)
+                            .font(.caption.weight(.semibold))
+                    }
+                        .foregroundStyle(selection == mode ? .black : .white.opacity(0.68))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .padding(.horizontal, 6)
+                        .background(selection == mode ? AppTheme.mint : .clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(5)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.white.opacity(0.09), lineWidth: 1)
+        )
+    }
+}
+
+private struct ProfileSwipeCardPreview: View {
+    let profile: UserProfile
+
+    private var previewUser: DiscoverUser {
+        DiscoverUser(profile: profile)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Карточка в «Похожих игроках»")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Показаны только данные из вашего профиля")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+
+            SwipeCard(
+                user: previewUser,
+                index: 0,
+                dragOffset: .zero,
+                decision: nil,
+                mode: .profilePreview,
+                onOpen: {},
+                onDislike: {},
+                onLike: {}
+            )
+            .frame(height: 520)
+
+            Label("Предпросмотр: свайпы и действия отключены", systemImage: "eye.fill")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.56))
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+}
+
 private struct ProfileOverviewCard: View {
     let profile: UserProfile
     let isUploadingAvatar: Bool
@@ -1881,9 +2112,12 @@ private struct ProfileOverviewCard: View {
 
 private struct ProfileSelectionMediaCard: View {
     let profile: UserProfile
+    let isUploadingAvatar: Bool
     let isUploading: Bool
+    @Binding var selectedAvatarItem: PhotosPickerItem?
     @Binding var selectedPhotoItems: [PhotosPickerItem]
     @Binding var selectedVideoItems: [PhotosPickerItem]
+    let onEdit: () -> Void
     let onPreview: (PlayerMediaItem) -> Void
     let onRemove: (PlayerMediaItem) -> Void
 
@@ -1901,88 +2135,120 @@ private struct ProfileSelectionMediaCard: View {
 
     var body: some View {
         ProfileDarkPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Карточка в подборе")
+                        Text("Ваш профиль")
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("Так вашу карточку увидят другие игроки")
+                        Text("Основные данные и медиа")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white.opacity(0.58))
                     }
 
-                    Spacer()
+                    Spacer(minLength: 4)
 
-                    if isUploading {
+                    if isUploading || isUploadingAvatar {
                         ProgressView()
                             .tint(.white)
                     }
+
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.white.opacity(0.09), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Редактировать профиль")
                 }
 
-                ZStack(alignment: .bottomLeading) {
-                    ProfileHeroImage(name: profile.displayName, path: profile.profileHeroImagePath, height: 248)
+                PhotosPicker(selection: $selectedAvatarItem, matching: .images, photoLibrary: .shared()) {
+                    ZStack(alignment: .bottomTrailing) {
+                        ProfileHeroImage(
+                            name: profile.displayName,
+                            path: profile.profileHeroImagePath,
+                            height: 264
+                        )
 
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.82)],
-                        startPoint: .center,
-                        endPoint: .bottom
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        Label("Основное фото", systemImage: "camera.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background(.black.opacity(0.64), in: Capsule())
+                            .padding(12)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Text(profile.age.map { "\(profile.displayName), \($0)" } ?? profile.displayName)
-                                .font(.title2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(AppTheme.mint)
+                        if isUploadingAvatar {
+                            Color.black.opacity(0.36)
+                                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            ProgressView()
+                                .tint(.white)
+                                .controlSize(.large)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         }
-
-                        if let sport = profile.preferredSports.first {
-                            Text("\(sport.title) · \(profile.sportLevels[sport.rawValue] ?? profile.tennisLevel ?? 5) уровень · \(profile.city ?? "Санкт-Петербург")")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.mint)
-                                .lineLimit(2)
-                        }
-
-                        Text(profile.bio ?? "Люблю быстрые партии после работы. Открыт к регулярным тренировкам.")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .lineLimit(2)
                     }
-                    .padding(16)
+                }
+                .buttonStyle(.plain)
+                .disabled(isUploading || isUploadingAvatar)
 
-                    if remainingPhotoSlots > 0 {
-                        PhotosPicker(
-                            selection: $selectedPhotoItems,
-                            maxSelectionCount: remainingPhotoSlots,
-                            matching: .images,
-                            photoLibrary: .shared()
+                VStack(alignment: .leading, spacing: 10) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            profileName
+                            lookingForGameBadge
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            profileName
+                            lookingForGameBadge
+                        }
+                    }
+
+                    Label(profileLocationLine, systemImage: "mappin.circle.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if profile.preferredSports.isEmpty {
+                        Text("Виды спорта пока не выбраны")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.52))
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 112), spacing: 8)],
+                            alignment: .leading,
+                            spacing: 8
                         ) {
-                            Label("Изменить фото", systemImage: "pencil")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 8)
-                                .background(.black.opacity(0.48), in: Capsule())
+                            ForEach(profile.preferredSports.prefix(4)) { sport in
+                                ProfileSportChip(
+                                    sport: sport,
+                                    level: profile.sportLevels[sport.rawValue] ?? profile.tennisLevel
+                                )
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
+
+                    Text(profileBioText)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Фото и видео для карточки")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text("\(profile.profileVideoUrls.count)/4 видео")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.58))
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            mediaTitle
+                            Spacer()
+                            videoBonusLabel
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            mediaTitle
+                            videoBonusLabel
+                        }
                     }
 
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -1991,6 +2257,7 @@ private struct ProfileSelectionMediaCard: View {
                                 ProfileMediaTile(
                                     item: item,
                                     canRemove: item.kind == .video || profile.profilePhotoUrls.contains(item.path),
+                                    isEnabled: !isUploading && !isUploadingAvatar,
                                     onPreview: onPreview,
                                     onRemove: onRemove
                                 )
@@ -2006,6 +2273,7 @@ private struct ProfileSelectionMediaCard: View {
                                     ProfileAddMediaTile(title: "Фото", systemImage: "camera.fill")
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(isUploading || isUploadingAvatar)
                             }
 
                             if remainingVideoSlots > 0 {
@@ -2018,6 +2286,7 @@ private struct ProfileSelectionMediaCard: View {
                                     ProfileAddMediaTile(title: "Видео до 10 сек", systemImage: "play.rectangle.fill")
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(isUploading || isUploadingAvatar)
                             }
                         }
                         .padding(.vertical, 2)
@@ -2028,6 +2297,57 @@ private struct ProfileSelectionMediaCard: View {
             }
         }
     }
+
+    private var profileName: some View {
+        Text(profile.age.map { "\(profile.displayName), \($0)" } ?? profile.displayName)
+            .font(.title2.weight(.bold))
+            .foregroundStyle(.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.78)
+    }
+
+    @ViewBuilder
+    private var lookingForGameBadge: some View {
+        if profile.isLookingForGame {
+            ProfileCapsule(text: "Ищу игру", tint: AppTheme.court)
+        }
+    }
+
+    private var profileLocationLine: String {
+        var parts: [String] = []
+        if let city = profile.city?.trimmingCharacters(in: .whitespacesAndNewlines), !city.isEmpty {
+            parts.append(city)
+        }
+        let districts = profile.preferredDistricts.isEmpty
+            ? [profile.district].compactMap { $0 }
+            : profile.preferredDistricts
+        if let district = districts.compactMap(localizedDistrictName).first {
+            parts.append(district)
+        }
+        return parts.isEmpty ? "Город и район не указаны" : parts.joined(separator: " · ")
+    }
+
+    private var profileBioText: String {
+        guard let bio = profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty else {
+            return "Описание пока не заполнено"
+        }
+        return bio
+    }
+
+    private var mediaTitle: some View {
+        Text("Фото и видео")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+    }
+
+    private var videoBonusLabel: some View {
+        Label(
+            profile.profileVideoUrls.isEmpty ? "Видео: необязательный бонус" : "Видео добавлено",
+            systemImage: profile.profileVideoUrls.isEmpty ? "sparkles" : "checkmark.circle.fill"
+        )
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(profile.profileVideoUrls.isEmpty ? .white.opacity(0.58) : AppTheme.mint)
+    }
 }
 
 private struct ProfileHeroImage: View {
@@ -2036,29 +2356,34 @@ private struct ProfileHeroImage: View {
     let height: CGFloat
 
     var body: some View {
-        ZStack {
-            if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        fallback
+        GeometryReader { geometry in
+            ZStack {
+                if let url = resolveAppRemoteURL(path) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geometry.size.width, height: height)
+                                .clipped()
+                        default:
+                            fallback
+                        }
                     }
+                } else {
+                    fallback
                 }
-            } else {
-                fallback
             }
+            .frame(width: geometry.size.width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(.white.opacity(0.1), lineWidth: 1)
+            )
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.white.opacity(0.1), lineWidth: 1)
-        )
     }
 
     private var fallback: some View {
@@ -2087,14 +2412,21 @@ private struct ProfileHeroImage: View {
 private struct ProfileMediaTile: View {
     let item: PlayerMediaItem
     let canRemove: Bool
+    let isEnabled: Bool
     let onPreview: (PlayerMediaItem) -> Void
     let onRemove: (PlayerMediaItem) -> Void
 
     var body: some View {
         ZStack {
-            thumbnail
-                .frame(width: 92, height: 120)
-                .clipped()
+            Button {
+                onPreview(item)
+            } label: {
+                thumbnail
+                    .frame(width: 92, height: 120)
+                    .clipped()
+            }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
 
             if canRemove {
                 Button {
@@ -2107,6 +2439,8 @@ private struct ProfileMediaTile: View {
                         .background(.black.opacity(0.58), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!isEnabled)
+                .accessibilityLabel(item.kind == .video ? "Удалить видео" : "Удалить фото")
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(6)
             }
@@ -2118,9 +2452,6 @@ private struct ProfileMediaTile: View {
                 .stroke(AppTheme.court.opacity(0.55), lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture {
-            onPreview(item)
-        }
     }
 
     @ViewBuilder
@@ -2197,19 +2528,27 @@ private struct ProfileMediaAdviceRow: View {
 
 private struct ProfileCompletenessCard: View {
     let percent: Int
-    let missingText: String
+    let missingSteps: [String]
+    let hasVideoBonus: Bool
 
     var body: some View {
         ProfileDarkPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Заполненность профиля")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    Spacer()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Заполненность профиля")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                        Text(completionSubtitle)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+
+                    Spacer(minLength: 4)
+
                     Text("\(percent)%")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(AppTheme.mint)
                 }
 
                 GeometryReader { proxy in
@@ -2220,13 +2559,45 @@ private struct ProfileCompletenessCard: View {
                             .frame(width: proxy.size.width * CGFloat(percent) / 100)
                     }
                 }
-                .frame(height: 5)
+                .frame(height: 7)
 
-                Text(missingText)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.58))
+                if missingSteps.isEmpty {
+                    Label("Все обязательные шаги выполнены", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(missingSteps, id: \.self) { step in
+                            HStack(alignment: .top, spacing: 9) {
+                                Image(systemName: "circle")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(AppTheme.mint)
+                                    .padding(.top, 3)
+                                Text(step)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+
+                Label(
+                    hasVideoBonus ? "Видео добавлено как бонус к карточке" : "Видео: бонус, который не влияет на заполненность",
+                    systemImage: hasVideoBonus ? "play.circle.fill" : "sparkles"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(hasVideoBonus ? AppTheme.mint : .white.opacity(0.52))
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var completionSubtitle: String {
+        if missingSteps.isEmpty {
+            return "Профиль готов к показу"
+        }
+        return "Осталось шагов: \(missingSteps.count)"
     }
 }
 
@@ -2746,106 +3117,6 @@ private struct VisibilitySettingsView: View {
     }
 }
 
-private struct PublicProfilePreviewView: View {
-    let profile: UserProfile
-    let visibilityMode: ProfileVisibilityMode
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    ProfileSubscreenHeader(title: "Публичный профиль", onBack: { dismiss() })
-                    PublicProfileCard(profile: profile, visibilityMode: visibilityMode)
-
-                    ProfileDarkPanel {
-                        VStack(spacing: 6) {
-                            Text("Нужен доступ к полному профилю?")
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.56))
-                            Text("Открыть в приложении")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.green)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 40)
-            }
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .profileBackSwipe { dismiss() }
-    }
-}
-
-private struct PublicProfileCard: View {
-    let profile: UserProfile
-    let visibilityMode: ProfileVisibilityMode
-
-    var body: some View {
-        ProfileDarkPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(LinearGradient(colors: [AppTheme.court.opacity(0.55), .black], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(height: 168)
-                        .overlay(alignment: .trailing) {
-                            Image(systemName: "tennisball.fill")
-                                .font(.system(size: 88))
-                                .foregroundStyle(.yellow.opacity(0.82))
-                                .rotationEffect(.degrees(-18))
-                                .padding(.trailing, 28)
-                        }
-
-                    RemoteAvatarView(name: profile.displayName, path: profile.avatarUrl, size: 92)
-                        .padding(.leading, 18)
-                        .offset(y: 32)
-                }
-                .padding(.bottom, 28)
-
-                Text(profile.age.map { "\(profile.displayName), \($0)" } ?? profile.displayName)
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(.white)
-
-                Text("\(profile.city ?? "Санкт-Петербург") · \(profile.district ?? "район не указан")")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.62))
-
-                HStack(spacing: 8) {
-                    ForEach(profile.preferredSports.prefix(2)) { sport in
-                        ProfileSportChip(sport: sport, level: profile.sportLevels[sport.rawValue] ?? profile.tennisLevel)
-                    }
-                }
-
-                if visibilityMode == .publicProfile {
-                    Text(profile.bio?.isEmpty == false ? profile.bio! : "Играю в удовольствие и на результат. Открыт к новым знакомствам и интересным играм!")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.78))
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 0) {
-                        ProfileFact(icon: "clock", title: "Когда удобно", value: "Пн-Пт вечером")
-                        ProfileFact(icon: "figure.run", title: "Активность", value: profile.isLookingForGame ? "Ищет игру" : "Открыт к играм")
-                        ProfileFact(icon: "arrow.triangle.2.circlepath", title: "Частота", value: "2-4 раза в неделю")
-                        ProfileFact(icon: "building.2", title: "Любимые клубы", value: "Vaska Padel Yard")
-                    }
-                }
-
-                Button {
-                    AppHaptics.impact(.light)
-                } label: {
-                    Label("Предложить игру", systemImage: "paperplane")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(ProfileFilledButtonStyle(tint: AppTheme.court))
-            }
-        }
-    }
-}
-
 private struct VisibilityOptionCard: View {
     let mode: ProfileVisibilityMode
     let isSelected: Bool
@@ -2974,6 +3245,8 @@ private struct ProfileDarkPanel<Content: View>: View {
     var body: some View {
         content
             .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
             .background(
                 LinearGradient(
                     colors: [Color.white.opacity(0.08), Color.white.opacity(0.035)],

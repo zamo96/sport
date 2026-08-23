@@ -6,7 +6,7 @@ export const AUTH_CODE_TTL_MINUTES = 10;
 
 export const DEFAULT_CITY = "Санкт-Петербург";
 export const DEFAULT_CITY_COORDINATES = { lat: 59.9386, lng: 30.3141 } as const;
-export const AVAILABLE_CITIES = [DEFAULT_CITY, "Москва", "Казань"] as const;
+export const AVAILABLE_CITIES = [DEFAULT_CITY, "Москва"] as const;
 
 export const CITY_PRESETS = {
   "Санкт-Петербург": DEFAULT_CITY_COORDINATES,
@@ -19,7 +19,7 @@ export const CITY_PRESETS = {
   "Kazan": { lat: 55.7961, lng: 49.1064 }
 } as const;
 
-export const DISTRICT_OPTIONS = [
+export const SAINT_PETERSBURG_DISTRICT_OPTIONS = [
   "admiralteysky",
   "vasileostrovsky",
   "vyborgsky",
@@ -38,6 +38,37 @@ export const DISTRICT_OPTIONS = [
   "pushkinsky",
   "frunzensky",
   "central",
+] as const;
+
+export const MOSCOW_DISTRICT_OPTIONS = [
+  "moscow_central",
+  "moscow_northern",
+  "moscow_northeastern",
+  "moscow_eastern",
+  "moscow_southeastern",
+  "moscow_southern",
+  "moscow_southwestern",
+  "moscow_western",
+  "moscow_northwestern",
+  "moscow_zelenograd",
+  "moscow_novomoskovsky",
+  "moscow_troitsky",
+] as const;
+
+export const KAZAN_DISTRICT_OPTIONS = [
+  "kazan_aviastroitelny",
+  "kazan_vakhitovsky",
+  "kazan_kirovsky",
+  "kazan_moskovsky",
+  "kazan_novo_savinovsky",
+  "kazan_privolzhsky",
+  "kazan_sovetsky",
+] as const;
+
+export const DISTRICT_OPTIONS = [
+  ...SAINT_PETERSBURG_DISTRICT_OPTIONS,
+  ...MOSCOW_DISTRICT_OPTIONS,
+  ...KAZAN_DISTRICT_OPTIONS,
 ] as const;
 
 export type DistrictOption = (typeof DISTRICT_OPTIONS)[number];
@@ -61,18 +92,36 @@ export const DISTRICT_LABELS: Record<DistrictOption, string> = {
   pushkinsky: "Пушкинский",
   frunzensky: "Фрунзенский",
   central: "Центральный",
+  moscow_central: "Центральный административный округ",
+  moscow_northern: "Северный административный округ",
+  moscow_northeastern: "Северо-Восточный административный округ",
+  moscow_eastern: "Восточный административный округ",
+  moscow_southeastern: "Юго-Восточный административный округ",
+  moscow_southern: "Южный административный округ",
+  moscow_southwestern: "Юго-Западный административный округ",
+  moscow_western: "Западный административный округ",
+  moscow_northwestern: "Северо-Западный административный округ",
+  moscow_zelenograd: "Зеленоградский административный округ",
+  moscow_novomoskovsky: "Новомосковский административный округ",
+  moscow_troitsky: "Троицкий административный округ",
+  kazan_aviastroitelny: "Авиастроительный",
+  kazan_vakhitovsky: "Вахитовский",
+  kazan_kirovsky: "Кировский",
+  kazan_moskovsky: "Московский",
+  kazan_novo_savinovsky: "Ново-Савиновский",
+  kazan_privolzhsky: "Приволжский",
+  kazan_sovetsky: "Советский",
 };
 
-export const DISTRICT_MAP_AREAS: Record<
-  DistrictOption,
-  {
-    label: string;
-    color: string;
-    center: { lat: number; lng: number };
-    polygon: [number, number][];
-    searchHints: string[];
-  }
-> = {
+type DistrictMapArea = {
+  label: string;
+  color: string;
+  center: { lat: number; lng: number };
+  polygon: [number, number][];
+  searchHints: string[];
+};
+
+export const DISTRICT_MAP_AREAS: Record<string, DistrictMapArea> = {
   admiralteysky: {
     label: DISTRICT_LABELS.admiralteysky,
     color: "#855D4E",
@@ -290,6 +339,266 @@ export const DISTRICT_MAP_AREAS: Record<
     ],
     searchHints: ["Лиговский", "Чернышевская", "поближе к центру"]
   },
+  moscow_central: {
+    label: DISTRICT_LABELS.moscow_central,
+    color: "#24D68A",
+    center: { lat: 55.7512, lng: 37.6244 },
+    polygon: [
+      [37.545, 55.795],
+      [37.626, 55.805],
+      [37.704, 55.775],
+      [37.694, 55.713],
+      [37.62, 55.695],
+      [37.548, 55.724]
+    ],
+    searchHints: ["ЦАО", "центр Москвы", "Центральный административный округ"]
+  },
+  moscow_northern: {
+    label: DISTRICT_LABELS.moscow_northern,
+    color: "#24D68A",
+    center: { lat: 55.8768, lng: 37.575 },
+    polygon: [
+      [37.455, 55.925],
+      [37.545, 55.965],
+      [37.665, 55.945],
+      [37.704, 55.806],
+      [37.626, 55.805],
+      [37.545, 55.795],
+      [37.475, 55.825]
+    ],
+    searchHints: ["САО", "Северный административный округ", "Динамо"]
+  },
+  moscow_northeastern: {
+    label: DISTRICT_LABELS.moscow_northeastern,
+    color: "#24D68A",
+    center: { lat: 55.8582, lng: 37.7372 },
+    polygon: [
+      [37.665, 55.945],
+      [37.835, 55.925],
+      [37.85, 55.83],
+      [37.704, 55.775],
+      [37.704, 55.806]
+    ],
+    searchHints: ["СВАО", "Северо-Восточный административный округ", "ВДНХ"]
+  },
+  moscow_eastern: {
+    label: DISTRICT_LABELS.moscow_eastern,
+    color: "#24D68A",
+    center: { lat: 55.7458, lng: 37.8427 },
+    polygon: [
+      [37.85, 55.83],
+      [37.955, 55.82],
+      [37.97, 55.705],
+      [37.815, 55.675],
+      [37.694, 55.713],
+      [37.704, 55.775]
+    ],
+    searchHints: ["ВАО", "Восточный административный округ", "Измайлово"]
+  },
+  moscow_southeastern: {
+    label: DISTRICT_LABELS.moscow_southeastern,
+    color: "#24D68A",
+    center: { lat: 55.6463, lng: 37.7367 },
+    polygon: [
+      [37.694, 55.713],
+      [37.815, 55.675],
+      [37.855, 55.585],
+      [37.71, 55.565],
+      [37.625, 55.65],
+      [37.62, 55.695]
+    ],
+    searchHints: ["ЮВАО", "Юго-Восточный административный округ", "Люблино"]
+  },
+  moscow_southern: {
+    label: DISTRICT_LABELS.moscow_southern,
+    color: "#24D68A",
+    center: { lat: 55.6138, lng: 37.5922 },
+    polygon: [
+      [37.62, 55.695],
+      [37.625, 55.65],
+      [37.71, 55.565],
+      [37.65, 55.515],
+      [37.5, 55.56],
+      [37.515, 55.65],
+      [37.548, 55.724]
+    ],
+    searchHints: ["ЮАО", "Южный административный округ", "Коломенская"]
+  },
+  moscow_southwestern: {
+    label: DISTRICT_LABELS.moscow_southwestern,
+    color: "#24D68A",
+    center: { lat: 55.6563, lng: 37.4463 },
+    polygon: [
+      [37.548, 55.724],
+      [37.515, 55.65],
+      [37.5, 55.56],
+      [37.355, 55.56],
+      [37.35, 55.665],
+      [37.455, 55.735]
+    ],
+    searchHints: ["ЮЗАО", "Юго-Западный административный округ", "Профсоюзная"]
+  },
+  moscow_western: {
+    label: DISTRICT_LABELS.moscow_western,
+    color: "#24D68A",
+    center: { lat: 55.7418, lng: 37.3972 },
+    polygon: [
+      [37.455, 55.825],
+      [37.545, 55.795],
+      [37.548, 55.724],
+      [37.455, 55.735],
+      [37.35, 55.665],
+      [37.26, 55.7],
+      [37.285, 55.805]
+    ],
+    searchHints: ["ЗАО", "Западный административный округ", "Кунцево"]
+  },
+  moscow_northwestern: {
+    label: DISTRICT_LABELS.moscow_northwestern,
+    color: "#24D68A",
+    center: { lat: 55.8711, lng: 37.3478 },
+    polygon: [
+      [37.285, 55.805],
+      [37.455, 55.825],
+      [37.455, 55.925],
+      [37.315, 55.93],
+      [37.235, 55.875]
+    ],
+    searchHints: ["СЗАО", "Северо-Западный административный округ", "Строгино"]
+  },
+  moscow_zelenograd: {
+    label: DISTRICT_LABELS.moscow_zelenograd,
+    color: "#24D68A",
+    center: { lat: 55.986, lng: 37.2075 },
+    polygon: [
+      [37.13, 56.03],
+      [37.27, 56.03],
+      [37.285, 55.945],
+      [37.145, 55.94]
+    ],
+    searchHints: ["Зеленоград", "Зеленоградский административный округ"]
+  },
+  moscow_novomoskovsky: {
+    label: DISTRICT_LABELS.moscow_novomoskovsky,
+    color: "#24D68A",
+    center: { lat: 55.5617, lng: 37.3433 },
+    polygon: [
+      [37.26, 55.7],
+      [37.35, 55.665],
+      [37.355, 55.56],
+      [37.5, 55.56],
+      [37.41, 55.425],
+      [37.185, 55.465]
+    ],
+    searchHints: ["НАО", "Новомосковский административный округ", "Новая Москва"]
+  },
+  moscow_troitsky: {
+    label: DISTRICT_LABELS.moscow_troitsky,
+    color: "#24D68A",
+    center: { lat: 55.3583, lng: 37.092 },
+    polygon: [
+      [37.185, 55.465],
+      [37.41, 55.425],
+      [37.345, 55.23],
+      [36.815, 55.22],
+      [36.905, 55.455]
+    ],
+    searchHints: ["ТАО", "Троицкий административный округ", "Троицк"]
+  },
+  kazan_aviastroitelny: {
+    label: DISTRICT_LABELS.kazan_aviastroitelny,
+    color: "#24D68A",
+    center: { lat: 55.881, lng: 49.117 },
+    polygon: [
+      [49.045, 55.925],
+      [49.205, 55.925],
+      [49.205, 55.855],
+      [49.105, 55.835],
+      [49.025, 55.865]
+    ],
+    searchHints: ["Авиастроительный", "Авиастрой", "Северный вокзал"]
+  },
+  kazan_vakhitovsky: {
+    label: DISTRICT_LABELS.kazan_vakhitovsky,
+    color: "#24D68A",
+    center: { lat: 55.778, lng: 49.12 },
+    polygon: [
+      [49.06, 55.815],
+      [49.145, 55.825],
+      [49.195, 55.77],
+      [49.145, 55.73],
+      [49.055, 55.75]
+    ],
+    searchHints: ["Вахитовский", "центр Казани", "Кремль"]
+  },
+  kazan_kirovsky: {
+    label: DISTRICT_LABELS.kazan_kirovsky,
+    color: "#24D68A",
+    center: { lat: 55.808, lng: 48.91 },
+    polygon: [
+      [48.825, 55.9],
+      [49.025, 55.865],
+      [49.06, 55.815],
+      [49.055, 55.75],
+      [48.865, 55.73],
+      [48.765, 55.815]
+    ],
+    searchHints: ["Кировский", "Адмиралтейская слобода"]
+  },
+  kazan_moskovsky: {
+    label: DISTRICT_LABELS.kazan_moskovsky,
+    color: "#24D68A",
+    center: { lat: 55.828, lng: 49.049 },
+    polygon: [
+      [49.025, 55.865],
+      [49.105, 55.835],
+      [49.12, 55.795],
+      [49.06, 55.815],
+      [48.93, 55.825]
+    ],
+    searchHints: ["Московский район Казани", "Яшьлек"]
+  },
+  kazan_novo_savinovsky: {
+    label: DISTRICT_LABELS.kazan_novo_savinovsky,
+    color: "#24D68A",
+    center: { lat: 55.813, lng: 49.208 },
+    polygon: [
+      [49.105, 55.835],
+      [49.245, 55.85],
+      [49.26, 55.785],
+      [49.195, 55.77],
+      [49.145, 55.825]
+    ],
+    searchHints: ["Ново-Савиновский", "Козья слобода", "Чаша"]
+  },
+  kazan_privolzhsky: {
+    label: DISTRICT_LABELS.kazan_privolzhsky,
+    color: "#24D68A",
+    center: { lat: 55.681, lng: 49.064 },
+    polygon: [
+      [49.055, 55.75],
+      [49.145, 55.73],
+      [49.25, 55.655],
+      [49.145, 55.585],
+      [48.93, 55.64],
+      [48.865, 55.73]
+    ],
+    searchHints: ["Приволжский", "Горки", "Дубравная"]
+  },
+  kazan_sovetsky: {
+    label: DISTRICT_LABELS.kazan_sovetsky,
+    color: "#24D68A",
+    center: { lat: 55.724, lng: 49.27 },
+    polygon: [
+      [49.195, 55.77],
+      [49.26, 55.785],
+      [49.385, 55.775],
+      [49.41, 55.65],
+      [49.25, 55.655],
+      [49.145, 55.73]
+    ],
+    searchHints: ["Советский", "Азино", "Проспект Победы"]
+  },
 };
 
 export const DISTRICT_SEARCH_HINTS = Object.values(DISTRICT_MAP_AREAS).flatMap((district) => district.searchHints);
@@ -299,7 +608,7 @@ export function isDistrictOption(value: string | null | undefined): value is Dis
 }
 
 export function getDistrictArea(district: string | null | undefined) {
-  return isDistrictOption(district) ? DISTRICT_MAP_AREAS[district] : null;
+  return isDistrictOption(district) ? DISTRICT_MAP_AREAS[district] ?? null : null;
 }
 
 export function getDistrictLabel(district: string | null | undefined) {

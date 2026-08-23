@@ -2,11 +2,14 @@ import { Prisma } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
-import { prisma } from "@/lib/prisma";
+import {
+  normalizeProfileMediaList,
+  PROFILE_PHOTO_LIMIT,
+  PROFILE_VIDEO_LIMIT,
+  removeProfileMedia
+} from "@/lib/profile-media";
+import { withSerializableTransactionRetry } from "@/lib/prisma-transaction";
 import { uploadProfileMedia } from "@/lib/uploads";
-
-const PROFILE_PHOTO_LIMIT = 6;
-const PROFILE_VIDEO_LIMIT = 4;
 
 export async function POST(request: Request) {
   try {
@@ -37,50 +40,56 @@ export async function POST(request: Request) {
       userId: user.id
     });
 
-    const current = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+    const updated = await withSerializableTransactionRetry(async (transaction) => {
+      const current = await transaction.user.findUnique({
+        where: { id: user.id },
+        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+      });
+
+      if (!current) {
+        return null;
+      }
+
+      const profilePhotoUrls = normalizeProfileMediaList(current.profilePhotoUrls, PROFILE_PHOTO_LIMIT);
+      const profileVideoUrls = normalizeProfileMediaList(current.profileVideoUrls, PROFILE_VIDEO_LIMIT);
+
+      if (mediaType === "photo") {
+        if (profilePhotoUrls.length >= PROFILE_PHOTO_LIMIT) {
+          throw new Error("Можно добавить до 6 фото в карточку");
+        }
+        profilePhotoUrls.push(url);
+      } else {
+        if (profileVideoUrls.length >= PROFILE_VIDEO_LIMIT) {
+          throw new Error("Можно добавить до 4 видео в карточку");
+        }
+        profileVideoUrls.push(url);
+      }
+
+      const nextProfilePhotoUrls = normalizeProfileMediaList(profilePhotoUrls, PROFILE_PHOTO_LIMIT);
+      const nextProfileVideoUrls = normalizeProfileMediaList(profileVideoUrls, PROFILE_VIDEO_LIMIT);
+      const nextAvatarUrl = mediaType === "photo" ? nextProfilePhotoUrls[0] : current.avatarUrl;
+
+      return transaction.user.update({
+        where: { id: user.id },
+        data: {
+          avatarUrl: nextAvatarUrl,
+          profilePhotoUrls: nextProfilePhotoUrls as Prisma.InputJsonValue,
+          profileVideoUrls: nextProfileVideoUrls as Prisma.InputJsonValue
+        },
+        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+      });
     });
 
-    if (!current) {
+    if (!updated) {
       return fail("Пользователь не найден", 404);
     }
-
-    const profilePhotoUrls = normalizeMediaList(current.profilePhotoUrls, PROFILE_PHOTO_LIMIT);
-    const profileVideoUrls = normalizeMediaList(current.profileVideoUrls, PROFILE_VIDEO_LIMIT);
-
-    if (mediaType === "photo") {
-      if (profilePhotoUrls.length >= PROFILE_PHOTO_LIMIT) {
-        return fail("Можно добавить до 6 фото в карточку");
-      }
-      profilePhotoUrls.push(url);
-    } else {
-      if (profileVideoUrls.length >= PROFILE_VIDEO_LIMIT) {
-        return fail("Можно добавить до 4 видео в карточку");
-      }
-      profileVideoUrls.push(url);
-    }
-
-    const nextProfilePhotoUrls = uniqueMedia(profilePhotoUrls, PROFILE_PHOTO_LIMIT);
-    const nextProfileVideoUrls = uniqueMedia(profileVideoUrls, PROFILE_VIDEO_LIMIT);
-    const nextAvatarUrl = mediaType === "photo" ? nextProfilePhotoUrls[0] : current.avatarUrl;
-
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        avatarUrl: nextAvatarUrl,
-        profilePhotoUrls: nextProfilePhotoUrls as Prisma.InputJsonValue,
-        profileVideoUrls: nextProfileVideoUrls as Prisma.InputJsonValue
-      },
-      select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
-    });
 
     return ok({
       mediaUrl: url,
       mediaType,
       avatarUrl: updated.avatarUrl,
-      profilePhotoUrls: normalizeMediaList(updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
-      profileVideoUrls: normalizeMediaList(updated.profileVideoUrls, PROFILE_VIDEO_LIMIT)
+      profilePhotoUrls: normalizeProfileMediaList(updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
+      profileVideoUrls: normalizeProfileMediaList(updated.profileVideoUrls, PROFILE_VIDEO_LIMIT)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
@@ -91,17 +100,58 @@ export async function POST(request: Request) {
   }
 }
 
-function normalizeMediaList(value: unknown, limit: number) {
-  return uniqueMedia(Array.isArray(value) ? value : [], limit);
-}
+export async function DELETE(request: Request) {
+  try {
+    const user = await requireSessionUser();
+    const body = (await request.json().catch(() => null)) as { mediaUrl?: unknown } | null;
+    const mediaUrl = typeof body?.mediaUrl === "string" ? body.mediaUrl.trim() : "";
 
-function uniqueMedia(value: unknown[], limit: number) {
-  return Array.from(
-    new Set(
-      value
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  ).slice(0, limit);
+    if (!mediaUrl || mediaUrl.length > 600) {
+      return fail("Некорректная ссылка на медиа");
+    }
+
+    const result = await withSerializableTransactionRetry(async (transaction) => {
+      const current = await transaction.user.findUnique({
+        where: { id: user.id },
+        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+      });
+
+      if (!current) {
+        return null;
+      }
+
+      const removal = removeProfileMedia(current, mediaUrl);
+      const updated = removal.removed
+        ? await transaction.user.update({
+            where: { id: user.id },
+            data: {
+              avatarUrl: removal.avatarUrl,
+              profilePhotoUrls: removal.profilePhotoUrls as Prisma.InputJsonValue,
+              profileVideoUrls: removal.profileVideoUrls as Prisma.InputJsonValue
+            },
+            select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+          })
+        : current;
+
+      return { removal, updated };
+    });
+
+    if (!result) {
+      return fail("Пользователь не найден", 404);
+    }
+
+    return ok({
+      mediaUrl: result.removal.mediaUrl,
+      mediaType: result.removal.mediaType,
+      avatarUrl: result.updated.avatarUrl,
+      profilePhotoUrls: normalizeProfileMediaList(result.updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
+      profileVideoUrls: normalizeProfileMediaList(result.updated.profileVideoUrls, PROFILE_VIDEO_LIMIT)
+    });
+  } catch (error) {
+    if (getErrorMessage(error) === "UNAUTHORIZED") {
+      return fail("Требуется авторизация", 401);
+    }
+
+    return fail(getErrorMessage(error));
+  }
 }

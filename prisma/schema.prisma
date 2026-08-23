@@ -235,6 +235,7 @@ model User {
   authCodes            AuthCode[]
   agreementAcceptances UserAgreementAcceptance[]
   sentMessages         ChatMessage[]
+  uploadedChatMedia    ChatMediaAsset[]
   gameRequestsCreated  GameRequest[] @relation("GameRequestCreator")
   gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
   gameSearches         GameSearch[]
@@ -527,9 +528,37 @@ model ChatMessage {
   match         Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
   gameRequest   GameRequest? @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
   senderUser    User         @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+  attachments  ChatMessageMedia[]
 
   @@index([matchId, createdAt])
   @@index([gameRequestId, createdAt])
+}
+
+model ChatMediaAsset {
+  id                String                  @id @default(cuid())
+  uploaderUserId    String
+  storageKey        String                  @unique
+  mimeType          String
+  byteSize          Int
+  originalName      String?
+  claimedAt         DateTime?
+  createdAt         DateTime                @default(now())
+  uploaderUser      User                    @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
+  chatMessageMedia  ChatMessageMedia?
+  searchMessageMedia GameSearchMessageMedia?
+
+  @@index([uploaderUserId, claimedAt, createdAt])
+}
+
+model ChatMessageMedia {
+  chatMessageId String
+  assetId       String      @unique
+  position      Int
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
+  asset         ChatMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([chatMessageId, assetId])
+  @@unique([chatMessageId, position])
 }
 
 model GameReport {
@@ -675,8 +704,20 @@ model GameSearchMessage {
   createdAt     DateTime   @default(now())
   gameSearch    GameSearch @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
   senderUser    User       @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+  attachments  GameSearchMessageMedia[]
 
   @@index([gameSearchId, createdAt])
+}
+
+model GameSearchMessageMedia {
+  gameSearchMessageId String
+  assetId             String            @unique
+  position            Int
+  gameSearchMessage   GameSearchMessage @relation(fields: [gameSearchMessageId], references: [id], onDelete: Cascade)
+  asset               ChatMediaAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([gameSearchMessageId, assetId])
+  @@unique([gameSearchMessageId, position])
 }
 
 model GameSearchSlotProposal {

@@ -7,6 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { ensureMatchForUsers } from "@/server/matching";
 import { otherUserFromMatch } from "@/server/serializers";
+import {
+  chatMessageAttachmentsInclude,
+  serializeChatMessage
+} from "@/server/chat-media";
 
 const createMatchSchema = z.object({
   userId: z.string().min(1)
@@ -24,6 +28,7 @@ export async function GET() {
         user1: true,
         user2: true,
         messages: {
+          include: chatMessageAttachmentsInclude,
           where: {
             gameRequestId: null
           },
@@ -50,10 +55,7 @@ export async function GET() {
         createdAt: match.createdAt.toISOString(),
         otherUser: otherUserFromMatch(match, user.id),
         lastMessage: match.messages[0]
-          ? {
-              ...match.messages[0],
-              createdAt: match.messages[0].createdAt.toISOString()
-            }
+          ? serializeChatMessage(match.messages[0])
           : null,
         latestGameRequest: match.gameRequests[0]
           ? {
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
           user1: true,
           user2: true,
           messages: {
+            include: chatMessageAttachmentsInclude,
             where: {
               gameRequestId: null
             },
@@ -142,10 +145,7 @@ export async function POST(request: NextRequest) {
         createdAt: match.createdAt.toISOString(),
         otherUser: otherUserFromMatch(match, user.id),
         lastMessage: match.messages[0]
-          ? {
-              ...match.messages[0],
-              createdAt: match.messages[0].createdAt.toISOString()
-            }
+          ? serializeChatMessage(match.messages[0])
           : null,
         latestGameRequest: match.gameRequests[0]
           ? {

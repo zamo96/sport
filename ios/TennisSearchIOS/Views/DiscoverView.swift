@@ -19,6 +19,13 @@ private enum CalendarExportError: LocalizedError {
     }
 }
 
+private struct DiscoverActionCelebration: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let icon: String
+}
+
 struct DiscoverView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
@@ -40,12 +47,14 @@ struct DiscoverView: View {
     @State private var isHotSearchComposerPresented = false
     @State private var isUpcomingChatPresented = false
     @State private var mySearches: [GameSearch] = []
+    @State private var similarPlayersBadgeCount = 0
     @State private var selectedTab: DiscoverTab = .swipe
     @State private var isLoading = false
     @State private var matchMessage: String?
     @State private var matchMessageTask: Task<Void, Never>?
     @State private var responseMessage: String?
     @State private var responseMessageTask: Task<Void, Never>?
+    @State private var actionCelebration: DiscoverActionCelebration?
     @State private var localResponseStatuses: [String: String] = [:]
     @State private var localResponseIDs: [String: String] = [:]
     @State private var dragOffset: CGSize = .zero
@@ -65,6 +74,7 @@ struct DiscoverView: View {
     @State private var hotSearchSportFilter: Sport?
     @State private var hotSearchDisplayMode: ActiveHotSearchDisplayMode = .list
     @State private var selectedHotSearchMapItemID: String?
+    @State private var hotSearchMapClusterItemIDs: [String] = []
     @StateObject private var hotSearchLocationProvider = ActiveHotSearchLocationProvider()
     @State private var regularSportFilter: Sport?
     @State private var regularDayFilter: DayOfWeek?
@@ -197,8 +207,9 @@ struct DiscoverView: View {
     }
 
     private var pendingSearchResponsesCount: Int {
-        mySearches.reduce(into: 0) { count, search in
-            guard isSearchCountedInMyEvents(search) else {
+        let currentUserId = appModel.currentUser?.id
+        return mySearches.reduce(into: 0) { count, search in
+            guard isOwnedActiveHotSearchForAttention(search, currentUserId: currentUserId) else {
                 return
             }
             count += search.responses.filter { $0.status == "pending" }.count
@@ -418,6 +429,17 @@ struct DiscoverView: View {
             )
         )
         .background(Color.black.ignoresSafeArea())
+        .overlay {
+            if let actionCelebration {
+                SuccessCelebrationOverlay(
+                    title: actionCelebration.title,
+                    subtitle: actionCelebration.subtitle,
+                    icon: actionCelebration.icon
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: Binding(
             get: { presentedRegularPairID != nil },
@@ -581,6 +603,11 @@ struct DiscoverView: View {
         }
         .sheet(item: $selectedPhotoReportRequest) { request in
             GameReportComposerSheet(request: request) {
+                showActionCelebration(
+                    title: "Фотоотчёт загружен",
+                    subtitle: "Отчёт сохранён в игре",
+                    icon: "📸"
+                )
                 await loadDiscover()
                 await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             }
@@ -591,6 +618,11 @@ struct DiscoverView: View {
         }
         .sheet(item: $selectedPersonalActivityReport) { activity in
             PersonalActivityReportComposerSheet(activity: activity) {
+                showActionCelebration(
+                    title: "Фотоотчёт загружен",
+                    subtitle: "Визит сохранён в профиле",
+                    icon: "📸"
+                )
                 await loadDiscover()
             }
             .presentationDetents([.fraction(0.78), .large])
@@ -1005,66 +1037,87 @@ struct DiscoverView: View {
     }
 
     private var tabBar: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(DiscoverTab.userVisibleCases) { tab in
-                        Button {
-                            selectTab(tab)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: tab.systemImage)
-                                Text(tab.title)
-                                let upcomingCount = activeUpcomingGameRequests.count + activePersonalActivities.count
-                                if tab == .upcoming, appModel.isAuthenticated, upcomingCount > 0 {
-                                    Text("\(min(upcomingCount, 99))")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(.white.opacity(0.25), in: Capsule())
-                                }
-                                if tab == .swipe, !users.isEmpty {
-                                    Text("\(min(users.count, 99))")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(.white.opacity(0.25), in: Capsule())
-                                }
-                                if tab == .likes, appModel.isAuthenticated, notificationManager.summary.incomingLikesCount > 0 {
-                                    Text("\(min(notificationManager.summary.incomingLikesCount, 99))")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(.white.opacity(0.25), in: Capsule())
-                                }
-                            }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(backgroundColor(for: tab))
-                            .foregroundStyle(foregroundColor(for: tab))
-                            .scaleEffect(selectedTab == tab ? 1 : 0.985)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .stroke(selectedTab == tab ? AppTheme.line : Color.white.opacity(0.8), lineWidth: selectedTab == tab ? 1.2 : 1)
-                            )
-                            .shadow(color: AppTheme.ink.opacity(selectedTab == tab ? 0.12 : 0.04), radius: 14, x: 0, y: 8)
+        HStack(spacing: 6) {
+            ForEach(DiscoverTab.userVisibleCases) { tab in
+                let isSelected = selectedTab == tab
+
+                Button {
+                    selectTab(tab)
+                } label: {
+                    HStack(spacing: isSelected ? 7 : 0) {
+                        Image(systemName: tab.systemImage)
+                            .frame(width: 20)
+
+                        if isSelected {
+                            Text(tab.title)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .transition(.opacity.combined(with: .move(edge: .leading)))
                         }
-                        .buttonStyle(.plain)
-                        .id(tab.id)
                     }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, isSelected ? 10 : 0)
+                    .frame(
+                        minWidth: 44,
+                        maxWidth: isSelected ? .infinity : 44,
+                        minHeight: 44
+                    )
+                    .background(backgroundColor(for: tab))
+                    .foregroundStyle(foregroundColor(for: tab))
+                    .scaleEffect(isSelected ? 1 : 0.985)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(isSelected ? AppTheme.line : Color.white.opacity(0.8), lineWidth: isSelected ? 1.2 : 1)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if let count = tabBadgeCount(for: tab) {
+                            Text("\(min(count, 99))")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    isSelected ? Color.white.opacity(0.25) : AppTheme.clay,
+                                    in: Capsule()
+                                )
+                                .offset(x: 4, y: -5)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .shadow(color: AppTheme.ink.opacity(isSelected ? 0.12 : 0.04), radius: 14, x: 0, y: 8)
                 }
-            }
-            .onAppear {
-                proxy.scrollTo(selectedTab.id, anchor: .center)
-            }
-            .onChange(of: selectedTab) { value in
-                withAnimation(.easeInOut(duration: 0.34)) {
-                    proxy.scrollTo(value.id, anchor: .center)
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(tab.title))
+                .accessibilityValue(Text(isSelected ? "Выбрано" : "Не выбрано"))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .animation(.easeInOut(duration: 0.28), value: selectedTab)
             }
         }
+    }
+
+    private func tabBadgeCount(for tab: DiscoverTab) -> Int? {
+        let count: Int
+
+        switch tab {
+        case .upcoming:
+            guard appModel.isAuthenticated else {
+                return nil
+            }
+            count = activeUpcomingGameRequests.count + activePersonalActivities.count
+        case .swipe:
+            count = similarPlayersBadgeCount
+        case .likes:
+            guard appModel.isAuthenticated else {
+                return nil
+            }
+            count = notificationManager.summary.incomingLikesCount
+        case .seeking, .hot:
+            return nil
+        }
+
+        return count > 0 ? count : nil
     }
 
     @ViewBuilder
@@ -1342,6 +1395,9 @@ struct DiscoverView: View {
                                     displayName: request.upcomingDisplayName(currentUserId: appModel.currentUser?.id),
                                     avatarURL: request.upcomingAvatarURL(currentUserId: appModel.currentUser?.id)
                                         ?? upcomingMatches.first(where: { $0.id == request.matchId })?.otherUser.avatarUrl,
+                                    onOpenDetails: {
+                                        selectedUpcomingDetailsRequest = request
+                                    },
                                     onOpenChat: {
                                         if let searchLobbyId = request.searchLobbyId {
                                             presentedSearchLobbyID = searchLobbyId
@@ -1519,8 +1575,11 @@ struct DiscoverView: View {
                 }
             }
 
-            if visibleItems.isEmpty, !isLoading {
-                UrgentSearchEmptyState()
+            if hotSearchDisplayMode != .map, visibleItems.isEmpty, !isLoading {
+                UrgentSearchEmptyState(
+                    showsCreateButton: activeHotSearchItems.isEmpty,
+                    onCreateSearch: presentHotSearchComposer
+                )
             }
 
             if hotSearchDisplayMode == .map {
@@ -1572,6 +1631,31 @@ struct DiscoverView: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { !hotSearchMapClusterItemIDs.isEmpty },
+                set: { isPresented in
+                    if !isPresented {
+                        hotSearchMapClusterItemIDs = []
+                    }
+                }
+            )
+        ) {
+            ActiveHotSearchClusterPickerSheet(
+                items: visibleItems.filter { hotSearchMapClusterItemIDs.contains($0.id) },
+                onSelect: { itemID in
+                    selectedHotSearchMapItemID = itemID
+                    hotSearchMapClusterItemIDs = []
+                    AppHaptics.selection()
+                }
+            )
+            .presentationDetents([.fraction(0.46), .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
+        .onChange(of: visibleItems.map(\.id)) { _ in
+            reconcileHotSearchMapClusterSelection(in: visibleItems)
+        }
     }
 
     private var activeHotSearchDisplayControl: some View {
@@ -1617,6 +1701,10 @@ struct DiscoverView: View {
                 items: items,
                 selectedItemID: selectedItem?.id,
                 highlightedDistrictIDs: districtIDs,
+                viewerCity: selectedItem?.viewerCity
+                    ?? SupportedCity.resolve(appModel.currentUser?.city)
+                    ?? SupportedCity.resolve(appModel.guestDraft.city)
+                    ?? .saintPetersburg,
                 userCoordinate: hotSearchLocationProvider.coordinate,
                 userName: appModel.currentUser?.displayName ?? "Вы",
                 userAvatarPath: appModel.currentUser?.avatarUrl,
@@ -1625,6 +1713,9 @@ struct DiscoverView: View {
                         selectedHotSearchMapItemID = itemID
                     }
                     AppHaptics.selection()
+                },
+                onSelectCluster: { itemIDs in
+                    presentHotSearchMapCluster(itemIDs: itemIDs, visibleItems: items)
                 }
             )
             .frame(height: 430)
@@ -1681,6 +1772,38 @@ struct DiscoverView: View {
         return items.first
     }
 
+    private func presentHotSearchMapCluster(itemIDs: [String], visibleItems: [ActiveHotSearchItem]) {
+        let requestedIDs = Set(itemIDs)
+        var seenItemIDs = Set<String>()
+        var seenSearchIDs = Set<String>()
+        let matchingIDs = visibleItems.compactMap { item -> String? in
+            guard requestedIDs.contains(item.id),
+                  seenItemIDs.insert(item.id).inserted,
+                  seenSearchIDs.insert(item.search.id).inserted else {
+                return nil
+            }
+            return item.id
+        }
+
+        switch matchingIDs.count {
+        case 0:
+            hotSearchMapClusterItemIDs = []
+        case 1:
+            hotSearchMapClusterItemIDs = []
+            selectedHotSearchMapItemID = matchingIDs[0]
+        default:
+            hotSearchMapClusterItemIDs = Array(matchingIDs)
+        }
+    }
+
+    private func reconcileHotSearchMapClusterSelection(in visibleItems: [ActiveHotSearchItem]) {
+        guard !hotSearchMapClusterItemIDs.isEmpty else {
+            return
+        }
+
+        presentHotSearchMapCluster(itemIDs: hotSearchMapClusterItemIDs, visibleItems: visibleItems)
+    }
+
     private var activeHotSearchItems: [ActiveHotSearchItem] {
         let baseUsers: [DiscoverUser]
         if let highlightedSearchID {
@@ -1688,11 +1811,14 @@ struct DiscoverView: View {
         } else {
             baseUsers = users
         }
+        let viewerCity = SupportedCity.resolve(appModel.currentUser?.city)
+            ?? SupportedCity.resolve(appModel.guestDraft.city)
+            ?? .saintPetersburg
 
         return baseUsers
             .flatMap { user in
                 user.gameSearches.map { search in
-                    ActiveHotSearchItem(user: user, search: search)
+                    ActiveHotSearchItem(user: user, search: search, viewerCity: viewerCity)
                 }
             }
             .filter { item in
@@ -2158,6 +2284,7 @@ struct DiscoverView: View {
                 async let discoverRequest = appModel.repository.fetchDiscoverUsers(view: selectedTab)
                 let fetchedUsers = try await discoverRequest
                 users = reorderedUsers(fetchedUsers)
+                updateSimilarPlayersBadgeIfNeeded()
                 await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             } else {
                 upcomingMatches = []
@@ -2168,6 +2295,7 @@ struct DiscoverView: View {
                 mySearches = []
                 let fetchedUsers = try await appModel.repository.fetchGuestDiscoverUsers(draft: appModel.guestDraft, view: selectedTab)
                 users = reorderedUsers(fetchedUsers)
+                updateSimilarPlayersBadgeIfNeeded()
             }
         } catch {
             guard !error.isCancellationLike else {
@@ -2187,6 +2315,13 @@ struct DiscoverView: View {
         }
 
         return source
+    }
+
+    private func updateSimilarPlayersBadgeIfNeeded() {
+        guard selectedTab == .swipe else {
+            return
+        }
+        similarPlayersBadgeCount = users.count
     }
 
     private func reorderedGameRequests(_ source: [MatchGameRequest]) -> [MatchGameRequest] {
@@ -2293,8 +2428,9 @@ struct DiscoverView: View {
             dismissSimilarPlayersHint()
         }
 
-        if !appModel.isAuthenticated && action != .dislike {
+        if !appModel.isAuthenticated && (action == .like || action == .superlike) {
             resetSwipeInteraction()
+            appModel.consumeDiscoverFirstInterestHint()
             appModel.presentAuth(step: .email)
             return
         }
@@ -2321,14 +2457,20 @@ struct DiscoverView: View {
 
         try? await Task.sleep(nanoseconds: 180_000_000)
 
+        if !appModel.isAuthenticated {
+            users.removeAll { $0.id == activeUser.id }
+            updateSimilarPlayersBadgeIfNeeded()
+            resetSwipeInteraction()
+            return
+        }
+
         if action == .dislike {
             users.removeAll { $0.id == activeUser.id }
+            updateSimilarPlayersBadgeIfNeeded()
             resetSwipeInteraction()
 
-            if appModel.isAuthenticated {
-                Task {
-                    _ = try? await appModel.repository.swipe(userId: activeUser.id, action: action)
-                }
+            Task {
+                _ = try? await appModel.repository.swipe(userId: activeUser.id, action: action)
             }
             return
         }
@@ -2336,6 +2478,7 @@ struct DiscoverView: View {
         do {
             let createdMatchId = try await appModel.repository.swipe(userId: activeUser.id, action: action)
             users.removeFirst()
+            updateSimilarPlayersBadgeIfNeeded()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             if createdMatchId != nil, action == .like {
                 showMatchToast("С \(activeUser.displayName) случился новый мэтч.")
@@ -2450,6 +2593,25 @@ struct DiscoverView: View {
             guard !Task.isCancelled else { return }
             if responseMessage == message {
                 responseMessage = nil
+            }
+        }
+    }
+
+    private func showActionCelebration(title: String, subtitle: String, icon: String) {
+        let celebration = DiscoverActionCelebration(title: title, subtitle: subtitle, icon: icon)
+        AppHaptics.successCelebration()
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            actionCelebration = celebration
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1650))
+            guard actionCelebration?.id == celebration.id else {
+                return
+            }
+
+            withAnimation(.easeOut(duration: 0.22)) {
+                actionCelebration = nil
             }
         }
     }
@@ -2651,7 +2813,11 @@ struct DiscoverView: View {
 
         do {
             _ = try await appModel.repository.updateGameRequestOutcome(gameRequestId: request.id, outcome: outcome)
-            AppHaptics.notification(outcome == "played" ? .success : .warning)
+            showActionCelebration(
+                title: outcome == "played" ? "Ответ сохранён" : "Игра отмечена",
+                subtitle: outcome == "played" ? "Отметили, что игра прошла" : "Отметили, что сыграть не удалось",
+                icon: outcome == "played" ? "✅" : "✕"
+            )
             showResponseToast(outcome == "played" ? "Отметили, что игра прошла." : "Отметили, что сыграть не удалось.")
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
@@ -2679,7 +2845,11 @@ struct DiscoverView: View {
                     photoUrls: nil
                 )
             )
-            AppHaptics.notification(.success)
+            showActionCelebration(
+                title: withPhoto ? "Фотоотчёт загружен" : "Визит завершён",
+                subtitle: withPhoto ? "Визит сохранён в профиле" : "Отметили личную тренировку",
+                icon: withPhoto ? "📸" : "✅"
+            )
             showResponseToast(withPhoto ? "Фотоотчёт сохранён." : "Визит завершён.")
             await loadDiscover()
         } catch {
@@ -2896,6 +3066,7 @@ struct DiscoverView: View {
 private struct ActiveHotSearchItem: Identifiable {
     let user: DiscoverUser
     let search: GameSearch
+    let viewerCity: SupportedCity
 
     var id: String {
         "\(user.id)-\(search.id)"
@@ -2932,7 +3103,7 @@ private struct ActiveHotSearchItem: Identifiable {
             return area.centerCoordinate
         }
 
-        return CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351)
+        return viewerCity.mapCenter
     }
 
     var venueTitle: String {
@@ -3114,6 +3285,75 @@ private enum ActiveHotSearchFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct ActiveHotSearchClusterPickerSheet: View {
+    let items: [ActiveHotSearchItem]
+    let onSelect: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(items) { item in
+                        Button {
+                            onSelect(item.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                RemoteAvatarView(name: item.user.displayName, path: item.user.avatarUrl, size: 50)
+
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(item.user.age.map { "\(item.user.displayName), \($0)" } ?? item.user.displayName)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+
+                                    Text("\(item.search.sport.title) · \(item.timeTitle)")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(AppTheme.court)
+                                        .lineLimit(1)
+
+                                    Label(item.venueTitle, systemImage: "mappin.and.ellipse")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.62))
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.42))
+                            }
+                            .padding(12)
+                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(item.user.displayName), \(item.search.sport.title), \(item.timeTitle), \(item.venueTitle)")
+                        .accessibilityHint("Показывает выбранный поиск на карте")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Поиски в этом месте")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
 private struct ActiveHotSearchMapCard: View {
     let item: ActiveHotSearchItem
     let responseStatus: String?
@@ -3233,13 +3473,15 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
     let items: [ActiveHotSearchItem]
     let selectedItemID: String?
     let highlightedDistrictIDs: [String]
+    let viewerCity: SupportedCity
     let userCoordinate: CLLocationCoordinate2D?
     let userName: String
     let userAvatarPath: String?
     let onSelect: (String) -> Void
+    let onSelectCluster: ([String]) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSelect: onSelect)
+        Coordinator(onSelect: onSelect, onSelectCluster: onSelectCluster)
     }
 
     func makeUIView(context: Context) -> MKMapView {
@@ -3257,11 +3499,13 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        context.coordinator.updateCallbacks(onSelect: onSelect, onSelectCluster: onSelectCluster)
         context.coordinator.update(
             mapView: mapView,
             items: items,
             selectedItemID: selectedItemID,
             highlightedDistrictIDs: highlightedDistrictIDs,
+            viewerCity: viewerCity,
             userCoordinate: userCoordinate,
             userName: userName,
             userAvatarPath: userAvatarPath
@@ -3269,15 +3513,22 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
-        private let onSelect: (String) -> Void
+        private var onSelect: (String) -> Void
+        private var onSelectCluster: ([String]) -> Void
         private var lastItemIDs: [String] = []
         private var lastOverlayIDs: [String] = []
         private var lastSelectedItemID: String?
         private var lastUserLocationSignature: String?
         private var hasSetVisibleRegion = false
 
-        init(onSelect: @escaping (String) -> Void) {
+        init(onSelect: @escaping (String) -> Void, onSelectCluster: @escaping ([String]) -> Void) {
             self.onSelect = onSelect
+            self.onSelectCluster = onSelectCluster
+        }
+
+        func updateCallbacks(onSelect: @escaping (String) -> Void, onSelectCluster: @escaping ([String]) -> Void) {
+            self.onSelect = onSelect
+            self.onSelectCluster = onSelectCluster
         }
 
         func update(
@@ -3285,11 +3536,14 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
             items: [ActiveHotSearchItem],
             selectedItemID: String?,
             highlightedDistrictIDs: [String],
+            viewerCity: SupportedCity,
             userCoordinate: CLLocationCoordinate2D?,
             userName: String,
             userAvatarPath: String?
         ) {
-            let itemIDs = items.map(\.id)
+            let itemIDs = items.map {
+                "\($0.id)|\(String(format: "%.5f", $0.coordinate.latitude))|\(String(format: "%.5f", $0.coordinate.longitude))"
+            }
             let userLocationSignature = Self.userLocationSignature(
                 coordinate: userCoordinate,
                 name: userName,
@@ -3321,13 +3575,13 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
                 return
             }
 
-            let targetRect = targetVisibleRect(items: items, districtIDs: overlayIDs, userCoordinate: userCoordinate)
+            let targetRect = targetVisibleRect(items: items)
             if targetRect.isNull || targetRect.isEmpty {
                 mapView.setRegion(
                     MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: 59.9343, longitude: 30.3351),
-                        latitudinalMeters: 18_000,
-                        longitudinalMeters: 18_000
+                        center: viewerCity.mapCenter,
+                        latitudinalMeters: viewerCity.mapDiameterMeters,
+                        longitudinalMeters: viewerCity.mapDiameterMeters
                     ),
                     animated: false
                 )
@@ -3393,31 +3647,23 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
             ].joined(separator: "|")
         }
 
-        private func targetVisibleRect(
-            items: [ActiveHotSearchItem],
-            districtIDs: [String],
-            userCoordinate: CLLocationCoordinate2D?
-        ) -> MKMapRect {
-            let annotationRects = items.map {
+        private func targetVisibleRect(items: [ActiveHotSearchItem]) -> MKMapRect {
+            let itemRect = items.map {
                 MKMapRect(origin: MKMapPoint($0.coordinate), size: MKMapSize(width: 0, height: 0))
-            }
-            let userRects = userCoordinate.map {
-                [MKMapRect(origin: MKMapPoint($0), size: MKMapSize(width: 0, height: 0))]
-            } ?? []
-
-            let districtRects = districtIDs.compactMap { districtID -> MKMapRect? in
-                guard let area = districtAreasByID[districtID] else {
-                    return nil
-                }
-
-                var coordinates = area.coordinates
-                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
-                return polygon.boundingMapRect
-            }
-
-            return (annotationRects + districtRects + userRects).reduce(MKMapRect.null) { partial, next in
+            }.reduce(MKMapRect.null) { partial, next in
                 partial.isNull ? next : partial.union(next)
             }
+
+            guard !itemRect.isNull, let firstItem = items.first else {
+                return .null
+            }
+
+            let minimumDiameterMeters: CLLocationDistance = 8_000
+            let mapPointsPerMeter = MKMapPointsPerMeterAtLatitude(firstItem.coordinate.latitude)
+            let minimumMapPoints = minimumDiameterMeters * mapPointsPerMeter
+            let horizontalExpansion = max((minimumMapPoints - itemRect.width) / 2, 0)
+            let verticalExpansion = max((minimumMapPoints - itemRect.height) / 2, 0)
+            return itemRect.insetBy(dx: -horizontalExpansion, dy: -verticalExpansion)
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -3435,6 +3681,14 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if let cluster = annotation as? MKClusterAnnotation {
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: ActiveHotSearchClusterAnnotationView.reuseID) as? ActiveHotSearchClusterAnnotationView)
+                    ?? ActiveHotSearchClusterAnnotationView(annotation: cluster, reuseIdentifier: ActiveHotSearchClusterAnnotationView.reuseID)
+                view.annotation = cluster
+                view.configure(count: cluster.memberAnnotations.count)
+                return view
+            }
+
             if let annotation = annotation as? ActiveHotSearchUserLocationAnnotation {
                 let view = (mapView.dequeueReusableAnnotationView(withIdentifier: ActiveHotSearchUserLocationAnnotationView.reuseID) as? ActiveHotSearchUserLocationAnnotationView)
                     ?? ActiveHotSearchUserLocationAnnotationView(annotation: annotation, reuseIdentifier: ActiveHotSearchUserLocationAnnotationView.reuseID)
@@ -3455,12 +3709,73 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+            if let cluster = annotation as? MKClusterAnnotation {
+                let memberAnnotations = cluster.memberAnnotations.compactMap { $0 as? ActiveHotSearchAnnotation }
+                if Self.hasCoincidentCoordinates(memberAnnotations) {
+                    onSelectCluster(memberAnnotations.map(\.item.id))
+                } else {
+                    reveal(cluster: cluster, on: mapView)
+                }
+                mapView.deselectAnnotation(cluster, animated: false)
+                return
+            }
+
             guard let annotation = annotation as? ActiveHotSearchAnnotation else {
                 mapView.deselectAnnotation(annotation, animated: false)
                 return
             }
 
             onSelect(annotation.item.id)
+        }
+
+        private func reveal(cluster: MKClusterAnnotation, on mapView: MKMapView) {
+            let memberRect = cluster.memberAnnotations.reduce(MKMapRect.null) { partial, annotation in
+                let pointRect = MKMapRect(
+                    origin: MKMapPoint(annotation.coordinate),
+                    size: MKMapSize(width: 0, height: 0)
+                )
+                return partial.isNull ? pointRect : partial.union(pointRect)
+            }
+
+            guard !memberRect.isNull else {
+                return
+            }
+
+            let mapPointsPerMeter = MKMapPointsPerMeterAtLatitude(cluster.coordinate.latitude)
+            let currentDiameterMeters = max(mapView.visibleMapRect.width, mapView.visibleMapRect.height) / mapPointsPerMeter
+            let memberDiameterMeters = max(memberRect.width, memberRect.height) / mapPointsPerMeter
+            let minimumDiameterMeters = max(24, max(memberDiameterMeters * 2.5, min(500, currentDiameterMeters * 0.38)))
+            let minimumMapPoints = minimumDiameterMeters * mapPointsPerMeter
+            let horizontalExpansion = max((minimumMapPoints - memberRect.width) / 2, 0)
+            let verticalExpansion = max((minimumMapPoints - memberRect.height) / 2, 0)
+            let revealRect = memberRect.insetBy(dx: -horizontalExpansion, dy: -verticalExpansion)
+
+            mapView.setVisibleMapRect(
+                revealRect,
+                edgePadding: UIEdgeInsets(top: 54, left: 42, bottom: 154, right: 42),
+                animated: true
+            )
+        }
+
+        private static func hasCoincidentCoordinates(_ annotations: [ActiveHotSearchAnnotation]) -> Bool {
+            guard annotations.count > 1 else {
+                return false
+            }
+
+            for firstIndex in annotations.indices {
+                let origin = CLLocation(
+                    latitude: annotations[firstIndex].coordinate.latitude,
+                    longitude: annotations[firstIndex].coordinate.longitude
+                )
+                for secondIndex in annotations.index(after: firstIndex)..<annotations.endIndex {
+                    let coordinate = annotations[secondIndex].coordinate
+                    if origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) > 1 {
+                        return false
+                    }
+                }
+            }
+
+            return true
         }
     }
 }
@@ -3489,8 +3804,25 @@ private final class ActiveHotSearchAnnotationView: MKAnnotationView {
         image = activeHotSearchMarkerImage(for: item.search.sport, isSelected: isSelected)
         centerOffset = CGPoint(x: 0, y: -20)
         canShowCallout = false
+        clusteringIdentifier = "active-hot-search"
         displayPriority = isSelected ? .required : .defaultHigh
         zPriority = isSelected ? .max : .defaultSelected
+    }
+}
+
+private final class ActiveHotSearchClusterAnnotationView: MKAnnotationView {
+    static let reuseID = "ActiveHotSearchClusterAnnotationView"
+
+    func configure(count: Int) {
+        image = activeHotSearchClusterMarkerImage(count: count)
+        centerOffset = CGPoint(x: 0, y: -22)
+        canShowCallout = false
+        displayPriority = .required
+        zPriority = .max
+        isAccessibilityElement = true
+        accessibilityLabel = "\(count) поисков игры"
+        accessibilityHint = "Открывает поиски в этой точке или приближает карту"
+        accessibilityTraits = .button
     }
 }
 
@@ -3579,6 +3911,36 @@ private func activeHotSearchMarkerImage(for sport: Sport, isSelected: Bool) -> U
             let side = CGFloat(isSelected ? 24 : 21)
             symbol.draw(in: CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side))
         }
+    }
+}
+
+private func activeHotSearchClusterMarkerImage(count: Int) -> UIImage? {
+    let size = CGSize(width: 58, height: 58)
+    let renderer = UIGraphicsImageRenderer(size: size)
+
+    return renderer.image { _ in
+        let outerRect = CGRect(origin: .zero, size: size).insetBy(dx: 3, dy: 3)
+        UIColor.black.withAlphaComponent(0.76).setFill()
+        UIBezierPath(ovalIn: outerRect).fill()
+
+        UIColor(red: 0.12, green: 0.86, blue: 0.55, alpha: 1).setFill()
+        UIBezierPath(ovalIn: outerRect.insetBy(dx: 5, dy: 5)).fill()
+
+        UIColor.white.withAlphaComponent(0.92).setStroke()
+        let stroke = UIBezierPath(ovalIn: outerRect.insetBy(dx: 1.5, dy: 1.5))
+        stroke.lineWidth = 2.5
+        stroke.stroke()
+
+        let countText = "\(min(count, 99))" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: count > 9 ? 17 : 20, weight: .heavy),
+            .foregroundColor: UIColor.black
+        ]
+        let textSize = countText.size(withAttributes: attributes)
+        countText.draw(
+            at: CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
+            withAttributes: attributes
+        )
     }
 }
 
@@ -4115,8 +4477,11 @@ private struct UpcomingEmptyState: View {
 }
 
 private struct UrgentSearchEmptyState: View {
+    let showsCreateButton: Bool
+    let onCreateSearch: () -> Void
+
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 32, weight: .semibold))
                 .foregroundStyle(AppTheme.court)
@@ -4132,6 +4497,20 @@ private struct UrgentSearchEmptyState: View {
                     .foregroundStyle(AppTheme.ink.opacity(0.62))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
+            }
+
+            if showsCreateButton {
+                Button {
+                    onCreateSearch()
+                } label: {
+                    Label("Создать поиск", systemImage: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(AppTheme.court, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity)
@@ -4683,29 +5062,27 @@ private struct UrgentGamesToolbarButton: View {
     let count: Int
 
     var body: some View {
-        HStack(spacing: 8) {
+        ZStack(alignment: .topTrailing) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(AppTheme.court)
+                .frame(width: 42, height: 42)
+                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
 
-            Text("Поиски")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-
-            Text(count > 99 ? "99+" : "\(count)")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .background(count > 0 ? AppTheme.court : .white.opacity(0.1), in: Capsule())
+            if count > 0 {
+                Text(count > 99 ? "99+" : "\(count)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .frame(height: 20)
+                    .background(AppTheme.court, in: Capsule())
+                    .offset(x: 7, y: -7)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 8)
     }
 }
@@ -5013,29 +5390,41 @@ private struct CompactUpcomingHistoryRow: View {
     let request: MatchGameRequest
     let displayName: String
     let avatarURL: String?
+    let onOpenDetails: () -> Void
     let onOpenChat: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
-            RemoteAvatarView(name: displayName, path: avatarURL, size: 42)
+            Button(action: onOpenDetails) {
+                HStack(spacing: 12) {
+                    RemoteAvatarView(name: displayName, path: avatarURL, size: 42)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(displayName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
 
-                    AppInlineChip(text: request.statusLabel, tint: request.statusTintColor, foreground: .white)
+                            AppInlineChip(text: request.statusLabel, tint: request.statusTintColor, foreground: .white)
+                        }
+
+                        Text(request.proposedDatetime.formattedNumericDateTime())
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.64))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white.opacity(0.42))
                 }
-
-                Text(request.proposedDatetime.formattedNumericDateTime())
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.64))
-                    .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-
-            Spacer(minLength: 8)
+            .buttonStyle(.plain)
 
             if let onOpenChat {
                 Button(action: onOpenChat) {
@@ -5749,11 +6138,17 @@ private struct UpcomingGameDetailsSheet: View {
     }
 }
 
-private struct SwipeCard: View {
+enum SwipeCardMode {
+    case interactive
+    case profilePreview
+}
+
+struct SwipeCard: View {
     let user: DiscoverUser
     let index: Int
     let dragOffset: CGSize
     let decision: SwipeAction?
+    let mode: SwipeCardMode
     let onOpen: () -> Void
     let onDislike: () -> Void
     let onLike: () -> Void
@@ -5764,6 +6159,26 @@ private struct SwipeCard: View {
 
     private let storyDuration: TimeInterval = 10
     private let storyTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+
+    init(
+        user: DiscoverUser,
+        index: Int,
+        dragOffset: CGSize,
+        decision: SwipeAction?,
+        mode: SwipeCardMode = .interactive,
+        onOpen: @escaping () -> Void,
+        onDislike: @escaping () -> Void,
+        onLike: @escaping () -> Void
+    ) {
+        self.user = user
+        self.index = index
+        self.dragOffset = dragOffset
+        self.decision = decision
+        self.mode = mode
+        self.onOpen = onOpen
+        self.onDislike = onDislike
+        self.onLike = onLike
+    }
 
     private var swipeStrength: CGFloat {
         min(abs(dragOffset.width) / 170, 1)
@@ -5843,6 +6258,7 @@ private struct SwipeCard: View {
         .onChange(of: user.id) { _ in
             resetStory()
         }
+        .allowsHitTesting(mode == .interactive)
     }
 
     private var cardSurface: some View {
@@ -5882,7 +6298,9 @@ private struct SwipeCard: View {
             Spacer()
             playerIdentityBlock
             playerFitPanel
-            swipeActionHints
+            if mode == .interactive {
+                swipeActionHints
+            }
         }
     }
 
@@ -5953,36 +6371,66 @@ private struct SwipeCard: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.78)
 
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppTheme.mint)
-            }
-
-            HStack(spacing: 7) {
-                if let sport = user.preferredSports.first {
-                    Text(sport.title)
+                if mode == .interactive {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(AppTheme.mint)
                 }
-                Text("·")
-                Text(primaryLevelText)
-                Text("·")
-                Text(user.districtDisplayNames.first ?? user.city ?? "Рядом")
-                    .lineLimit(1)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 7) {
+                    playerSportText
+                    Text("·")
+                    Text(primaryLevelText)
+                    Text("·")
+                    Text(playerLocationText)
+                        .lineLimit(1)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        playerSportText
+                        Text("·")
+                        Text(primaryLevelText)
+                    }
+                    Text(playerLocationText)
+                        .lineLimit(1)
+                }
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white.opacity(0.82))
 
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(user.isOnline ? Color.green : AppTheme.mint)
-                    .frame(width: 8, height: 8)
-                Text(user.presenceLabel)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.72))
+            if mode == .interactive {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(user.isOnline ? Color.green : AppTheme.mint)
+                        .frame(width: 8, height: 8)
+                    Text(user.presenceLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: onOpen)
+        .onTapGesture {
+            guard mode == .interactive else { return }
+            onOpen()
+        }
+    }
+
+    @ViewBuilder
+    private var playerSportText: some View {
+        if let sport = user.preferredSports.first {
+            Text(sport.title)
+                .foregroundStyle(AppTheme.mint)
+        } else {
+            Text("Спорт не указан")
+        }
+    }
+
+    private var playerLocationText: String {
+        user.districtDisplayNames.first ?? user.city ?? "Город не указан"
     }
 
     private var primaryLevelText: String {
@@ -5998,19 +6446,23 @@ private struct SwipeCard: View {
 
     private var playerFitPanel: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text("Почему вы подходите")
+            Text(mode == .profilePreview ? "Что увидят игроки" : "Почему вы подходите")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
 
             HStack(spacing: 0) {
-                fitMetric(icon: "tennis.racket", title: "Спорт", value: user.preferredSports.first?.title ?? "Любой")
+                fitMetric(icon: "tennis.racket", title: "Спорт", value: sportMetricValue)
                 Divider().overlay(.white.opacity(0.08))
                 fitMetric(icon: "chart.bar.fill", title: "Уровень", value: primaryLevelText.replacingOccurrences(of: "уровень ", with: ""))
                 Divider().overlay(.white.opacity(0.08))
-                fitMetric(icon: "mappin.circle.fill", title: "Район", value: user.districtDisplayNames.first ?? user.distanceLabel)
+                fitMetric(
+                    icon: "mappin.circle.fill",
+                    title: mode == .profilePreview ? "Локация" : "Район",
+                    value: mode == .profilePreview ? playerLocationText : (user.districtDisplayNames.first ?? user.distanceLabel)
+                )
             }
 
-            Text(user.bio ?? "Готов быстро договориться и выйти на игру без лишних шагов.")
+            Text(profileDescription)
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.78))
                 .lineSpacing(2)
@@ -6023,7 +6475,26 @@ private struct SwipeCard: View {
                 .stroke(.white.opacity(0.1), lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture(perform: onOpen)
+        .onTapGesture {
+            guard mode == .interactive else { return }
+            onOpen()
+        }
+    }
+
+    private var profileDescription: String {
+        if let bio = user.bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty {
+            return bio
+        }
+        return mode == .profilePreview
+            ? "Описание пока не заполнено"
+            : "Готов быстро договориться и выйти на игру без лишних шагов."
+    }
+
+    private var sportMetricValue: String {
+        if let sport = user.preferredSports.first {
+            return sport.title
+        }
+        return mode == .profilePreview ? "Не указан" : "Любой"
     }
 
     private func fitMetric(icon: String, title: String, value: String) -> some View {
@@ -8888,9 +9359,8 @@ private struct GameReportComposerSheet: View {
                 comment: comment,
                 visibility: visibility
             )
-            AppHaptics.notification(.success)
-            await onSubmitted()
             dismiss()
+            await onSubmitted()
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -9125,9 +9595,8 @@ private struct PersonalActivityReportComposerSheet: View {
                     photoUrls: uploadedUrls
                 )
             )
-            AppHaptics.notification(.success)
-            await onSubmitted()
             dismiss()
+            await onSubmitted()
         } catch {
             guard !error.isCancellationLike else {
                 return

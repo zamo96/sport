@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Gender, PlayFormat, Sport, Surface } from "@prisma/client";
 
-import { overlapSlots, scoreCandidates } from "@/lib/scoring";
+import { overlapSlots, scoreCandidate, scoreCandidates } from "@/lib/scoring";
 
 const viewer = {
   id: "viewer",
@@ -232,21 +232,122 @@ describe("scoring", () => {
     expect(ranked[0]?.ageGap).toBe(2);
   });
 
-  it("prefers same city before expanding to other cities", () => {
+  it("excludes candidates outside the viewer city in default discover", () => {
     const ranked = scoreCandidates(viewer, [
       {
         ...viewer,
-        id: "other-city",
-        city: "Berlin"
+        id: "saint-petersburg",
+        city: "Санкт-Петербург"
       },
       {
         ...viewer,
-        id: "same-city",
-        city: "Moscow"
+        id: "moscow-alias",
+        city: "Москва"
+      },
+      {
+        ...viewer,
+        id: "kazan",
+        city: "Kazan"
+      },
+      {
+        ...viewer,
+        id: "missing-city",
+        city: null
       }
     ]);
 
-    expect(ranked.map((candidate) => candidate.id)).toEqual(["same-city", "other-city"]);
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["moscow-alias"]);
+  });
+
+  it.each(["Санкт-Петербург", "Санкт Петербург", "Петербург", "СПб", "Saint Petersburg", "St. Petersburg", "St Petersburg"])(
+    "treats %s as a Saint Petersburg alias in swipe discover",
+    (candidateCity) => {
+      const ranked = scoreCandidates(
+        { ...viewer, city: "СПб" },
+        [
+          { ...viewer, id: "local", city: candidateCity },
+          { ...viewer, id: "moscow", city: "Москва" },
+          { ...viewer, id: "missing-city", city: null }
+        ],
+        { view: "swipe" }
+      );
+
+      expect(ranked.map((candidate) => candidate.id)).toEqual(["local"]);
+    }
+  );
+
+  it("normalizes city aliases in explicit city filters", () => {
+    const ranked = scoreCandidates(
+      { ...viewer, city: null },
+      [
+        { ...viewer, id: "kazan", city: "Казань" },
+        { ...viewer, id: "moscow", city: "Москва" },
+        { ...viewer, id: "missing-city", city: null }
+      ],
+      { city: "Kazan", view: "likes" }
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["kazan"]);
+  });
+
+  it.each(["hot", "seeking"] as const)(
+    "isolates %s recommendations to the viewer canonical city",
+    (view) => {
+      const ranked = scoreCandidates(
+        { ...viewer, city: "Kazan" },
+        [
+          { ...viewer, id: "kazan-alias", city: "Казань" },
+          { ...viewer, id: "saint-petersburg", city: "Санкт-Петербург" },
+          { ...viewer, id: "saint-petersburg-alias", city: "СПб" },
+          { ...viewer, id: "missing-city", city: null }
+        ],
+        { view }
+      );
+
+      expect(ranked.map((candidate) => candidate.id)).toEqual(["kazan-alias"]);
+    }
+  );
+
+  it("keeps likes cross-city while preserving canonical city aliases", () => {
+    const ranked = scoreCandidates(
+      { ...viewer, city: "Казань" },
+      [
+        { ...viewer, id: "kazan-alias", city: "Kazan" },
+        { ...viewer, id: "saint-petersburg", city: "Санкт-Петербург" },
+        { ...viewer, id: "saint-petersburg-alias", city: "СПб" },
+        { ...viewer, id: "missing-city", city: null }
+      ],
+      { view: "likes" }
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(
+      expect.arrayContaining([
+        "kazan-alias",
+        "saint-petersburg",
+        "saint-petersburg-alias",
+        "missing-city"
+      ])
+    );
+  });
+
+  it("does not compare districts across canonical cities", () => {
+    const viewerWithDistrict = {
+      ...viewer,
+      district: "central",
+      preferredDistricts: ["central"]
+    };
+    const matchingDistrict = scoreCandidate(
+      viewerWithDistrict,
+      { ...viewer, id: "matching-district", city: "Казань", district: "central", preferredDistricts: ["central"] },
+      { view: "likes" }
+    );
+    const differentDistrict = scoreCandidate(
+      viewerWithDistrict,
+      { ...viewer, id: "different-district", city: "Kazan", district: "other", preferredDistricts: ["other"] },
+      { view: "likes" }
+    );
+
+    expect(matchingDistrict?.score).toBe(differentDistrict?.score);
   });
 
   it("prioritizes exact day-time slot overlap over broad range overlap", () => {

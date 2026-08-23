@@ -7,6 +7,12 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameSearchMessageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
+import {
+  chatMessagePreview,
+  claimGameSearchMessageAttachments,
+  gameSearchMessageAttachmentsInclude,
+  serializeChatMessage
+} from "@/server/chat-media";
 
 async function canAccessSearch(userId: string, gameSearchId: string) {
   return prisma.gameSearch.findFirst({
@@ -42,7 +48,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
         gameSearchId: params.id
       },
       include: {
-        senderUser: true
+        senderUser: true,
+        ...gameSearchMessageAttachmentsInclude
       },
       orderBy: {
         createdAt: "asc"
@@ -50,10 +57,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     });
 
     return ok({
-      messages: messages.map((message) => ({
-        ...message,
-        createdAt: message.createdAt.toISOString()
-      }))
+      messages: messages.map(serializeChatMessage)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
@@ -75,15 +79,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const body = createGameSearchMessageSchema.parse(await request.json());
 
-    const message = await prisma.gameSearchMessage.create({
-      data: {
-        gameSearchId: params.id,
-        senderUserId: user.id,
-        text: body.text
-      },
-      include: {
-        senderUser: true
-      }
+    const message = await prisma.$transaction(async (tx) => {
+      const created = await tx.gameSearchMessage.create({
+        data: {
+          gameSearchId: params.id,
+          senderUserId: user.id,
+          text: body.text
+        }
+      });
+
+      await claimGameSearchMessageAttachments(tx, {
+        attachmentIds: body.attachmentIds,
+        uploaderUserId: user.id,
+        gameSearchMessageId: created.id
+      });
+
+      return tx.gameSearchMessage.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          senderUser: true,
+          ...gameSearchMessageAttachmentsInclude
+        }
+      });
     });
 
     const search = await prisma.gameSearch.findUnique({
@@ -138,7 +155,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const realtimeRecipientIds = Array.from(
       new Set((search?.responses ?? []).map((response) => response.responderUser.id).filter((id) => id !== user.id))
     );
-    const pushBody = body.text.length > 120 ? `${body.text.slice(0, 117)}...` : body.text;
+    const pushBody = chatMessagePreview(message);
 
     await Promise.all(
       recipients.map(async (recipient) => {
@@ -166,10 +183,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     });
 
     return ok({
-      message: {
-        ...message,
-        createdAt: message.createdAt.toISOString()
-      }
+      message: serializeChatMessage(message)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {

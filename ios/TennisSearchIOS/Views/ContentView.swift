@@ -19,6 +19,8 @@ struct ContentView: View {
                     AuthView(initialStep: step, embedded: false)
                 }
             }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .overlay {
             if appModel.isBusy {
@@ -311,7 +313,7 @@ private struct MainTabView: View {
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 3)
-                                        .background(.red, in: Capsule())
+                                        .background(badgeBackground(for: tab), in: Capsule())
                                         .offset(x: 14, y: -10)
                                 }
                             }
@@ -387,11 +389,15 @@ private struct MainTabView: View {
             let count = appModel.isAuthenticated ? notificationManager.summary.inboxBadgeCount : 0
             return count > 0 ? String(min(count, 99)) : nil
         case .searches:
-            let count = appModel.isAuthenticated ? notificationManager.summary.searchesBadgeCount : 0
+            let count = appModel.isAuthenticated ? notificationManager.summary.activeSearchesCount : 0
             return count > 0 ? String(min(count, 99)) : nil
         default:
             return nil
         }
+    }
+
+    private func badgeBackground(for tab: MainTab) -> Color {
+        tab == .searches ? AppTheme.court : .red
     }
 
     private var displayedTab: MainTab {

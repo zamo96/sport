@@ -40,7 +40,7 @@ function getActiveChatKey(userId: string, conversationId: string) {
 }
 
 export function getRealtimeRedis() {
-  const redisUrl = process.env.REDIS_URL?.trim();
+  const redisUrl = resolveRealtimeRedisUrl(process.env.REDIS_URL, process.env.NODE_ENV);
 
   if (!redisUrl) {
     return null;
@@ -59,6 +59,10 @@ export function getRealtimeRedis() {
   }
 
   return global.realtimeRedis;
+}
+
+export function resolveRealtimeRedisUrl(configuredUrl: string | undefined, environment: string | undefined) {
+  return configuredUrl?.trim() || (environment === "development" ? "redis://127.0.0.1:6379" : null);
 }
 
 export async function publishRealtimeEvent(userId: string | null | undefined, payload: RealtimeEventPayload) {

@@ -113,7 +113,7 @@ export const updateMeSchema = z.object({
   city: cityEnum,
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
-  tennisLevel: z.number().int().min(1).max(10),
+  tennisLevel: z.number().int().min(1).max(10).optional(),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
   sportLevels: z
     .preprocess(
@@ -216,9 +216,18 @@ export const swipeSchema = z.object({
   action: z.nativeEnum(SwipeAction)
 });
 
-export const messageSchema = z.object({
-  text: z.string().trim().min(1).max(500)
-});
+export const messageSchema = z
+  .object({
+    text: z.string().trim().max(500).optional().default(""),
+    attachmentIds: z.array(z.string().min(1)).max(4).optional().default([])
+  })
+  .refine((value) => value.text.length > 0 || value.attachmentIds.length > 0, {
+    message: "Добавьте текст или фото"
+  })
+  .refine((value) => new Set(value.attachmentIds).size === value.attachmentIds.length, {
+    message: "Вложения не должны повторяться",
+    path: ["attachmentIds"]
+  });
 
 export const courtsQuerySchema = z.object({
   sport: z.nativeEnum(Sport).optional(),
@@ -518,9 +527,7 @@ export const updateRegularPairOccurrenceSchema = z.object({
   message: "Нужно передать подтверждение или новые параметры слота"
 });
 
-export const createGameSearchMessageSchema = z.object({
-  text: z.string().trim().min(1).max(500)
-});
+export const createGameSearchMessageSchema = messageSchema;
 
 export const createGameSearchSlotProposalSchema = z.object({
   comment: z.string().trim().max(240).optional().default(""),

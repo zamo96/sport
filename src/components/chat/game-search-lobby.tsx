@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, MessageCircleMore, Users2 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
@@ -13,17 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
-
-type LobbyMessage = {
-  id: string;
-  senderUserId: string;
-  text: string;
-  createdAt: string;
-  senderUser: {
-    name: string | null;
-    avatarUrl: string | null;
-  };
-};
+import { ChatComposer, ChatMessageAttachments, type ChatMessage as LobbyMessage } from "@/components/chat/chat-media";
 
 type LobbyResponse = {
   id: string;
@@ -78,7 +68,6 @@ function normalizeStringArray(value: unknown) {
 
 export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLobbyProps) {
   const [messages, setMessages] = useState(search.messages);
-  const [text, setText] = useState("");
   const [scheduledCourtId, setScheduledCourtId] = useState(search.scheduledCourt?.id ?? "");
   const [scheduledAt, setScheduledAt] = useState(() => {
     if (search.scheduledAt) {
@@ -89,9 +78,7 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
     return date.toISOString().slice(0, 16);
   });
   const [scheduledDurationMinutes, setScheduledDurationMinutes] = useState(search.scheduledDurationMinutes ?? 90);
-  const [loadingMessage, setLoadingMessage] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
-  const [messageError, setMessageError] = useState<string | null>(null);
   const isCreator = search.createdByUserId === currentUserId;
   const approvedResponses = search.responses.filter((response) => response.status === "approved");
   const participantResponses = search.responses.filter(
@@ -151,24 +138,12 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
     };
   }, [search.id]);
 
-  async function sendMessage(event: FormEvent) {
-    event.preventDefault();
-    if (!text.trim()) return;
-
-    setLoadingMessage(true);
-    setMessageError(null);
-    try {
-      const data = await apiFetch<{ message: LobbyMessage }>(`/game-searches/${search.id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ text })
-      });
-      setMessages((current) => [...current, data.message]);
-      setText("");
-    } catch (requestError) {
-      setMessageError(requestError instanceof Error ? requestError.message : "Не удалось отправить сообщение");
-    } finally {
-      setLoadingMessage(false);
-    }
+  async function sendMessage(text: string, attachmentIds: string[]) {
+    const data = await apiFetch<{ message: LobbyMessage }>(`/game-searches/${search.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, attachmentIds })
+    });
+    setMessages((current) => [...current, data.message]);
   }
 
   async function assignGame() {
@@ -395,31 +370,20 @@ export function GameSearchLobby({ search, currentUserId, courts }: GameSearchLob
             const mine = message.senderUserId === currentUserId;
             return (
               <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[84%] rounded-[22px] px-4 py-3 text-sm leading-6 ${mine ? "bg-ink text-white" : "bg-cream text-ink"}`}>
+                <div className={`max-w-[84%] rounded-[22px] p-2 text-sm leading-6 ${mine ? "bg-ink text-white" : "bg-cream text-ink"}`}>
                   {!mine ? (
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
+                    <div className="mb-1 px-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
                       {message.senderUser.name}
                     </div>
                   ) : null}
-                  {message.text}
+                  <ChatMessageAttachments attachments={message.attachments} />
+                  {message.text ? <div className="px-2 py-1">{message.text}</div> : null}
                 </div>
               </div>
             );
           })}
         </div>
-        <form onSubmit={sendMessage} className="flex items-end gap-2">
-          <textarea
-            rows={2}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            className="input min-h-[52px] min-w-0 flex-1 resize-none py-3 text-sm placeholder:text-sm"
-            placeholder="Сообщение для состава..."
-          />
-          <Button type="submit" disabled={loadingMessage || !text.trim()}>
-            {loadingMessage ? "..." : "Отправить"}
-          </Button>
-        </form>
-        {messageError ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{messageError}</div> : null}
+        <ChatComposer placeholder="Сообщение для состава..." sendLabel="Отправить" onSend={sendMessage} />
       </Panel>
     </div>
   );

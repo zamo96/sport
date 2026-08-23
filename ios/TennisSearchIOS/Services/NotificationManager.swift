@@ -169,6 +169,7 @@ final class NotificationManager: NSObject, ObservableObject {
             incomingLikesCount: summary.incomingLikesCount,
             hotBadgeCount: summary.hotBadgeCount,
             discoverBadgeCount: 0,
+            activeSearchesCount: summary.activeSearchesCount,
             searchesBadgeCount: summary.searchesBadgeCount,
             notificationSound: summary.notificationSound
         )

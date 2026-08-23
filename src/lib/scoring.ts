@@ -109,8 +109,52 @@ function resolveUserDistricts(preferredDistricts: unknown, district?: string | n
   return district ? [district] : [];
 }
 
-function normalizedCity(value?: string | null) {
-  return value?.trim().toLowerCase() ?? "";
+const CITY_ALIASES: Record<string, string> = {
+  "санкт-петербург": "saint-petersburg",
+  "санкт петербург": "saint-petersburg",
+  петербург: "saint-petersburg",
+  спб: "saint-petersburg",
+  "saint petersburg": "saint-petersburg",
+  "st. petersburg": "saint-petersburg",
+  "st petersburg": "saint-petersburg",
+  москва: "moscow",
+  moscow: "moscow",
+  казань: "kazan",
+  kazan: "kazan"
+};
+
+function canonicalCity(value?: string | null) {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+  return CITY_ALIASES[normalized] ?? normalized;
+}
+
+function isSameCanonicalCity(left?: string | null, right?: string | null) {
+  const leftCity = canonicalCity(left);
+  return leftCity.length > 0 && leftCity === canonicalCity(right);
+}
+
+function isCityEligible(
+  viewerCity: string | null | undefined,
+  candidateCity: string | null | undefined,
+  filters: DiscoverFilters
+) {
+  const candidateCanonicalCity = canonicalCity(candidateCity);
+
+  if (filters.city) {
+    const filterCanonicalCity = canonicalCity(filters.city);
+    if (!filterCanonicalCity || candidateCanonicalCity !== filterCanonicalCity) {
+      return false;
+    }
+  }
+
+  const isolatesViewerCity =
+    filters.view == null ||
+    filters.view === "swipe" ||
+    filters.view === "hot" ||
+    filters.view === "seeking";
+  const viewerCanonicalCity = canonicalCity(viewerCity);
+
+  return !isolatesViewerCity || !viewerCanonicalCity || candidateCanonicalCity === viewerCanonicalCity;
 }
 
 function ageCompatibilityScore(viewerAge?: number | null, candidateAge?: number | null) {
@@ -136,8 +180,8 @@ function ageCompatibilityScore(viewerAge?: number | null, candidateAge?: number 
 }
 
 function cityCompatibilityScore(viewerCity?: string | null, candidateCity?: string | null) {
-  const viewerNormalizedCity = normalizedCity(viewerCity);
-  const candidateNormalizedCity = normalizedCity(candidateCity);
+  const viewerNormalizedCity = canonicalCity(viewerCity);
+  const candidateNormalizedCity = canonicalCity(candidateCity);
 
   if (!viewerNormalizedCity || !candidateNormalizedCity) {
     return 2;
@@ -187,8 +231,9 @@ export function buildDiscoverExplainabilityReasons<T extends CandidateUser>(
   const maxLevel = Math.max(viewerLevel, candidateLevel);
   reasons.push(`Уровень рядом: ${minLevel === maxLevel ? `${minLevel}` : `${minLevel}–${maxLevel}`}`);
 
-  const viewerDistricts = resolveUserDistricts(viewer.preferredDistricts, viewer.district);
-  const candidateDistricts = resolveUserDistricts(candidate.preferredDistricts, candidate.district);
+  const sameCity = isSameCanonicalCity(viewer.city, candidate.city);
+  const viewerDistricts = sameCity ? resolveUserDistricts(viewer.preferredDistricts, viewer.district) : [];
+  const candidateDistricts = sameCity ? resolveUserDistricts(candidate.preferredDistricts, candidate.district) : [];
   const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
   const computedDistanceKm =
     typeof candidate.distanceKm === "number"
@@ -229,6 +274,10 @@ export function scoreCandidate<T extends CandidateUser>(
   candidate: T,
   filters: DiscoverFilters = {}
 ) {
+  if (!isCityEligible(viewer.city, candidate.city, filters)) {
+    return null;
+  }
+
   const viewerSports = normalizeSports(viewer.preferredSports);
   const candidateSports = normalizeSports(candidate.preferredSports);
   const relevantSports = getSharedSports(viewerSports, candidateSports, filters.sport);
@@ -263,18 +312,6 @@ export function scoreCandidate<T extends CandidateUser>(
   }
 
   if (filters.distanceKm && distanceKm != null && distanceKm > filters.distanceKm) {
-    return null;
-  }
-
-  if (
-    filters.city &&
-    candidate.city &&
-    candidate.city.trim().toLowerCase() !== filters.city.trim().toLowerCase()
-  ) {
-    return null;
-  }
-
-  if (filters.city && !candidate.city) {
     return null;
   }
 
@@ -329,8 +366,9 @@ export function scoreCandidate<T extends CandidateUser>(
   const levelScore = Math.max(0, 28 - levelGap * 7);
   const { score: ageScore, gap: ageGap } = ageCompatibilityScore(viewer.age, candidate.age);
   const cityScore = cityCompatibilityScore(viewer.city, candidate.city);
-  const viewerDistricts = resolveUserDistricts(viewer.preferredDistricts, viewer.district);
-  const candidateDistricts = resolveUserDistricts(candidate.preferredDistricts, candidate.district);
+  const sameCity = isSameCanonicalCity(viewer.city, candidate.city);
+  const viewerDistricts = sameCity ? resolveUserDistricts(viewer.preferredDistricts, viewer.district) : [];
+  const candidateDistricts = sameCity ? resolveUserDistricts(candidate.preferredDistricts, candidate.district) : [];
   const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
   const hasDistrictPreference = viewerDistricts.length > 0 || candidateDistricts.length > 0;
   const distanceScore =

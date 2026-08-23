@@ -263,8 +263,15 @@ export function scoreClubCourtMatch(
     | "locationLng"
   >
 ): ClubMatchResult {
-  if (incoming.sourceExternalId && court.sourceType === incoming.sourceType && court.sourceExternalId === incoming.sourceExternalId) {
-    return { confidence: 1, reason: "external_id" };
+  const isSameSource = court.sourceType === incoming.sourceType;
+  if (isSameSource && incoming.sourceExternalId && court.sourceExternalId) {
+    if (court.sourceExternalId === incoming.sourceExternalId) {
+      return { confidence: 1, reason: "external_id" };
+    }
+
+    // IDs from the same provider are authoritative. In particular, shared
+    // reception phones and corporate websites must not merge distinct clubs.
+    return { confidence: 0, reason: "external_id_conflict" };
   }
 
   const courtPhone = normalizePhone(court.phone);

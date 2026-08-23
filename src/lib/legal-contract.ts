@@ -2,7 +2,7 @@ export const USER_AGREEMENT_VERSION = "2026-07-05";
 export const USER_AGREEMENT_KEY = "user_agreement";
 export const PERSONAL_DATA_CONSENT_VERSION = USER_AGREEMENT_VERSION;
 export const USER_AGREEMENT_EFFECTIVE_DATE = "5 июля 2026 года";
-export const USER_AGREEMENT_TITLE = "Пользовательское соглашение TennisSearch";
+export const USER_AGREEMENT_TITLE = "Пользовательское соглашение SportSearch";
 export const LEGAL_ACCEPTANCE_ERROR = "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных";
 
 export type LegalAcceptanceSource = "email_otp" | "apple";
@@ -13,11 +13,11 @@ export type LatestUserAgreementPayload = {
 };
 
 export const LEGAL_OPERATOR = {
-  serviceName: "TennisSearch",
-  legalName: "Оператор сервиса TennisSearch (укажите юридическое лицо или ИП)",
-  inn: "ИНН: укажите перед публикацией",
-  ogrn: "ОГРН/ОГРНИП: укажите перед публикацией",
-  address: "Адрес: укажите перед публикацией",
+  serviceName: "SportSearch",
+  legalName: "Захаров Матвей Владимирович",
+  inn: "ИНН: 471803649801",
+  ogrn: "",
+  address: "",
   email: "support@sportsearch.shop"
 };
 

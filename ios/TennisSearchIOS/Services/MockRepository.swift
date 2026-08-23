@@ -228,6 +228,7 @@ actor MockRepository: TennisRepository {
             id: "court-2",
             name: "Padel Club North",
             address: "Пр. Медиков, 5",
+            city: "Санкт-Петербург",
             district: "petrogradsky",
             locationLat: 59.9739,
             locationLng: 30.3084,
@@ -247,6 +248,7 @@ actor MockRepository: TennisRepository {
             id: "court-3",
             name: "Krestovsky Tennis Hall",
             address: "Южная дорога, 25",
+            city: "Санкт-Петербург",
             district: "petrogradsky",
             locationLat: 59.9702,
             locationLng: 30.2501,
@@ -417,6 +419,22 @@ actor MockRepository: TennisRepository {
         )
     }
 
+    func removeProfileMedia(mediaUrl: String) async throws -> ProfileMediaUploadResult {
+        currentUser.profilePhotoUrls.removeAll { $0 == mediaUrl }
+        currentUser.profileVideoUrls.removeAll { $0 == mediaUrl }
+        if currentUser.avatarUrl == mediaUrl {
+            currentUser.avatarUrl = currentUser.profilePhotoUrls.first
+        }
+
+        return ProfileMediaUploadResult(
+            mediaUrl: mediaUrl,
+            mediaType: "removed",
+            avatarUrl: currentUser.avatarUrl,
+            profilePhotoUrls: currentUser.profilePhotoUrls,
+            profileVideoUrls: currentUser.profileVideoUrls
+        )
+    }
+
     func uploadGameReportPhoto(gameRequestId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
         "/uploads/mock/game-reports/\(gameRequestId)/\(UUID().uuidString)-\(fileName)"
     }
@@ -530,13 +548,42 @@ actor MockRepository: TennisRepository {
         messagesByMatch[matchId] ?? []
     }
 
-    func sendMessage(matchId: String, text: String) async throws -> ChatMessage {
+    func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment {
+        ChatMediaAttachment(
+            id: "chat-media-\(UUID().uuidString)",
+            kind: "image",
+            url: "https://picsum.photos/seed/\(UUID().uuidString)/900/900",
+            mimeType: mimeType,
+            byteSize: data.count,
+            position: 0
+        )
+    }
+
+    func fetchChatMedia(path: String) async throws -> Data {
+        guard let url = resolveAppRemoteURL(path) ?? URL(string: path) else {
+            throw URLError(.badURL)
+        }
+        let (data, _) = try await URLSession.shared.data(from: url)
+        return data
+    }
+
+    func sendMessage(matchId: String, text: String, attachmentIds: [String]) async throws -> ChatMessage {
         let message = ChatMessage(
             id: "msg-\(UUID().uuidString)",
             senderUserId: currentUser.id,
             text: text,
             createdAt: ISO8601DateFormatter().string(from: Date()),
-            senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl)
+            senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl),
+            attachments: attachmentIds.enumerated().map { index, id in
+                ChatMediaAttachment(
+                    id: id,
+                    kind: "image",
+                    url: "https://picsum.photos/seed/\(id)/900/900",
+                    mimeType: "image/jpeg",
+                    byteSize: 0,
+                    position: index
+                )
+            }
         )
         messagesByMatch[matchId, default: []].append(message)
         return message
@@ -1187,13 +1234,23 @@ actor MockRepository: TennisRepository {
         )
     }
 
-    func sendSearchLobbyMessage(searchId: String, text: String) async throws -> SearchLobbyMessage {
+    func sendSearchLobbyMessage(searchId: String, text: String, attachmentIds: [String]) async throws -> SearchLobbyMessage {
         SearchLobbyMessage(
             id: "search-message-\(UUID().uuidString.prefix(6))",
             senderUserId: currentUser.id,
             text: text,
             createdAt: ISO8601DateFormatter().string(from: Date()),
-            senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl)
+            senderUser: ChatSender(id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl),
+            attachments: attachmentIds.enumerated().map { index, id in
+                ChatMediaAttachment(
+                    id: id,
+                    kind: "image",
+                    url: "https://picsum.photos/seed/\(id)/900/900",
+                    mimeType: "image/jpeg",
+                    byteSize: 0,
+                    position: index
+                )
+            }
         )
     }
 
@@ -2044,8 +2101,19 @@ actor MockRepository: TennisRepository {
         )
     }
 
-    func fetchCourts() async throws -> [Court] {
-        courts
+    func fetchCourts(city: String?) async throws -> [Court] {
+        let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let normalizedCity, !normalizedCity.isEmpty else {
+            return courts
+        }
+
+        return courts.filter { court in
+            guard let courtCity = court.city?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                return false
+            }
+
+            return courtCity.localizedCaseInsensitiveCompare(normalizedCity) == .orderedSame
+        }
     }
 
     func fetchCourt(courtId: String) async throws -> Court {
@@ -2093,6 +2161,7 @@ actor MockRepository: TennisRepository {
             id: current.id,
             name: current.name,
             address: current.address,
+            city: current.city,
             district: current.district,
             locationLat: current.locationLat,
             locationLng: current.locationLng,
@@ -2122,10 +2191,16 @@ actor MockRepository: TennisRepository {
     }
 
     func fetchActivitySummary() async throws -> ActivitySummary {
+        let activeSearchesCount = searches.filter { search in
+            let approvedCount = search.responses.filter { $0.status == "approved" }.count
+            return search.searchType == .hot &&
+            search.createdByUserId == currentUser.id &&
+            (search.isActive ?? true) &&
+            ["active", "in_review"].contains(search.status.lowercased()) &&
+            approvedCount < max(search.playersNeeded, 1)
+        }.count
         let pendingSearchResponsesCount = searches.reduce(into: 0) { count, search in
-            guard search.searchType == .hot,
-                  (search.isActive ?? true),
-                  ["active", "in_review"].contains(search.status.lowercased()) else {
+            guard isOwnedActiveHotSearchForAttention(search, currentUserId: currentUser.id) else {
                 return
             }
             count += search.responses.filter { $0.status == "pending" }.count
@@ -2135,6 +2210,7 @@ actor MockRepository: TennisRepository {
             incomingLikesCount: incomingLikes.count,
             hotBadgeCount: discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
             discoverBadgeCount: incomingLikes.count + discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
+            activeSearchesCount: activeSearchesCount,
             searchesBadgeCount: pendingSearchResponsesCount,
             notificationSound: currentUser.notificationSound
         )
@@ -2166,6 +2242,7 @@ private let mockCourt = Court(
     id: "court-1",
     name: "Tennis Prime",
     address: "Аптекарская наб., 7",
+    city: "Санкт-Петербург",
     district: "petrogradsky",
     locationLat: 59.9726,
     locationLng: 30.3162,

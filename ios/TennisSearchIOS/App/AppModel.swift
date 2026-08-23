@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
     @Published var authEmail = ""
+    @Published var authUserAgreementAccepted = false
     @Published var debugCode: String?
     @Published var authMessage: String?
     @Published var errorMessage: String?
@@ -112,16 +113,18 @@ final class AppModel: ObservableObject {
 
     func dismissPresentedAuth() {
         presentedAuthStep = nil
+        authUserAgreementAccepted = false
     }
 
-    func requestCode(userAgreementAccepted: Bool, userAgreementVersion: String = LegalDocuments.userAgreementVersion) async {
+    @discardableResult
+    func requestCode(userAgreementAccepted: Bool, userAgreementVersion: String = LegalDocuments.userAgreementVersion) async -> Bool {
         guard !authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Укажи email"
-            return
+            return false
         }
         guard userAgreementAccepted else {
             errorMessage = LegalDocuments.acceptanceError
-            return
+            return false
         }
 
         isBusy = true
@@ -136,9 +139,10 @@ final class AppModel: ObservableObject {
             authMessage = challenge.message
             debugCode = challenge.debugCode
             errorMessage = nil
-            presentedAuthStep = .code
+            return true
         } catch {
             present(error: error)
+            return false
         }
     }
 
@@ -171,6 +175,7 @@ final class AppModel: ObservableObject {
             currentUser = user
             notificationManager.startMonitoring(repository: repository)
             resetGuestDraft()
+            authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
             errorMessage = nil
@@ -218,6 +223,7 @@ final class AppModel: ObservableObject {
             currentUser = user
             notificationManager.startMonitoring(repository: repository)
             resetGuestDraft()
+            authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
             errorMessage = nil
@@ -227,15 +233,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func saveProfile(_ profile: UserProfile) async {
+    @discardableResult
+    func saveProfile(_ profile: UserProfile) async -> Bool {
         isBusy = true
         defer { isBusy = false }
 
         do {
             currentUser = try await repository.updateProfile(profile)
             errorMessage = nil
+            serverRecoveryNotice = nil
+            return true
         } catch {
             present(error: error)
+            return false
         }
     }
 
@@ -248,6 +258,7 @@ final class AppModel: ObservableObject {
         authMessage = nil
         errorMessage = nil
         authEmail = ""
+        authUserAgreementAccepted = false
         presentedAuthStep = nil
         pendingNavigationTarget = nil
         pendingChatMatchID = nil
@@ -273,6 +284,7 @@ final class AppModel: ObservableObject {
             return
         }
 
+        serverRecoveryNotice = nil
         errorMessage = error.detailedMessage
     }
 
@@ -614,8 +626,10 @@ extension Error {
     var isServerIssue: Bool {
         if let apiError = self as? APIError {
             switch apiError {
-            case .server, .invalidResponse, .invalidPayload:
+            case .invalidResponse, .invalidPayload:
                 return true
+            case .server:
+                return apiError.isInternalServerMessage
             case .invalidBaseURL:
                 return false
             }

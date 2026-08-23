@@ -66,7 +66,7 @@ NEXT_PUBLIC_YANDEX_MAPS_API_KEY=your_yandex_key
 npm run dev:local
 ```
 
-This command starts PostgreSQL in Docker, generates the Prisma client, applies the schema, seeds the database, and starts the Next.js dev server.
+This command starts PostgreSQL and Redis in Docker, generates the Prisma client, applies the schema, seeds the database, and starts the Next.js dev server. Realtime uses `redis://127.0.0.1:6379` by default in development; override `REDIS_URL` in `.env` when needed.
 
 Open [http://localhost:3002](http://localhost:3002).
 
@@ -97,6 +97,7 @@ Recommended smoke test:
 - `npm run dev` - start the Next.js dev server only
 - `npm run dev:local` - start the full local MVP stack
 - `npm run db:start` - start PostgreSQL only
+- `npm run infra:start` - start PostgreSQL and Redis
 - `npm run db:setup` - run Prisma generate, db push, and seed
 - `npm run prisma:generate` - generate Prisma Client
 - `npm run prisma:push` - push the Prisma schema to the database

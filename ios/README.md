@@ -30,21 +30,42 @@
 
 По умолчанию:
 
-- `Debug` запускается с `USE_MOCK_DATA = YES`
-- `Release` ожидает живой backend
+- `Debug` и `Release` используют публичный live backend `https://sportsearch.shop`
+- `USE_MOCK_DATA = NO`
+- Debug-сборка не зависит от разрешения на поиск устройств в локальной сети
 
-## Как включить live backend
+## Как подключить локальный backend
 
 1. Подними текущий web/backend проект.
-2. В [Debug.xcconfig](/Users/matvey/Desktop/TennisSearch/ios/TennisSearchIOS/Configs/Debug.xcconfig) установи:
+2. Скопируй пример локальной конфигурации:
 
-```xcconfig
-API_BASE_URL = http://localhost:3002
-USE_MOCK_DATA = NO
+```sh
+cp ios/TennisSearchIOS/Configs/Local.xcconfig.example \
+  ios/TennisSearchIOS/Configs/Local.xcconfig
 ```
 
-3. Если работаешь на iOS Simulator, `localhost` будет указывать на Mac-хост, этого достаточно.
-4. Для физического устройства укажи IP машины в сети вместо `localhost`.
+`Local.xcconfig` подключается в конце `Debug.xcconfig`, переопределяет его значения и не попадает в Git.
+
+3. Для iOS Simulator можно использовать:
+
+```xcconfig
+API_SCHEME = http
+API_BASE_URL = 192.168.0.102:3000
+USE_MOCK_DATA = NO
+ALLOW_DEBUG_SERVER_TRUST = YES
+```
+
+4. Для физического устройства замени `localhost` на LAN IP машины, например `192.168.1.100:3000`. Устройство и Mac должны находиться в одной сети, а приложению нужно разрешить поиск устройств в локальной сети. Если отказать в этом разрешении, локальный backend с физического устройства будет недоступен; публичный backend продолжит работать.
+
+## Как включить mock-режим
+
+Добавь в `Local.xcconfig`:
+
+```xcconfig
+USE_MOCK_DATA = YES
+```
+
+Удаление `Local.xcconfig` возвращает Debug-сборку к публичному live backend.
 
 ## Mock вход
 

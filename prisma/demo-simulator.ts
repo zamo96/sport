@@ -13,7 +13,14 @@ import {
   Surface
 } from "@prisma/client";
 
-import { DEFAULT_CITY, DISTRICT_MAP_AREAS, DISTRICT_OPTIONS, SPORT_LABELS, SPORT_OPTIONS, type DistrictOption } from "@/lib/constants";
+import {
+  DEFAULT_CITY,
+  DISTRICT_MAP_AREAS,
+  SAINT_PETERSBURG_DISTRICT_OPTIONS,
+  SPORT_LABELS,
+  SPORT_OPTIONS,
+  type DistrictOption
+} from "@/lib/constants";
 import { normalizeSports } from "@/lib/sport-levels";
 
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -535,7 +542,7 @@ export async function runLiveActivityTick(
 }
 
 function buildGeneratedDemoUser(index: number, random: () => number): Prisma.UserCreateManyInput {
-  const district = DISTRICT_OPTIONS[(index - 1) % DISTRICT_OPTIONS.length];
+  const district = SAINT_PETERSBURG_DISTRICT_OPTIONS[(index - 1) % SAINT_PETERSBURG_DISTRICT_OPTIONS.length];
   const area = DISTRICT_MAP_AREAS[district];
   const firstName = FIRST_NAMES[(index - 1) % FIRST_NAMES.length];
   const lastName = LAST_NAMES[((index - 1) * 3) % LAST_NAMES.length];

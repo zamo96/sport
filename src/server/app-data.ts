@@ -1,4 +1,4 @@
-import { CourtStatus } from "@prisma/client";
+import { CourtStatus, GameSearchResponseStatus, GameSearchStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
@@ -16,6 +16,11 @@ import { gameReportInclude } from "@/server/game-reports";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { normalizeSports } from "@/lib/sport-levels";
 import { serializeUserPreview } from "@/server/serializers";
+import {
+  chatMessageAttachmentsInclude,
+  chatMessagePreview,
+  gameSearchMessageAttachmentsInclude
+} from "@/server/chat-media";
 
 async function closeExpiredHotSearches() {
   await prisma.gameSearch.updateMany({
@@ -586,6 +591,7 @@ export async function getNotificationsForUser(userId: string) {
           },
           include: {
             senderUser: true,
+            ...chatMessageAttachmentsInclude,
             match: {
               include: {
                 user1: true,
@@ -626,6 +632,7 @@ export async function getNotificationsForUser(userId: string) {
           },
           include: {
             senderUser: true,
+            ...gameSearchMessageAttachmentsInclude,
             gameSearch: {
               include: {
                 preferredCourt: true
@@ -691,7 +698,7 @@ export async function getNotificationsForUser(userId: string) {
         title: message.gameRequestId
           ? `Обновление по игре от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`
           : `Новое сообщение от ${message.senderUser.name ?? otherUser.name ?? "игрока"}`,
-        description: message.text.length > 120 ? `${message.text.slice(0, 117)}...` : message.text,
+        description: chatMessagePreview(message),
         href: message.gameRequestId ? `/play/games/${message.gameRequestId}` : `/inbox/${message.matchId}`
       };
     }),
@@ -700,7 +707,7 @@ export async function getNotificationsForUser(userId: string) {
       type: "new_message" as const,
       createdAt: message.createdAt,
       title: `Новое сообщение в лобби от ${message.senderUser.name ?? "игрока"}`,
-      description: message.text.length > 120 ? `${message.text.slice(0, 117)}...` : message.text,
+      description: chatMessagePreview(message),
       href: `/play/searches/${message.gameSearchId}`
     })),
     ...incomingLikes
@@ -963,7 +970,8 @@ export async function getMatchesForUser(userId: string) {
       user2: true,
       messages: {
         include: {
-          senderUser: true
+          senderUser: true,
+          ...chatMessageAttachmentsInclude
         },
         where: {
           gameRequestId: null
@@ -1003,7 +1011,8 @@ export async function getMatchDetail(matchId: string, userId: string) {
       user2: true,
       messages: {
         include: {
-          senderUser: true
+          senderUser: true,
+          ...chatMessageAttachmentsInclude
         },
         where: {
           gameRequestId: null
@@ -1039,7 +1048,8 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
       },
       messages: {
         include: {
-          senderUser: true
+          senderUser: true,
+          ...chatMessageAttachmentsInclude
         },
         orderBy: {
           createdAt: "asc"
@@ -1053,7 +1063,8 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
           user2: true,
           messages: {
             include: {
-              senderUser: true
+              senderUser: true,
+              ...chatMessageAttachmentsInclude
             },
             where: {
               gameRequestId: null
@@ -1087,22 +1098,28 @@ export type CourtsFilters = {
 };
 
 export async function getCourtsForUser(
-  userId: string,
+  userId?: string | null,
   filters: CourtsFilters = {}
 ) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId }
-  });
+  await closeExpiredHotSearches();
 
-  if (!user) {
+  const user = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId }
+      })
+    : null;
+
+  if (userId && !user) {
     return [];
   }
 
-  const preferredDistricts = resolvePreferredDistricts(user.preferredDistricts, user.district);
-  const memberships = await prisma.userCourt.findMany({
-    where: { userId },
-    select: { courtId: true }
-  });
+  const preferredDistricts = user ? resolvePreferredDistricts(user.preferredDistricts, user.district) : [];
+  const memberships = user
+    ? await prisma.userCourt.findMany({
+        where: { userId: user.id },
+        select: { courtId: true }
+      })
+    : [];
   const memberCourtIds = new Set(memberships.map((membership) => membership.courtId));
 
   const courts = await prisma.court.findMany({
@@ -1168,11 +1185,15 @@ export async function getCourtsForUser(
         }
       },
       members: {
-        where: {
-          userId: {
-            not: userId
-          }
-        },
+        ...(user
+          ? {
+              where: {
+                userId: {
+                  not: user.id
+                }
+              }
+            }
+          : {}),
         include: {
           user: true
         },
@@ -1190,12 +1211,12 @@ export async function getCourtsForUser(
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
 
-  return courts
+  const filteredCourts = courts
     .map((court) => ({
       ...court,
       isMember: memberCourtIds.has(court.id),
       distanceKm: haversineDistanceKm(
-        user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
+        user && user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
         { lat: court.locationLat, lng: court.locationLng }
       )
     }))
@@ -1223,6 +1244,120 @@ export async function getCourtsForUser(
 
       return (second.rating ?? 0) - (first.rating ?? 0);
     });
+
+  const activeSearchSummaries = await getCourtActiveSearchSummaries(filteredCourts.map((court) => court.id));
+
+  return filteredCourts.map((court) => ({
+    ...court,
+    ...(activeSearchSummaries.get(court.id) ?? emptyCourtActiveSearchSummary())
+  }));
+}
+
+export type CourtActiveSearchSummary = {
+  activeSearchesCount: number;
+  activeSearchPlayersCount: number;
+  activeSearchPreviewUsers: ReturnType<typeof serializeUserPreview>[];
+};
+
+export function emptyCourtActiveSearchSummary(): CourtActiveSearchSummary {
+  return {
+    activeSearchesCount: 0,
+    activeSearchPlayersCount: 0,
+    activeSearchPreviewUsers: []
+  };
+}
+
+export async function getCourtActiveSearchSummaries(courtIds: string[]) {
+  const uniqueCourtIds = Array.from(new Set(courtIds)).filter(Boolean);
+  const summaries = new Map<string, CourtActiveSearchSummary>();
+
+  for (const courtId of uniqueCourtIds) {
+    summaries.set(courtId, emptyCourtActiveSearchSummary());
+  }
+
+  if (uniqueCourtIds.length === 0) {
+    return summaries;
+  }
+
+  const searches = await prisma.gameSearch.findMany({
+    where: {
+      isActive: true,
+      status: {
+        in: [GameSearchStatus.active, GameSearchStatus.in_review]
+      },
+      OR: [
+        {
+          preferredCourtId: {
+            in: uniqueCourtIds
+          }
+        },
+        {
+          scheduledCourtId: {
+            in: uniqueCourtIds
+          }
+        }
+      ]
+    },
+    include: {
+      createdByUser: true,
+      responses: {
+        where: {
+          status: GameSearchResponseStatus.approved
+        },
+        include: {
+          responderUser: true
+        }
+      }
+    },
+    orderBy: [{ hotStartsAt: "asc" }, { createdAt: "desc" }],
+    take: 200
+  });
+
+  const activeUsersByCourtId = new Map<string, Map<string, ReturnType<typeof serializeUserPreview>>>();
+
+  for (const search of searches) {
+    const relatedCourtIds = new Set(
+      [search.preferredCourtId, search.scheduledCourtId].filter(
+        (courtId): courtId is string => typeof courtId === "string" && summaries.has(courtId)
+      )
+    );
+    if (relatedCourtIds.size === 0) {
+      continue;
+    }
+
+    const activeUsers = new Map<string, ReturnType<typeof serializeUserPreview>>();
+    activeUsers.set(search.createdByUserId, serializeUserPreview(search.createdByUser));
+
+    for (const response of search.responses) {
+      activeUsers.set(response.responderUserId, serializeUserPreview(response.responderUser));
+    }
+
+    for (const courtId of relatedCourtIds) {
+      const summary = summaries.get(courtId) ?? emptyCourtActiveSearchSummary();
+      summary.activeSearchesCount += 1;
+      summaries.set(courtId, summary);
+
+      let users = activeUsersByCourtId.get(courtId);
+      if (!users) {
+        users = new Map();
+        activeUsersByCourtId.set(courtId, users);
+      }
+
+      for (const [userId, preview] of activeUsers.entries()) {
+        users.set(userId, preview);
+      }
+    }
+  }
+
+  for (const [courtId, users] of activeUsersByCourtId.entries()) {
+    const summary = summaries.get(courtId) ?? emptyCourtActiveSearchSummary();
+    const previews = Array.from(users.values());
+    summary.activeSearchPlayersCount = previews.length;
+    summary.activeSearchPreviewUsers = previews.slice(0, 5);
+    summaries.set(courtId, summary);
+  }
+
+  return summaries;
 }
 
 function resolvePreferredDistricts(preferredDistricts: unknown, fallbackDistrict?: string | null) {

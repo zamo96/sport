@@ -25,8 +25,9 @@ export async function PATCH(request: NextRequest) {
     const primaryDistrict = preferredDistricts[0] ?? body.district ?? null;
     const location = (primaryDistrict ? resolveLocationFromDistrict(primaryDistrict) : null) ?? (await resolveLocationFromCity(body.city));
     const preferredSports = normalizeSports(body.preferredSports);
-    const sportLevels = normalizeSportLevels(body.sportLevels, preferredSports, body.tennisLevel);
-    const primarySportLevel = getPrimarySportLevel(preferredSports, sportLevels, body.tennisLevel);
+    const fallbackSportLevel = body.tennisLevel ?? currentUser.tennisLevel ?? 5;
+    const sportLevels = normalizeSportLevels(body.sportLevels, preferredSports, fallbackSportLevel);
+    const primarySportLevel = getPrimarySportLevel(preferredSports, sportLevels, fallbackSportLevel);
     const availabilityByDay = Object.fromEntries(
       Object.entries(body.availabilityByDay ?? {}).filter(([, ranges]) => Array.isArray(ranges) && ranges.length > 0)
     ) as Record<string, string[]>;

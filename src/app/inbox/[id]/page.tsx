@@ -6,6 +6,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { ChatRoom } from "@/components/chat/chat-room";
 import { SectionTitle } from "@/components/ui/section-title";
 import { getMatchDetail } from "@/server/app-data";
+import { serializeChatMessage } from "@/server/chat-media";
 
 export default async function MatchPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
@@ -40,10 +41,7 @@ export default async function MatchPage({ params }: { params: { id: string } }) 
           preferredSports: otherUser.preferredSports,
           sportLevels: otherUser.sportLevels
         }}
-        initialMessages={match.messages.map((message) => ({
-          ...message,
-          createdAt: message.createdAt.toISOString()
-        }))}
+        initialMessages={match.messages.map(serializeChatMessage)}
         gameRequests={match.gameRequests.map((request) => ({
           id: request.id,
           status: request.status,

@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clock3, SendHorizonal } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
@@ -14,17 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { GameRequestCard } from "@/components/chat/game-request-card";
 import { SportLevelBadge } from "@/components/ui/sport-level-badge";
-
-type Message = {
-  id: string;
-  senderUserId: string;
-  text: string;
-  createdAt: string;
-  senderUser: {
-    name: string | null;
-    avatarUrl: string | null;
-  };
-};
+import { ChatComposer, ChatMessageAttachments, type ChatMessage as Message } from "@/components/chat/chat-media";
 
 type ChatRoomProps = {
   matchId: string;
@@ -68,9 +58,6 @@ export function ChatRoom({
 }: ChatRoomProps) {
   const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
-  const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const latestRequest = gameRequests[0];
   const upcomingBookedGames = gameRequests.filter(
     (request) => request.status === "accepted" && !isPastGameRequest(request.proposedDatetime)
@@ -119,24 +106,12 @@ export function ChatRoom({
     };
   }, [loadMessages, matchId, router]);
 
-  async function sendMessage(event: FormEvent) {
-    event.preventDefault();
-    if (!text.trim()) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<{ message: Message }>(`/matches/${matchId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ text })
-      });
-      setMessages((current) => [...current, data.message]);
-      setText("");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось отправить сообщение");
-    } finally {
-      setLoading(false);
-    }
+  async function sendMessage(text: string, attachmentIds: string[]) {
+    const data = await apiFetch<{ message: Message }>(`/matches/${matchId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, attachmentIds })
+    });
+    setMessages((current) => [...current, data.message]);
   }
 
   return (
@@ -204,35 +179,20 @@ export function ChatRoom({
             const mine = message.senderUserId === currentUserId;
             return (
               <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-[24px] px-4 py-3 text-sm leading-6 ${mine ? "bg-ink text-white" : "bg-cream text-ink"}`}>
+                <div className={`max-w-[80%] rounded-[24px] p-2 text-sm leading-6 ${mine ? "bg-ink text-white" : "bg-cream text-ink"}`}>
                   {!mine ? (
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
+                    <div className="mb-1 px-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
                       {message.senderUser.name}
                     </div>
                   ) : null}
-                  {message.text}
+                  <ChatMessageAttachments attachments={message.attachments} />
+                  {message.text ? <div className="px-2 py-1">{message.text}</div> : null}
                 </div>
               </div>
             );
           })}
         </div>
-        <form onSubmit={sendMessage} className="flex items-end gap-2">
-          <textarea
-            rows={2}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            className="input min-h-[52px] min-w-0 flex-1 resize-none py-3 text-sm placeholder:text-sm"
-            placeholder="Напиши сообщение..."
-          />
-          <button
-            type="submit"
-            disabled={loading || !text.trim()}
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-clay text-white disabled:opacity-50"
-          >
-            <SendHorizonal className="h-5 w-5" />
-          </button>
-        </form>
-        {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+        <ChatComposer placeholder="Напиши сообщение..." onSend={sendMessage} />
       </Panel>
     </div>
   );

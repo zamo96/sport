@@ -8,6 +8,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { GameSearchLobby } from "@/components/chat/game-search-lobby";
 import { getCourtsForUser } from "@/server/app-data";
+import { gameSearchMessageAttachmentsInclude, serializeChatMessage } from "@/server/chat-media";
 
 export default async function SearchLobbyPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
@@ -44,7 +45,8 @@ export default async function SearchLobbyPage({ params }: { params: { id: string
         },
         messages: {
           include: {
-            senderUser: true
+            senderUser: true,
+            ...gameSearchMessageAttachmentsInclude
           },
           orderBy: {
             createdAt: "asc"
@@ -101,16 +103,7 @@ export default async function SearchLobbyPage({ params }: { params: { id: string
               avatarUrl: response.responderUser.avatarUrl
             }
           })),
-          messages: gameSearch.messages.map((message) => ({
-            id: message.id,
-            senderUserId: message.senderUserId,
-            text: message.text,
-            createdAt: message.createdAt.toISOString(),
-            senderUser: {
-              name: message.senderUser.name,
-              avatarUrl: message.senderUser.avatarUrl
-            }
-          }))
+          messages: gameSearch.messages.map(serializeChatMessage)
         }}
         courts={courts
           .filter((court) => {

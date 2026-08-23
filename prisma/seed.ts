@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CourtSetting,
+  CourtStatus,
   GameRequestStatus,
   GameSearchResponseStatus,
   GameSearchStatus,
@@ -14,6 +15,7 @@ import {
 } from "@prisma/client";
 
 import { DEFAULT_CITY, DISTRICT_MAP_AREAS, type DistrictOption } from "@/lib/constants";
+import { saintPetersburgManualCourtsRetirementFilter } from "@/lib/club-import";
 import { prisma } from "@/lib/prisma";
 import { buildGeneratedDemoUsers, GENERATED_DEMO_USER_COUNT, runDemoActivitySimulation } from "./demo-simulator";
 import { importClubsFromWorkbook, resolveClubsImportFile } from "./import-clubs";
@@ -635,7 +637,15 @@ async function main() {
 
   const clubsImportFile = await resolveClubsImportFile(process.env.CLUBS_IMPORT_FILE);
   if (clubsImportFile) {
-    await importClubsFromWorkbook(clubsImportFile);
+    const importSummary = await importClubsFromWorkbook(clubsImportFile);
+    // Demo courts remain referenced by seeded searches and game requests, so
+    // archive rather than delete them. The fixed filter cannot touch Moscow.
+    if (importSummary.cities.includes(DEFAULT_CITY)) {
+      await prisma.court.updateMany({
+        where: saintPetersburgManualCourtsRetirementFilter(),
+        data: { status: CourtStatus.archived }
+      });
+    }
   }
 
   await runDemoActivitySimulation(prisma, { resetExisting: true });

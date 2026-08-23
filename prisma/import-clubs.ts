@@ -1,9 +1,21 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Sport } from "@prisma/client";
+import { CourtSetting, CourtStatus, Prisma, Sport, Surface } from "@prisma/client";
 import * as XLSX from "xlsx";
 
+import {
+  groupClubImportRowsByCity,
+  mergeClubImportRows,
+  resolveClubImportSourceExternalId,
+  withInferredClubImportDistricts
+} from "@/lib/club-import";
+import {
+  assertAllowedClubReplacementCity,
+  buildCityClubReplacementPlan,
+  SAINT_PETERSBURG_CITY
+} from "@/lib/club-city-replacement";
+import { normalizeClubSyncRecord, type NormalizedClubSyncRecord } from "@/lib/club-sync";
 import { DEFAULT_CITY } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { resolveUploadedObjectUrl, uploadCourtPhoto } from "@/lib/uploads";
@@ -40,6 +52,7 @@ type ClubRow = {
   metros?: string;
   district?: string;
   district_label?: string;
+  source_external_id?: string;
   lat?: number | string;
   lng?: number | string;
   [key: string]: unknown;
@@ -92,23 +105,9 @@ const SPORT_ALIASES: Record<string, Sport> = {
 export async function importClubsFromWorkbook(filePath: string) {
   const districtsReference = await loadReferenceRows(DISTRICTS_REFERENCE_PATH);
   const metrosReference = await loadReferenceRows(METROS_REFERENCE_PATH);
-
-  const workbook = XLSX.readFile(filePath);
-  const firstSheetName = workbook.SheetNames[0];
-
-  if (!firstSheetName) {
-    throw new Error("В файле нет листов для импорта");
-  }
-
-  const firstSheet = workbook.Sheets[firstSheetName];
-  const rawRows = XLSX.utils.sheet_to_json<ClubRow>(firstSheet, {
-    defval: "",
-    raw: false
-  });
-
-  const rows = rawRows
-    .map(normalizeRow)
-    .filter((row): row is NormalizedClubRow => row !== null);
+  const rows = withInferredClubImportDistricts(
+    (await readNormalizedClubRows(filePath))
+  );
 
   const districtNameByCode = new Map(districtsReference.map((row) => [row.code, row.label]));
   const districtRows = Array.from(
@@ -146,22 +145,263 @@ export async function importClubsFromWorkbook(filePath: string) {
     skipDuplicates: true
   });
 
-  const dedupedRows = Array.from(
-    new Map(
-      rows.map((row) => [
-        courtImportKey(row),
-        row
-      ])
-    ).values()
-  );
+  const dedupedRows = mergeClubImportRows(rows);
   const rowsWithPhotos = await Promise.all(
     dedupedRows.map((row) => resolveImportedPhotos(row, path.dirname(filePath)))
   );
 
-  const summary = await syncClubRecords(
-    rowsWithPhotos.map((row) => ({
+  const summaries = [];
+  for (const group of groupClubImportRowsByCity(rowsWithPhotos)) {
+    summaries.push(
+      await syncClubRecords(
+        group.rows.map((row) => ({
+          sourceType: IMPORT_SOURCE_TYPE,
+          sourceExternalId: resolveClubImportSourceExternalId(row),
+          sourceUrl: row.yandexMapsUrl ?? row.websiteUrl,
+          name: row.name,
+          address: row.address,
+          city: row.city,
+          district: row.district,
+          sports: row.sports,
+          phone: row.phone,
+          workingHours: row.workingHours,
+          yandexMapsUrl: row.yandexMapsUrl,
+          websiteUrl: row.websiteUrl,
+          bookingUrl: row.bookingUrl,
+          about: row.about,
+          amenities: row.amenities,
+          messengerType: row.messengerType,
+          messengerUrl: row.messengerUrl,
+          photoUrl: row.photoUrl,
+          photoUrls: row.photoUrls,
+          metroNames: row.metros,
+          locationLat: row.lat,
+          locationLng: row.lng
+        })),
+        {
+          city: group.city,
+          sourceType: IMPORT_SOURCE_TYPE,
+          autoPublishNew: true,
+          prisma
+        }
+      )
+    );
+  }
+
+  const summary = summaries.reduce(
+    (total, current) => ({
+      createdCount: total.createdCount + current.createdCount,
+      updatedCount: total.updatedCount + current.updatedCount,
+      unchangedCount: total.unchangedCount + current.unchangedCount
+    }),
+    { createdCount: 0, updatedCount: 0, unchangedCount: 0 }
+  );
+
+  const importedCount = await prisma.court.count({
+    where: { sourceType: IMPORT_SOURCE_TYPE }
+  });
+
+  const groupedByDistrict = await prisma.court.groupBy({
+    by: ["district"],
+    where: { sourceType: IMPORT_SOURCE_TYPE },
+    _count: {
+      _all: true
+    }
+  });
+
+  console.log(
+    `Импорт завершен. Городов: ${summaries.length}. Клубов в источнике: ${importedCount}. Создано: ${summary.createdCount}, обновлено: ${summary.updatedCount}, без изменений: ${summary.unchangedCount}`
+  );
+  for (const citySummary of summaries) {
+    console.log(
+      `- ${citySummary.city}: строк ${citySummary.fetchedCount}, создано ${citySummary.createdCount}, обновлено ${citySummary.updatedCount}, без изменений ${citySummary.unchangedCount}`
+    );
+  }
+  console.log("По районам:");
+  for (const row of groupedByDistrict.sort((left, right) => (right._count._all ?? 0) - (left._count._all ?? 0))) {
+    console.log(`- ${row.district ?? "Без района"}: ${row._count._all}`);
+  }
+
+  return {
+    cities: summaries.map((citySummary) => citySummary.city),
+    ...summary
+  };
+}
+
+export type ReplaceCityClubsOptions = {
+  city: string;
+  apply?: boolean;
+  expectedCount?: number;
+};
+
+export type ReplaceCityClubsSummary = {
+  city: string;
+  incomingCount: number;
+  retainedIdCount: number;
+  createdCount: number;
+  retiredCount: number;
+  applied: boolean;
+};
+
+/**
+ * Explicit, destructive-by-city replacement. The ordinary clubs:import path
+ * intentionally does not call this service and remains additive.
+ *
+ * Dry-run is the default. The visible city set is switched in one database
+ * transaction: exact unique identities retain Court.id, all new rows become
+ * active, and every old unmatched row (including manual rows) is archived.
+ */
+export async function replaceCityClubsFromWorkbook(
+  filePath: string,
+  options: ReplaceCityClubsOptions
+): Promise<ReplaceCityClubsSummary> {
+  assertAllowedClubReplacementCity(options.city);
+
+  const cityRows = mergeClubImportRows(
+    withInferredClubImportDistricts(await readNormalizedClubRows(filePath)).filter((row) => row.city === options.city)
+  );
+
+  if (cityRows.length === 0) {
+    throw new Error(`В книге нет клубов для города «${options.city}»`);
+  }
+
+  for (const row of cityRows) {
+    if (!row.sourceExternalId) {
+      throw new Error(`У клуба «${row.name}» отсутствует source_external_id`);
+    }
+  }
+
+  if (options.expectedCount != null && cityRows.length !== options.expectedCount) {
+    throw new Error(`Ожидалось ${options.expectedCount} клубов, найдено ${cityRows.length}`);
+  }
+
+  const prepared = cityRows.map((row) => ({
+    row,
+    record: normalizeReplacementRecord(row)
+  }));
+
+  const buildPlan = async (client: Prisma.TransactionClient | typeof prisma) => {
+    const existing = await client.court.findMany({
+      where: {
+        city: options.city,
+        status: { in: [CourtStatus.active, CourtStatus.needs_review] }
+      },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        sourceExternalId: true,
+        normalizedName: true,
+        normalizedAddress: true
+      }
+    });
+    return buildCityClubReplacementPlan(
+      existing,
+      prepared.map(({ record }) => ({
+        name: record.name,
+        address: record.address,
+        sourceExternalId: record.sourceExternalId as string
+      }))
+    );
+  };
+
+  if (!options.apply) {
+    const plan = await buildPlan(prisma);
+    return replacementSummary(options.city, prepared.length, plan, false);
+  }
+
+  await ensureReplacementReferences(cityRows, options.city);
+  const metroByName = await loadReplacementMetroMap(cityRows);
+  const now = new Date();
+
+  return prisma.$transaction(
+    async (tx) => {
+      const plan = await buildPlan(tx);
+      const run = await tx.courtSyncRun.create({
+        data: {
+          sourceType: IMPORT_SOURCE_TYPE,
+          city: options.city,
+          status: "running",
+          fetchedCount: prepared.length,
+          metadata: {
+            mode: "city_replacement",
+            retainedIdCount: plan.matches.length,
+            retiredCount: plan.retireCourtIds.length
+          }
+        }
+      });
+
+      for (const match of plan.matches) {
+        const { row, record } = prepared[match.incomingIndex];
+        await tx.court.update({
+          where: { id: match.courtId },
+          data: replacementCourtUpdateData(record, metroByName, now)
+        });
+        await replaceMetroLinks(tx, match.courtId, row.metros, metroByName);
+      }
+
+      for (const incomingIndex of plan.createIndexes) {
+        const { row, record } = prepared[incomingIndex];
+        const court = await tx.court.create({
+          data: replacementCourtCreateData(record, metroByName, now)
+        });
+        await replaceMetroLinks(tx, court.id, row.metros, metroByName);
+      }
+
+      if (plan.retireCourtIds.length > 0) {
+        await tx.court.updateMany({
+          where: { id: { in: plan.retireCourtIds }, city: options.city },
+          data: { status: CourtStatus.archived, lastCheckedAt: now }
+        });
+      }
+
+      const activeCount = await tx.court.count({
+        where: { city: options.city, status: CourtStatus.active }
+      });
+      if (activeCount !== prepared.length) {
+        throw new Error(
+          `Проверка cutover не пройдена: ожидалось ${prepared.length} активных клубов, найдено ${activeCount}`
+        );
+      }
+
+      await tx.courtSyncRun.update({
+        where: { id: run.id },
+        data: {
+          status: "completed",
+          finishedAt: now,
+          createdCount: plan.createIndexes.length,
+          updatedCount: plan.matches.length,
+          hiddenCount: plan.retireCourtIds.length
+        }
+      });
+
+      return replacementSummary(options.city, prepared.length, plan, true);
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 120_000 }
+  );
+}
+
+function replacementSummary(
+  city: string,
+  incomingCount: number,
+  plan: ReturnType<typeof buildCityClubReplacementPlan>,
+  applied: boolean
+): ReplaceCityClubsSummary {
+  return {
+    city,
+    incomingCount,
+    retainedIdCount: plan.matches.length,
+    createdCount: plan.createIndexes.length,
+    retiredCount: plan.retireCourtIds.length,
+    applied
+  };
+}
+
+function normalizeReplacementRecord(row: NormalizedClubRow) {
+  const record = normalizeClubSyncRecord(
+    {
       sourceType: IMPORT_SOURCE_TYPE,
-      sourceExternalId: courtImportKey(row),
+      sourceExternalId: row.sourceExternalId,
       sourceUrl: row.yandexMapsUrl ?? row.websiteUrl,
       name: row.name,
       address: row.address,
@@ -182,33 +422,122 @@ export async function importClubsFromWorkbook(filePath: string) {
       metroNames: row.metros,
       locationLat: row.lat,
       locationLng: row.lng
-    })),
-    {
-      city: DEFAULT_CITY,
-      sourceType: IMPORT_SOURCE_TYPE,
-      autoPublishNew: true,
-      prisma
-    }
+    },
+    row.city
   );
 
-  const importedCount = await prisma.court.count({
-    where: { sourceType: IMPORT_SOURCE_TYPE }
-  });
+  if (!record || !record.sourceExternalId) {
+    throw new Error(`Не удалось нормализовать replacement-запись «${row.name}»`);
+  }
+  return record;
+}
 
-  const groupedByDistrict = await prisma.court.groupBy({
-    by: ["district"],
-    where: { sourceType: IMPORT_SOURCE_TYPE },
-    _count: {
-      _all: true
-    }
-  });
+function replacementCourtUpdateData(
+  record: NormalizedClubSyncRecord,
+  metroByName: Map<string, string>,
+  now: Date
+): Prisma.CourtUncheckedUpdateInput {
+  return {
+    name: record.name,
+    address: record.address,
+    city: record.city,
+    district: record.district,
+    nearestMetroId: firstMetroId(record.metroNames, metroByName),
+    locationLat: record.locationLat,
+    locationLng: record.locationLng,
+    status: CourtStatus.active,
+    supportedSports: record.sports as Prisma.InputJsonValue,
+    phone: record.phone,
+    workingHours: record.workingHours,
+    yandexMapsUrl: record.yandexMapsUrl,
+    websiteUrl: record.websiteUrl,
+    bookingUrl: record.bookingUrl,
+    about: record.about,
+    amenities: record.amenities as Prisma.InputJsonValue,
+    messengerType: record.messengerType,
+    messengerUrl: record.messengerUrl,
+    photoUrl: record.photoUrl,
+    photoUrls: record.photoUrls as Prisma.InputJsonValue,
+    rating: record.rating,
+    sourceType: IMPORT_SOURCE_TYPE,
+    sourceExternalId: record.sourceExternalId,
+    sourceUrl: record.sourceUrl,
+    normalizedName: record.normalizedName,
+    normalizedAddress: record.normalizedAddress,
+    syncHash: record.syncHash,
+    lastCheckedAt: now,
+    lastSeenAt: now
+  };
+}
 
-  console.log(
-    `Импорт завершен. Клубов в источнике: ${importedCount}. Создано: ${summary.createdCount}, обновлено: ${summary.updatedCount}, без изменений: ${summary.unchangedCount}`
+function replacementCourtCreateData(
+  record: NormalizedClubSyncRecord,
+  metroByName: Map<string, string>,
+  now: Date
+): Prisma.CourtUncheckedCreateInput {
+  return {
+    ...replacementCourtUpdateData(record, metroByName, now),
+    surface: Surface.any,
+    setting: CourtSetting.indoor,
+    priceRange: "Не указано"
+  } as Prisma.CourtUncheckedCreateInput;
+}
+
+function firstMetroId(names: string[], metroByName: Map<string, string>) {
+  return names[0] ? metroByName.get(names[0].toLowerCase()) ?? null : null;
+}
+
+async function ensureReplacementReferences(rows: NormalizedClubRow[], city: string) {
+  const districtsReference = await loadReferenceRows(DISTRICTS_REFERENCE_PATH);
+  const districtNameByCode = new Map(districtsReference.map((row) => [row.code, row.label]));
+  const districtRows = Array.from(
+    new Map(
+      rows
+        .filter((row) => row.district)
+        .map((row) => [
+          row.district as string,
+          {
+            code: row.district as string,
+            name: row.districtLabel || districtNameByCode.get(row.district as string) || (row.district as string),
+            city
+          }
+        ])
+    ).values()
   );
-  console.log("По районам:");
-  for (const row of groupedByDistrict.sort((left, right) => (right._count._all ?? 0) - (left._count._all ?? 0))) {
-    console.log(`- ${row.district ?? "Без района"}: ${row._count._all}`);
+  await prisma.district.createMany({ data: districtRows, skipDuplicates: true });
+
+  const metroNames = Array.from(new Set(rows.flatMap((row) => row.metros)));
+  await prisma.metro.createMany({
+    data: metroNames.map((name) => ({ name, city })),
+    skipDuplicates: true
+  });
+}
+
+async function loadReplacementMetroMap(rows: NormalizedClubRow[]) {
+  const names = Array.from(new Set(rows.flatMap((row) => row.metros)));
+  if (names.length === 0) {
+    return new Map<string, string>();
+  }
+  const metros = await prisma.metro.findMany({
+    where: { name: { in: names } },
+    select: { id: true, name: true }
+  });
+  return new Map(metros.map((metro) => [metro.name.toLowerCase(), metro.id]));
+}
+
+async function replaceMetroLinks(
+  tx: Prisma.TransactionClient,
+  courtId: string,
+  names: string[],
+  metroByName: Map<string, string>
+) {
+  await tx.courtMetro.deleteMany({ where: { courtId } });
+  const rows = names.flatMap((name, position) => {
+    const metroId = metroByName.get(name.toLowerCase());
+    return metroId ? [{ courtId, metroId, position }] : [];
+  });
+  if (rows.length > 0) {
+    await tx.courtMetro.createMany({ data: rows, skipDuplicates: true });
   }
 }
 
@@ -250,6 +579,7 @@ type NormalizedClubRow = {
   districtLabel: string | null;
   lat: number;
   lng: number;
+  sourceExternalId: string | null;
 };
 
 function normalizeRow(row: ClubRow): NormalizedClubRow | null {
@@ -286,8 +616,23 @@ function normalizeRow(row: ClubRow): NormalizedClubRow | null {
     district: normalizeDistrictCode(row.district),
     districtLabel: normalizeText(row.district_label),
     lat,
-    lng
+    lng,
+    sourceExternalId: normalizeText(row.source_external_id)
   };
+}
+
+async function readNormalizedClubRows(filePath: string) {
+  const workbook = XLSX.readFile(filePath);
+  const firstSheetName = workbook.SheetNames[0];
+
+  if (!firstSheetName) {
+    throw new Error("В файле нет листов для импорта");
+  }
+
+  return XLSX.utils
+    .sheet_to_json<ClubRow>(workbook.Sheets[firstSheetName], { defval: "", raw: false })
+    .map(normalizeRow)
+    .filter((row): row is NormalizedClubRow => row !== null);
 }
 
 async function resolveImportedPhotos(row: NormalizedClubRow, workbookDir: string): Promise<NormalizedClubRow> {
@@ -432,10 +777,6 @@ function normalizeMetroValues(row: ClubRow) {
     ...normalizeColumnValues(row, "metro", "metros"),
     ...splitCellValues(row["метро"])
   ]);
-}
-
-function courtImportKey(row: Pick<NormalizedClubRow, "name" | "address" | "city">) {
-  return `${row.name.toLowerCase()}::${row.address.toLowerCase()}::${row.city.toLowerCase()}`;
 }
 
 function normalizeFirstText(row: ClubRow, ...keys: string[]) {

@@ -12,7 +12,7 @@ import { PageShell } from "@/components/layout/page-shell";
 
 export const metadata: Metadata = {
   title: USER_AGREEMENT_TITLE,
-  description: "Пользовательское соглашение сервиса TennisSearch"
+  description: "Пользовательское соглашение сервиса SportSearch"
 };
 
 export default function TermsPage() {
@@ -29,10 +29,6 @@ export default function TermsPage() {
             <p>Дата вступления в силу: {USER_AGREEMENT_EFFECTIVE_DATE}</p>
             <p>Оператор: {LEGAL_OPERATOR.legalName}</p>
           </div>
-          <p className="mt-4 rounded-[20px] bg-cream px-4 py-3 text-sm leading-6 text-ink/72">
-            Перед публикацией замените плейсхолдеры реквизитов оператора и проверьте текст у юриста. Этот текст является рабочей
-            редакцией для внедрения в регистрацию, а не индивидуальным юридическим заключением.
-          </p>
         </header>
 
         <div className="space-y-3">

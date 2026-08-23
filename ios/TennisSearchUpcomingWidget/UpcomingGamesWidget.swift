@@ -7,6 +7,9 @@ private let payloadKey = "upcomingGamesWidget.payload.v1"
 private let currentUserIdKey = "upcomingGamesWidget.currentUserId.v1"
 private let sessionTokenKey = "SportSearch.sessionToken"
 private let postEventDisplayInterval: TimeInterval = 2 * 60 * 60
+private let countdownLeadTime: TimeInterval = 60 * 60
+private let countdownTimelineCadence: TimeInterval = 60
+private let maximumTimelineEntryCount = 90
 
 struct UpcomingGamesWidgetPayload: Codable {
     let updatedAt: Date
@@ -67,10 +70,58 @@ struct UpcomingGamesProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<UpcomingGamesEntry>) -> Void) {
         Task {
             let payload = await loadRemotePayload() ?? loadPayload()
-            let entry = UpcomingGamesEntry(date: Date(), payload: payload)
-            let nextRefresh = nextRefreshDate(for: payload, from: entry.date)
-            completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+            let referenceDate = Date()
+            let entries = timelineEntries(for: payload, from: referenceDate)
+            let nextRefresh = nextRefreshDate(for: payload, from: entries.last?.date ?? referenceDate)
+            completion(Timeline(entries: entries, policy: .after(nextRefresh)))
         }
+    }
+
+    private func timelineEntries(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> [UpcomingGamesEntry] {
+        let dates = timelineRefreshDates(for: payload, from: referenceDate)
+        return dates.map { UpcomingGamesEntry(date: $0, payload: payload) }
+    }
+
+    private func timelineRefreshDates(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> [Date] {
+        let minimumDate = referenceDate.addingTimeInterval(-1)
+        var dates = Set<Date>()
+        dates.insert(referenceDate)
+
+        for game in payload.games {
+            guard let startsAt = game.startsAt else {
+                continue
+            }
+
+            let duration = TimeInterval((game.durationMinutes ?? 90) * 60)
+            let countdownStart = startsAt.addingTimeInterval(-countdownLeadTime)
+            [
+                startsAt.addingTimeInterval(-2 * 60 * 60),
+                countdownStart,
+                startsAt,
+                startsAt.addingTimeInterval(10 * 60),
+                startsAt.addingTimeInterval(duration),
+                startsAt.addingTimeInterval(duration + postEventDisplayInterval)
+            ]
+            .filter { $0 > minimumDate }
+            .forEach { dates.insert($0.roundedToWidgetMinute()) }
+
+            guard referenceDate < startsAt else {
+                continue
+            }
+
+            let firstCountdownDate = max(referenceDate, countdownStart).roundedUpToWidgetMinute()
+            var countdownDate = firstCountdownDate
+            while countdownDate <= startsAt {
+                dates.insert(countdownDate)
+                countdownDate = countdownDate.addingTimeInterval(countdownTimelineCadence)
+            }
+        }
+
+        return Array(dates)
+            .filter { $0 > minimumDate }
+            .sorted()
+            .prefix(maximumTimelineEntryCount)
+            .map { $0 }
     }
 
     private func nextRefreshDate(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> Date {
@@ -86,6 +137,7 @@ struct UpcomingGamesProvider: TimelineProvider {
                 let duration = TimeInterval((game.durationMinutes ?? 90) * 60)
                 return [
                     startsAt.addingTimeInterval(-2 * 60 * 60),
+                    startsAt.addingTimeInterval(-countdownLeadTime),
                     startsAt,
                     startsAt.addingTimeInterval(10 * 60),
                     startsAt.addingTimeInterval(duration),
@@ -552,6 +604,18 @@ private extension String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: self)
+    }
+}
+
+private extension Date {
+    func roundedToWidgetMinute() -> Date {
+        let interval = (timeIntervalSinceReferenceDate / countdownTimelineCadence).rounded() * countdownTimelineCadence
+        return Date(timeIntervalSinceReferenceDate: interval)
+    }
+
+    func roundedUpToWidgetMinute() -> Date {
+        let interval = ceil(timeIntervalSinceReferenceDate / countdownTimelineCadence) * countdownTimelineCadence
+        return Date(timeIntervalSinceReferenceDate: interval)
     }
 }
 
@@ -1047,7 +1111,10 @@ private struct UpcomingGameLiveActivityLockScreenView: View {
                     .frame(width: 74, height: 74)
 
                 Circle()
-                    .trim(from: 0.12, to: 0.12 + 0.80 * state.preStartProgress(referenceDate: referenceDate))
+                    .trim(
+                        from: 0.12 + 0.80 * (1 - state.preStartProgress(referenceDate: referenceDate)),
+                        to: 0.92
+                    )
                     .stroke(
                         state.liveActivityAccent(referenceDate: referenceDate),
                         style: StrokeStyle(lineWidth: 6, lineCap: .round)

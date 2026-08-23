@@ -8,14 +8,17 @@ coverage
 dist
 build
 public/uploads
+.data/
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
 ~$*.xlsx
 .artifacts/
+outputs/
 .derived-ios/
 config/*.local.json
 ios/.DS_Store
 ios/**/*.xcuserdata/
 ios/**/xcuserdata/
 ios/**/*.xcuserstate
+ios/TennisSearchIOS/Configs/Local.xcconfig

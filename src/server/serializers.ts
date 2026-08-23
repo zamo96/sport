@@ -78,6 +78,9 @@ export function serializeCourt(
     members?: Array<UserCourt & { user: User }>;
     _count?: { members?: number };
     isMember?: boolean;
+    activeSearchesCount?: number;
+    activeSearchPlayersCount?: number;
+    activeSearchPreviewUsers?: ReturnType<typeof serializeUserPreview>[];
   }
 ) {
   const photoUrls = normalizeCourtPhotoUrls(court.photoUrls, court.photoUrl);
@@ -95,7 +98,10 @@ export function serializeCourt(
     distanceLabel: formatDistanceKm(court.distanceKm),
     isMember: court.isMember ?? false,
     memberCount: court._count?.members ?? court.members?.length ?? 0,
-    members: court.members?.map((member) => serializeUserPreview(member.user)) ?? []
+    members: court.members?.map((member) => serializeUserPreview(member.user)) ?? [],
+    activeSearchesCount: court.activeSearchesCount ?? 0,
+    activeSearchPlayersCount: court.activeSearchPlayersCount ?? 0,
+    activeSearchPreviewUsers: court.activeSearchPreviewUsers ?? []
   };
 }
 

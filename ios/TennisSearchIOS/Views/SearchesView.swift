@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 import MapKit
+import PhotosUI
 
 struct SearchesView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appModel: AppModel
     @State private var searches: [GameSearch] = []
     @State private var isPresentingComposer = false
@@ -14,6 +16,9 @@ struct SearchesView: View {
     @State private var updatingSearchID: String?
     @State private var presentedSearchLobbyID: String?
     @State private var createButtonPressed = false
+    @State private var isCreateFABExpanded = true
+    @State private var hasInteractedWithCreateFAB = false
+    @State private var isOpeningCreateComposer = false
     @State private var isLoadingSearches = false
     let openedFromDiscover: Bool
 
@@ -22,7 +27,7 @@ struct SearchesView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomTrailing) {
             Color.white
                 .ignoresSafeArea()
 
@@ -33,13 +38,7 @@ struct SearchesView: View {
                     filterRail
 
                     if filteredSearches.isEmpty, !isLoadingSearches {
-                        SectionCard(title: "Пока пусто", subtitle: "Созданные поиски и твои отклики будут собраны здесь.") {
-                            EmptyStateView(
-                                title: "Нет поисков в этом разделе",
-                                subtitle: "Сейчас показываем только срочные поиски и отклики на них.",
-                                systemImage: "flame"
-                            )
-                        }
+                        emptySearchesState
                     } else {
                         if selectedFilter == .all {
                             ForEach(allSearchSections) { section in
@@ -52,10 +51,11 @@ struct SearchesView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
-                .padding(.bottom, 252)
+                .padding(.bottom, 172)
             }
+            .simultaneousGesture(createFABScrollGesture)
 
-            createSearchDock
+            createSearchFAB
         }
         .toolbar(.hidden, for: .navigationBar)
         .simultaneousGesture(backToDiscoverSwipe)
@@ -63,13 +63,26 @@ struct SearchesView: View {
             openPendingSearchLobbyIfNeeded()
             await loadSearches()
         }
+        .task(id: createFABAutoCollapseKey) {
+            guard !filteredSearches.isEmpty, !hasInteractedWithCreateFAB else {
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else {
+                return
+            }
+            collapseCreateFAB()
+        }
         .onChange(of: appModel.pendingSearchLobbyID) { _ in
             openPendingSearchLobbyIfNeeded()
         }
         .refreshable {
             await loadSearches()
         }
-        .sheet(isPresented: $isPresentingComposer) {
+        .sheet(isPresented: $isPresentingComposer, onDismiss: {
+            isOpeningCreateComposer = false
+        }) {
             SearchComposerView { created in
                 searches.insert(created, at: 0)
             }
@@ -139,8 +152,9 @@ struct SearchesView: View {
     }
 
     private var pendingResponsesCount: Int {
-        visibleSearches.reduce(into: 0) { count, search in
-            guard isOwnedSearch(search), isSearchCountedInSummary(search) else {
+        let currentUserId = appModel.currentUser?.id
+        return visibleSearches.reduce(into: 0) { count, search in
+            guard isOwnedActiveHotSearchForAttention(search, currentUserId: currentUserId) else {
                 return
             }
             count += search.responses.filter { $0.status == "pending" }.count
@@ -187,15 +201,6 @@ struct SearchesView: View {
             SearchSectionModel(id: "completed", title: "Завершены", subtitle: "Игроки найдены или поиск уже закрыт.", searches: completed)
         ]
         .filter { !$0.searches.isEmpty }
-    }
-
-    private func isSearchCountedInSummary(_ search: GameSearch) -> Bool {
-        let status = search.status.lowercased()
-        guard (search.isActive ?? true),
-              !["matched", "closed", "canceled", "cancelled", "expired"].contains(status) else {
-            return false
-        }
-        return true
     }
 
     private func isCompletedSearch(_ search: GameSearch) -> Bool {
@@ -315,55 +320,105 @@ struct SearchesView: View {
         }
     }
 
-    private var createSearchDock: some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [.white.opacity(0), .white.opacity(0.96), .white],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-            .allowsHitTesting(false)
-
-            createSearchButton
-                .padding(.horizontal, 16)
-                .padding(.bottom, createSearchDockBottomPadding)
-        }
-    }
-
-    private var createSearchDockBottomPadding: CGFloat {
+    private var createSearchFABBottomPadding: CGFloat {
         switch appModel.bottomBarDisplayMode {
         case .expanded:
-            return 112
+            return 108
         case .compact:
-            return 34
+            return 30
         case .hidden:
-            return 12
+            return 16
         }
     }
 
-    private var createSearchButton: some View {
+    private var createSearchFAB: some View {
         Button {
-            triggerCreateComposerFeedback()
-            editingSearch = nil
-            isPresentingComposer = true
+            presentCreateSearchComposer()
         } label: {
             HStack(spacing: 10) {
-                Text("Создать поиск")
                 Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 21, weight: .bold))
+                    .frame(width: 24, height: 24)
+
+                if isCreateFABExpanded {
+                    Text("Создать поиск")
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
             }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 22)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: AppTheme.ink.opacity(0.16), radius: 18, x: 0, y: 8)
+            .foregroundStyle(AppTheme.ink)
+            .frame(width: isCreateFABExpanded ? 190 : 60, height: 60)
+            .background(createSearchFABBackground)
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .shadow(color: AppTheme.ink.opacity(0.18), radius: 18, x: 0, y: 9)
         }
         .scaleEffect(createButtonPressed ? 0.96 : 1)
         .animation(.spring(response: 0.22, dampingFraction: 0.65), value: createButtonPressed)
+        .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86), value: isCreateFABExpanded)
         .buttonStyle(.plain)
+        .accessibilityLabel("Создать поиск")
+        .padding(.trailing, 18)
+        .padding(.bottom, createSearchFABBottomPadding)
+    }
+
+    @ViewBuilder
+    private var createSearchFABBackground: some View {
+        if #available(iOS 26.0, *) {
+            Capsule()
+                .fill(Color.clear)
+                .glassEffect(.regular.tint(AppTheme.court.opacity(0.78)).interactive(), in: Capsule())
+        } else {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(Capsule().fill(AppTheme.court.opacity(0.74)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 1))
+        }
+    }
+
+    private var createFABAutoCollapseKey: String {
+        "\(filteredSearches.isEmpty)|\(hasInteractedWithCreateFAB)"
+    }
+
+    private var createFABScrollGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { _ in
+                registerCreateFABInteraction()
+            }
+    }
+
+    private func registerCreateFABInteraction() {
+        hasInteractedWithCreateFAB = true
+        collapseCreateFAB()
+    }
+
+    private func collapseCreateFAB() {
+        guard isCreateFABExpanded else {
+            return
+        }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) {
+            isCreateFABExpanded = false
+        }
+    }
+
+    private var emptySearchesState: some View {
+        SectionCard(
+            title: activeSearchCount == 0 ? "Активных поисков нет" : "Пока пусто",
+            subtitle: activeSearchCount == 0
+                ? "Создай поиск, чтобы игроки рядом могли откликнуться."
+                : "В этом разделе сейчас нет поисков."
+        ) {
+            VStack(spacing: 14) {
+                EmptyStateView(
+                    title: activeSearchCount == 0 ? "Создай свой поиск" : "Нет поисков в этом разделе",
+                    subtitle: activeSearchCount == 0
+                        ? "Укажи вид спорта, время и место. Отклики появятся здесь."
+                        : "Смени фильтр или вернись позже.",
+                    systemImage: "magnifyingglass.circle"
+                )
+            }
+        }
     }
 
     private var summaryStrip: some View {
@@ -455,11 +510,29 @@ struct SearchesView: View {
         do {
             searches = try await appModel.repository.fetchSearches()
             openPendingSearchLobbyIfNeeded()
+            await markSearchNotificationsSeenIfNeeded()
         } catch {
             guard !error.isCancellationLike else {
                 return
             }
             appModel.present(error: error)
+        }
+    }
+
+    private func markSearchNotificationsSeenIfNeeded() async {
+        guard appModel.isAuthenticated,
+              appModel.notificationManager.summary.searchesBadgeCount > pendingResponsesCount else {
+            return
+        }
+
+        do {
+            try await appModel.repository.markNotificationsSeen()
+            await appModel.notificationManager.manualRefresh(repository: appModel.repository)
+        } catch {
+            guard !error.isCancellationLike else {
+                return
+            }
+            print("search notifications seen error:", error.localizedDescription)
         }
     }
 
@@ -576,6 +649,18 @@ private struct SearchSectionModel: Identifiable {
 }
 
 private extension SearchesView {
+    func presentCreateSearchComposer() {
+        guard !isPresentingComposer, !isOpeningCreateComposer else {
+            return
+        }
+
+        isOpeningCreateComposer = true
+        registerCreateFABInteraction()
+        triggerCreateComposerFeedback()
+        editingSearch = nil
+        isPresentingComposer = true
+    }
+
     func triggerCreateComposerFeedback() {
         AppHaptics.impact(.medium)
         withAnimation(.spring(response: 0.22, dampingFraction: 0.65)) {
@@ -2307,6 +2392,35 @@ private struct SearchEmbeddedSection<Content: View>: View {
     }
 }
 
+private struct PendingSearchChatPhoto: Identifiable {
+    let id = UUID()
+    let data: Data
+    let image: UIImage
+    let fileName: String
+    let mimeType: String
+}
+
+private struct SearchChatMediaViewer: View {
+    @Environment(\.dismiss) private var dismiss
+    let attachment: ChatMediaAttachment
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            RemoteChatMediaImage(path: attachment.url, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 30))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.55))
+            }
+            .padding(20)
+        }
+    }
+}
+
 struct SearchLobbySheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
@@ -2335,6 +2449,9 @@ struct SearchLobbySheet: View {
     @State private var simulationMessage: String?
     @State private var lastLobbyPresenceRefresh = Date.distantPast
     @State private var selectedLobbyPlayer: DiscoverUser?
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var pendingPhotos: [PendingSearchChatPhoto] = []
+    @State private var selectedMediaAttachment: ChatMediaAttachment?
     @FocusState private var isMessageComposerFocused: Bool
     private let bottomAnchorID = "search-lobby-bottom-anchor"
 
@@ -2508,6 +2625,9 @@ struct SearchLobbySheet: View {
                     await loadLobby()
                 }
             }
+            .onChange(of: photoPickerItems) { items in
+                Task { await loadPendingPhotos(from: items) }
+            }
             .sheet(isPresented: $isCourtPickerPresented) {
                 SearchClubPickerSheet(
                     sport: lobby?.sport ?? .tennis,
@@ -2561,6 +2681,9 @@ struct SearchLobbySheet: View {
             .sheet(item: $selectedLobbyPlayer) { player in
                 DiscoverParticipantSheet(user: player, onOpenChat: nil)
                     .environmentObject(appModel)
+            }
+            .fullScreenCover(item: $selectedMediaAttachment) { attachment in
+                SearchChatMediaViewer(attachment: attachment)
             }
         }
     }
@@ -2662,7 +2785,44 @@ struct SearchLobbySheet: View {
                     }
                 }
 
+                if !pendingPhotos.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(pendingPhotos) { photo in
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: photo.image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 70, height: 70)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    Button {
+                                        removePendingPhoto(photo)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .black.opacity(0.7))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .offset(x: 5, y: -5)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 HStack(alignment: .bottom, spacing: 10) {
+                    PhotosPicker(
+                        selection: $photoPickerItems,
+                        maxSelectionCount: 4,
+                        matching: .images
+                    ) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 40, height: 50)
+                            .foregroundStyle(AppTheme.court)
+                    }
+                    .disabled(isSendingMessage)
+
                     FieldShell {
                         TextField("Сообщение для состава...", text: $messageText, axis: .vertical)
                             .lineLimit(1 ... 4)
@@ -2685,7 +2845,7 @@ struct SearchLobbySheet: View {
                     .buttonStyle(.plain)
                     .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .foregroundStyle(.white)
-                    .disabled(isSendingMessage || messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSendingMessage || (messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty))
                 }
             }
         } else if let lobbyLoadError {
@@ -2927,7 +3087,7 @@ struct SearchLobbySheet: View {
 
     private func sendMessage() async {
         let trimmed = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard !trimmed.isEmpty || !pendingPhotos.isEmpty else {
             return
         }
 
@@ -2936,7 +3096,20 @@ struct SearchLobbySheet: View {
         defer { isSendingMessage = false }
 
         do {
-            let message = try await appModel.repository.sendSearchLobbyMessage(searchId: searchId, text: trimmed)
+            var attachmentIds: [String] = []
+            for photo in pendingPhotos {
+                let asset = try await appModel.repository.uploadChatMedia(
+                    data: photo.data,
+                    fileName: photo.fileName,
+                    mimeType: photo.mimeType
+                )
+                attachmentIds.append(asset.id)
+            }
+            let message = try await appModel.repository.sendSearchLobbyMessage(
+                searchId: searchId,
+                text: trimmed,
+                attachmentIds: attachmentIds
+            )
             lobby = SearchLobbyGameSearch(
                 id: lobby?.id ?? searchId,
                 createdByUserId: lobby?.createdByUserId ?? appModel.currentUser?.id ?? "",
@@ -2964,11 +3137,43 @@ struct SearchLobbySheet: View {
                 messages: (lobby?.messages ?? []) + [message]
             )
             messageText = ""
+            pendingPhotos = []
+            photoPickerItems = []
         } catch {
             guard !error.isCancellationLike else {
                 return
             }
             appModel.present(error: error)
+        }
+    }
+
+    private func loadPendingPhotos(from items: [PhotosPickerItem]) async {
+        var loaded: [PendingSearchChatPhoto] = []
+        for (index, item) in items.prefix(4).enumerated() {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                continue
+            }
+            let uploadData = image.jpegData(compressionQuality: 0.88) ?? data
+            loaded.append(
+                PendingSearchChatPhoto(
+                    data: uploadData,
+                    image: image,
+                    fileName: "chat-photo-\(index + 1).jpg",
+                    mimeType: "image/jpeg"
+                )
+            )
+        }
+        pendingPhotos = loaded
+    }
+
+    private func removePendingPhoto(_ photo: PendingSearchChatPhoto) {
+        guard let index = pendingPhotos.firstIndex(where: { $0.id == photo.id }) else {
+            return
+        }
+        pendingPhotos.remove(at: index)
+        if photoPickerItems.indices.contains(index) {
+            photoPickerItems.remove(at: index)
         }
     }
 
@@ -3118,9 +3323,30 @@ struct SearchLobbySheet: View {
                         .foregroundStyle(AppTheme.ink.opacity(0.58))
                 }
 
-                Text(message.text)
-                    .font(.body)
-                    .foregroundStyle(isMine ? .white : AppTheme.ink)
+                if !message.attachments.isEmpty {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: message.attachments.count == 1 ? 1 : 2),
+                        spacing: 6
+                    ) {
+                        ForEach(message.attachments.sorted(by: { $0.position < $1.position })) { attachment in
+                            Button {
+                                selectedMediaAttachment = attachment
+                            } label: {
+                                RemoteChatMediaImage(path: attachment.url)
+                                .frame(width: message.attachments.count == 1 ? 210 : 98, height: message.attachments.count == 1 ? 180 : 98)
+                                .background(.black.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .font(.body)
+                        .foregroundStyle(isMine ? .white : AppTheme.ink)
+                }
 
                 Text(message.createdAt.formattedDateTime())
                     .font(.caption2)
@@ -4311,6 +4537,8 @@ private struct SearchHeroImage: View {
 
 struct SearchComposerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appModel: AppModel
 
     @State private var courts: [Court] = []
@@ -4352,6 +4580,7 @@ struct SearchComposerView: View {
     @State private var selectedCourtSnapshot: Court?
     @State private var customHotDate: Date?
     @State private var isCustomHotCalendarExpanded = false
+    @StateObject private var bookingCallFlow = BookingCallFlow()
     @FocusState private var isSearchCommentFocused: Bool
 
     let initialSearch: GameSearch?
@@ -4765,8 +4994,7 @@ struct SearchComposerView: View {
                     onSelect: { court in
                         selectPreferredCourt(
                             court,
-                            clearDistrictsWhenNil: true,
-                            markBooked: draft.searchType == .hot
+                            clearDistrictsWhenNil: true
                         )
                     },
                     onSelectCustomAddress: { address in
@@ -4799,6 +5027,25 @@ struct SearchComposerView: View {
                     availabilityByDay: $availabilityByDay
                 )
                 .presentationDetents([.medium, .large])
+            }
+            .confirmationDialog(
+                "Удалось забронировать?",
+                isPresented: $bookingCallFlow.isResultPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Да, время совпало") {
+                    draft.hasCourtBooked = true
+                }
+                Button("Забронировал на другое время") {
+                    draft.hasCourtBooked = true
+                    hotStep = .when
+                }
+                Button("Не забронировал") {
+                    draft.hasCourtBooked = false
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Подтвердите бронь или измените дату и время поиска.")
             }
             .task {
                 guard !didInitializeComposer else {
@@ -4845,6 +5092,12 @@ struct SearchComposerView: View {
         }
         .onChange(of: draft.hotWindow) { _ in
             syncHotStartTimeWithAvailableTimes()
+        }
+        .onChange(of: scenePhase) { phase in
+            bookingCallFlow.handle(scenePhase: phase)
+        }
+        .onDisappear {
+            bookingCallFlow.reset()
         }
     }
 
@@ -5397,6 +5650,19 @@ struct SearchComposerView: View {
             } else {
                 courtToggle
                 mapPreviewSection
+                if let phoneURL = selectedCourt?.phoneURL {
+                    Button {
+                        bookingCallFlow.start(url: phoneURL, openURL: openURL)
+                    } label: {
+                        Label("Позвонить и забронировать", systemImage: "phone.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(AppTheme.court, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
                 hotDistrictRail
             }
         }
@@ -5767,10 +6033,7 @@ struct SearchComposerView: View {
                 selectedCourtId: selectedCourtId,
                 onSelectCourt: { court in
                     AppHaptics.selection()
-                    selectPreferredCourt(
-                        court,
-                        markBooked: draft.searchType == .hot
-                    )
+                    selectPreferredCourt(court)
                 }
             )
             .frame(height: 232)
@@ -5983,6 +6246,7 @@ struct SearchComposerView: View {
                 selectedCourtId = nil
                 draft.preferredCourtId = nil
                 selectedCourtSnapshot = nil
+                draft.hasCourtBooked = false
             }
 
             if !sport.isRouteSport {
@@ -6062,10 +6326,12 @@ struct SearchComposerView: View {
 
     private func selectPreferredCourt(
         _ court: Court?,
-        clearDistrictsWhenNil: Bool = false,
-        markBooked: Bool = false
+        clearDistrictsWhenNil: Bool = false
     ) {
+        bookingCallFlow.reset()
         let currentSport = selectedSport
+        let isChangingVenue = selectedCourtId != court?.id
+            || (court == nil && (draft.customVenueTitle != nil || draft.customVenueAddress != nil))
 
         withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
             selectedCourtSnapshot = court
@@ -6077,12 +6343,11 @@ struct SearchComposerView: View {
                 if let district = court.district {
                     draft.preferredDistricts = [district] + draft.preferredDistricts.filter { $0 != district }
                 }
-
-                if markBooked {
-                    draft.hasCourtBooked = true
-                }
             } else if clearDistrictsWhenNil {
                 draft.preferredDistricts.removeAll()
+            }
+            if isChangingVenue {
+                draft.hasCourtBooked = false
             }
             draft.sport = currentSport
         }
@@ -6094,13 +6359,14 @@ struct SearchComposerView: View {
             return
         }
 
+        bookingCallFlow.reset()
         withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
             selectedCourtSnapshot = nil
             selectedCourtId = nil
             draft.preferredCourtId = nil
             draft.customVenueTitle = nil
             draft.customVenueAddress = normalized
-            draft.hasCourtBooked = true
+            draft.hasCourtBooked = false
         }
     }
 
@@ -6301,6 +6567,7 @@ struct SearchComposerView: View {
                 }
                 try? await Task.sleep(for: .milliseconds(1700))
             }
+            await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             onCreate(created)
             dismiss()
         } catch {
@@ -6661,6 +6928,92 @@ private final class SearchPreviewCourtAnnotation: NSObject, MKAnnotation {
             .compactMap { $0 }
             .joined(separator: " · ")
         super.init()
+    }
+}
+
+private final class SearchClubAggregateAnnotation: NSObject, MKAnnotation {
+    let members: [SearchPreviewCourtAnnotation]
+    let coordinate: CLLocationCoordinate2D
+
+    init(members: [SearchPreviewCourtAnnotation]) {
+        self.members = members
+        let coordinateTotal = members.reduce((latitude: 0.0, longitude: 0.0)) { partial, annotation in
+            (
+                latitude: partial.latitude + annotation.coordinate.latitude,
+                longitude: partial.longitude + annotation.coordinate.longitude
+            )
+        }
+        let memberCount = Double(members.count)
+        coordinate = CLLocationCoordinate2D(
+            latitude: coordinateTotal.latitude / memberCount,
+            longitude: coordinateTotal.longitude / memberCount
+        )
+        super.init()
+    }
+}
+
+private final class SearchPreviewUserAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "Вы здесь"
+    let subtitle: String?
+
+    init(coordinate: CLLocationCoordinate2D, districtLabel: String?) {
+        self.coordinate = coordinate
+        subtitle = districtLabel
+        super.init()
+    }
+}
+
+private final class DistrictReferenceAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String?
+
+    init(area: DistrictMapArea) {
+        var coordinates = area.coordinates
+        let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+        let bounds = polygon.boundingMapRect
+        coordinate = MKMapPoint(x: bounds.midX, y: bounds.midY).coordinate
+        title = area.label
+        super.init()
+    }
+}
+
+private final class DistrictReferenceAnnotationView: MKAnnotationView {
+    static let reuseID = "DistrictReferenceAnnotationView"
+
+    private let titleLabel = UILabel()
+
+    override var annotation: MKAnnotation? {
+        didSet {
+            titleLabel.text = annotation?.title ?? nil
+            let fittingSize = titleLabel.sizeThatFits(CGSize(width: 190, height: 34))
+            frame.size = CGSize(width: min(fittingSize.width + 20, 210), height: 34)
+            titleLabel.frame = bounds.insetBy(dx: 10, dy: 5)
+        }
+    }
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        backgroundColor = UIColor(red: 0.02, green: 0.22, blue: 0.12, alpha: 0.82)
+        layer.cornerRadius = 12
+        layer.borderWidth = 1
+        layer.borderColor = UIColor(red: 0.19, green: 0.84, blue: 0.58, alpha: 0.9).cgColor
+        titleLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        titleLabel.textColor = .white
+        titleLabel.textAlignment = .center
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.8
+        addSubview(titleLabel)
+        displayPriority = .required
+        zPriority = .min
+        clusteringIdentifier = nil
+        canShowCallout = false
+        self.annotation = annotation
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
     }
 }
 
@@ -8505,19 +8858,52 @@ private struct SearchClubExpandedMapSheet: View {
 private final class SearchClubPickerAnnotationView: MKAnnotationView {
     static let reuseID = "SearchClubPickerAnnotationView"
 
+    private let markerIconView = UIImageView()
+    private let titleLabel = UILabel()
     private var representedCourtID: String?
+    private var configuredCalloutCourtID: String?
+    private var configuredShowsCallout: Bool?
+    private var photoTask: URLSessionDataTask?
 
     override var annotation: MKAnnotation? {
         didSet {
             if let annotation = annotation as? SearchPreviewCourtAnnotation {
-                configure(court: annotation.court, showsCallout: canShowCallout)
+                representedCourtID = annotation.court.id
+                configureMarker(for: annotation.court)
+            } else {
+                representedCourtID = nil
+                configureMarker(for: nil)
             }
         }
     }
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        centerOffset = CGPoint(x: 0, y: -18)
+
+        markerIconView.contentMode = .scaleAspectFit
+        markerIconView.isUserInteractionEnabled = false
+
+        titleLabel.backgroundColor = UIColor.white.withAlphaComponent(0.96)
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = UIColor(red: 0.09, green: 0.17, blue: 0.16, alpha: 1)
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 1
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.layer.cornerRadius = 14
+        titleLabel.layer.borderWidth = 1
+        titleLabel.layer.borderColor = UIColor.black.withAlphaComponent(0.08).cgColor
+        titleLabel.clipsToBounds = true
+        titleLabel.isUserInteractionEnabled = false
+
+        addSubview(titleLabel)
+        addSubview(markerIconView)
+
+        image = nil
+        clipsToBounds = false
+        clusteringIdentifier = nil
+        displayPriority = .required
+        isAccessibilityElement = true
+        accessibilityTraits = .button
     }
 
     @available(*, unavailable)
@@ -8525,11 +8911,33 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
         nil
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        photoTask?.cancel()
+        photoTask = nil
+        representedCourtID = nil
+        configuredCalloutCourtID = nil
+        configuredShowsCallout = nil
+        leftCalloutAccessoryView = nil
+        detailCalloutAccessoryView = nil
+        rightCalloutAccessoryView = nil
+        configureMarker(for: nil)
+    }
+
     func configure(court: Court, showsCallout: Bool) {
         representedCourtID = court.id
-        image = sportMarkerImage(for: court.supportedSports?.first)
+        configureMarker(for: court)
         canShowCallout = showsCallout
-        centerOffset = CGPoint(x: 0, y: -18)
+        clusteringIdentifier = nil
+        displayPriority = .required
+
+        guard configuredCalloutCourtID != court.id || configuredShowsCallout != showsCallout else {
+            return
+        }
+        configuredCalloutCourtID = court.id
+        configuredShowsCallout = showsCallout
+        photoTask?.cancel()
+        photoTask = nil
 
         guard showsCallout else {
             leftCalloutAccessoryView = nil
@@ -8549,6 +8957,60 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
         rightCalloutAccessoryView = chooseButton
     }
 
+    private func configureMarker(for court: Court?) {
+        let iconSize = CGSize(width: 42, height: 52)
+        let iconAnchor = CGPoint(x: 21, y: 48)
+        let labelOriginX: CGFloat = 35
+        let labelHeight: CGFloat = 28
+        let maximumLabelWidth: CGFloat = 160
+
+        if let court {
+            markerIconView.image = sportMarkerImage(for: court.supportedSports?.first)
+        } else {
+            markerIconView.image = nil
+        }
+        markerIconView.frame = CGRect(origin: .zero, size: iconSize)
+
+        let title = court?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        titleLabel.text = title
+        titleLabel.isHidden = title.isEmpty
+
+        let labelWidth: CGFloat
+        if title.isEmpty {
+            labelWidth = 0
+        } else {
+            let measuredWidth = ceil(
+                (title as NSString).boundingRect(
+                    with: CGSize(width: maximumLabelWidth - 24, height: labelHeight),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: titleLabel.font as Any],
+                    context: nil
+                ).width
+            )
+            labelWidth = min(maximumLabelWidth, max(52, measuredWidth + 24))
+        }
+
+        if title.isEmpty {
+            titleLabel.frame = .zero
+        } else {
+            titleLabel.frame = CGRect(
+                x: labelOriginX,
+                y: 5,
+                width: labelWidth,
+                height: labelHeight
+            )
+        }
+
+        let markerWidth = title.isEmpty ? iconSize.width : labelOriginX + labelWidth
+        bounds = CGRect(x: 0, y: 0, width: markerWidth, height: iconSize.height)
+        centerOffset = CGPoint(
+            x: markerWidth / 2 - iconAnchor.x,
+            y: iconSize.height / 2 - iconAnchor.y
+        )
+        calloutOffset = CGPoint(x: iconAnchor.x - markerWidth / 2, y: 0)
+        accessibilityLabel = title.isEmpty ? "Спортивный клуб" : title
+    }
+
     private func makePhotoView(for court: Court) -> UIImageView {
         let imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 58, height: 58))
         imageView.contentMode = .scaleAspectFill
@@ -8563,7 +9025,7 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
         }
 
         let courtID = court.id
-        URLSession.shared.dataTask(with: url) { [weak self, weak imageView] data, _, _ in
+        let task = URLSession.shared.dataTask(with: url) { [weak self, weak imageView] data, _, _ in
             guard let data,
                   let image = UIImage(data: data) else {
                 return
@@ -8576,7 +9038,9 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
                 imageView?.image = image
                 imageView?.contentMode = .scaleAspectFill
             }
-        }.resume()
+        }
+        photoTask = task
+        task.resume()
 
         return imageView
     }
@@ -9046,6 +9510,13 @@ struct SearchClubPickerMapView: UIViewRepresentable {
     let focusedDistrictID: String?
     let highlightedDistrictIDs: [String]
     let focusRevision: Int
+    let annotationLimit: Int?
+    let cityCenter: CLLocationCoordinate2D?
+    let cityDiameterMeters: CLLocationDistance
+    let userCoordinate: CLLocationCoordinate2D?
+    let userDistrictLabel: String?
+    let focusesUserLocation: Bool
+    let showsDistrictReference: Bool
     let onSelectCourt: (String) -> Void
     let onChooseCourt: ((String) -> Void)?
 
@@ -9055,6 +9526,13 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         focusedDistrictID: String? = nil,
         highlightedDistrictIDs: [String] = [],
         focusRevision: Int = 0,
+        annotationLimit: Int? = 18,
+        cityCenter: CLLocationCoordinate2D? = nil,
+        cityDiameterMeters: CLLocationDistance = 70_000,
+        userCoordinate: CLLocationCoordinate2D? = nil,
+        userDistrictLabel: String? = nil,
+        focusesUserLocation: Bool = false,
+        showsDistrictReference: Bool = false,
         onSelectCourt: @escaping (String) -> Void,
         onChooseCourt: ((String) -> Void)? = nil
     ) {
@@ -9063,6 +9541,13 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         self.focusedDistrictID = focusedDistrictID
         self.highlightedDistrictIDs = highlightedDistrictIDs
         self.focusRevision = focusRevision
+        self.annotationLimit = annotationLimit
+        self.cityCenter = cityCenter
+        self.cityDiameterMeters = cityDiameterMeters
+        self.userCoordinate = userCoordinate
+        self.userDistrictLabel = userDistrictLabel
+        self.focusesUserLocation = focusesUserLocation
+        self.showsDistrictReference = showsDistrictReference
         self.onSelectCourt = onSelectCourt
         self.onChooseCourt = onChooseCourt
     }
@@ -9091,7 +9576,14 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             focusedCourt: focusedCourt,
             focusedDistrictID: focusedDistrictID,
             highlightedDistrictIDs: highlightedDistrictIDs,
-            focusRevision: focusRevision
+            focusRevision: focusRevision,
+            annotationLimit: annotationLimit,
+            cityCenter: cityCenter,
+            cityDiameterMeters: cityDiameterMeters,
+            userCoordinate: userCoordinate,
+            userDistrictLabel: userDistrictLabel,
+            focusesUserLocation: focusesUserLocation,
+            showsDistrictReference: showsDistrictReference
         )
     }
 
@@ -9101,7 +9593,15 @@ struct SearchClubPickerMapView: UIViewRepresentable {
         private var lastCourtIDs: [String] = []
         private var lastOverlayIDs: [String] = []
         private var lastFocusSignature: String?
+        private var lastCitySignature: String?
         private var hasSetVisibleRegion = false
+        private var userAnnotation: SearchPreviewUserAnnotation?
+        private var districtReferenceAnnotations: [DistrictReferenceAnnotation] = []
+        private var lastUserSignature: String?
+        private var usesDistrictReferenceStyle = false
+        private var sourceCourtAnnotations: [String: SearchPreviewCourtAnnotation] = [:]
+        private var displayedCourtAnnotations: [String: SearchPreviewCourtAnnotation] = [:]
+        private var displayedAggregateAnnotations: [String: SearchClubAggregateAnnotation] = [:]
 
         init(onSelectCourt: @escaping (String) -> Void, onChooseCourt: ((String) -> Void)?) {
             self.onSelectCourt = onSelectCourt
@@ -9114,31 +9614,101 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             focusedCourt: Court?,
             focusedDistrictID: String?,
             highlightedDistrictIDs: [String],
-            focusRevision: Int
+            focusRevision: Int,
+            annotationLimit: Int?,
+            cityCenter: CLLocationCoordinate2D?,
+            cityDiameterMeters: CLLocationDistance,
+            userCoordinate: CLLocationCoordinate2D?,
+            userDistrictLabel: String?,
+            focusesUserLocation: Bool,
+            showsDistrictReference: Bool
         ) {
             let normalizedHighlightIDs = Array(
                 Set(highlightedDistrictIDs.map { $0.lowercased() })
             )
             .sorted()
-            let visibleCourts = normalizedHighlightIDs.isEmpty ? Array(courts.prefix(18)) : Array(courts.prefix(80))
+            let visibleCourts: [Court]
+            if let annotationLimit {
+                let effectiveLimit = normalizedHighlightIDs.isEmpty ? annotationLimit : max(annotationLimit, 80)
+                visibleCourts = Array(courts.prefix(effectiveLimit))
+            } else {
+                visibleCourts = courts
+            }
             let courtIDs = visibleCourts.map(\.id)
             if courtIDs != lastCourtIDs {
                 lastCourtIDs = courtIDs
-                mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-                mapView.addAnnotations(visibleCourts.map(SearchPreviewCourtAnnotation.init))
+                sourceCourtAnnotations = Dictionary(
+                    uniqueKeysWithValues: visibleCourts.map { court in
+                        (court.id, SearchPreviewCourtAnnotation(court: court))
+                    }
+                )
             }
+            refreshDisplayedCourtAnnotations(on: mapView)
 
-            updateDistrictOverlays(mapView: mapView, districtIDs: normalizedHighlightIDs)
+            updateUserAnnotation(
+                mapView: mapView,
+                coordinate: userCoordinate,
+                districtLabel: userDistrictLabel
+            )
 
-            let annotations = mapView.annotations.compactMap { $0 as? SearchPreviewCourtAnnotation }
+            updateDistrictOverlays(
+                mapView: mapView,
+                districtIDs: normalizedHighlightIDs,
+                showsDistrictReference: showsDistrictReference
+            )
+
+            let annotations = visibleCourts.compactMap { sourceCourtAnnotations[$0.id] }
             let focusedCourtID = focusedCourt?.id
             let normalizedDistrictID = focusedDistrictID?.lowercased()
+            let citySignature = cityCenter.map { "\($0.latitude),\($0.longitude)" } ?? ""
+            if citySignature != lastCitySignature {
+                lastCitySignature = citySignature
+                hasSetVisibleRegion = false
+            }
             let focusSignature = [
                 focusedCourtID ?? "",
                 normalizedDistrictID ?? "",
                 normalizedHighlightIDs.joined(separator: ","),
+                focusesUserLocation ? "user" : "",
+                showsDistrictReference ? "district-reference" : "",
+                userCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? "",
+                citySignature,
                 String(focusRevision)
             ].joined(separator: "|")
+
+            if focusesUserLocation,
+               showsDistrictReference,
+               normalizedHighlightIDs.count == 1,
+               let districtID = normalizedHighlightIDs.first,
+               let area = districtAreasByID[districtID],
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                var coordinates = area.coordinates
+                let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
+                mapView.setVisibleMapRect(
+                    polygon.boundingMapRect,
+                    edgePadding: UIEdgeInsets(top: 20, left: 20, bottom: 48, right: 20),
+                    animated: true
+                )
+                return
+            }
+
+            if focusesUserLocation,
+               let userCoordinate,
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: userCoordinate,
+                        latitudinalMeters: 9_000,
+                        longitudinalMeters: 9_000
+                    ),
+                    animated: true
+                )
+                return
+            }
 
             if let focusedCourt, focusSignature != lastFocusSignature {
                 lastFocusSignature = focusSignature
@@ -9185,6 +9755,40 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return
             }
 
+            if focusedCourt == nil,
+               annotations.isEmpty,
+               let cityCenter,
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: cityCenter,
+                        latitudinalMeters: cityDiameterMeters,
+                        longitudinalMeters: cityDiameterMeters
+                    ),
+                    animated: true
+                )
+                return
+            }
+
+            if focusedCourt == nil,
+               annotations.count == 1,
+               let annotation = annotations.first,
+               focusSignature != lastFocusSignature {
+                lastFocusSignature = focusSignature
+                hasSetVisibleRegion = true
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: annotation.coordinate,
+                        latitudinalMeters: 12_000,
+                        longitudinalMeters: 12_000
+                    ),
+                    animated: true
+                )
+                return
+            }
+
             lastFocusSignature = focusSignature
 
             let targetRect = annotations
@@ -9204,13 +9808,50 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             mapView.setVisibleMapRect(targetRect, edgePadding: UIEdgeInsets(top: 20, left: 20, bottom: 20, right: 20), animated: false)
         }
 
-        private func updateDistrictOverlays(mapView: MKMapView, districtIDs: [String]) {
-            guard districtIDs != lastOverlayIDs else {
+        private func updateUserAnnotation(
+            mapView: MKMapView,
+            coordinate: CLLocationCoordinate2D?,
+            districtLabel: String?
+        ) {
+            let signature = coordinate.map {
+                "\($0.latitude),\($0.longitude)|\(districtLabel ?? "")"
+            }
+            guard signature != lastUserSignature else {
+                return
+            }
+            lastUserSignature = signature
+
+            if let userAnnotation {
+                mapView.removeAnnotation(userAnnotation)
+                self.userAnnotation = nil
+            }
+
+            guard let coordinate else {
+                return
+            }
+
+            let annotation = SearchPreviewUserAnnotation(
+                coordinate: coordinate,
+                districtLabel: districtLabel
+            )
+            userAnnotation = annotation
+            mapView.addAnnotation(annotation)
+        }
+
+        private func updateDistrictOverlays(
+            mapView: MKMapView,
+            districtIDs: [String],
+            showsDistrictReference: Bool
+        ) {
+            guard districtIDs != lastOverlayIDs || showsDistrictReference != usesDistrictReferenceStyle else {
                 return
             }
 
             lastOverlayIDs = districtIDs
+            usesDistrictReferenceStyle = showsDistrictReference
             mapView.removeOverlays(mapView.overlays)
+            mapView.removeAnnotations(districtReferenceAnnotations)
+            districtReferenceAnnotations = []
 
             for districtID in districtIDs {
                 guard let area = districtAreasByID[districtID] else {
@@ -9220,6 +9861,14 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 let polygon = MKPolygon(coordinates: &coordinates, count: coordinates.count)
                 polygon.title = area.id
                 mapView.addOverlay(polygon)
+
+                if showsDistrictReference {
+                    districtReferenceAnnotations.append(DistrictReferenceAnnotation(area: area))
+                }
+            }
+
+            if !districtReferenceAnnotations.isEmpty {
+                mapView.addAnnotations(districtReferenceAnnotations)
             }
         }
 
@@ -9245,6 +9894,108 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             }
         }
 
+        private func refreshDisplayedCourtAnnotations(on mapView: MKMapView) {
+            guard !sourceCourtAnnotations.isEmpty else {
+                let annotationsToRemove: [MKAnnotation] =
+                    Array(displayedCourtAnnotations.values) + Array(displayedAggregateAnnotations.values)
+                if !annotationsToRemove.isEmpty {
+                    mapView.removeAnnotations(annotationsToRemove)
+                }
+                displayedCourtAnnotations = [:]
+                displayedAggregateAnnotations = [:]
+                return
+            }
+
+            let clusteringRadius: CGFloat = 52
+            let visibleBounds = mapView.bounds.insetBy(dx: -clusteringRadius, dy: -clusteringRadius)
+            let visibleAnnotations = sourceCourtAnnotations.values.filter { annotation in
+                guard mapView.bounds.width > 0, mapView.bounds.height > 0 else {
+                    return true
+                }
+                return visibleBounds.contains(mapView.convert(annotation.coordinate, toPointTo: mapView))
+            }
+            let components = screenSpaceComponents(
+                annotations: visibleAnnotations,
+                mapView: mapView,
+                radius: clusteringRadius
+            )
+
+            var desiredCourts: [String: SearchPreviewCourtAnnotation] = [:]
+            var desiredAggregates: [String: SearchClubAggregateAnnotation] = [:]
+
+            for component in components {
+                if component.count >= 6 {
+                    let key = component.map(\.court.id).sorted().joined(separator: "|")
+                    desiredAggregates[key] = displayedAggregateAnnotations[key]
+                        ?? SearchClubAggregateAnnotation(members: component)
+                } else {
+                    for annotation in component {
+                        desiredCourts[annotation.court.id] = annotation
+                    }
+                }
+            }
+
+            let annotationsToRemove: [MKAnnotation] =
+                displayedCourtAnnotations
+                    .filter { desiredCourts[$0.key] !== $0.value }
+                    .map(\.value)
+                + displayedAggregateAnnotations
+                    .filter { desiredAggregates[$0.key] !== $0.value }
+                    .map(\.value)
+
+            let annotationsToAdd: [MKAnnotation] =
+                desiredCourts
+                    .filter { displayedCourtAnnotations[$0.key] !== $0.value }
+                    .map(\.value)
+                + desiredAggregates
+                    .filter { displayedAggregateAnnotations[$0.key] !== $0.value }
+                    .map(\.value)
+
+            if !annotationsToRemove.isEmpty {
+                mapView.removeAnnotations(annotationsToRemove)
+            }
+            if !annotationsToAdd.isEmpty {
+                mapView.addAnnotations(annotationsToAdd)
+            }
+
+            displayedCourtAnnotations = desiredCourts
+            displayedAggregateAnnotations = desiredAggregates
+        }
+
+        private func screenSpaceComponents(
+            annotations: [SearchPreviewCourtAnnotation],
+            mapView: MKMapView,
+            radius: CGFloat
+        ) -> [[SearchPreviewCourtAnnotation]] {
+            let annotations = Array(annotations)
+            let points = annotations.map { mapView.convert($0.coordinate, toPointTo: mapView) }
+            let squaredRadius = radius * radius
+            var visited = Array(repeating: false, count: annotations.count)
+            var components: [[SearchPreviewCourtAnnotation]] = []
+
+            for startIndex in annotations.indices where !visited[startIndex] {
+                visited[startIndex] = true
+                var pending = [startIndex]
+                var component: [SearchPreviewCourtAnnotation] = []
+
+                while let currentIndex = pending.popLast() {
+                    component.append(annotations[currentIndex])
+                    for candidateIndex in annotations.indices where !visited[candidateIndex] {
+                        let deltaX = points[currentIndex].x - points[candidateIndex].x
+                        let deltaY = points[currentIndex].y - points[candidateIndex].y
+                        if deltaX * deltaX + deltaY * deltaY <= squaredRadius {
+                            visited[candidateIndex] = true
+                            pending.append(candidateIndex)
+                        }
+                    }
+                }
+
+                components.append(component)
+            }
+
+            return components
+        }
+
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let polygon = overlay as? MKPolygon,
                   let overlayID = polygon.title ?? nil,
@@ -9253,13 +10004,56 @@ struct SearchClubPickerMapView: UIViewRepresentable {
             }
 
             let renderer = MKPolygonRenderer(polygon: polygon)
-            renderer.fillColor = area.color.withAlphaComponent(0.18)
-            renderer.strokeColor = area.color.withAlphaComponent(0.78)
-            renderer.lineWidth = 1.7
+            if usesDistrictReferenceStyle, lastOverlayIDs.contains(overlayID) {
+                renderer.fillColor = UIColor(red: 0.01, green: 0.30, blue: 0.16, alpha: 0.44)
+                renderer.strokeColor = UIColor(red: 0.19, green: 0.84, blue: 0.58, alpha: 1)
+                renderer.lineWidth = 4.5
+            } else {
+                renderer.fillColor = area.color.withAlphaComponent(0.18)
+                renderer.strokeColor = area.color.withAlphaComponent(0.78)
+                renderer.lineWidth = 1.7
+            }
             return renderer
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is DistrictReferenceAnnotation {
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: DistrictReferenceAnnotationView.reuseID) as? DistrictReferenceAnnotationView)
+                    ?? DistrictReferenceAnnotationView(annotation: annotation, reuseIdentifier: DistrictReferenceAnnotationView.reuseID)
+                view.annotation = annotation
+                return view
+            }
+
+            if annotation is SearchPreviewUserAnnotation {
+                let reuseID = "SearchPreviewUserAnnotation"
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: reuseID) as? MKMarkerAnnotationView)
+                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: reuseID)
+                view.annotation = annotation
+                view.markerTintColor = UIColor(red: 0.18, green: 0.84, blue: 0.58, alpha: 1)
+                view.glyphImage = UIImage(systemName: "person.fill")
+                view.glyphTintColor = .black
+                view.canShowCallout = true
+                view.displayPriority = .required
+                view.zPriority = .max
+                view.clusteringIdentifier = nil
+                return view
+            }
+
+            if let cluster = annotation as? SearchClubAggregateAnnotation {
+                let reuseID = "SearchClubClusterAnnotation"
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: reuseID) as? MKMarkerAnnotationView)
+                    ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: reuseID)
+                view.annotation = cluster
+                view.markerTintColor = UIColor(red: 0.10, green: 0.58, blue: 0.40, alpha: 1)
+                view.glyphText = "\(cluster.members.count)"
+                view.glyphTintColor = .white
+                view.canShowCallout = false
+                view.displayPriority = .required
+                view.zPriority = .max
+                view.clusteringIdentifier = nil
+                return view
+            }
+
             guard let annotation = annotation as? SearchPreviewCourtAnnotation else {
                 return nil
             }
@@ -9268,10 +10062,40 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 ?? SearchClubPickerAnnotationView(annotation: annotation, reuseIdentifier: SearchClubPickerAnnotationView.reuseID)
             view.annotation = annotation
             view.configure(court: annotation.court, showsCallout: onChooseCourt != nil)
+            view.zPriority = .defaultSelected
             return view
         }
 
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+            if let cluster = annotation as? SearchClubAggregateAnnotation {
+                let targetRect = cluster.members
+                    .map {
+                        MKMapRect(
+                            origin: MKMapPoint($0.coordinate),
+                            size: MKMapSize(width: 0, height: 0)
+                        )
+                    }
+                    .reduce(MKMapRect.null) { partial, next in
+                        partial.isNull ? next : partial.union(next)
+                    }
+                guard !targetRect.isNull else {
+                    return
+                }
+                let minimumMapPoints = 1_500 / MKMetersPerMapPointAtLatitude(cluster.coordinate.latitude)
+                let zoomRect = MKMapRect(
+                    x: targetRect.midX - max(targetRect.width, minimumMapPoints) / 2,
+                    y: targetRect.midY - max(targetRect.height, minimumMapPoints) / 2,
+                    width: max(targetRect.width, minimumMapPoints),
+                    height: max(targetRect.height, minimumMapPoints)
+                )
+                mapView.setVisibleMapRect(
+                    zoomRect,
+                    edgePadding: UIEdgeInsets(top: 64, left: 64, bottom: 64, right: 64),
+                    animated: true
+                )
+                return
+            }
+
             guard let annotation = annotation as? SearchPreviewCourtAnnotation else {
                 return
             }
@@ -9283,6 +10107,10 @@ struct SearchClubPickerMapView: UIViewRepresentable {
                 return
             }
             onChooseCourt?(annotation.court.id)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            refreshDisplayedCourtAnnotations(on: mapView)
         }
     }
 }

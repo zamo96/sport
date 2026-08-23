@@ -10,6 +10,7 @@ import { GameRequestCard } from "@/components/chat/game-request-card";
 import { Button } from "@/components/ui/button";
 import { SectionTitle } from "@/components/ui/section-title";
 import { getGameRequestDetail } from "@/server/app-data";
+import { serializeChatMessage } from "@/server/chat-media";
 
 export default async function GameRequestDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionUser();
@@ -105,10 +106,7 @@ export default async function GameRequestDetailPage({ params }: { params: { id: 
             name: otherUser.name,
             avatarUrl: otherUser.avatarUrl
           }}
-          initialMessages={gameRequest.messages.map((message) => ({
-            ...message,
-            createdAt: message.createdAt.toISOString()
-          }))}
+          initialMessages={gameRequest.messages.map(serializeChatMessage)}
         />
       </div>
     </PageShell>

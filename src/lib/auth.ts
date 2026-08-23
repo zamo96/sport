@@ -1,3 +1,4 @@
+import { Gender, PlayFormat, Sport, Surface } from "@prisma/client";
 import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type JsonWebKey as CryptoJsonWebKey } from "crypto";
 
 import { cookies, headers } from "next/headers";
@@ -37,6 +38,8 @@ const APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER = "https://appleid.apple.com";
 const DEFAULT_APPLE_AUDIENCE = "shop.sportsearch.app";
 const APPLE_JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
+const LOCAL_APP_REVIEW_DEMO_EMAIL = "review@sportsearch.shop";
+const LOCAL_APP_REVIEW_DEMO_CODE = "000000";
 
 let appleJwksCache: { keys: AppleJwk[]; expiresAt: number } | null = null;
 
@@ -170,6 +173,94 @@ function buildAppleDisplayName(profile?: AppleAuthProfile) {
   return parts.length ? parts.join(" ") : undefined;
 }
 
+function getAppReviewDemoCredentials() {
+  const allowLocalFallback = process.env.NODE_ENV !== "production";
+  const email = (process.env.APP_REVIEW_DEMO_EMAIL ?? (allowLocalFallback ? LOCAL_APP_REVIEW_DEMO_EMAIL : ""))
+    .trim()
+    .toLowerCase();
+  const code = (process.env.APP_REVIEW_DEMO_CODE ?? (allowLocalFallback ? LOCAL_APP_REVIEW_DEMO_CODE : "")).trim();
+
+  if (!email || !code || !/^\d{6}$/.test(code)) {
+    return null;
+  }
+
+  return { email, code };
+}
+
+export function isAppReviewDemoEmail(email: string) {
+  const credentials = getAppReviewDemoCredentials();
+  return credentials?.email === email.trim().toLowerCase();
+}
+
+async function ensureAppReviewDemoUser(email: string) {
+  return prisma.user.upsert({
+    where: { email },
+    update: {
+      name: "Apple Review",
+      age: 29,
+      gender: Gender.other,
+      city: "Санкт-Петербург",
+      district: null,
+      preferredDistricts: ["petrogradsky", "primorsky"],
+      preferredSports: [Sport.tennis, Sport.padel, Sport.football],
+      sportLevels: {
+        [Sport.tennis]: 5,
+        [Sport.padel]: 5,
+        [Sport.football]: 5
+      },
+      preferredPlayFormat: PlayFormat.both,
+      preferredSurface: Surface.any,
+      availableDays: ["monday", "wednesday", "saturday"],
+      availableTimeRanges: ["evening", "day"],
+      availabilityByDay: {
+        monday: ["evening"],
+        wednesday: ["evening"],
+        saturday: ["day"]
+      },
+      isLookingForGame: true,
+      isVerified: true,
+      onboardingCompleted: true,
+      notificationMatches: true,
+      notificationMessages: true,
+      notificationGames: true,
+      notificationSound: true,
+      lastActiveAt: new Date()
+    },
+    create: {
+      email,
+      name: "Apple Review",
+      age: 29,
+      gender: Gender.other,
+      city: "Санкт-Петербург",
+      district: null,
+      preferredDistricts: ["petrogradsky", "primorsky"],
+      preferredSports: [Sport.tennis, Sport.padel, Sport.football],
+      sportLevels: {
+        [Sport.tennis]: 5,
+        [Sport.padel]: 5,
+        [Sport.football]: 5
+      },
+      preferredPlayFormat: PlayFormat.both,
+      preferredSurface: Surface.any,
+      availableDays: ["monday", "wednesday", "saturday"],
+      availableTimeRanges: ["evening", "day"],
+      availabilityByDay: {
+        monday: ["evening"],
+        wednesday: ["evening"],
+        saturday: ["day"]
+      },
+      isLookingForGame: true,
+      isVerified: true,
+      onboardingCompleted: true,
+      notificationMatches: true,
+      notificationMessages: true,
+      notificationGames: true,
+      notificationSound: true,
+      lastActiveAt: new Date()
+    }
+  });
+}
+
 export function getLegalAcceptanceRequestMeta(request: Request) {
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = request.headers.get("x-real-ip")?.trim();
@@ -218,6 +309,11 @@ export async function createAuthCode(email: string, userId?: string) {
 }
 
 export async function verifyAuthCode(email: string, code: string) {
+  const demoCredentials = getAppReviewDemoCredentials();
+  if (demoCredentials?.email === email.trim().toLowerCase() && demoCredentials.code === code.trim()) {
+    return ensureAppReviewDemoUser(demoCredentials.email);
+  }
+
   const authCode = await prisma.authCode.findFirst({
     where: {
       email,

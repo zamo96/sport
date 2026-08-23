@@ -162,10 +162,21 @@ export async function syncRegularPairOccurrences(db: DBLike, regularPairId: stri
             format: regularPair.format
           }
         })
-      : await db.regularPairOccurrence.create({
-          data: {
-            regularPairId,
+      : await db.regularPairOccurrence.upsert({
+          where: {
+            regularPairId_scheduledAt: {
+              regularPairId,
+              scheduledAt
+            }
+          },
+          update: {
+            scheduleAnchor: scheduledAt,
+            sport: regularPair.sport,
+            format: regularPair.format
+          },
+          create: {
             scheduledAt,
+            regularPairId,
             scheduleAnchor: scheduledAt,
             durationMinutes: 90,
             proposedCourtId: regularPair.preferredCourtId ?? null,

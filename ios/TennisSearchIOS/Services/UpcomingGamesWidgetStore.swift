@@ -155,7 +155,8 @@ private enum UpcomingGameLiveActivityManager {
         let state = liveActivityState(for: request, currentUserId: currentUserId)
         let content = ActivityContent(
             state: state,
-            staleDate: state.endsAt.addingTimeInterval(postGameDisplayInterval)
+            staleDate: state.endsAt.addingTimeInterval(postGameDisplayInterval),
+            relevanceScore: 1
         )
 
         let activities = Activity<UpcomingGameLiveActivityAttributes>.activities
@@ -163,17 +164,29 @@ private enum UpcomingGameLiveActivityManager {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
 
-        if let activity = activities.first(where: { $0.attributes.gameId == request.id }) {
-            await activity.update(content)
+        guard let proposedDate = request.proposedDate else {
             return
         }
 
+        if let activity = activities.first(where: { $0.attributes.gameId == request.id }) {
+            if shouldRecreatePendingActivity(activity, proposedDate: proposedDate) {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            } else {
+                await activity.update(content)
+                return
+            }
+        }
+
         do {
-            _ = try Activity.request(
-                attributes: UpcomingGameLiveActivityAttributes(gameId: request.id),
-                content: content,
-                pushType: nil
-            )
+            if shouldStartImmediately(proposedDate: proposedDate) {
+                _ = try Activity.request(
+                    attributes: UpcomingGameLiveActivityAttributes(gameId: request.id),
+                    content: content,
+                    pushType: nil
+                )
+            } else {
+                try requestScheduledLiveActivity(gameId: request.id, content: content, startsAt: proposedDate)
+            }
         } catch {
             return
         }
@@ -198,14 +211,64 @@ private enum UpcomingGameLiveActivityManager {
                     return false
                 }
                 let duration = TimeInterval((request.durationMinutes ?? 90) * 60)
-                let secondsUntilStart = proposedDate.timeIntervalSince(now)
                 let endsAt = proposedDate.addingTimeInterval(duration)
-                let isBeforeStartWindow = secondsUntilStart > 0 && secondsUntilStart <= launchWindow
-                let isActiveOrRecentlyEnded = secondsUntilStart <= 0 && now < endsAt.addingTimeInterval(postGameDisplayInterval)
-                return isBeforeStartWindow || isActiveOrRecentlyEnded
+                return now < endsAt.addingTimeInterval(postGameDisplayInterval)
             }
             .sorted { ($0.proposedDate ?? .distantFuture) < ($1.proposedDate ?? .distantFuture) }
             .first
+    }
+
+    private static func shouldStartImmediately(proposedDate: Date) -> Bool {
+        proposedDate.timeIntervalSinceNow <= launchWindow
+    }
+
+    private static func shouldRecreatePendingActivity(
+        _ activity: Activity<UpcomingGameLiveActivityAttributes>,
+        proposedDate: Date
+    ) -> Bool {
+        guard #available(iOS 26.0, *) else {
+            return false
+        }
+
+        guard activity.activityState == .pending else {
+            return false
+        }
+
+        let scheduledTimeDidChange = abs(activity.content.state.startsAt.timeIntervalSince(proposedDate)) > 60
+        return scheduledTimeDidChange || shouldStartImmediately(proposedDate: proposedDate)
+    }
+
+    private static func requestScheduledLiveActivity(
+        gameId: String,
+        content: ActivityContent<UpcomingGameLiveActivityAttributes.ContentState>,
+        startsAt: Date
+    ) throws {
+        guard #available(iOS 26.0, *) else {
+            return
+        }
+
+        let scheduledStart = startsAt.addingTimeInterval(-launchWindow)
+        guard scheduledStart > Date() else {
+            _ = try Activity.request(
+                attributes: UpcomingGameLiveActivityAttributes(gameId: gameId),
+                content: content,
+                pushType: nil
+            )
+            return
+        }
+
+        _ = try Activity.request(
+            attributes: UpcomingGameLiveActivityAttributes(gameId: gameId),
+            content: content,
+            pushType: nil,
+            style: .standard,
+            alertConfiguration: AlertConfiguration(
+                title: "Игра через час",
+                body: "Проверьте время и место в НаТреню.",
+                sound: .default
+            ),
+            start: scheduledStart
+        )
     }
 
     private static func liveActivityState(

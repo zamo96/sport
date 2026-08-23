@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { haversineDistanceKm } from "@/lib/geo";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { emptyCourtActiveSearchSummary, getCourtActiveSearchSummaries } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
 
 const courtMembershipSchema = z.object({
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!refreshed) {
       return fail("Клуб не найден", 404);
     }
+    const activeSearchSummaries = await getCourtActiveSearchSummaries([refreshed.id]);
 
     return ok({
       court: serializeCourt({
@@ -92,7 +94,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         distanceKm: haversineDistanceKm(
           user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
           { lat: refreshed.locationLat, lng: refreshed.locationLng }
-        )
+        ),
+        ...(activeSearchSummaries.get(refreshed.id) ?? emptyCourtActiveSearchSummary())
       })
     });
   } catch (error) {

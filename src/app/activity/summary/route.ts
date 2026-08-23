@@ -23,6 +23,7 @@ export async function GET() {
       unreadSearchLobbyMessages,
       incomingLikesCount,
       hotBadgeCount,
+      activeSearches,
       pendingSearchResponsesCount
     ] = await Promise.all([
       prisma.match.findMany({
@@ -81,6 +82,27 @@ export async function GET() {
       }),
       getIncomingLikesCount(user.id),
       getHotNotificationsCount(user.id),
+      prisma.gameSearch.findMany({
+        where: {
+          createdByUserId: user.id,
+          searchType: "hot",
+          isActive: true,
+          status: {
+            in: ["active", "in_review"]
+          }
+        },
+        select: {
+          playersNeeded: true,
+          responses: {
+            where: {
+              status: "approved"
+            },
+            select: {
+              id: true
+            }
+          }
+        }
+      }),
       prisma.gameSearchResponse.count({
         where: {
           status: "pending",
@@ -112,11 +134,17 @@ export async function GET() {
       unreadSearchLobbyIds.add(message.gameSearchId);
     }
 
+    const activeSearchesCount = activeSearches.filter((search) => {
+      const playersNeeded = Math.max(search.playersNeeded ?? 1, 1);
+      return search.responses.length < playersNeeded;
+    }).length;
+
     return ok({
       inboxBadgeCount: unreadMatchIds.size,
       incomingLikesCount,
       hotBadgeCount,
       discoverBadgeCount: incomingLikesCount + hotBadgeCount,
+      activeSearchesCount,
       searchesBadgeCount: pendingSearchResponsesCount + unreadSearchLobbyIds.size,
       notificationSound: user.notificationSound ?? true
     });

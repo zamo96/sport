@@ -74,6 +74,42 @@ describe("club sync matching", () => {
     expect(score).toEqual({ confidence: 1, reason: "external_id" });
   });
 
+  it("does not match conflicting ids from the same source through shared phone or website", () => {
+    const record = normalizeClubSyncRecord(
+      {
+        sourceType: "xlsx-import",
+        sourceExternalId: "club-b",
+        name: "Филиал Б",
+        address: "Тверская улица, 2",
+        sports: ["tennis"],
+        phone: "+7 495 000-00-00",
+        websiteUrl: "https://chain.example/clubs",
+        locationLat: 55.765,
+        locationLng: 37.61
+      },
+      "Москва"
+    );
+
+    expect(record).not.toBeNull();
+    expect(
+      scoreClubCourtMatch(
+        {
+          id: "court-a",
+          name: "Филиал А",
+          address: "Тверская улица, 1",
+          city: "Москва",
+          sourceType: "xlsx-import",
+          sourceExternalId: "club-a",
+          phone: "+7 495 000-00-00",
+          websiteUrl: "https://chain.example/clubs",
+          locationLat: 55.764,
+          locationLng: 37.61
+        },
+        record!
+      )
+    ).toEqual({ confidence: 0, reason: "external_id_conflict" });
+  });
+
   it("matches by normalized name and address when there is no external id", () => {
     expect(incoming).not.toBeNull();
     const score = scoreClubCourtMatch(
@@ -84,6 +120,28 @@ describe("club sync matching", () => {
         city: "Санкт-Петербург",
         sourceType: "xlsx-import",
         sourceExternalId: null,
+        normalizedName: normalizeClubIdentityText("Теннисный клуб Центр тенниса"),
+        normalizedAddress: normalizeClubAddressIdentity("Санкт-Петербург, Лиговский пр., д. 50"),
+        locationLat: 59.93151,
+        locationLng: 30.36091
+      },
+      incoming!
+    );
+
+    expect(score.confidence).toBeGreaterThanOrEqual(0.88);
+    expect(["name_address", "similar_name_address"]).toContain(score.reason);
+  });
+
+  it("matches a strong identity across sources even when both have different ids", () => {
+    expect(incoming).not.toBeNull();
+    const score = scoreClubCourtMatch(
+      {
+        id: "court-cross-source",
+        name: "Теннисный клуб Центр тенниса",
+        address: "Санкт-Петербург, Лиговский пр., д. 50",
+        city: "Санкт-Петербург",
+        sourceType: "xlsx-import",
+        sourceExternalId: "xlsx-club-1",
         normalizedName: normalizeClubIdentityText("Теннисный клуб Центр тенниса"),
         normalizedAddress: normalizeClubAddressIdentity("Санкт-Петербург, Лиговский пр., д. 50"),
         locationLat: 59.93151,
@@ -131,6 +189,6 @@ describe("club sync matching", () => {
       freshTennis!
     );
 
-    expect(score).toEqual({ confidence: 0.72, reason: "same_address_needs_review" });
+    expect(score).toEqual({ confidence: 0, reason: "external_id_conflict" });
   });
 });

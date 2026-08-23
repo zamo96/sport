@@ -142,6 +142,133 @@ struct SuccessCelebrationOverlay: View {
     }
 }
 
+struct GameReportViewerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let report: GameReport
+    @State private var selectedIndex = 0
+
+    private var photoUrls: [String] {
+        report.photoUrls
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                header
+
+                if photoUrls.isEmpty {
+                    emptyState
+                } else {
+                    TabView(selection: $selectedIndex) {
+                        ForEach(Array(photoUrls.enumerated()), id: \.offset) { index, path in
+                            GameReportViewerPhoto(path: path)
+                                .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                }
+
+                footer
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Фотоотчёт")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(report.statusTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.mint)
+            }
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(.white.opacity(0.10), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !photoUrls.isEmpty {
+                HStack {
+                    Text("\(selectedIndex + 1) / \(photoUrls.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.78))
+                    Spacer()
+                    Image(systemName: "photo.stack")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+
+            if let comment = report.comment, !comment.isEmpty {
+                Text(comment)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(18)
+        .background(.black.opacity(0.82))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "photo")
+                .font(.system(size: 44, weight: .semibold))
+            Text("Фото недоступны")
+                .font(.headline.weight(.bold))
+        }
+        .foregroundStyle(.white.opacity(0.74))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct GameReportViewerPhoto: View {
+    let path: String
+
+    var body: some View {
+        ZStack {
+            if let url = resolveAppRemoteURL(path) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    default:
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 12)
+    }
+}
+
 private struct CelebrationParticle: Identifiable {
     let id: Int
     let color: Color
@@ -967,6 +1094,44 @@ struct RemoteAvatarView: View {
 
     private var resolvedURL: URL? {
         resolveAppRemoteURL(path)
+    }
+}
+
+struct RemoteChatMediaImage: View {
+    @EnvironmentObject private var appModel: AppModel
+    let path: String
+    var contentMode: ContentMode = .fill
+
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else if failed {
+                Image(systemName: "photo")
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: path) {
+            image = nil
+            failed = false
+            do {
+                let data = try await appModel.repository.fetchChatMedia(path: path)
+                guard let loadedImage = UIImage(data: data) else {
+                    failed = true
+                    return
+                }
+                image = loadedImage
+            } catch {
+                failed = true
+            }
+        }
     }
 }
 

@@ -6,6 +6,12 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
+import {
+  chatMessageAttachmentsInclude,
+  chatMessagePreview,
+  claimChatMessageAttachments,
+  serializeChatMessage
+} from "@/server/chat-media";
 
 async function getGameRequestForUser(gameRequestId: string, userId: string) {
   return prisma.gameRequest.findFirst({
@@ -31,7 +37,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
         gameRequestId: gameRequest.id
       },
       include: {
-        senderUser: true
+        senderUser: true,
+        ...chatMessageAttachmentsInclude
       },
       orderBy: {
         createdAt: "asc"
@@ -39,10 +46,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     });
 
     return ok({
-      messages: messages.map((message) => ({
-        ...message,
-        createdAt: message.createdAt.toISOString()
-      }))
+      messages: messages.map(serializeChatMessage)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
@@ -70,10 +74,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           gameRequestId: gameRequest.id,
           senderUserId: user.id,
           text: body.text
-        },
-        include: {
-          senderUser: true
         }
+      });
+
+      await claimChatMessageAttachments(tx, {
+        attachmentIds: body.attachmentIds,
+        uploaderUserId: user.id,
+        chatMessageId: created.id
       });
 
       await tx.gameRequest.update({
@@ -86,7 +93,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         data: { updatedAt: new Date() }
       });
 
-      return created;
+      return tx.chatMessage.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          senderUser: true,
+          ...chatMessageAttachmentsInclude
+        }
+      });
     });
 
     const recipientUserId = gameRequest.createdByUserId === user.id ? gameRequest.matchedUserId : gameRequest.createdByUserId;
@@ -108,7 +121,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await sendPushToUser({
         userId: recipient.id,
         title: `Сообщение по игре от ${user.name ?? "игрока"}`,
-        body: body.text.length > 120 ? `${body.text.slice(0, 117)}...` : body.text,
+        body: chatMessagePreview(message),
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true
       });
@@ -123,10 +136,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     });
 
     return ok({
-      message: {
-        ...message,
-        createdAt: message.createdAt.toISOString()
-      }
+      message: serializeChatMessage(message)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {

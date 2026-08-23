@@ -10,6 +10,7 @@ import { SectionTitle } from "@/components/ui/section-title";
 import { GameRequestCard } from "@/components/chat/game-request-card";
 import { LiveRefresh } from "@/components/ui/live-refresh";
 import { getMatchesForUser } from "@/server/app-data";
+import { chatMessagePreview } from "@/server/chat-media";
 
 export default async function InboxPage() {
   const user = await getSessionUser();
@@ -78,7 +79,9 @@ export default async function InboxPage() {
                     <div className="mt-1 truncate text-xl font-bold text-ink">{otherUser.name}</div>
                     <div className="mt-1 text-xs font-medium text-ink/55">{formatPresence(otherUser.lastActiveAt)}</div>
                     <div className="truncate text-sm text-ink/60">
-                      {match.messages[0]?.text ?? "Сообщений пока нет. Предложи игру."}
+                      {match.messages[0]
+                        ? chatMessagePreview(match.messages[0])
+                        : "Сообщений пока нет. Предложи игру."}
                     </div>
                   </div>
                 </Panel>

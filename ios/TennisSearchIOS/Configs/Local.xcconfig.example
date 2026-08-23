@@ -1,0 +1,7 @@
+// Copy this file to Local.xcconfig to use a backend running on your Mac.
+// The iOS Simulator can use localhost. A physical device must use your Mac's
+// LAN IP and requires the user to grant the app Local Network permission.
+API_SCHEME = http
+API_BASE_URL = 192.168.0.102:3000
+USE_MOCK_DATA = NO
+ALLOW_DEBUG_SERVER_TRUST = YES

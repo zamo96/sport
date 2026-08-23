@@ -3,6 +3,65 @@ import CoreLocation
 import UserNotifications
 import SwiftUI
 
+enum SupportedCity: String, CaseIterable, Codable, Identifiable {
+    case saintPetersburg = "Санкт-Петербург"
+    case moscow = "Москва"
+    case kazan = "Казань"
+
+    static let selectableCases: [SupportedCity] = [
+        .saintPetersburg,
+        .moscow
+    ]
+
+    var id: String { rawValue }
+
+    var mapCenter: CLLocationCoordinate2D {
+        switch self {
+        case .saintPetersburg:
+            return CLLocationCoordinate2D(latitude: 59.9386, longitude: 30.3141)
+        case .moscow:
+            return CLLocationCoordinate2D(latitude: 55.7558, longitude: 37.6173)
+        case .kazan:
+            return CLLocationCoordinate2D(latitude: 55.7961, longitude: 49.1064)
+        }
+    }
+
+    var mapDiameterMeters: CLLocationDistance {
+        switch self {
+        case .saintPetersburg:
+            return 70_000
+        case .moscow:
+            return 90_000
+        case .kazan:
+            return 55_000
+        }
+    }
+
+    var supportsDistrictSelection: Bool {
+        true
+    }
+
+    static func resolve(_ value: String?) -> SupportedCity? {
+        let normalized = (value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "ё", with: "е")
+            .replacingOccurrences(of: "-", with: " ")
+
+        if normalized.contains("петербург") || normalized.contains("petersburg") {
+            return .saintPetersburg
+        }
+        if normalized.contains("москва") || normalized.contains("moscow") {
+            return .moscow
+        }
+        if normalized.contains("казан") || normalized.contains("kazan") {
+            return .kazan
+        }
+
+        return nil
+    }
+}
+
 private let districtDisplayNamesMap: [String: String] = [
     "admiralteysky": "Адмиралтейский",
     "vasileostrovsky": "Василеостровский",
@@ -21,7 +80,26 @@ private let districtDisplayNamesMap: [String: String] = [
     "primorsky": "Приморский",
     "pushkinsky": "Пушкинский",
     "frunzensky": "Фрунзенский",
-    "central": "Центральный"
+    "central": "Центральный",
+    "moscow_central": "Центральный административный округ",
+    "moscow_northern": "Северный административный округ",
+    "moscow_northeastern": "Северо-Восточный административный округ",
+    "moscow_eastern": "Восточный административный округ",
+    "moscow_southeastern": "Юго-Восточный административный округ",
+    "moscow_southern": "Южный административный округ",
+    "moscow_southwestern": "Юго-Западный административный округ",
+    "moscow_western": "Западный административный округ",
+    "moscow_northwestern": "Северо-Западный административный округ",
+    "moscow_zelenograd": "Зеленоградский административный округ",
+    "moscow_novomoskovsky": "Новомосковский административный округ",
+    "moscow_troitsky": "Троицкий административный округ",
+    "kazan_aviastroitelny": "Авиастроительный",
+    "kazan_vakhitovsky": "Вахитовский",
+    "kazan_kirovsky": "Кировский",
+    "kazan_moskovsky": "Московский",
+    "kazan_novo_savinovsky": "Ново-Савиновский",
+    "kazan_privolzhsky": "Приволжский",
+    "kazan_sovetsky": "Советский"
 ]
 
 func localizedDistrictName(_ value: String?) -> String? {
@@ -36,6 +114,91 @@ func localizedDistrictName(_ value: String?) -> String? {
     return value
         .replacingOccurrences(of: "_", with: " ")
         .capitalized
+}
+
+func districtBelongsToCity(_ districtID: String, city: SupportedCity) -> Bool {
+    switch city {
+    case .saintPetersburg:
+        return !districtID.hasPrefix("moscow_") && !districtID.hasPrefix("kazan_")
+    case .moscow:
+        return districtID.hasPrefix("moscow_")
+    case .kazan:
+        return districtID.hasPrefix("kazan_")
+    }
+}
+
+func resolvedDistrictID(forDisplayName value: String?, city: SupportedCity? = nil) -> String? {
+    guard let value else {
+        return nil
+    }
+
+    let normalized = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .replacingOccurrences(of: "ё", with: "е")
+        .replacingOccurrences(of: "-", with: " ")
+        .replacingOccurrences(of: "_", with: " ")
+        .replacingOccurrences(of: ",", with: " ")
+        .replacingOccurrences(of: ".", with: " ")
+
+    guard !normalized.isEmpty else {
+        return nil
+    }
+
+    let aliases: [String: [String]] = [
+        "moscow_central": ["цао", "центральный административный"],
+        "moscow_northern": ["сао", "северный административный"],
+        "moscow_northeastern": ["свао", "северо восточный административный"],
+        "moscow_eastern": ["вао", "восточный административный"],
+        "moscow_southeastern": ["ювао", "юго восточный административный"],
+        "moscow_southern": ["юао", "южный административный"],
+        "moscow_southwestern": ["юзао", "юго западный административный"],
+        "moscow_western": ["зао", "западный административный"],
+        "moscow_northwestern": ["сзао", "северо западный административный"],
+        "moscow_zelenograd": ["зелено град", "зеленоград"],
+        "moscow_novomoskovsky": ["нао", "новомосков"],
+        "moscow_troitsky": ["тао", "троиц"],
+        "kazan_aviastroitelny": ["авиастроитель"],
+        "kazan_vakhitovsky": ["вахитов"],
+        "kazan_kirovsky": ["киров"],
+        "kazan_moskovsky": ["москов"],
+        "kazan_novo_savinovsky": ["ново савинов"],
+        "kazan_privolzhsky": ["приволж"],
+        "kazan_sovetsky": ["советск"]
+    ]
+
+    let eligibleIDs = districtDisplayNamesMap.keys.filter { districtID in
+        city.map { districtBelongsToCity(districtID, city: $0) } ?? true
+    }
+    let exactOnlyAliases: Set<String> = ["цао", "сао", "свао", "вао", "ювао", "юао", "юзао", "зао", "сзао", "нао", "тао"]
+    let normalizedTokens = Set(
+        normalized
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+    )
+
+    if let aliasMatch = eligibleIDs.first(where: { districtID in
+        aliases[districtID, default: []].contains(where: { alias in
+            if exactOnlyAliases.contains(alias) {
+                return normalized == alias || normalizedTokens.contains(alias)
+            }
+
+            return normalized.contains(alias)
+        })
+    }) {
+        return aliasMatch
+    }
+
+    return districtDisplayNamesMap.first { districtID, displayName in
+        guard eligibleIDs.contains(districtID) else {
+            return false
+        }
+        let normalizedDisplayName = displayName
+            .lowercased()
+            .replacingOccurrences(of: "ё", with: "е")
+            .replacingOccurrences(of: "-", with: " ")
+        return normalized.contains(normalizedDisplayName)
+    }?.key
 }
 
 enum Gender: String, Codable, CaseIterable, Identifiable {
@@ -547,7 +710,7 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
         case .upcoming:
             return "calendar.badge.clock"
         case .swipe:
-            return "sparkles"
+            return "person.2.fill"
         case .likes:
             return "heart.text.square"
         case .seeking:
@@ -945,6 +1108,32 @@ struct DiscoverUser: Codable, Identifiable {
 }
 
 extension DiscoverUser {
+    init(profile: UserProfile) {
+        id = profile.id
+        name = profile.name
+        age = profile.age
+        city = profile.city
+        district = profile.district
+        districtLabel = localizedDistrictName(profile.district)
+        preferredDistricts = profile.preferredDistricts
+        bio = profile.bio
+        avatarUrl = profile.avatarUrl
+        profilePhotoUrls = profile.profilePhotoUrls
+        profileVideoUrls = profile.profileVideoUrls
+        lastActiveAt = nil
+        tennisLevel = profile.tennisLevel
+        preferredSports = profile.preferredSports
+        sportLevels = profile.sportLevels
+        preferredPlayFormat = profile.preferredPlayFormat
+        preferredSurface = profile.preferredSurface
+        availableDays = profile.availableDays
+        availableTimeRanges = profile.availableTimeRanges
+        distanceLabel = localizedDistrictName(profile.district) ?? profile.city ?? "Локация не указана"
+        score = nil
+        explainabilityReasons = []
+        gameSearches = []
+    }
+
     var lastActiveDate: Date? {
         lastActiveAt?.parsedISODateValue()
     }
@@ -998,6 +1187,7 @@ struct ChatMessage: Codable, Identifiable {
     let text: String
     let createdAt: String
     let senderUser: ChatSender?
+    let attachments: [ChatMediaAttachment]
 
     init(
         id: String,
@@ -1005,7 +1195,8 @@ struct ChatMessage: Codable, Identifiable {
         gameRequestId: String? = nil,
         text: String,
         createdAt: String,
-        senderUser: ChatSender?
+        senderUser: ChatSender?,
+        attachments: [ChatMediaAttachment] = []
     ) {
         self.id = id
         self.senderUserId = senderUserId
@@ -1013,7 +1204,32 @@ struct ChatMessage: Codable, Identifiable {
         self.text = text
         self.createdAt = createdAt
         self.senderUser = senderUser
+        self.attachments = attachments
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, senderUserId, gameRequestId, text, createdAt, senderUser, attachments
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        senderUserId = try container.decode(String.self, forKey: .senderUserId)
+        gameRequestId = try container.decodeIfPresent(String.self, forKey: .gameRequestId)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        senderUser = try container.decodeIfPresent(ChatSender.self, forKey: .senderUser)
+        attachments = try container.decodeIfPresent([ChatMediaAttachment].self, forKey: .attachments) ?? []
+    }
+}
+
+struct ChatMediaAttachment: Codable, Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let url: String
+    let mimeType: String
+    let byteSize: Int
+    let position: Int
 }
 
 struct ChatSender: Codable {
@@ -1049,6 +1265,37 @@ struct SearchLobbyMessage: Codable, Identifiable {
     let text: String
     let createdAt: String
     let senderUser: ChatSender?
+    let attachments: [ChatMediaAttachment]
+
+    init(
+        id: String,
+        senderUserId: String,
+        text: String,
+        createdAt: String,
+        senderUser: ChatSender?,
+        attachments: [ChatMediaAttachment] = []
+    ) {
+        self.id = id
+        self.senderUserId = senderUserId
+        self.text = text
+        self.createdAt = createdAt
+        self.senderUser = senderUser
+        self.attachments = attachments
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, senderUserId, text, createdAt, senderUser, attachments
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        senderUserId = try container.decode(String.self, forKey: .senderUserId)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        senderUser = try container.decodeIfPresent(ChatSender.self, forKey: .senderUser)
+        attachments = try container.decodeIfPresent([ChatMediaAttachment].self, forKey: .attachments) ?? []
+    }
 }
 
 struct SearchLobbySummary: Codable {
@@ -1740,6 +1987,16 @@ extension Array where Element == GameSearch {
     }
 }
 
+func isOwnedActiveHotSearchForAttention(_ search: GameSearch, currentUserId: String?) -> Bool {
+    guard let currentUserId,
+          search.createdByUserId == currentUserId,
+          search.searchType == .hot,
+          (search.isActive ?? true) else {
+        return false
+    }
+    return ["active", "in_review"].contains(search.status.lowercased())
+}
+
 extension GameSearch {
     func applying(responseUpdate result: SearchResponseUpdateResult) -> GameSearch {
         guard responses.contains(where: { $0.id == result.response.id }) || result.gameSearch?.id == id else {
@@ -1866,6 +2123,9 @@ struct Court: Codable, Identifiable {
     let isMember: Bool
     let memberCount: Int
     let members: [DiscoverUser]
+    let activeSearchesCount: Int
+    let activeSearchPlayersCount: Int
+    let activeSearchPreviewUsers: [DiscoverUser]
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: locationLat, longitude: locationLng)
@@ -1877,6 +2137,40 @@ struct Court: Codable, Identifiable {
 
     var metroDisplayName: String? {
         metroNames.isEmpty ? nil : metroNames.joined(separator: " · ")
+    }
+
+    var phoneURL: URL? {
+        guard let normalizedPhone = Self.normalizedRussianPhone(phone) else {
+            return nil
+        }
+
+        return URL(string: "tel:\(normalizedPhone)")
+    }
+
+    static func normalizedRussianPhone(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let separators = CharacterSet(charactersIn: "|;,\n/")
+        let candidates = value.components(separatedBy: separators)
+
+        for candidate in candidates {
+            let digits = candidate.filter(\.isNumber)
+
+            switch digits.count {
+            case 10:
+                return "+7\(digits)"
+            case 11 where digits.first == "7":
+                return "+\(digits)"
+            case 11 where digits.first == "8":
+                return "+7\(digits.dropFirst())"
+            default:
+                continue
+            }
+        }
+
+        return nil
     }
 
     init(
@@ -1906,7 +2200,10 @@ struct Court: Codable, Identifiable {
         rating: Double? = nil,
         isMember: Bool = false,
         memberCount: Int = 0,
-        members: [DiscoverUser] = []
+        members: [DiscoverUser] = [],
+        activeSearchesCount: Int = 0,
+        activeSearchPlayersCount: Int = 0,
+        activeSearchPreviewUsers: [DiscoverUser] = []
     ) {
         self.id = id
         self.name = name
@@ -1936,6 +2233,9 @@ struct Court: Codable, Identifiable {
         self.isMember = isMember
         self.memberCount = memberCount
         self.members = members
+        self.activeSearchesCount = activeSearchesCount
+        self.activeSearchPlayersCount = activeSearchPlayersCount
+        self.activeSearchPreviewUsers = activeSearchPreviewUsers
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1966,6 +2266,9 @@ struct Court: Codable, Identifiable {
         case isMember
         case memberCount
         case members
+        case activeSearchesCount
+        case activeSearchPlayersCount
+        case activeSearchPreviewUsers
     }
 
     init(from decoder: Decoder) throws {
@@ -2002,6 +2305,9 @@ struct Court: Codable, Identifiable {
         isMember = try container.decodeIfPresent(Bool.self, forKey: .isMember) ?? false
         memberCount = try container.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
         members = try container.decodeIfPresent([DiscoverUser].self, forKey: .members) ?? []
+        activeSearchesCount = try container.decodeIfPresent(Int.self, forKey: .activeSearchesCount) ?? 0
+        activeSearchPlayersCount = try container.decodeIfPresent(Int.self, forKey: .activeSearchPlayersCount) ?? 0
+        activeSearchPreviewUsers = try container.decodeIfPresent([DiscoverUser].self, forKey: .activeSearchPreviewUsers) ?? []
     }
 
     private static func normalizedPhotoUrls(_ photoUrls: [String], fallback: String?) -> [String] {
@@ -2118,6 +2424,7 @@ struct ActivitySummary: Codable {
     let incomingLikesCount: Int
     let hotBadgeCount: Int
     let discoverBadgeCount: Int
+    let activeSearchesCount: Int
     let searchesBadgeCount: Int
     let notificationSound: Bool
 
@@ -2126,6 +2433,7 @@ struct ActivitySummary: Codable {
         incomingLikesCount: Int,
         hotBadgeCount: Int,
         discoverBadgeCount: Int,
+        activeSearchesCount: Int = 0,
         searchesBadgeCount: Int = 0,
         notificationSound: Bool
     ) {
@@ -2133,6 +2441,7 @@ struct ActivitySummary: Codable {
         self.incomingLikesCount = incomingLikesCount
         self.hotBadgeCount = hotBadgeCount
         self.discoverBadgeCount = discoverBadgeCount
+        self.activeSearchesCount = activeSearchesCount
         self.searchesBadgeCount = searchesBadgeCount
         self.notificationSound = notificationSound
     }
@@ -2142,6 +2451,7 @@ struct ActivitySummary: Codable {
         case incomingLikesCount
         case hotBadgeCount
         case discoverBadgeCount
+        case activeSearchesCount
         case searchesBadgeCount
         case notificationSound
     }
@@ -2152,6 +2462,7 @@ struct ActivitySummary: Codable {
         incomingLikesCount = try container.decodeIfPresent(Int.self, forKey: .incomingLikesCount) ?? 0
         hotBadgeCount = try container.decodeIfPresent(Int.self, forKey: .hotBadgeCount) ?? 0
         discoverBadgeCount = try container.decodeIfPresent(Int.self, forKey: .discoverBadgeCount) ?? 0
+        activeSearchesCount = try container.decodeIfPresent(Int.self, forKey: .activeSearchesCount) ?? 0
         searchesBadgeCount = try container.decodeIfPresent(Int.self, forKey: .searchesBadgeCount) ?? 0
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
     }
@@ -2173,6 +2484,7 @@ extension ActivitySummary {
         incomingLikesCount: 0,
         hotBadgeCount: 0,
         discoverBadgeCount: 0,
+        activeSearchesCount: 0,
         searchesBadgeCount: 0,
         notificationSound: true
     )
@@ -2183,6 +2495,7 @@ extension ActivitySummary {
             incomingLikesCount: incomingLikesCount,
             hotBadgeCount: 0,
             discoverBadgeCount: max(discoverBadgeCount - hotBadgeCount, 0),
+            activeSearchesCount: activeSearchesCount,
             searchesBadgeCount: searchesBadgeCount,
             notificationSound: notificationSound
         )

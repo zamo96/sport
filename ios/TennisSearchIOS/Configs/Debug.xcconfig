@@ -5,8 +5,11 @@ IPHONEOS_DEPLOYMENT_TARGET = 16.4
 TARGETED_DEVICE_FAMILY = 1,2
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM =
-API_SCHEME = http
-API_BASE_URL = 192.168.0.103:3000
+API_SCHEME = https
+API_BASE_URL = sportsearch.shop
 USE_MOCK_DATA = NO
-ALLOW_DEBUG_SERVER_TRUST = YES
+ALLOW_DEBUG_SERVER_TRUST = NO
 APS_ENVIRONMENT = development
+
+// Optional developer-specific overrides. This file is ignored by Git.
+#include? "Local.xcconfig"

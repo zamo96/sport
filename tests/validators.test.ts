@@ -4,15 +4,40 @@ import { GameSearchType, HotSearchWindow, PlayFormat, Sport, Surface } from "@pr
 
 import {
   appleAuthSchema,
+  courtsQuerySchema,
   createGameRequestSchema,
   createGameSearchSchema,
   guestOnboardingDraftSchema,
   requestLinkSchema,
+  updateMeSchema,
   updateGameRequestSchema,
   updateGameSearchSchema,
   verifySchema
 } from "@/lib/validators";
+import { DISTRICT_LABELS, getDistrictArea } from "@/lib/constants";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
+
+const newDistrictIds = [
+  "moscow_central",
+  "moscow_northern",
+  "moscow_northeastern",
+  "moscow_eastern",
+  "moscow_southeastern",
+  "moscow_southern",
+  "moscow_southwestern",
+  "moscow_western",
+  "moscow_northwestern",
+  "moscow_zelenograd",
+  "moscow_novomoskovsky",
+  "moscow_troitsky",
+  "kazan_aviastroitelny",
+  "kazan_vakhitovsky",
+  "kazan_kirovsky",
+  "kazan_moskovsky",
+  "kazan_novo_savinovsky",
+  "kazan_privolzhsky",
+  "kazan_sovetsky"
+] as const;
 
 describe("auth validators legal acceptance", () => {
   it("accepts the current user agreement version for email and Apple auth", () => {
@@ -187,5 +212,64 @@ describe("validators contract (profile age)", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("updateMeSchema: accepts legacy profiles without tennisLevel when sport levels are present", () => {
+    expect(
+      updateMeSchema.safeParse({
+        ...validGuestDraft,
+        notificationMatches: true,
+        notificationMessages: true,
+        notificationGames: true,
+        notificationSound: true
+      }).success
+    ).toBe(true);
+  });
+});
+
+describe("validators contract (district IDs)", () => {
+  const validProfile = {
+    name: "Матвей",
+    age: 30,
+    city: "Москва",
+    preferredSports: [Sport.tennis],
+    sportLevels: { tennis: 5 },
+    preferredPlayFormat: PlayFormat.singles,
+    preferredSurface: Surface.hard,
+    availableDays: [],
+    availableTimeRanges: [],
+    availabilityByDay: {}
+  };
+
+  it("defines labels for every new globally unique district ID", () => {
+    for (const district of newDistrictIds) {
+      expect(DISTRICT_LABELS[district]).toBeTruthy();
+    }
+  });
+
+  it("defines map areas for every new globally unique district ID", () => {
+    for (const district of newDistrictIds) {
+      const area = getDistrictArea(district);
+      expect(area?.center).toBeTruthy();
+      expect(area?.polygon.length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("accepts new district IDs in profile fields", () => {
+    for (const district of newDistrictIds) {
+      expect(
+        updateMeSchema.safeParse({
+          ...validProfile,
+          district,
+          preferredDistricts: [district]
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it("accepts new district IDs in court queries", () => {
+    for (const district of newDistrictIds) {
+      expect(courtsQuerySchema.safeParse({ district }).success).toBe(true);
+    }
   });
 });
