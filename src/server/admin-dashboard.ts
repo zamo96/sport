@@ -210,7 +210,7 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
     prisma.chatMessage.count({ where: { createdAt: { gte: since24h } } }),
     prisma.gameSearchMessage.count({ where: { createdAt: { gte: since24h } } }),
     prisma.swipe.count({ where: { createdAt: { gte: since24h } } }),
-    prisma.gameReport.count({ where: { status: "pending" } }),
+    prisma.contentReport.count({ where: { status: "pending" } }),
     countGameSearchStatuses(),
     countGameRequestStatuses(),
     getAuthCodeStats(since24h, since7d, now),

@@ -539,7 +539,10 @@ struct DiscoverView: View {
         }
         .navigationDestination(isPresented: $isUpcomingChatPresented) {
             if let selectedUpcomingMatch {
-                ChatView(match: selectedUpcomingMatch)
+                ChatView(match: selectedUpcomingMatch) {
+                    handleBlockedUser(selectedUpcomingMatch.otherUser.id)
+                    isUpcomingChatPresented = false
+                }
             }
         }
         .sheet(item: $selectedUpcomingParticipant) { user in
@@ -550,7 +553,10 @@ struct DiscoverView: View {
                     : {
                         selectedUpcomingParticipant = nil
                         isUpcomingChatPresented = true
-                    }
+                    },
+                onBlocked: {
+                    handleBlockedUser(user.id)
+                }
             )
                 .presentationDetents([.fraction(0.58), .large])
                 .presentationDragIndicator(.visible)
@@ -1443,7 +1449,8 @@ struct DiscoverView: View {
                                 decision: isSimilarPlayersHintPresented ? similarPlayersHintDemoDecision : dragDecision,
                                 onOpen: { openDiscoverParticipant(user) },
                                 onDislike: { Task { await submitSwipe(.dislike) } },
-                                onLike: { Task { await submitSwipe(.like) } }
+                                onLike: { Task { await submitSwipe(.like) } },
+                                onBlocked: { handleBlockedUser(user.id) }
                             )
                             .scaleEffect(isSimilarPlayersHintPresented ? 0.92 : 1.0)
                             .offset(y: isSimilarPlayersHintPresented ? 10 : 0)
@@ -1457,7 +1464,8 @@ struct DiscoverView: View {
                                 decision: nil,
                                 onOpen: {},
                                 onDislike: {},
-                                onLike: {}
+                                onLike: {},
+                                onBlocked: {}
                             )
                             .scaleEffect(0.965 - CGFloat(index) * 0.02)
                             .offset(y: CGFloat(index) * 14)
@@ -1506,7 +1514,8 @@ struct DiscoverView: View {
                                 decision: dragDecision,
                                 onOpen: { openDiscoverParticipant(user) },
                                 onDislike: { Task { await submitSwipe(.dislike) } },
-                                onLike: { Task { await submitSwipe(.like) } }
+                                onLike: { Task { await submitSwipe(.like) } },
+                                onBlocked: { handleBlockedUser(user.id) }
                             )
                             .scaleEffect(1.0)
                             .offset(y: 0)
@@ -1520,7 +1529,8 @@ struct DiscoverView: View {
                                 decision: nil,
                                 onOpen: {},
                                 onDislike: {},
-                                onLike: {}
+                                onLike: {},
+                                onBlocked: {}
                             )
                                 .scaleEffect(0.965 - CGFloat(index) * 0.02)
                                 .offset(y: CGFloat(index) * 14)
@@ -2379,6 +2389,20 @@ struct DiscoverView: View {
         AppHaptics.selection()
         selectedUpcomingMatch = nil
         selectedUpcomingParticipant = user
+    }
+
+    private func handleBlockedUser(_ userId: String) {
+        let blockedMatchIDs = Set(upcomingMatches.filter { $0.otherUser.id == userId }.map(\.id))
+        selectedUpcomingParticipant = nil
+        selectedUpcomingMatch = nil
+        users.removeAll { $0.id == userId }
+        upcomingGameRequests.removeAll { request in
+            guard let matchId = request.matchId else { return false }
+            return blockedMatchIDs.contains(matchId)
+        }
+        upcomingMatches.removeAll { $0.otherUser.id == userId }
+        responseMessage = "Пользователь заблокирован и удалён из ленты"
+        Task { await loadDiscover() }
     }
 
     private func openUpcomingCourt(_ court: Court?) {
@@ -6152,6 +6176,7 @@ struct SwipeCard: View {
     let onOpen: () -> Void
     let onDislike: () -> Void
     let onLike: () -> Void
+    let onBlocked: () -> Void
 
     @State private var storyIndex = 0
     @State private var storyStartedAt = Date()
@@ -6168,7 +6193,8 @@ struct SwipeCard: View {
         mode: SwipeCardMode = .interactive,
         onOpen: @escaping () -> Void,
         onDislike: @escaping () -> Void,
-        onLike: @escaping () -> Void
+        onLike: @escaping () -> Void,
+        onBlocked: @escaping () -> Void = {}
     ) {
         self.user = user
         self.index = index
@@ -6178,6 +6204,7 @@ struct SwipeCard: View {
         self.onOpen = onOpen
         self.onDislike = onDislike
         self.onLike = onLike
+        self.onBlocked = onBlocked
     }
 
     private var swipeStrength: CGFloat {
@@ -6278,6 +6305,17 @@ struct SwipeCard: View {
                 if index == 0 {
                     decisionBadge
                         .padding(16)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if index == 0, mode == .interactive {
+                    UserSafetyMenuButton(
+                        userId: user.id,
+                        displayName: user.displayName,
+                        context: .profile(userId: user.id),
+                        onBlocked: onBlocked
+                    )
+                    .padding(16)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -9748,6 +9786,13 @@ struct DiscoverParticipantSheet: View {
 
     let user: DiscoverUser
     let onOpenChat: (() -> Void)?
+    let onBlocked: () -> Void
+
+    init(user: DiscoverUser, onOpenChat: (() -> Void)?, onBlocked: @escaping () -> Void = {}) {
+        self.user = user
+        self.onOpenChat = onOpenChat
+        self.onBlocked = onBlocked
+    }
 
     private var primarySport: Sport {
         user.preferredSports.first ?? .tennis
@@ -9884,6 +9929,18 @@ struct DiscoverParticipantSheet: View {
                             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.court))
                         }
                     }
+                }
+
+                SectionCard(title: "Безопасность", subtitle: "Жалобы проверяет модератор. Заблокированный пользователь сразу исчезнет из вашей ленты.") {
+                    UserSafetyActions(
+                        userId: user.id,
+                        displayName: user.displayName,
+                        context: .profile(userId: user.id),
+                        onBlocked: {
+                            dismiss()
+                            onBlocked()
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 16)

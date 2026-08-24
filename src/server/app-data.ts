@@ -22,6 +22,13 @@ import {
   gameSearchMessageAttachmentsInclude
 } from "@/server/chat-media";
 
+function visibleToUserPairFilter(userId: string) {
+  return {
+    blockedUsers: { none: { blockedUserId: userId } },
+    blockingUsers: { none: { blockerUserId: userId } }
+  };
+}
+
 async function closeExpiredHotSearches() {
   await prisma.gameSearch.updateMany({
     where: {
@@ -825,7 +832,9 @@ export async function getUpcomingGamesForUser(userId: string) {
         proposedDatetime: {
           gte: new Date()
         },
-        OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+        OR: [{ createdByUserId: userId }, { matchedUserId: userId }],
+        createdByUser: visibleToUserPairFilter(userId),
+        matchedUser: visibleToUserPairFilter(userId)
       },
       include: {
         proposedCourt: true,
@@ -855,7 +864,9 @@ export async function getUpcomingGamesForUser(userId: string) {
         },
         regularPair: {
           status: "active",
-          OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+          OR: [{ createdByUserId: userId }, { partnerUserId: userId }],
+          createdByUser: visibleToUserPairFilter(userId),
+          partnerUser: visibleToUserPairFilter(userId)
         }
       },
       include: {
@@ -967,7 +978,9 @@ export async function getMatchesForUser(userId: string) {
   return prisma.match.findMany({
     where: {
       status: "active",
-      OR: [{ user1Id: userId }, { user2Id: userId }]
+      OR: [{ user1Id: userId }, { user2Id: userId }],
+      user1: visibleToUserPairFilter(userId),
+      user2: visibleToUserPairFilter(userId)
     },
     include: {
       user1: true,
@@ -1008,7 +1021,9 @@ export async function getMatchDetail(matchId: string, userId: string) {
     where: {
       id: matchId,
       status: "active",
-      OR: [{ user1Id: userId }, { user2Id: userId }]
+      OR: [{ user1Id: userId }, { user2Id: userId }],
+      user1: visibleToUserPairFilter(userId),
+      user2: visibleToUserPairFilter(userId)
     },
     include: {
       user1: true,
@@ -1043,7 +1058,9 @@ export async function getGameRequestDetail(gameRequestId: string, userId: string
   return prisma.gameRequest.findFirst({
     where: {
       id: gameRequestId,
-      OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
+      OR: [{ createdByUserId: userId }, { matchedUserId: userId }],
+      createdByUser: visibleToUserPairFilter(userId),
+      matchedUser: visibleToUserPairFilter(userId)
     },
     include: {
       proposedCourt: true,

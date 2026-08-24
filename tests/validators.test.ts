@@ -15,7 +15,11 @@ import {
   verifySchema
 } from "@/lib/validators";
 import { DISTRICT_LABELS, getDistrictArea } from "@/lib/constants";
-import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
+import {
+  LEGACY_USER_AGREEMENT_VERSION,
+  buildLatestUserAgreementPayload,
+  buildUserAgreementAcceptanceRecord
+} from "@/lib/legal-contract";
 
 const newDistrictIds = [
   "moscow_central",
@@ -48,6 +52,22 @@ describe("auth validators legal acceptance", () => {
     expect(appleAuthSchema.safeParse({ identityToken: "identity-token", userAgreement }).success).toBe(true);
   });
 
+  it("temporarily accepts and accurately records the production iOS legacy agreement", () => {
+    const legacyAgreement = { accepted: true, version: LEGACY_USER_AGREEMENT_VERSION };
+
+    expect(requestLinkSchema.safeParse({ email: "player@example.com", userAgreement: legacyAgreement }).success).toBe(true);
+    expect(verifySchema.safeParse({ email: "player@example.com", code: "123456", userAgreement: legacyAgreement }).success).toBe(true);
+    expect(appleAuthSchema.safeParse({ identityToken: "identity-token", userAgreement: legacyAgreement }).success).toBe(true);
+
+    const record = buildUserAgreementAcceptanceRecord({
+      userId: "user-1",
+      source: "apple",
+      agreementVersion: LEGACY_USER_AGREEMENT_VERSION
+    });
+    expect(record.agreementVersion).toBe(LEGACY_USER_AGREEMENT_VERSION);
+    expect(record.personalDataConsentVersion).toBe(LEGACY_USER_AGREEMENT_VERSION);
+  });
+
   it("rejects missing or stale user agreement acceptance", () => {
     expect(requestLinkSchema.safeParse({ email: "player@example.com" }).success).toBe(false);
     expect(
@@ -61,6 +81,12 @@ describe("auth validators legal acceptance", () => {
       appleAuthSchema.safeParse({
         identityToken: "identity-token",
         userAgreement: { accepted: false, version: buildLatestUserAgreementPayload().version }
+      }).success
+    ).toBe(false);
+    expect(
+      requestLinkSchema.safeParse({
+        email: "player@example.com",
+        userAgreement: { accepted: true, version: "2026-07-04" }
       }).success
     ).toBe(false);
   });

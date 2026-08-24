@@ -2,6 +2,8 @@ import {
   AccountStatus,
   CourtSetting,
   CourtStatus,
+  ContentReportReason,
+  ContentReportStatus,
   GameRequestOutcome,
   GameReportConfirmationStatus,
   GameReportVisibility,
@@ -19,7 +21,8 @@ import {
 import { z } from "zod";
 
 import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
-import { LEGAL_ACCEPTANCE_ERROR, USER_AGREEMENT_VERSION } from "@/lib/legal-contract";
+import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
+import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 
 const dayEnum = z.enum(DAY_OPTIONS);
@@ -30,6 +33,8 @@ const pairedTimeSlotSchema = z
   .string()
   .regex(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)@([01]\d|2[0-3]):[0-5]\d$/, "Укажи день и время в формате day@ЧЧ:ММ");
 const timePreferenceSchema = z.union([timeRangeEnum, exactTimeSlotSchema, pairedTimeSlotSchema]);
+const publicText = (maximum: number) =>
+  z.string().trim().max(maximum).refine(isPublicTextAllowed, CONTENT_MODERATION_VALIDATION_MESSAGE);
 
 function isFutureDateTime(value: string) {
   return new Date(value).getTime() > Date.now();
@@ -82,8 +87,10 @@ function parseAvailabilityByDayValue(value: unknown) {
 const userAgreementAcceptanceSchema = z.object({
   accepted: z.boolean().refine((value) => value, LEGAL_ACCEPTANCE_ERROR),
   version: z
-    .preprocess((value) => (typeof value === "string" ? value.trim() : ""), z.string().min(1, "Нужно принять актуальную редакцию пользовательского соглашения"))
-    .refine((value) => value === USER_AGREEMENT_VERSION, "Нужно принять актуальную редакцию пользовательского соглашения")
+    .preprocess(
+      (value) => (typeof value === "string" ? value.trim() : ""),
+      z.enum(ACCEPTED_USER_AGREEMENT_VERSIONS, "Нужно принять актуальную редакцию пользовательского соглашения")
+    )
 });
 
 export const requestLinkSchema = z.object({
@@ -110,7 +117,7 @@ export const appleAuthSchema = z.object({
 });
 
 export const updateMeSchema = z.object({
-  name: z.string().min(2).max(40),
+  name: publicText(40).min(2),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: cityEnum,
@@ -129,7 +136,7 @@ export const updateMeSchema = z.object({
     ),
   preferredPlayFormat: z.nativeEnum(PlayFormat),
   preferredSurface: z.nativeEnum(Surface),
-  bio: z.string().max(220).optional().default(""),
+  bio: publicText(220).optional().default(""),
   searchRadiusKm: z.number().int().min(1).max(100).optional().default(20),
   availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
   availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).default([]),
@@ -292,7 +299,7 @@ export type AdminClubProfilePatch = z.infer<typeof adminClubProfilePatchSchema>;
 export type AdminClubStatusPatch = z.infer<typeof adminClubStatusPatchSchema>;
 
 export const guestOnboardingDraftSchema = z.object({
-  name: z.string().min(2).max(40),
+  name: publicText(40).min(2),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
   city: cityEnum,
@@ -359,7 +366,7 @@ export const swipeSchema = z.object({
 
 export const messageSchema = z
   .object({
-    text: z.string().trim().max(500).optional().default(""),
+    text: publicText(500).optional().default(""),
     attachmentIds: z.array(z.string().min(1)).max(4).optional().default([])
   })
   .refine((value) => value.text.length > 0 || value.attachmentIds.length > 0, {
@@ -388,7 +395,7 @@ export const createGameRequestSchema = z
     levelRangeMax: z.number().int().min(1).max(10).optional().nullable(),
     sport: z.nativeEnum(Sport),
     format: z.nativeEnum(PlayFormat),
-    comment: z.string().max(240).optional().default("")
+    comment: publicText(240).optional().default("")
   })
   .superRefine((value, ctx) => {
     if (!isFutureDateTime(value.proposedDatetime)) {
@@ -419,7 +426,7 @@ export const updateGameRequestSchema = z
     levelRangeMax: z.number().int().min(1).max(10).nullable().optional(),
     sport: z.nativeEnum(Sport).optional(),
     format: z.nativeEnum(PlayFormat).optional(),
-    comment: z.string().max(240).optional()
+    comment: publicText(240).optional()
   })
   .superRefine((value, ctx) => {
     const hasAnyChange =
@@ -478,7 +485,7 @@ export const shareGameRequestSchema = z.object({
 
 export const createGameReportSchema = z.object({
   photoUrls: z.array(z.string().min(1).max(600)).min(1).max(5),
-  comment: z.string().trim().max(240).optional().default(""),
+  comment: publicText(240).optional().default(""),
   visibility: z.nativeEnum(GameReportVisibility).optional().default(GameReportVisibility.profile)
 });
 
@@ -496,7 +503,7 @@ export const createPersonalActivitySchema = z.object({
   sport: z.nativeEnum(Sport).default(Sport.tennis),
   scheduledAt: z.string().datetime(),
   durationMinutes: z.number().int().min(15).max(360).optional().nullable(),
-  comment: z.string().trim().max(240).optional().default("")
+  comment: publicText(240).optional().default("")
 }).superRefine((value, ctx) => {
   if (!isFutureDateTime(value.scheduledAt)) {
     ctx.addIssue({
@@ -510,9 +517,9 @@ export const createPersonalActivitySchema = z.object({
 export const updatePersonalActivitySchema = z.object({
   scheduledAt: z.string().datetime().optional(),
   durationMinutes: z.number().int().min(15).max(360).optional().nullable(),
-  comment: z.string().trim().max(240).optional(),
+  comment: publicText(240).optional(),
   status: z.nativeEnum(PersonalActivityStatus).optional(),
-  reportComment: z.string().trim().max(240).optional().nullable(),
+  reportComment: publicText(240).optional().nullable(),
   photoUrls: z.array(z.string().min(1).max(600)).max(8).optional()
 });
 
@@ -520,9 +527,9 @@ export const createGameSearchSchema = z
   .object({
     inviteSlug: z.string().trim().min(6).max(120).optional().nullable(),
     preferredCourtId: z.string().min(1).optional().nullable(),
-    customVenueTitle: z.string().trim().max(100).optional().nullable(),
-    customVenueAddress: z.string().trim().max(240).optional().nullable(),
-    runningRoute: z.string().trim().max(500).optional().nullable(),
+    customVenueTitle: publicText(100).optional().nullable(),
+    customVenueAddress: publicText(240).optional().nullable(),
+    runningRoute: publicText(500).optional().nullable(),
     runningRoutePoints: z.array(runningRoutePointSchema).max(80).optional().nullable(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
@@ -544,7 +551,7 @@ export const createGameSearchSchema = z
     desiredLevelMax: z.number().int().min(1).max(10).optional().default(10),
     format: z.nativeEnum(PlayFormat),
     playersNeeded: z.number().int().min(1).max(30).optional().default(1),
-    comment: z.string().max(240).optional().default("")
+    comment: publicText(240).optional().default("")
   })
   .superRefine((value, ctx) => {
     if (!isFormatAllowedForSport(value.sport, value.format)) {
@@ -604,9 +611,9 @@ export const updateGameSearchSchema = z
     scheduledAt: z.string().datetime().nullable().optional(),
     scheduledDurationMinutes: z.number().int().min(30).max(240).nullable().optional(),
     preferredCourtId: z.string().min(1).nullable().optional(),
-    customVenueTitle: z.string().trim().max(100).nullable().optional(),
-    customVenueAddress: z.string().trim().max(240).nullable().optional(),
-    runningRoute: z.string().trim().max(500).nullable().optional(),
+    customVenueTitle: publicText(100).nullable().optional(),
+    customVenueAddress: publicText(240).nullable().optional(),
+    runningRoute: publicText(500).nullable().optional(),
     runningRoutePoints: z.array(runningRoutePointSchema).max(80).nullable().optional(),
     preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).optional()),
     preferredDays: z.array(dayEnum).max(DAY_OPTIONS.length).optional(),
@@ -628,7 +635,7 @@ export const updateGameSearchSchema = z
     desiredLevelMax: z.number().int().min(1).max(10).optional(),
     format: z.nativeEnum(PlayFormat).optional(),
     playersNeeded: z.number().int().min(1).max(30).optional(),
-    comment: z.string().max(240).optional()
+    comment: publicText(240).optional()
   })
   .superRefine((value, ctx) => {
     if (value.sport !== undefined && value.format !== undefined && !isFormatAllowedForSport(value.sport, value.format)) {
@@ -652,7 +659,7 @@ export const updateGameSearchSchema = z
   });
 
 export const createGameSearchResponseSchema = z.object({
-  message: z.string().max(240).optional().default("")
+  message: publicText(240).optional().default("")
 });
 
 export const updateGameSearchResponseSchema = z.object({
@@ -671,7 +678,7 @@ export const updateRegularPairOccurrenceSchema = z.object({
 export const createGameSearchMessageSchema = messageSchema;
 
 export const createGameSearchSlotProposalSchema = z.object({
-  comment: z.string().trim().max(240).optional().default(""),
+  comment: publicText(240).optional().default(""),
   options: z
     .array(
       z.object({
@@ -712,3 +719,42 @@ export const registerPushDeviceSchema = z.object({
   bundleId: z.string().trim().min(3).max(200),
   deviceName: z.string().trim().max(120).optional().nullable()
 });
+
+const publicReportReasonSchema = z.enum([
+  ContentReportReason.harassment,
+  ContentReportReason.hate_speech,
+  ContentReportReason.sexual_content,
+  ContentReportReason.violence,
+  ContentReportReason.spam,
+  ContentReportReason.impersonation,
+  ContentReportReason.other
+]);
+
+export const createContentReportSchema = z.object({
+  reason: publicReportReasonSchema,
+  details: z.string().trim().max(1000).optional(),
+  context: z.object({
+    type: z.enum(["profile", "chat"]),
+    id: z.string().trim().min(1).max(200).optional()
+  }).strict().optional()
+}).strict();
+
+export const blockUserSchema = createContentReportSchema.partial().default({});
+
+export const adminContentReportsQuerySchema = z.object({
+  status: z.union([z.literal("all"), z.nativeEnum(ContentReportStatus)]).optional().default("pending"),
+  origin: z.enum(["all", "report", "block"]).optional().default("all"),
+  q: z.string().trim().max(120).optional().default(""),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(24)
+}).strict();
+
+export const resolveContentReportSchema = z.object({
+  status: z.enum([ContentReportStatus.actioned, ContentReportStatus.dismissed]),
+  resolutionNote: z.string().trim().min(3).max(1000),
+  expectedUpdatedAt: z.string().datetime()
+}).strict();
+
+export type CreateContentReportInput = z.infer<typeof createContentReportSchema>;
+export type AdminContentReportsQuery = z.infer<typeof adminContentReportsQuerySchema>;
+export type ResolveContentReportInput = z.infer<typeof resolveContentReportSchema>;

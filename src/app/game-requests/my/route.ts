@@ -8,11 +8,6 @@ import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { serializeGameRequest, serializeUserPreview } from "@/server/serializers";
 
-type RequestWithRelations = Awaited<ReturnType<typeof loadGameRequests>>[number];
-type ChildRequest = RequestWithRelations["sharedInvites"][number];
-type SerializedGameRequest = ReturnType<typeof serializeRequest>;
-type SerializedRegularOccurrence = ReturnType<typeof serializeRegularOccurrence>;
-
 const gameRequestListInclude = {
   proposedCourt: true,
   report: {
@@ -70,6 +65,11 @@ const gameRequestListInclude = {
     }
   }
 } satisfies Prisma.GameRequestInclude;
+
+type RequestWithRelations = Prisma.GameRequestGetPayload<{ include: typeof gameRequestListInclude }>;
+type ChildRequest = RequestWithRelations["sharedInvites"][number];
+type SerializedGameRequest = ReturnType<typeof serializeRequest>;
+type SerializedRegularOccurrence = ReturnType<typeof serializeRegularOccurrence>;
 
 export async function GET() {
   try {
@@ -193,7 +193,21 @@ function buildRequestGroups(gameRequests: RequestWithRelations[]) {
 }
 
 async function loadGameRequests(userId: string) {
-  const directRequests = await prisma.gameRequest.findMany({
+  const blocks = await prisma.block.findMany({
+    where: { OR: [{ blockerUserId: userId }, { blockedUserId: userId }] },
+    select: { blockerUserId: true, blockedUserId: true }
+  });
+  const blockedUserIds = new Set(
+    blocks.map((block) => block.blockerUserId === userId ? block.blockedUserId : block.blockerUserId)
+  );
+  const isVisible = (request: { createdByUserId: string; matchedUserId: string }) =>
+    !blockedUserIds.has(request.createdByUserId) && !blockedUserIds.has(request.matchedUserId);
+  const sanitize = (request: RequestWithRelations): RequestWithRelations => ({
+    ...request,
+    sharedInvites: request.sharedInvites?.filter(isVisible) ?? []
+  });
+
+  const directRequests = (await prisma.gameRequest.findMany({
     where: {
       OR: [{ createdByUserId: userId }, { matchedUserId: userId }]
     },
@@ -201,7 +215,7 @@ async function loadGameRequests(userId: string) {
     orderBy: {
       createdAt: "desc"
     }
-  });
+  })).filter(isVisible).map(sanitize);
 
   const rootIds = Array.from(
     new Set(directRequests.map((request) => request.sharedRootId).filter((id): id is string => Boolean(id)))
@@ -211,7 +225,7 @@ async function loadGameRequests(userId: string) {
     return directRequests;
   }
 
-  const relatedGroupRequests = await prisma.gameRequest.findMany({
+  const relatedGroupRequests = (await prisma.gameRequest.findMany({
     where: {
       OR: [
         {
@@ -230,7 +244,7 @@ async function loadGameRequests(userId: string) {
     orderBy: {
       createdAt: "desc"
     }
-  });
+  })).filter(isVisible).map(sanitize);
 
   const merged = new Map(directRequests.map((request) => [request.id, request]));
   for (const request of relatedGroupRequests) {
@@ -246,7 +260,15 @@ async function loadConfirmedRegularOccurrences(userId: string) {
       status: "confirmed",
       gameRequest: null,
       regularPair: {
-        OR: [{ createdByUserId: userId }, { partnerUserId: userId }]
+        OR: [{ createdByUserId: userId }, { partnerUserId: userId }],
+        createdByUser: {
+          blockedUsers: { none: { blockedUserId: userId } },
+          blockingUsers: { none: { blockerUserId: userId } }
+        },
+        partnerUser: {
+          blockedUsers: { none: { blockedUserId: userId } },
+          blockingUsers: { none: { blockerUserId: userId } }
+        }
       }
     },
     include: {

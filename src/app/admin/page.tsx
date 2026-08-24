@@ -14,6 +14,7 @@ import {
   MessageCircle,
   RefreshCw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Trophy,
   Users2
@@ -77,6 +78,13 @@ export default async function AdminPage({
               >
                 <Building2 className="h-4 w-4" />
                 Модерация клубов
+              </Link>
+              <Link
+                href="/admin/reports"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 font-semibold text-white"
+              >
+                <ShieldAlert className="h-4 w-4" />
+                Жалобы
               </Link>
             </div>
             <div className="inline-flex items-center gap-2 rounded-md bg-cream px-3 py-2 font-semibold text-ink">

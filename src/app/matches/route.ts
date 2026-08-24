@@ -23,7 +23,15 @@ export async function GET() {
     await runGameRequestMaintenance({ sendReminders: false });
     const matches = await prisma.match.findMany({
       where: {
-        OR: [{ user1Id: user.id }, { user2Id: user.id }]
+        OR: [{ user1Id: user.id }, { user2Id: user.id }],
+        user1: {
+          blockedUsers: { none: { blockedUserId: user.id } },
+          blockingUsers: { none: { blockerUserId: user.id } }
+        },
+        user2: {
+          blockedUsers: { none: { blockedUserId: user.id } },
+          blockingUsers: { none: { blockerUserId: user.id } }
+        }
       },
       include: {
         user1: true,

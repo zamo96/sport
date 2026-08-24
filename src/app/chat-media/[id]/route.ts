@@ -1,6 +1,7 @@
 import { GameSearchResponseStatus } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
+import { isAdminUser } from "@/lib/admin";
 import { fail, getErrorMessage } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { readChatImage } from "@/server/chat-media";
@@ -56,6 +57,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     const match = asset.chatMessageMedia?.chatMessage.match;
     const search = asset.searchMessageMedia?.gameSearchMessage.gameSearch;
     const canAccess =
+      isAdminUser(user) ||
       asset.uploaderUserId === user.id ||
       match?.user1Id === user.id ||
       match?.user2Id === user.id ||

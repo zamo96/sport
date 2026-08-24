@@ -99,7 +99,11 @@ struct MatchesView: View {
         }
         .navigationDestination(isPresented: $isChatPresented) {
             if let navigationMatch {
-                ChatView(match: navigationMatch)
+                ChatView(match: navigationMatch) {
+                    handleBlockedUser(navigationMatch.otherUser.id)
+                    self.navigationMatch = nil
+                    isChatPresented = false
+                }
             }
         }
         .sheet(item: $selectedProfileMatch) { match in
@@ -110,6 +114,9 @@ struct MatchesView: View {
                 },
                 onProposeGame: {
                     presentProposal(for: match)
+                },
+                onBlocked: {
+                    handleBlockedUser(match.otherUser.id)
                 }
             )
             .presentationDetents([.fraction(0.62), .large])
@@ -132,6 +139,14 @@ struct MatchesView: View {
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(32)
         }
+    }
+
+    private func handleBlockedUser(_ userId: String) {
+        selectedProfileMatch = nil
+        matches.removeAll { $0.otherUser.id == userId }
+        incomingLikes.removeAll { $0.id == userId }
+        appModel.errorMessage = nil
+        Task { await loadMatches() }
     }
 
     private var matchesHeader: some View {
@@ -908,6 +923,7 @@ struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
     let match: MatchSummary
+    let onBlocked: () -> Void
 
     @State private var currentMatch: MatchSummary
     @State private var messages: [ChatMessage] = []
@@ -928,8 +944,9 @@ struct ChatView: View {
     @FocusState private var isComposerFocused: Bool
     private let bottomAnchorID = "chat-bottom-anchor"
 
-    init(match: MatchSummary) {
+    init(match: MatchSummary, onBlocked: @escaping () -> Void = {}) {
         self.match = match
+        self.onBlocked = onBlocked
         _currentMatch = State(initialValue: match)
     }
 
@@ -1175,6 +1192,10 @@ struct ChatView: View {
                         proposalContext = .new
                         selectedProposalMatch = currentMatch
                     }
+                },
+                onBlocked: {
+                    isProfilePresented = false
+                    dismiss()
                 }
             )
             .presentationDetents([.fraction(0.62), .large])
@@ -1316,6 +1337,16 @@ struct ChatView: View {
                 .foregroundStyle(.white.opacity(0.82))
             }
             .buttonStyle(.plain)
+
+            UserSafetyMenuButton(
+                userId: currentMatch.otherUser.id,
+                displayName: currentMatch.otherUser.displayName,
+                context: .chat(messageId: messages.last(where: { $0.senderUserId == currentMatch.otherUser.id })?.id),
+                onBlocked: {
+                    onBlocked()
+                    dismiss()
+                }
+            )
         }
     }
 
@@ -2464,6 +2495,14 @@ private struct MatchPlayerSheet: View {
     let match: MatchSummary
     let onOpenChat: () -> Void
     let onProposeGame: () -> Void
+    let onBlocked: () -> Void
+
+    init(match: MatchSummary, onOpenChat: @escaping () -> Void, onProposeGame: @escaping () -> Void, onBlocked: @escaping () -> Void = {}) {
+        self.match = match
+        self.onOpenChat = onOpenChat
+        self.onProposeGame = onProposeGame
+        self.onBlocked = onBlocked
+    }
 
     @State private var gameHistory: [MatchGameRequest] = []
     @State private var isLoadingHistory = false
@@ -2569,6 +2608,18 @@ private struct MatchPlayerSheet: View {
                             .foregroundStyle(AppTheme.ink.opacity(0.6))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                }
+
+                SectionCard(title: "Безопасность", subtitle: "Можно пожаловаться модератору или полностью скрыть пользователя.") {
+                    UserSafetyActions(
+                        userId: match.otherUser.id,
+                        displayName: match.otherUser.displayName,
+                        context: .profile(userId: match.otherUser.id),
+                        onBlocked: {
+                            dismiss()
+                            onBlocked()
+                        }
+                    )
                 }
 
                 if let request = match.latestGameRequest {

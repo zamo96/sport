@@ -13,6 +13,7 @@ import {
   gameSearchMessageAttachmentsInclude,
   serializeChatMessage
 } from "@/server/chat-media";
+import { hasBlockBetweenUsers, lockActiveUsersForMutation } from "@/server/account-status";
 
 async function canAccessSearch(userId: string, gameSearchId: string) {
   return prisma.gameSearch.findFirst({
@@ -30,7 +31,14 @@ async function canAccessSearch(userId: string, gameSearchId: string) {
         }
       ]
     },
-    select: { id: true }
+    select: {
+      id: true,
+      createdByUserId: true,
+      responses: {
+        where: { status: GameSearchResponseStatus.approved },
+        select: { responderUserId: true }
+      }
+    }
   });
 }
 
@@ -45,7 +53,11 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
     const messages = await prisma.gameSearchMessage.findMany({
       where: {
-        gameSearchId: params.id
+        gameSearchId: params.id,
+        senderUser: {
+          blockedUsers: { none: { blockedUserId: user.id } },
+          blockingUsers: { none: { blockerUserId: user.id } }
+        }
       },
       include: {
         senderUser: true,
@@ -78,8 +90,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const body = createGameSearchMessageSchema.parse(await request.json());
+    const participantIds = Array.from(new Set([
+      allowed.createdByUserId,
+      ...allowed.responses.map((response) => response.responderUserId)
+    ]));
 
     const message = await prisma.$transaction(async (tx) => {
+      const locked = await lockActiveUsersForMutation(tx, participantIds);
+      if (!locked.has(user.id)) throw new Error("INTERACTION_UNAVAILABLE");
+      const otherParticipantIds = participantIds.filter((id) => id !== user.id);
+      const block = otherParticipantIds.length > 0
+        ? await tx.block.findFirst({
+            where: {
+              OR: [
+                { blockerUserId: user.id, blockedUserId: { in: otherParticipantIds } },
+                { blockedUserId: user.id, blockerUserId: { in: otherParticipantIds } }
+              ]
+            },
+            select: { id: true }
+          })
+        : null;
+      if (block) throw new Error("INTERACTION_UNAVAILABLE");
       const created = await tx.gameSearchMessage.create({
         data: {
           gameSearchId: params.id,
@@ -152,13 +183,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const recipients = Array.from(recipientsById.values());
-    const realtimeRecipientIds = Array.from(
+    const unblockedRecipients = (
+      await Promise.all(
+        recipients.map(async (recipient) => ({
+          recipient,
+          blocked: await hasBlockBetweenUsers(prisma, user.id, recipient.id)
+        }))
+      )
+    ).filter((item) => !item.blocked).map((item) => item.recipient);
+    const candidateRealtimeRecipientIds = Array.from(
       new Set((search?.responses ?? []).map((response) => response.responderUser.id).filter((id) => id !== user.id))
     );
+    const realtimeRecipientIds = (
+      await Promise.all(
+        candidateRealtimeRecipientIds.map(async (id) => ({ id, blocked: await hasBlockBetweenUsers(prisma, user.id, id) }))
+      )
+    ).filter((item) => !item.blocked).map((item) => item.id);
     const pushBody = chatMessagePreview(message);
 
     await Promise.all(
-      recipients.map(async (recipient) => {
+      unblockedRecipients.map(async (recipient) => {
         const activeInLobby = await isUserActiveInChat(recipient.id, [`search:${params.id}`]);
 
         if (!recipient.notificationMessages || activeInLobby) {
@@ -186,6 +230,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       message: serializeChatMessage(message)
     });
   } catch (error) {
+    if (getErrorMessage(error) === "INTERACTION_UNAVAILABLE") return fail("Нет доступа", 403);
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

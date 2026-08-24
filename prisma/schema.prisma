@@ -176,6 +176,42 @@ enum AdminCourtAuditAction {
   STATUS_CHANGED
 }
 
+enum ContentReportOrigin {
+  report
+  block
+}
+
+enum ContentReportReason {
+  abusive_behavior
+  harassment
+  hate_speech
+  sexual_content
+  violence
+  spam
+  impersonation
+  privacy
+  illegal_content
+  other
+}
+
+enum ContentReportType {
+  profile
+  chat_message
+  game_search_message
+  game_search
+  game_search_response
+  game_request
+  game_report
+  personal_activity
+  other
+}
+
+enum ContentReportStatus {
+  pending
+  actioned
+  dismissed
+}
+
 model District {
   id          String  @id @default(cuid())
   code        String  @unique
@@ -193,99 +229,102 @@ model District {
 }
 
 model Metro {
-  id        String  @id @default(cuid())
-  name      String  @unique
-  city      String
-  courts    Court[] @relation("CourtNearestMetro")
+  id         String       @id @default(cuid())
+  name       String       @unique
+  city       String
+  courts     Court[]      @relation("CourtNearestMetro")
   courtLinks CourtMetro[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
   @@index([city, name])
 }
 
 model User {
-  id                   String        @id @default(cuid())
-  email                String        @unique
-  appleSubject         String?       @unique
-  name                 String?
-  age                  Int?
-  gender               Gender?
-  city                 String?
-  district             String?
-  preferredDistricts   Json?
-  homeLat              Float?
-  homeLng              Float?
-  tennisLevel          Int?
-  preferredSports      Json?
-  sportLevels          Json?
-  preferredPlayFormat  PlayFormat    @default(both)
-  preferredSurface     Surface       @default(any)
-  bio                  String?
-  avatarUrl            String?
-  profilePhotoUrls     Json?
-  profileVideoUrls     Json?
-  searchRadiusKm       Int           @default(20)
-  availableDays        Json?
-  availableTimeRanges  Json?
-  availableTimeSlots   Json?
-  availabilityByDay    Json?
-  isLookingForGame     Boolean       @default(true)
-  isVerified           Boolean       @default(false)
-  onboardingCompleted  Boolean       @default(false)
-  notificationMatches  Boolean       @default(true)
-  notificationMessages Boolean       @default(true)
-  notificationGames    Boolean       @default(true)
-  notificationSound    Boolean       @default(true)
-  accountStatus        AccountStatus @default(active)
-  deactivatedAt        DateTime?
-  deactivationReason   String?
-  lastInboxSeenAt      DateTime?
-  lastNotificationsSeenAt DateTime?
-  lastActiveAt         DateTime?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
-  districtRef          District?     @relation("UserDistrict", fields: [district], references: [code], onDelete: SetNull)
-  swipesSent           Swipe[]       @relation("SwipeFromUser")
-  swipesReceived       Swipe[]       @relation("SwipeToUser")
-  matchesAsUser1       Match[]       @relation("MatchUser1")
-  matchesAsUser2       Match[]       @relation("MatchUser2")
-  sessions             Session[]
-  authCodes            AuthCode[]
-  agreementAcceptances UserAgreementAcceptance[]
-  sentMessages         ChatMessage[]
-  uploadedChatMedia    ChatMediaAsset[]
-  gameRequestsCreated  GameRequest[] @relation("GameRequestCreator")
-  gameRequestsReceived GameRequest[] @relation("GameRequestRecipient")
-  gameSearches         GameSearch[]
-  gameSearchMessages   GameSearchMessage[]
-  gameSearchResponses  GameSearchResponse[]
-  gameSearchSlotVotes  GameSearchSlotVote[]
-  regularPairsCreated  RegularPair[] @relation("RegularPairCreator")
-  regularPairsPartner  RegularPair[] @relation("RegularPairPartner")
+  id                                 String                              @id @default(cuid())
+  email                              String                              @unique
+  appleSubject                       String?                             @unique
+  name                               String?
+  age                                Int?
+  gender                             Gender?
+  city                               String?
+  district                           String?
+  preferredDistricts                 Json?
+  homeLat                            Float?
+  homeLng                            Float?
+  tennisLevel                        Int?
+  preferredSports                    Json?
+  sportLevels                        Json?
+  preferredPlayFormat                PlayFormat                          @default(both)
+  preferredSurface                   Surface                             @default(any)
+  bio                                String?
+  avatarUrl                          String?
+  profilePhotoUrls                   Json?
+  profileVideoUrls                   Json?
+  searchRadiusKm                     Int                                 @default(20)
+  availableDays                      Json?
+  availableTimeRanges                Json?
+  availableTimeSlots                 Json?
+  availabilityByDay                  Json?
+  isLookingForGame                   Boolean                             @default(true)
+  isVerified                         Boolean                             @default(false)
+  onboardingCompleted                Boolean                             @default(false)
+  notificationMatches                Boolean                             @default(true)
+  notificationMessages               Boolean                             @default(true)
+  notificationGames                  Boolean                             @default(true)
+  notificationSound                  Boolean                             @default(true)
+  accountStatus                      AccountStatus                       @default(active)
+  deactivatedAt                      DateTime?
+  deactivationReason                 String?
+  lastInboxSeenAt                    DateTime?
+  lastNotificationsSeenAt            DateTime?
+  lastActiveAt                       DateTime?
+  createdAt                          DateTime                            @default(now())
+  updatedAt                          DateTime                            @updatedAt
+  districtRef                        District?                           @relation("UserDistrict", fields: [district], references: [code], onDelete: SetNull)
+  swipesSent                         Swipe[]                             @relation("SwipeFromUser")
+  swipesReceived                     Swipe[]                             @relation("SwipeToUser")
+  matchesAsUser1                     Match[]                             @relation("MatchUser1")
+  matchesAsUser2                     Match[]                             @relation("MatchUser2")
+  sessions                           Session[]
+  authCodes                          AuthCode[]
+  agreementAcceptances               UserAgreementAcceptance[]
+  sentMessages                       ChatMessage[]
+  uploadedChatMedia                  ChatMediaAsset[]
+  gameRequestsCreated                GameRequest[]                       @relation("GameRequestCreator")
+  gameRequestsReceived               GameRequest[]                       @relation("GameRequestRecipient")
+  gameSearches                       GameSearch[]
+  gameSearchMessages                 GameSearchMessage[]
+  gameSearchResponses                GameSearchResponse[]
+  gameSearchSlotVotes                GameSearchSlotVote[]
+  regularPairsCreated                RegularPair[]                       @relation("RegularPairCreator")
+  regularPairsPartner                RegularPair[]                       @relation("RegularPairPartner")
   regularPairOccurrenceConfirmations RegularPairOccurrenceConfirmation[]
-  gameReportsCreated   GameReport[] @relation("GameReportCreator")
-  gameReportConfirmations GameReportConfirmation[]
-  personalActivities   PersonalActivity[]
-  pushDevices          PushDevice[]
-  courtMemberships     UserCourt[]
-  blockedUsers         Block[]       @relation("BlockerUser")
-  blockingUsers        Block[]       @relation("BlockedUser")
+  gameReportsCreated                 GameReport[]                        @relation("GameReportCreator")
+  gameReportConfirmations            GameReportConfirmation[]
+  personalActivities                 PersonalActivity[]
+  pushDevices                        PushDevice[]
+  courtMemberships                   UserCourt[]
+  blockedUsers                       Block[]                             @relation("BlockerUser")
+  blockingUsers                      Block[]                             @relation("BlockedUser")
+  contentReportsMade                 ContentReport[]                     @relation("ContentReportReporter")
+  contentReportsReceived             ContentReport[]                     @relation("ContentReportTarget")
+  contentReportsReviewed             ContentReport[]                     @relation("ContentReportReviewer")
 
   @@index([accountStatus, createdAt])
 }
 
 model AdminAuditLog {
-  id          String           @id @default(cuid())
-  actorUserId String
-  actorEmail  String
+  id           String           @id @default(cuid())
+  actorUserId  String
+  actorEmail   String
   targetUserId String
-  targetEmail String
-  action      AdminAuditAction
-  reason      String?
-  before      Json?
-  after       Json?
-  createdAt   DateTime         @default(now())
+  targetEmail  String
+  action       AdminAuditAction
+  reason       String?
+  before       Json?
+  after        Json?
+  createdAt    DateTime         @default(now())
 
   @@index([targetUserId, createdAt])
   @@index([actorUserId, createdAt])
@@ -320,61 +359,61 @@ model HotSearchDigestDelivery {
 }
 
 model Court {
-  id              String        @id @default(cuid())
-  name            String
-  address         String
-  city            String
-  district        String?
-  nearestMetroId  String?
-  locationLat     Float
-  locationLng     Float
-  surface         Surface
-  setting         CourtSetting
-  status          CourtStatus   @default(active)
-  supportedSports Json?
-  phone           String?
-  workingHours    String?
-  yandexMapsUrl   String?
-  websiteUrl      String?
-  about           String?
-  amenities       Json?
-  messengerType   String?
-  messengerUrl    String?
-  photoUrl        String?
-  photoUrls       Json?
-  priceRange      String
-  rating          Float?
-  sourceType      String
-  sourceExternalId String?
-  sourceUrl       String?
-  normalizedName  String?
-  normalizedAddress String?
-  syncHash        String?
-  lastCheckedAt   DateTime?
-  lastSeenAt      DateTime?
-  websiteContentHash String?
-  websiteLastCheckedAt DateTime?
-  websiteLastChangedAt DateTime?
-  bookingUrl      String?
-  manualOverrideFields Json?
-  manualStatusOverride Boolean @default(false)
-  moderatedAt     DateTime?
-  moderatedByEmail String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  districtRef     District?     @relation("CourtDistrict", fields: [district], references: [code], onDelete: SetNull)
-  nearestMetro    Metro?        @relation("CourtNearestMetro", fields: [nearestMetroId], references: [id], onDelete: SetNull)
-  gameRequests    GameRequest[]
-  gameSearches    GameSearch[]
-  scheduledGameSearches GameSearch[] @relation("GameSearchScheduledCourt")
-  gameSearchSlotOptions GameSearchSlotOption[]
-  regularPairs    RegularPair[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  address                String
+  city                   String
+  district               String?
+  nearestMetroId         String?
+  locationLat            Float
+  locationLng            Float
+  surface                Surface
+  setting                CourtSetting
+  status                 CourtStatus             @default(active)
+  supportedSports        Json?
+  phone                  String?
+  workingHours           String?
+  yandexMapsUrl          String?
+  websiteUrl             String?
+  about                  String?
+  amenities              Json?
+  messengerType          String?
+  messengerUrl           String?
+  photoUrl               String?
+  photoUrls              Json?
+  priceRange             String
+  rating                 Float?
+  sourceType             String
+  sourceExternalId       String?
+  sourceUrl              String?
+  normalizedName         String?
+  normalizedAddress      String?
+  syncHash               String?
+  lastCheckedAt          DateTime?
+  lastSeenAt             DateTime?
+  websiteContentHash     String?
+  websiteLastCheckedAt   DateTime?
+  websiteLastChangedAt   DateTime?
+  bookingUrl             String?
+  manualOverrideFields   Json?
+  manualStatusOverride   Boolean                 @default(false)
+  moderatedAt            DateTime?
+  moderatedByEmail       String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  districtRef            District?               @relation("CourtDistrict", fields: [district], references: [code], onDelete: SetNull)
+  nearestMetro           Metro?                  @relation("CourtNearestMetro", fields: [nearestMetroId], references: [id], onDelete: SetNull)
+  gameRequests           GameRequest[]
+  gameSearches           GameSearch[]
+  scheduledGameSearches  GameSearch[]            @relation("GameSearchScheduledCourt")
+  gameSearchSlotOptions  GameSearchSlotOption[]
+  regularPairs           RegularPair[]
   regularPairOccurrences RegularPairOccurrence[]
-  personalActivities PersonalActivity[]
-  members         UserCourt[]
-  metroLinks      CourtMetro[]
-  syncChanges     CourtChangeProposal[]
-  websiteChecks   CourtWebsiteCheck[]
+  personalActivities     PersonalActivity[]
+  members                UserCourt[]
+  metroLinks             CourtMetro[]
+  syncChanges            CourtChangeProposal[]
+  websiteChecks          CourtWebsiteCheck[]
 
   @@index([district])
   @@index([nearestMetroId])
@@ -401,25 +440,25 @@ model AdminCourtAuditLog {
 }
 
 model CourtSyncRun {
-  id             String   @id @default(cuid())
-  sourceType     String
-  city           String
-  status         String   @default("running")
-  startedAt      DateTime @default(now())
-  finishedAt     DateTime?
-  fetchedCount   Int      @default(0)
-  createdCount   Int      @default(0)
-  updatedCount   Int      @default(0)
-  unchangedCount Int      @default(0)
-  proposedCount  Int      @default(0)
-  hiddenCount    Int      @default(0)
-  websiteCheckedCount Int @default(0)
-  websiteChangedCount Int @default(0)
-  websiteFailedCount Int @default(0)
-  errorMessage   String?
-  metadata       Json?
-  changes        CourtChangeProposal[]
-  websiteChecks   CourtWebsiteCheck[]
+  id                  String                @id @default(cuid())
+  sourceType          String
+  city                String
+  status              String                @default("running")
+  startedAt           DateTime              @default(now())
+  finishedAt          DateTime?
+  fetchedCount        Int                   @default(0)
+  createdCount        Int                   @default(0)
+  updatedCount        Int                   @default(0)
+  unchangedCount      Int                   @default(0)
+  proposedCount       Int                   @default(0)
+  hiddenCount         Int                   @default(0)
+  websiteCheckedCount Int                   @default(0)
+  websiteChangedCount Int                   @default(0)
+  websiteFailedCount  Int                   @default(0)
+  errorMessage        String?
+  metadata            Json?
+  changes             CourtChangeProposal[]
+  websiteChecks       CourtWebsiteCheck[]
 
   @@index([sourceType, startedAt])
   @@index([city, startedAt])
@@ -427,21 +466,21 @@ model CourtSyncRun {
 }
 
 model CourtChangeProposal {
-  id               String   @id @default(cuid())
+  id               String        @id @default(cuid())
   runId            String?
   courtId          String?
   sourceType       String
   sourceExternalId String?
   action           String
-  status           String   @default("pending")
-  confidence       Float    @default(0)
+  status           String        @default("pending")
+  confidence       Float         @default(0)
   reason           String
   before           Json?
   after            Json
-  createdAt        DateTime @default(now())
+  createdAt        DateTime      @default(now())
   appliedAt        DateTime?
   run              CourtSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
-  court            Court?   @relation(fields: [courtId], references: [id], onDelete: SetNull)
+  court            Court?        @relation(fields: [courtId], references: [id], onDelete: SetNull)
 
   @@index([runId, status])
   @@index([courtId, status])
@@ -450,29 +489,29 @@ model CourtChangeProposal {
 }
 
 model CourtWebsiteCheck {
-  id                  String   @id @default(cuid())
-  runId               String?
-  courtId             String
-  url                 String
-  status              String
-  checkedAt           DateTime @default(now())
-  httpStatus          Int?
-  contentHash         String?
-  title               String?
-  description         String?
-  detectedPhones      Json?
-  detectedBookingUrls Json?
-  closureSignals      Json?
-  analystProvider     String?
-  analystModel        String?
-  analystStatus       String?
-  analystErrorMessage String?
-  screenshotStatus    String?
+  id                     String        @id @default(cuid())
+  runId                  String?
+  courtId                String
+  url                    String
+  status                 String
+  checkedAt              DateTime      @default(now())
+  httpStatus             Int?
+  contentHash            String?
+  title                  String?
+  description            String?
+  detectedPhones         Json?
+  detectedBookingUrls    Json?
+  closureSignals         Json?
+  analystProvider        String?
+  analystModel           String?
+  analystStatus          String?
+  analystErrorMessage    String?
+  screenshotStatus       String?
   screenshotErrorMessage String?
-  changed             Boolean  @default(false)
-  errorMessage        String?
-  run                 CourtSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
-  court               Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  changed                Boolean       @default(false)
+  errorMessage           String?
+  run                    CourtSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  court                  Court         @relation(fields: [courtId], references: [id], onDelete: Cascade)
 
   @@index([runId, status])
   @@index([courtId, checkedAt])
@@ -540,36 +579,36 @@ model Match {
 }
 
 model GameRequest {
-  id               String            @id @default(cuid())
-  matchId          String
-  sharedRootId     String?
-  regularPairOccurrenceId String?    @unique
-  createdByUserId  String
-  matchedUserId    String
-  proposedCourtId  String?
-  proposedDatetime DateTime
-  durationMinutes  Int?
-  levelRangeMin    Int?
-  levelRangeMax    Int?
-  sport            Sport             @default(tennis)
-  format           PlayFormat
-  runningRoute     String?
-  runningRoutePoints Json?
-  comment          String?
-  status           GameRequestStatus @default(pending)
-  outcome          GameRequestOutcome?
-  outcomeUpdatedAt DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  match            Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  sharedRoot       GameRequest?      @relation("GameRequestShareRoot", fields: [sharedRootId], references: [id], onDelete: SetNull)
-  sharedInvites    GameRequest[]     @relation("GameRequestShareRoot")
-  regularPairOccurrence RegularPairOccurrence? @relation(fields: [regularPairOccurrenceId], references: [id], onDelete: SetNull)
-  createdByUser    User              @relation("GameRequestCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  matchedUser      User              @relation("GameRequestRecipient", fields: [matchedUserId], references: [id], onDelete: Cascade)
-  proposedCourt    Court?            @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
-  messages         ChatMessage[]
-  report           GameReport?
+  id                      String                 @id @default(cuid())
+  matchId                 String
+  sharedRootId            String?
+  regularPairOccurrenceId String?                @unique
+  createdByUserId         String
+  matchedUserId           String
+  proposedCourtId         String?
+  proposedDatetime        DateTime
+  durationMinutes         Int?
+  levelRangeMin           Int?
+  levelRangeMax           Int?
+  sport                   Sport                  @default(tennis)
+  format                  PlayFormat
+  runningRoute            String?
+  runningRoutePoints      Json?
+  comment                 String?
+  status                  GameRequestStatus      @default(pending)
+  outcome                 GameRequestOutcome?
+  outcomeUpdatedAt        DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  match                   Match                  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sharedRoot              GameRequest?           @relation("GameRequestShareRoot", fields: [sharedRootId], references: [id], onDelete: SetNull)
+  sharedInvites           GameRequest[]          @relation("GameRequestShareRoot")
+  regularPairOccurrence   RegularPairOccurrence? @relation(fields: [regularPairOccurrenceId], references: [id], onDelete: SetNull)
+  createdByUser           User                   @relation("GameRequestCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  matchedUser             User                   @relation("GameRequestRecipient", fields: [matchedUserId], references: [id], onDelete: Cascade)
+  proposedCourt           Court?                 @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
+  messages                ChatMessage[]
+  report                  GameReport?
 
   @@index([matchedUserId, status])
   @@index([createdByUserId, status])
@@ -577,32 +616,32 @@ model GameRequest {
 }
 
 model ChatMessage {
-  id            String       @id @default(cuid())
+  id            String             @id @default(cuid())
   matchId       String
   gameRequestId String?
   senderUserId  String
   text          String
-  createdAt     DateTime     @default(now())
-  match         Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  gameRequest   GameRequest? @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
-  senderUser    User         @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
-  attachments  ChatMessageMedia[]
+  createdAt     DateTime           @default(now())
+  match         Match              @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  gameRequest   GameRequest?       @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
+  senderUser    User               @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+  attachments   ChatMessageMedia[]
 
   @@index([matchId, createdAt])
   @@index([gameRequestId, createdAt])
 }
 
 model ChatMediaAsset {
-  id                String                  @id @default(cuid())
-  uploaderUserId    String
-  storageKey        String                  @unique
-  mimeType          String
-  byteSize          Int
-  originalName      String?
-  claimedAt         DateTime?
-  createdAt         DateTime                @default(now())
-  uploaderUser      User                    @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
-  chatMessageMedia  ChatMessageMedia?
+  id                 String                  @id @default(cuid())
+  uploaderUserId     String
+  storageKey         String                  @unique
+  mimeType           String
+  byteSize           Int
+  originalName       String?
+  claimedAt          DateTime?
+  createdAt          DateTime                @default(now())
+  uploaderUser       User                    @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
+  chatMessageMedia   ChatMessageMedia?
   searchMessageMedia GameSearchMessageMedia?
 
   @@index([uploaderUserId, claimedAt, createdAt])
@@ -610,9 +649,9 @@ model ChatMediaAsset {
 
 model ChatMessageMedia {
   chatMessageId String
-  assetId       String      @unique
+  assetId       String         @unique
   position      Int
-  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
+  chatMessage   ChatMessage    @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
   asset         ChatMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@id([chatMessageId, assetId])
@@ -663,19 +702,19 @@ model GameReportConfirmation {
 }
 
 model PersonalActivity {
-  id              String                 @id @default(cuid())
+  id              String                  @id @default(cuid())
   userId          String
   courtId         String
-  sport           Sport                  @default(tennis)
+  sport           Sport                   @default(tennis)
   scheduledAt     DateTime
   durationMinutes Int?
   comment         String?
-  status          PersonalActivityStatus @default(planned)
+  status          PersonalActivityStatus  @default(planned)
   reportComment   String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  court           Court                  @relation(fields: [courtId], references: [id], onDelete: Restrict)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  court           Court                   @relation(fields: [courtId], references: [id], onDelete: Restrict)
   photos          PersonalActivityPhoto[]
 
   @@index([userId, scheduledAt])
@@ -695,44 +734,44 @@ model PersonalActivityPhoto {
 }
 
 model GameSearch {
-  id                  String               @id @default(cuid())
-  inviteSlug          String?              @unique
-  createdByUserId     String
-  preferredCourtId    String?
-  customVenueTitle    String?
-  customVenueAddress  String?
-  runningRoute        String?
-  runningRoutePoints  Json?
-  preferredDistricts  Json?
-  scheduledCourtId    String?
-  preferredDays       Json
-  preferredTimeRanges Json
-  searchType          GameSearchType       @default(regular)
-  hotWindow           HotSearchWindow?
-  hotStartsAt         DateTime?
-  durationMinutes     Int?
-  scheduledAt         DateTime?
+  id                       String                   @id @default(cuid())
+  inviteSlug               String?                  @unique
+  createdByUserId          String
+  preferredCourtId         String?
+  customVenueTitle         String?
+  customVenueAddress       String?
+  runningRoute             String?
+  runningRoutePoints       Json?
+  preferredDistricts       Json?
+  scheduledCourtId         String?
+  preferredDays            Json
+  preferredTimeRanges      Json
+  searchType               GameSearchType           @default(regular)
+  hotWindow                HotSearchWindow?
+  hotStartsAt              DateTime?
+  durationMinutes          Int?
+  scheduledAt              DateTime?
   scheduledDurationMinutes Int?
-  hasCourtBooked      Boolean              @default(false)
-  sport               Sport                @default(tennis)
-  selfLevel           Int?
-  selfLevelUnknown    Boolean              @default(false)
-  desiredLevelMin     Int                  @default(1)
-  desiredLevelMax     Int                  @default(10)
-  format              PlayFormat
-  playersNeeded       Int                  @default(1)
-  comment             String?
-  status              GameSearchStatus     @default(active)
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  createdByUser       User                 @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
-  preferredCourt      Court?               @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
-  scheduledCourt      Court?               @relation("GameSearchScheduledCourt", fields: [scheduledCourtId], references: [id], onDelete: SetNull)
-  responses           GameSearchResponse[]
-  regularPair         RegularPair?
-  messages            GameSearchMessage[]
-  slotProposals       GameSearchSlotProposal[]
+  hasCourtBooked           Boolean                  @default(false)
+  sport                    Sport                    @default(tennis)
+  selfLevel                Int?
+  selfLevelUnknown         Boolean                  @default(false)
+  desiredLevelMin          Int                      @default(1)
+  desiredLevelMax          Int                      @default(10)
+  format                   PlayFormat
+  playersNeeded            Int                      @default(1)
+  comment                  String?
+  status                   GameSearchStatus         @default(active)
+  isActive                 Boolean                  @default(true)
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  createdByUser            User                     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  preferredCourt           Court?                   @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
+  scheduledCourt           Court?                   @relation("GameSearchScheduledCourt", fields: [scheduledCourtId], references: [id], onDelete: SetNull)
+  responses                GameSearchResponse[]
+  regularPair              RegularPair?
+  messages                 GameSearchMessage[]
+  slotProposals            GameSearchSlotProposal[]
 
   @@index([createdByUserId, isActive])
   @@index([isActive, searchType, status])
@@ -755,13 +794,13 @@ model GameSearchResponse {
 }
 
 model GameSearchMessage {
-  id            String     @id @default(cuid())
-  gameSearchId  String
-  senderUserId  String
-  text          String
-  createdAt     DateTime   @default(now())
-  gameSearch    GameSearch @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
-  senderUser    User       @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+  id           String                   @id @default(cuid())
+  gameSearchId String
+  senderUserId String
+  text         String
+  createdAt    DateTime                 @default(now())
+  gameSearch   GameSearch               @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
+  senderUser   User                     @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
   attachments  GameSearchMessageMedia[]
 
   @@index([gameSearchId, createdAt])
@@ -792,15 +831,15 @@ model GameSearchSlotProposal {
 }
 
 model GameSearchSlotOption {
-  id             String                @id @default(cuid())
-  proposalId     String
+  id              String                 @id @default(cuid())
+  proposalId      String
   proposedCourtId String?
-  scheduledAt    DateTime
+  scheduledAt     DateTime
   durationMinutes Int?
-  createdAt      DateTime              @default(now())
-  proposal       GameSearchSlotProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  proposedCourt  Court?                @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
-  votes          GameSearchSlotVote[]
+  createdAt       DateTime               @default(now())
+  proposal        GameSearchSlotProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proposedCourt   Court?                 @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
+  votes           GameSearchSlotVote[]
 
   @@index([proposalId, scheduledAt])
 }
@@ -818,25 +857,25 @@ model GameSearchSlotVote {
 }
 
 model RegularPair {
-  id                  String            @id @default(cuid())
-  gameSearchId        String            @unique
+  id                  String                  @id @default(cuid())
+  gameSearchId        String                  @unique
   matchId             String
   createdByUserId     String
   partnerUserId       String
   preferredCourtId    String?
-  sport               Sport             @default(tennis)
+  sport               Sport                   @default(tennis)
   format              PlayFormat
   preferredDays       Json
   preferredTimeRanges Json
   comment             String?
-  status              RegularPairStatus @default(active)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  gameSearch          GameSearch        @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
-  match               Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  createdByUser       User              @relation("RegularPairCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  partnerUser         User              @relation("RegularPairPartner", fields: [partnerUserId], references: [id], onDelete: Cascade)
-  preferredCourt      Court?            @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
+  status              RegularPairStatus       @default(active)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  gameSearch          GameSearch              @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
+  match               Match                   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdByUser       User                    @relation("RegularPairCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  partnerUser         User                    @relation("RegularPairPartner", fields: [partnerUserId], references: [id], onDelete: Cascade)
+  preferredCourt      Court?                  @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
   occurrences         RegularPairOccurrence[]
 
   @@index([createdByUserId, status])
@@ -845,51 +884,86 @@ model RegularPair {
 }
 
 model RegularPairOccurrence {
-  id                  String                            @id @default(cuid())
-  regularPairId       String
-  scheduledAt         DateTime
-  scheduleAnchor      DateTime?
-  durationMinutes     Int?
-  proposedCourtId     String?
-  sport               Sport                             @default(tennis)
-  format              PlayFormat
-  status              RegularPairOccurrenceStatus       @default(pending)
-  createdAt           DateTime                          @default(now())
-  updatedAt           DateTime                          @updatedAt
-  regularPair         RegularPair                       @relation(fields: [regularPairId], references: [id], onDelete: Cascade)
-  proposedCourt       Court?                            @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
-  confirmations       RegularPairOccurrenceConfirmation[]
-  gameRequest         GameRequest?
+  id              String                              @id @default(cuid())
+  regularPairId   String
+  scheduledAt     DateTime
+  scheduleAnchor  DateTime?
+  durationMinutes Int?
+  proposedCourtId String?
+  sport           Sport                               @default(tennis)
+  format          PlayFormat
+  status          RegularPairOccurrenceStatus         @default(pending)
+  createdAt       DateTime                            @default(now())
+  updatedAt       DateTime                            @updatedAt
+  regularPair     RegularPair                         @relation(fields: [regularPairId], references: [id], onDelete: Cascade)
+  proposedCourt   Court?                              @relation(fields: [proposedCourtId], references: [id], onDelete: SetNull)
+  confirmations   RegularPairOccurrenceConfirmation[]
+  gameRequest     GameRequest?
 
   @@unique([regularPairId, scheduledAt])
   @@index([regularPairId, status, scheduledAt])
 }
 
 model RegularPairOccurrenceConfirmation {
-  id            String                                  @id @default(cuid())
-  occurrenceId  String
-  userId        String
-  status        RegularPairOccurrenceConfirmationStatus @default(pending)
-  respondedAt   DateTime?
-  createdAt     DateTime                                @default(now())
-  updatedAt     DateTime                                @updatedAt
-  occurrence    RegularPairOccurrence                   @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
-  user          User                                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String                                  @id @default(cuid())
+  occurrenceId String
+  userId       String
+  status       RegularPairOccurrenceConfirmationStatus @default(pending)
+  respondedAt  DateTime?
+  createdAt    DateTime                                @default(now())
+  updatedAt    DateTime                                @updatedAt
+  occurrence   RegularPairOccurrence                   @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  user         User                                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([occurrenceId, userId])
   @@index([userId, status])
 }
 
 model Block {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   blockerUserId String
   blockedUserId String
-  createdAt     DateTime @default(now())
-  blockerUser   User     @relation("BlockerUser", fields: [blockerUserId], references: [id], onDelete: Cascade)
-  blockedUser   User     @relation("BlockedUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  blockerUser   User           @relation("BlockerUser", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUser   User           @relation("BlockedUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+  contentReport ContentReport?
 
   @@unique([blockerUserId, blockedUserId])
   @@index([blockedUserId])
+}
+
+model ContentReport {
+  id               String              @id @default(cuid())
+  reporterUserId   String?
+  reporterEmail    String
+  reporterName     String?
+  reportedUserId   String?
+  reportedEmail    String
+  reportedName     String?
+  blockId          String?             @unique
+  origin           ContentReportOrigin
+  reason           ContentReportReason
+  details          String?
+  contentType      ContentReportType   @default(profile)
+  contextId        String?
+  contextSnapshot  Json?
+  status           ContentReportStatus @default(pending)
+  dueAt            DateTime
+  reviewedByUserId String?
+  reviewedByEmail  String?
+  reviewedAt       DateTime?
+  resolutionNote   String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  reporterUser     User?               @relation("ContentReportReporter", fields: [reporterUserId], references: [id], onDelete: SetNull)
+  reportedUser     User?               @relation("ContentReportTarget", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  reviewedByUser   User?               @relation("ContentReportReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  block            Block?              @relation(fields: [blockId], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([reportedUserId, createdAt])
+  @@index([reporterUserId, createdAt])
+  @@index([origin, createdAt])
 }
 
 model Session {
@@ -933,21 +1007,21 @@ model UserAgreementAcceptance {
 }
 
 model PushDevice {
-  id               String          @id @default(cuid())
-  userId           String
-  platform         PushPlatform    @default(ios)
-  environment      PushEnvironment @default(development)
-  token            String          @unique
-  bundleId         String
-  deviceName       String?
-  isActive         Boolean         @default(true)
-  lastRegisteredAt DateTime        @default(now())
-  lastDeliveredAt  DateTime?
-  lastFailureAt    DateTime?
+  id                String          @id @default(cuid())
+  userId            String
+  platform          PushPlatform    @default(ios)
+  environment       PushEnvironment @default(development)
+  token             String          @unique
+  bundleId          String
+  deviceName        String?
+  isActive          Boolean         @default(true)
+  lastRegisteredAt  DateTime        @default(now())
+  lastDeliveredAt   DateTime?
+  lastFailureAt     DateTime?
   lastFailureReason String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, platform, isActive])
   @@index([environment, isActive])

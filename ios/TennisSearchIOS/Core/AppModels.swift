@@ -732,7 +732,7 @@ enum AuthStep: String, Identifiable {
 }
 
 enum LegalDocuments {
-    static let userAgreementVersion = "2026-07-05"
+    static let userAgreementVersion = "2026-08-24"
     static let acceptanceError = "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных."
 
     static var userAgreementURL: URL? {
@@ -743,6 +743,72 @@ enum LegalDocuments {
         }
 
         return URL(string: "https://sportsearch.shop/legal/terms")
+    }
+}
+
+struct UserSafetyContext: Codable {
+    let type: String
+    let id: String?
+
+    static func profile(userId: String) -> UserSafetyContext {
+        UserSafetyContext(type: "profile", id: userId)
+    }
+
+    static func chat(messageId: String?) -> UserSafetyContext {
+        UserSafetyContext(type: "chat", id: messageId)
+    }
+}
+
+enum UserSafetyReason: String, Codable, CaseIterable, Identifiable {
+    case harassment
+    case hateSpeech = "hate_speech"
+    case sexualContent = "sexual_content"
+    case violence
+    case spam
+    case impersonation
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .harassment: return "Оскорбления или травля"
+        case .hateSpeech: return "Язык ненависти"
+        case .sexualContent: return "Неприемлемый контент"
+        case .violence: return "Угрозы или насилие"
+        case .spam: return "Спам или мошенничество"
+        case .impersonation: return "Выдаёт себя за другого"
+        case .other: return "Другая причина"
+        }
+    }
+}
+
+struct UserSafetyReport: Codable, Identifiable {
+    let id: String
+    let status: String
+    let createdAt: String?
+    let updatedAt: String?
+    let dueAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, status, createdAt, updatedAt, dueAt
+    }
+
+    init(id: String, status: String, createdAt: String? = nil, updatedAt: String? = nil, dueAt: String? = nil) {
+        self.id = id
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.dueAt = dueAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "pending"
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        dueAt = try container.decodeIfPresent(String.self, forKey: .dueAt)
     }
 }
 

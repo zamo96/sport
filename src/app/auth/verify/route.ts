@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     const userWithAgreement = await recordUserAgreementAcceptance(
       user.id,
       "email_otp",
+      body.userAgreement.version,
       getLegalAcceptanceRequestMeta(request)
     );
     const sessionToken = await createSession(userWithAgreement.id);

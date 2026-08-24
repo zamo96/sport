@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { messageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 import { touchUserActivity } from "@/server/user-activity";
+import { hasBlockBetweenUsers, lockActiveUsersForMutation } from "@/server/account-status";
 import {
   chatMessageAttachmentsInclude,
   chatMessagePreview,
@@ -32,6 +33,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     if (!match) {
       return fail("Мэтч не найден", 404);
     }
+    const otherUserId = match.user1Id === user.id ? match.user2Id : match.user1Id;
+    if (await hasBlockBetweenUsers(prisma, user.id, otherUserId)) return fail("Нет доступа", 403);
 
     const messages = await prisma.chatMessage.findMany({
       where: {
@@ -68,8 +71,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!match) {
       return fail("Мэтч не найден", 404);
     }
+    const otherUserId = match.user1Id === user.id ? match.user2Id : match.user1Id;
+    if (await hasBlockBetweenUsers(prisma, user.id, otherUserId)) return fail("Нет доступа", 403);
 
     const message = await prisma.$transaction(async (tx) => {
+      const locked = await lockActiveUsersForMutation(tx, [user.id, otherUserId]);
+      if (!locked.has(user.id) || !locked.has(otherUserId) || await hasBlockBetweenUsers(tx, user.id, otherUserId)) {
+        throw new Error("INTERACTION_UNAVAILABLE");
+      }
       const created = await tx.chatMessage.create({
         data: {
           matchId: match.id,
@@ -132,6 +141,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       message: serializeChatMessage(message)
     });
   } catch (error) {
+    if (getErrorMessage(error) === "INTERACTION_UNAVAILABLE") return fail("Нет доступа", 403);
     if (getErrorMessage(error) === "UNAUTHORIZED") {
       return fail("Требуется авторизация", 401);
     }

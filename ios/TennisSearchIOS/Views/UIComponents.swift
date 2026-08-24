@@ -2630,3 +2630,248 @@ private extension Array where Element: Hashable {
         return filter { seen.insert($0).inserted }
     }
 }
+struct UserSafetyActions: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let userId: String
+    let displayName: String
+    let context: UserSafetyContext
+    let onBlocked: () -> Void
+
+    @State private var mode: SafetyActionMode?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button {
+                mode = .report
+            } label: {
+                Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.clay))
+
+            Button(role: .destructive) {
+                mode = .block
+            } label: {
+                Label("Заблокировать и пожаловаться", systemImage: "person.crop.circle.badge.xmark")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+        }
+        .sheet(item: $mode) { selectedMode in
+            UserSafetyReportSheet(
+                userId: userId,
+                displayName: displayName,
+                context: context,
+                mode: selectedMode,
+                onBlocked: onBlocked
+            )
+            .environmentObject(appModel)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
+    }
+}
+
+struct UserSafetyMenuButton: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let userId: String
+    let displayName: String
+    let context: UserSafetyContext
+    let onBlocked: () -> Void
+
+    @State private var mode: SafetyActionMode?
+
+    var body: some View {
+        Menu {
+            Button {
+                mode = .report
+            } label: {
+                Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+            }
+
+            Button(role: .destructive) {
+                mode = .block
+            } label: {
+                Label("Заблокировать и пожаловаться", systemImage: "person.crop.circle.badge.xmark")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 42, height: 42)
+                .background(.black.opacity(0.48), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                .accessibilityLabel("Безопасность профиля")
+        }
+        .sheet(item: $mode) { selectedMode in
+            UserSafetyReportSheet(
+                userId: userId,
+                displayName: displayName,
+                context: context,
+                mode: selectedMode,
+                onBlocked: onBlocked
+            )
+            .environmentObject(appModel)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+        }
+    }
+}
+
+private enum SafetyActionMode: String, Identifiable {
+    case report
+    case block
+
+    var id: String { rawValue }
+}
+
+private struct UserSafetyReportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+
+    let userId: String
+    let displayName: String
+    let context: UserSafetyContext
+    let mode: SafetyActionMode
+    let onBlocked: () -> Void
+
+    @State private var reason: UserSafetyReason = .harassment
+    @State private var details = ""
+    @State private var isSubmitting = false
+    @State private var successMessage: String?
+
+    private var isBlocking: Bool { mode == .block }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(isBlocking ? "Заблокировать \(displayName)" : "Жалоба на \(displayName)")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(isBlocking
+                             ? "Профиль исчезнет из подбора и чатов. Жалоба будет отправлена модератору."
+                             : "Модератор проверит жалобу в течение 24 часов.")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Причина")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+
+                        ForEach(UserSafetyReason.allCases) { option in
+                            Button {
+                                reason = option
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: reason == option ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(reason == option ? AppTheme.court : .white.opacity(0.42))
+                                    Text(option.title)
+                                        .foregroundStyle(.white)
+                                    Spacer()
+                                }
+                                .padding(14)
+                                .background(.white.opacity(reason == option ? 0.1 : 0.05), in: RoundedRectangle(cornerRadius: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Подробности — необязательно")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        TextEditor(text: $details)
+                            .scrollContentBackground(.hidden)
+                            .foregroundStyle(.white)
+                            .frame(minHeight: 110)
+                            .padding(10)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay(alignment: .topLeading) {
+                                if details.isEmpty {
+                                    Text("Опишите, что произошло")
+                                        .foregroundStyle(.white.opacity(0.38))
+                                        .padding(.horizontal, 15)
+                                        .padding(.vertical, 18)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                    }
+
+                    if let successMessage {
+                        Label(successMessage, systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.mint)
+                    }
+
+                    Button {
+                        Task { await submit() }
+                    } label: {
+                        Group {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Label(isBlocking ? "Заблокировать и отправить" : "Отправить жалобу", systemImage: isBlocking ? "person.crop.circle.badge.xmark" : "paperplane.fill")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle(tint: isBlocking ? .red : AppTheme.court))
+                    .disabled(isSubmitting || successMessage != nil)
+                }
+                .padding(20)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть") { dismiss() }
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func submit() async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if isBlocking {
+                _ = try await appModel.repository.blockUser(
+                    userId: userId,
+                    reason: reason,
+                    details: trimmed.isEmpty ? nil : trimmed,
+                    context: context
+                )
+                successMessage = "Пользователь заблокирован, жалоба отправлена"
+                AppHaptics.notification(.success)
+                try? await Task.sleep(for: .milliseconds(650))
+                onBlocked()
+                dismiss()
+            } else {
+                _ = try await appModel.repository.reportUser(
+                    userId: userId,
+                    reason: reason,
+                    details: trimmed.isEmpty ? nil : trimmed,
+                    context: context
+                )
+                successMessage = "Жалоба отправлена модератору"
+                AppHaptics.notification(.success)
+            }
+        } catch {
+            guard !error.isCancellationLike else { return }
+            appModel.present(error: error)
+        }
+    }
+}

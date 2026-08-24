@@ -1,5 +1,7 @@
 import nodemailer from "nodemailer";
 
+import { getConfiguredAdminEmails } from "@/lib/admin";
+
 type SendOtpEmailInput = {
   to: string;
   code: string;
@@ -15,6 +17,18 @@ function requiredEnv(name: string) {
 
 function resolveEmailMode() {
   return process.env.EMAIL_PROVIDER?.trim() || (process.env.NODE_ENV === "production" ? "smtp" : "console");
+}
+
+function smtpTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST?.trim() || "postbox.cloud.yandex.net",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: requiredEnv("SMTP_USER"),
+      pass: requiredEnv("SMTP_PASSWORD")
+    }
+  });
 }
 
 function buildOtpText(code: string) {
@@ -49,15 +63,7 @@ export async function sendOtpEmail({ to, code }: SendOtpEmailInput) {
     throw new Error(`Unsupported EMAIL_PROVIDER: ${mode}`);
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST?.trim() || "postbox.cloud.yandex.net",
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: requiredEnv("SMTP_USER"),
-      pass: requiredEnv("SMTP_PASSWORD")
-    }
-  });
+  const transporter = smtpTransporter();
 
   await transporter.sendMail({
     from: requiredEnv("EMAIL_FROM"),
@@ -65,5 +71,41 @@ export async function sendOtpEmail({ to, code }: SendOtpEmailInput) {
     subject: "Код входа в TennisSearch",
     text: buildOtpText(code),
     html: buildOtpHtml(code)
+  });
+}
+
+export async function sendContentReportAlert({
+  reportId,
+  dueAt,
+  origin
+}: {
+  reportId: string;
+  dueAt: Date;
+  origin: "report" | "block";
+}) {
+  const recipients = getConfiguredAdminEmails();
+  if (recipients.length === 0) return;
+
+  const mode = resolveEmailMode();
+  if (mode === "console") {
+    console.info(`[moderation] New ${origin} report ${reportId}; due ${dueAt.toISOString()}`);
+    return;
+  }
+  if (mode !== "smtp") throw new Error(`Unsupported EMAIL_PROVIDER: ${mode}`);
+
+  const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://sportsearch.shop"}/admin/reports/${reportId}`;
+  const text = [
+    "Получена новая жалоба на пользовательский контент.",
+    `ID: ${reportId}`,
+    `Источник: ${origin}`,
+    `Проверить до: ${dueAt.toISOString()}`,
+    `Открыть: ${adminUrl}`
+  ].join("\n");
+
+  await smtpTransporter().sendMail({
+    from: requiredEnv("EMAIL_FROM"),
+    to: recipients,
+    subject: `SportSearch: новая жалоба ${reportId}`,
+    text
   });
 }

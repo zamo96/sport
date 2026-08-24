@@ -589,6 +589,24 @@ final class LiveTennisRepository: TennisRepository {
         return response.match?.id
     }
 
+    func reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport {
+        let response: UserSafetyReportEnvelope = try await client.request(
+            path: "users/\(userId)/report",
+            method: "POST",
+            body: UserSafetyRequest(reason: reason.rawValue, details: details, context: context)
+        )
+        return response.report
+    }
+
+    func blockUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport {
+        let response: UserSafetyReportEnvelope = try await client.request(
+            path: "users/\(userId)/block",
+            method: "POST",
+            body: UserSafetyRequest(reason: reason.rawValue, details: details, context: context)
+        )
+        return response.report
+    }
+
     func fetchMatches() async throws -> [MatchSummary] {
         let response: MatchesEnvelope = try await client.request(path: "matches")
         return response.matches
@@ -1407,6 +1425,16 @@ private struct PersonalActivityPhotoUploadEnvelope: Decodable {
 
 private struct SwipeEnvelope: Decodable {
     let match: MatchReference?
+}
+
+private struct UserSafetyRequest: Encodable {
+    let reason: String
+    let details: String?
+    let context: UserSafetyContext
+}
+
+private struct UserSafetyReportEnvelope: Decodable {
+    let report: UserSafetyReport
 }
 
 private struct MatchReference: Decodable {

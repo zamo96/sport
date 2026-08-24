@@ -16,6 +16,8 @@ protocol TennisRepository {
     func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser]
     func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser]
     func swipe(userId: String, action: SwipeAction) async throws -> String?
+    func reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport
+    func blockUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport
     func fetchMatches() async throws -> [MatchSummary]
     func ensureMatch(userId: String) async throws -> MatchSummary
     func fetchMyGameRequests() async throws -> [MatchGameRequest]

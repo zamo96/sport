@@ -7,7 +7,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameSearchResponseSchema } from "@/lib/validators";
 import { canAcceptGameSearchResponse } from "@/lib/game-search";
-import { lockActiveUsersForMutation } from "@/server/account-status";
+import { hasBlockBetweenUsers, lockActiveUsersForMutation } from "@/server/account-status";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -31,6 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
       if (!lockedUserIds.has(gameSearch.createdByUserId)) {
         throw new Error("SEARCH_OWNER_UNAVAILABLE");
+      }
+      if (await hasBlockBetweenUsers(tx, user.id, gameSearch.createdByUserId)) {
+        throw new Error("INTERACTION_UNAVAILABLE");
       }
 
       const lockedSearches = await tx.$queryRaw<Array<{
@@ -155,6 +158,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     if (getErrorMessage(error) === "SEARCH_OWNER_UNAVAILABLE") {
       return fail("Владелец поиска недоступен", 409);
+    }
+
+    if (getErrorMessage(error) === "INTERACTION_UNAVAILABLE") {
+      return fail("Взаимодействие с этим пользователем недоступно", 403);
     }
 
     if (getErrorMessage(error) === "UNAUTHORIZED") {

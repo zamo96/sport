@@ -3,6 +3,7 @@ import Foundation
 actor MockRepository: TennisRepository {
     private var slotProposalsBySearchId: [String: SearchSlotProposalSummary] = [:]
     private var personalActivities: [PersonalActivity] = []
+    private var blockedUserIDs: Set<String> = []
 
     private var currentUser = UserProfile(
         id: "u-anna",
@@ -137,6 +138,18 @@ actor MockRepository: TennisRepository {
             reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 5–6", "Недалеко: 2.9 км"]
         )
     ]
+
+    func reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport {
+        UserSafetyReport(id: UUID().uuidString, status: "pending", createdAt: ISO8601DateFormatter().string(from: Date()))
+    }
+
+    func blockUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport {
+        blockedUserIDs.insert(userId)
+        discoverUsers.removeAll { $0.id == userId }
+        incomingLikes.removeAll { $0.id == userId }
+        matches.removeAll { $0.otherUser.id == userId }
+        return UserSafetyReport(id: UUID().uuidString, status: "pending", createdAt: ISO8601DateFormatter().string(from: Date()))
+    }
 
     private var incomingLikes: [DiscoverUser] = []
     private var matches: [MatchSummary] = []

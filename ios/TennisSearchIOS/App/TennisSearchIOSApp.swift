@@ -13,6 +13,17 @@ struct TennisSearchIOSApp: App {
                 .task {
                     await appModel.bootstrap()
                 }
+                .onOpenURL { url in
+                    guard url.scheme?.lowercased() == "sportsearch" else { return }
+                    switch url.host?.lowercased() {
+                    case "upcoming":
+                        appModel.navigate(to: .discover(.upcoming))
+                    case "matches":
+                        appModel.navigate(to: .matches)
+                    default:
+                        break
+                    }
+                }
         }
     }
 }

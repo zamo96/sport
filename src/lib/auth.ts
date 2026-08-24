@@ -4,7 +4,11 @@ import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type
 import { cookies, headers } from "next/headers";
 
 import { AUTH_CODE_TTL_MINUTES, SESSION_COOKIE, SESSION_TTL_DAYS } from "@/lib/constants";
-import { buildUserAgreementAcceptanceRecord, type LegalAcceptanceSource } from "@/lib/legal-contract";
+import {
+  buildUserAgreementAcceptanceRecord,
+  type AcceptedUserAgreementVersion,
+  type LegalAcceptanceSource
+} from "@/lib/legal-contract";
 import { prisma } from "@/lib/prisma";
 
 type AppleIdentityTokenHeader = {
@@ -274,6 +278,7 @@ export function getLegalAcceptanceRequestMeta(request: Request) {
 export async function recordUserAgreementAcceptance(
   userId: string,
   source: LegalAcceptanceSource,
+  agreementVersion: AcceptedUserAgreementVersion,
   meta?: { ip?: string | null; userAgent?: string | null }
 ) {
   await prisma.userAgreementAcceptance.createMany({
@@ -281,6 +286,7 @@ export async function recordUserAgreementAcceptance(
       buildUserAgreementAcceptanceRecord({
         userId,
         source,
+        agreementVersion,
         ip: meta?.ip,
         userAgent: meta?.userAgent
       })
