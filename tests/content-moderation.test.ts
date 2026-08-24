@@ -4,9 +4,10 @@ import { isPublicTextAllowed, objectionableTextReason } from "@/lib/content-mode
 import {
   blockUserSchema,
   createContentReportSchema,
+  createGameSearchMessageSchema,
   createGameSearchResponseSchema,
   createGameSearchSchema,
-  messageSchema,
+  directMessageSchema,
   updateMeSchema
 } from "@/lib/validators";
 import { hasBlockBetweenUsers } from "@/server/account-status";
@@ -15,8 +16,14 @@ describe("objectionable content filter", () => {
   it("rejects explicit abuse and credible threats in public UGC", () => {
     expect(objectionableTextReason("Я убью тебя после игры")).toBe("credible_threat");
     expect(isPublicTextAllowed("fuck")).toBe(false);
-    expect(messageSchema.safeParse({ text: "ты еблан" }).success).toBe(false);
+    expect(createGameSearchMessageSchema.safeParse({ text: "ты еблан" }).success).toBe(false);
     expect(createGameSearchResponseSchema.safeParse({ message: "Я убью тебя" }).success).toBe(false);
+  });
+
+  it("allows unrestricted wording only in direct messages", () => {
+    expect(directMessageSchema.parse({ text: "  ты еблан  " }).text).toBe("ты еблан");
+    expect(directMessageSchema.safeParse({ text: "Я убью тебя после игры" }).success).toBe(true);
+    expect(createGameSearchMessageSchema.safeParse({ text: "Я убью тебя после игры" }).success).toBe(false);
   });
 
   it("does not flag normal sport, location, or name text", () => {

@@ -9,7 +9,7 @@ import {
   normalizeChatImage,
   serializeChatMessage
 } from "@/server/chat-media";
-import { createGameSearchMessageSchema, messageSchema } from "@/lib/validators";
+import { createGameSearchMessageSchema, directMessageSchema } from "@/lib/validators";
 import { parseChatMediaFiles } from "@/server/chat-media-multipart";
 
 describe("chat media validation", () => {
@@ -63,16 +63,15 @@ describe("chat media validation", () => {
 });
 
 describe("chat message attachment contract", () => {
-  it("requires text or at least one attachment and caps attachments at four", () => {
-    expect(messageSchema.safeParse({}).success).toBe(false);
-    expect(messageSchema.safeParse({ text: "Привет" }).success).toBe(true);
-    expect(messageSchema.safeParse({ attachmentIds: ["asset-1"] }).success).toBe(true);
-    expect(
-      createGameSearchMessageSchema.safeParse({
-        attachmentIds: ["1", "2", "3", "4", "5"]
-      }).success
-    ).toBe(false);
-    expect(messageSchema.safeParse({ attachmentIds: ["1", "1"] }).success).toBe(false);
+  it("keeps the same text and attachment invariants for direct and lobby messages", () => {
+    for (const schema of [directMessageSchema, createGameSearchMessageSchema]) {
+      expect(schema.safeParse({}).success).toBe(false);
+      expect(schema.safeParse({ text: "Привет" }).success).toBe(true);
+      expect(schema.safeParse({ attachmentIds: ["asset-1"] }).success).toBe(true);
+      expect(schema.safeParse({ attachmentIds: ["1", "2", "3", "4", "5"] }).success).toBe(false);
+      expect(schema.safeParse({ attachmentIds: ["1", "1"] }).success).toBe(false);
+      expect(schema.safeParse({ text: "x".repeat(501) }).success).toBe(false);
+    }
   });
 
   it("serializes ordered private URLs and provides photo-only previews", () => {

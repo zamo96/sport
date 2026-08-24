@@ -4,7 +4,7 @@ import { sendPushToUser } from "@/lib/apns";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
-import { messageSchema } from "@/lib/validators";
+import { directMessageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 import {
   chatMessageAttachmentsInclude,
@@ -63,7 +63,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await requireSessionUser();
-    const body = messageSchema.parse(await request.json());
+    const body = directMessageSchema.parse(await request.json());
     const gameRequest = await getGameRequestForUser(params.id, user.id);
 
     if (!gameRequest) {

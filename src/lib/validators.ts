@@ -364,18 +364,24 @@ export const swipeSchema = z.object({
   action: z.nativeEnum(SwipeAction)
 });
 
-export const messageSchema = z
-  .object({
-    text: publicText(500).optional().default(""),
-    attachmentIds: z.array(z.string().min(1)).max(4).optional().default([])
-  })
-  .refine((value) => value.text.length > 0 || value.attachmentIds.length > 0, {
-    message: "Добавьте текст или фото"
-  })
-  .refine((value) => new Set(value.attachmentIds).size === value.attachmentIds.length, {
-    message: "Вложения не должны повторяться",
-    path: ["attachmentIds"]
-  });
+function createMessageSchema(textSchema: z.ZodType<string>) {
+  return z
+    .object({
+      text: textSchema.optional().default(""),
+      attachmentIds: z.array(z.string().min(1)).max(4).optional().default([])
+    })
+    .refine((value) => value.text.length > 0 || value.attachmentIds.length > 0, {
+      message: "Добавьте текст или фото"
+    })
+    .refine((value) => new Set(value.attachmentIds).size === value.attachmentIds.length, {
+      message: "Вложения не должны повторяться",
+      path: ["attachmentIds"]
+    });
+}
+
+export const directMessageSchema = createMessageSchema(z.string().trim().max(500));
+
+export const createGameSearchMessageSchema = createMessageSchema(publicText(500));
 
 export const courtsQuerySchema = z.object({
   sport: z.nativeEnum(Sport).optional(),
@@ -674,8 +680,6 @@ export const updateRegularPairOccurrenceSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, {
   message: "Нужно передать подтверждение или новые параметры слота"
 });
-
-export const createGameSearchMessageSchema = messageSchema;
 
 export const createGameSearchSlotProposalSchema = z.object({
   comment: publicText(240).optional().default(""),
