@@ -1,4 +1,9 @@
-import { LEGAL_OPERATOR } from "@/lib/legal-contract";
+import {
+  LEGAL_OPERATOR,
+  USER_AGREEMENT_EFFECTIVE_DATE,
+  USER_AGREEMENT_TITLE,
+  USER_AGREEMENT_VERSION
+} from "@/lib/legal-contract";
 
 export {
   ACCEPTED_USER_AGREEMENT_VERSIONS,
@@ -21,6 +26,21 @@ export type UserAgreementSection = {
   title: string;
   paragraphs?: string[];
   bullets?: string[];
+};
+
+export type LegalLanguage = "ru" | "en";
+
+export type UserAgreementDocument = {
+  language: LegalLanguage;
+  title: string;
+  description: string;
+  version: string;
+  effectiveDate: string;
+  backLabel: string;
+  versionLabel: string;
+  effectiveDateLabel: string;
+  operatorLabel: string;
+  sections: UserAgreementSection[];
 };
 
 export const PRIVACY_POLICY_VERSION = "2026-07-07";
@@ -263,3 +283,187 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
     bullets: LEGAL_OPERATOR_DETAILS
   }
 ];
+
+const LEGAL_OPERATOR_DETAILS_EN = [
+  `Operator: ${LEGAL_OPERATOR.legalName}`,
+  LEGAL_OPERATOR.inn
+    ? `Taxpayer Identification Number (INN): ${LEGAL_OPERATOR.inn.replace(/^ИНН:\s*/, "")}`
+    : "",
+  LEGAL_OPERATOR.ogrn,
+  LEGAL_OPERATOR.address,
+  `Contact email: ${LEGAL_OPERATOR.email}`
+].filter(Boolean);
+
+// Keep this document structurally aligned with USER_AGREEMENT_SECTIONS. The
+// Russian text remains the governing source; this is its complete English version.
+export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
+  {
+    title: "1. General provisions",
+    paragraphs: [
+      `These Terms of Use govern the relationship between ${LEGAL_OPERATOR.legalName} (the “Operator”) and the person using the ${LEGAL_OPERATOR.serviceName} service through the website, PWA, iOS application, API, or other service interfaces (the “User”).`,
+      "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. Registration, signing in to an account, email confirmation, signing in with Apple ID, checking the consent box, or continued use of the service constitutes full and unconditional acceptance of these Terms.",
+      "If the User does not agree to these Terms, the User must discontinue registration and must not use service features that require an account."
+    ]
+  },
+  {
+    title: "2. Definitions",
+    bullets: [
+      "Service means the SportSearch software suite for finding sports partners, game requests, chats, notifications, and related features.",
+      "Account means the User account created using an email code or Apple ID.",
+      "Profile means information provided by the User in the service, including name, age, city, district, sports, skill level, availability, photos, videos, and other data.",
+      "Content means texts, messages, photos, videos, reviews, requests, responses, and other materials posted by the User.",
+      "Game Request means a game offer or search created by the User to arrange the sport, time, place, and participants."
+    ]
+  },
+  {
+    title: "3. Scope of the Terms",
+    paragraphs: [
+      "The Operator provides the User with the technical ability to create a profile, find sports partners, respond to game requests, communicate through chats, receive service notifications, and use other available features.",
+      "The Operator is not an organizer of sporting events, a coach, a medical adviser, an owner of sports facilities, or a party to arrangements between Users unless expressly stated otherwise.",
+      "Users independently agree on the place, time, facility fees, meeting rules, and other terms of playing together."
+    ]
+  },
+  {
+    title: "4. Registration and account",
+    bullets: [
+      "Registration is available to persons aged 18 or older. By creating an Account, the User confirms that they are at least 18 years old and have full legal capacity.",
+      "The User must provide a valid email address and must not use another person's Apple ID, email, name, photos, or other data.",
+      "The User is responsible for securing access to their email, Apple ID, device, and application session.",
+      "The Operator may refuse registration or restrict or terminate access if the User violates these Terms, applicable law, third-party rights, or standards of good-faith conduct within the service."
+    ]
+  },
+  {
+    title: "5. Profile, search, and meetings",
+    bullets: [
+      "The User independently selects sports, skill level, district, availability, search radius, and other profile settings.",
+      "Recommendation algorithms use profile, activity, geographic, and game-related parameters to select cards, searches, and notifications.",
+      "The User understands that sports involve physical exertion and a risk of injury. Before participating in a game, the User independently assesses their health, fitness level, and facility conditions.",
+      "The Operator does not guarantee the availability of suitable partners or sports facilities, attendance by other Users, or the quality of meetings."
+    ]
+  },
+  {
+    title: "6. Rules of conduct",
+    bullets: [
+      "The service has zero tolerance for objectionable, offensive, or unlawful Content, as well as for Users who threaten, harass, demean others, or otherwise abuse service features.",
+      "Threats, insults, discrimination, harassment, spam, fraud, impersonation, and actions that violate the rights of other Users are prohibited.",
+      "Posting unlawful, harmful, pornographic, extremist, defamatory, or rights-infringing Content is prohibited.",
+      "Collecting, publishing, or transmitting other Users' personal data without a lawful basis and their consent is prohibited.",
+      "Interfering with the service, bypassing restrictions, using bots, bulk extraction, scraping, or unauthorized access is prohibited."
+    ]
+  },
+  {
+    title: "7. Moderation and restrictions",
+    paragraphs: [
+      "The Operator may review reports, hide, remove, or restrict the distribution of Content, and block Accounts and technical identifiers when necessary to comply with the law, protect Users, prevent abuse, or ensure stable operation of the service.",
+      "A User may report another User's Profile or materials and block that User using the mechanisms available in the service. After blocking, the blocked User's Content is immediately removed from the blocking User's feed, and the Operator is notified for review.",
+      "The Operator reviews reports of objectionable Content and abuse within 24 hours. If a violation is confirmed, the Operator removes or hides the relevant Content and ejects the offending User from the service.",
+      "The Operator may temporarily restrict service features during maintenance, in the event of errors or suspected security violations, or as required by law."
+    ]
+  },
+  {
+    title: "8. Personal data",
+    paragraphs: [
+      "By registering for and using the service, the User consents to the Operator's processing of personal data in accordance with Federal Law No. 152-FZ of July 27, 2006, On Personal Data.",
+      "The Operator may process the User's email, Apple ID identifier, name, age, gender, city, district, preferred districts, sports, skill level, availability, photos, videos, messages, game requests, activity data, push tokens, device technical data, IP address, user agent, and other data submitted by the User when using the service.",
+      "The purposes of processing are creating and maintaining an Account, verifying an email address or Apple ID, matching sports partners, displaying the Profile to other Users within service features, enabling chats and game requests, sending service notifications, maintaining security, preventing abuse, providing User support, analyzing service quality, and complying with legal requirements.",
+      "Consent remains valid until the Account is deleted, consent is withdrawn, or the purposes of processing are achieved, unless a longer retention period is required by law or for the protection of the rights of the Operator and Users."
+    ]
+  },
+  {
+    title: "9. Consent to data distribution within the service",
+    paragraphs: [
+      "The User understands that some Profile and game request data may be shown to other Users to find partners and arrange games. Such data may include name, age, city, district, sports, skill level, availability, photos, videos, Profile description, active searches, and game offers.",
+      "The User must not post data that they do not want to show to other Users and may change or delete certain Profile information when the relevant feature is available."
+    ]
+  },
+  {
+    title: "10. Notifications",
+    paragraphs: [
+      "The service may send verification codes and notifications about matches, game requests, chats, status changes, Account security, and other events necessary for the operation of the service.",
+      "Advertising communications, if introduced, will be sent only with the User's separate consent where such consent is required by law."
+    ]
+  },
+  {
+    title: "11. Intellectual property",
+    paragraphs: [
+      "Exclusive rights to the service, interfaces, software code, design, databases, trademarks, and other service elements belong to the Operator or its rights holders.",
+      "By posting Content, the User confirms that they have the rights to it and grants the Operator a non-exclusive, royalty-free license to store, process, reproduce, display, adapt, and make the Content available to other Users to the extent necessary for the operation of the service."
+    ]
+  },
+  {
+    title: "12. Paid features",
+    paragraphs: [
+      "If paid features, subscriptions, or premium capabilities become available in the service, their price, payment procedure, duration, renewal terms, and refund conditions will be stated in the service interface, the application store rules, or a separate offer.",
+      "Nothing in these Terms limits consumer rights that cannot be limited under the laws of the Russian Federation."
+    ]
+  },
+  {
+    title: "13. Liability",
+    paragraphs: [
+      "The service is provided “as is” to the extent permitted by law. The Operator strives to maintain service availability and correct operation but does not guarantee uninterrupted operation, absence of errors, compatibility with every device, or achievement of any particular sporting result.",
+      "The Operator is not liable for Users' acts or omissions, the accuracy of information they post, the quality of sports facilities, injuries, losses, or disputes arising during in-person meetings unless otherwise expressly required by law.",
+      "Limitations of liability apply only to the extent permitted by mandatory provisions of the laws of the Russian Federation."
+    ]
+  },
+  {
+    title: "14. Changes to the Terms",
+    paragraphs: [
+      "The Operator may amend these Terms. A new version will be published in the service together with its version number and effective date.",
+      "If changes materially affect the User's rights or obligations, the Operator may request renewed consent upon the next sign-in, registration, or use of a material feature."
+    ]
+  },
+  {
+    title: "15. Account deletion and withdrawal of consent",
+    paragraphs: [
+      "The User may contact the Operator to delete their Account, correct, block, or delete personal data, or withdraw consent to personal-data processing.",
+      "Withdrawal of consent may make it impossible to use the Account and service features that require data processing. The Operator may continue to retain certain information if required by law, accounting obligations, security, dispute resolution, or the protection of rights."
+    ]
+  },
+  {
+    title: "16. Governing law and disputes",
+    paragraphs: [
+      "These Terms are governed by the laws of the Russian Federation.",
+      "Before commencing court proceedings, the parties will seek to resolve a dispute by sending a written claim to the Operator's contact email. The response period is 30 calendar days unless a different period is established by law.",
+      "Jurisdiction is determined under the laws of the Russian Federation, including mandatory consumer-protection rules where applicable."
+    ]
+  },
+  {
+    title: "17. Operator details and contacts",
+    bullets: LEGAL_OPERATOR_DETAILS_EN
+  }
+];
+
+export const USER_AGREEMENT_DOCUMENTS: Record<LegalLanguage, UserAgreementDocument> = {
+  ru: {
+    language: "ru",
+    title: USER_AGREEMENT_TITLE,
+    description: "Пользовательское соглашение сервиса SportSearch",
+    version: USER_AGREEMENT_VERSION,
+    effectiveDate: USER_AGREEMENT_EFFECTIVE_DATE,
+    backLabel: "Назад к регистрации",
+    versionLabel: "Редакция",
+    effectiveDateLabel: "Дата вступления в силу",
+    operatorLabel: "Оператор",
+    sections: USER_AGREEMENT_SECTIONS
+  },
+  en: {
+    language: "en",
+    title: "SportSearch Terms of Use",
+    description: "Terms of Use for the SportSearch service",
+    version: USER_AGREEMENT_VERSION,
+    effectiveDate: "August 24, 2026",
+    backLabel: "Back to registration",
+    versionLabel: "Version",
+    effectiveDateLabel: "Effective date",
+    operatorLabel: "Operator",
+    sections: USER_AGREEMENT_SECTIONS_EN
+  }
+};
+
+export function resolveLegalLanguage(value: string | string[] | undefined): LegalLanguage {
+  return value === "en" ? "en" : "ru";
+}
+
+export function getUserAgreementDocument(value: string | string[] | undefined): UserAgreementDocument {
+  return USER_AGREEMENT_DOCUMENTS[resolveLegalLanguage(value)];
+}
