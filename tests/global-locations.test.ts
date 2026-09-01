@@ -26,7 +26,7 @@ import {
   selectCanonicalNominatimSettlement,
   shouldPreserveCurrentGlobalLocation
 } from "@/server/locations";
-import { catalogCitiesForCountry, searchCatalogCities } from "@/server/world-city-catalog";
+import { catalogCitiesForCountry, findNearestCatalogCity, searchCatalogCities } from "@/server/world-city-catalog";
 
 describe("global locations", () => {
   beforeEach(() => {
@@ -258,5 +258,26 @@ describe("global locations", () => {
       city: "Москва",
       coverage: { clubsEnabled: true, districtsEnabled: true }
     });
+  });
+  it("names a city worldwide from the packaged catalog when no geocoder is configured", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const place = await reverseGeocode({ latitude: 55.0084, longitude: 82.9357 });
+    expect(place).toMatchObject({
+      id: "simplemaps:1643399240",
+      countryCode: "RU",
+      city: "Новосибирск",
+      coverage: { isSupported: false }
+    });
+  });
+
+  it("returns nothing when no catalog city is within reach", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect(await reverseGeocode({ latitude: 0, longitude: -140 })).toBeNull();
+  });
+
+  it("picks the closest catalog city and respects the radius", () => {
+    expect(findNearestCatalogCity(52.52, 13.405, 100)).toMatchObject({ city: "Berlin", countryCode: "DE" });
+    expect(findNearestCatalogCity(-33.8688, 151.2093, 100)).toMatchObject({ countryCode: "AU" });
+    expect(findNearestCatalogCity(0, -140, 100)).toBeNull();
   });
 });

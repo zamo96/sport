@@ -124,3 +124,37 @@ function parseRow(row: WorldCitiesJsonRow): CatalogCity | null {
 function localizedCityName(row: WorldCitiesJsonRow) {
   return row.iso2.toUpperCase() === "RU" ? RUSSIAN_CITY_NAMES[row.id] ?? row.city : row.city;
 }
+
+export function findNearestCatalogCity(latitude: number, longitude: number, maxDistanceKm: number): CatalogCity | null {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  // Latitude degrees are a constant distance apart, so a band around the point is a safe prefilter
+  // that never discards a row inside the radius, including across the antimeridian.
+  const latitudeWindow = maxDistanceKm / 111 + 0.01;
+  let nearest: { city: CatalogCity; distance: number } | null = null;
+
+  for (const countryRows of getCatalogIndex().values()) {
+    for (const row of countryRows) {
+      if (Math.abs(Number(row.lat) - latitude) > latitudeWindow) continue;
+      const city = parseRow(row);
+      if (!city) continue;
+      const distance = catalogDistanceKm(latitude, longitude, city.latitude, city.longitude);
+      if (distance > maxDistanceKm) continue;
+      if (!nearest || distance < nearest.distance || (distance === nearest.distance && city.population > nearest.city.population)) {
+        nearest = { city, distance };
+      }
+    }
+  }
+
+  return nearest?.city ?? null;
+}
+
+function catalogDistanceKm(fromLat: number, fromLng: number, toLat: number, toLng: number) {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const latDelta = toRadians(toLat - fromLat);
+  const lngDelta = toRadians(toLng - fromLng);
+  const a =
+    Math.sin(latDelta / 2) ** 2 +
+    Math.cos(toRadians(fromLat)) * Math.cos(toRadians(toLat)) * Math.sin(lngDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}

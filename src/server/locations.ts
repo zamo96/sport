@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import {
   type CatalogCity,
   catalogCountries,
+  findNearestCatalogCity,
   searchCatalogCities
 } from "@/server/world-city-catalog";
 
@@ -18,6 +19,9 @@ const NOMINATIM_URL = CONFIGURED_PROVIDER_URL || "https://nominatim.openstreetma
 const PROVIDER_TIMEOUT_MS = 4_500;
 const PROVIDER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PROVIDER_MIN_INTERVAL_MS = 1_100;
+// Wide enough to name a settlement in sparsely covered regions, tight enough that the answer
+// still describes where the player actually is.
+const CATALOG_REVERSE_MAX_KM = 100;
 
 export const LOCATION_CATALOG_ATTRIBUTION = {
   name: "SimpleMaps World Cities Database",
@@ -259,6 +263,14 @@ export async function reverseGeocode(input: { latitude: number; longitude: numbe
     if (place) return place;
   } catch {
     // A nearby built-in place is a safe availability fallback; arbitrary client labels are never accepted.
+  }
+
+  // The packaged catalog resolves coordinates worldwide without a provider, so reverse geocoding
+  // still works when no geocoder is configured. Catalog rows reconcile to legacy places by ID.
+  const nearestCatalogCity = findNearestCatalogCity(input.latitude, input.longitude, CATALOG_REVERSE_MAX_KM);
+  if (nearestCatalogCity) {
+    const [catalogPlace] = await persistReturnedCatalogPlaces([nearestCatalogCity], 1);
+    if (catalogPlace) return catalogPlace;
   }
 
   const nearest = LEGACY_PLACES.map((place) => ({ place, distance: distanceKm(input, place) }))
