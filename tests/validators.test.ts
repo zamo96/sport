@@ -240,6 +240,17 @@ describe("validators contract (profile age)", () => {
     expect(result.success).toBe(false);
   });
 
+  it("guestOnboardingDraftSchema: accepts an arbitrary city only with a server place id", () => {
+    expect(
+      guestOnboardingDraftSchema.safeParse({
+        ...validGuestDraft,
+        city: "Берлин",
+        locationPlaceId: "nominatim:relation:62422"
+      }).success
+    ).toBe(true);
+    expect(guestOnboardingDraftSchema.safeParse({ ...validGuestDraft, city: "Берлин" }).success).toBe(false);
+  });
+
   it("updateMeSchema: accepts legacy profiles without tennisLevel when sport levels are present", () => {
     expect(
       updateMeSchema.safeParse({
@@ -250,6 +261,36 @@ describe("validators contract (profile age)", () => {
         notificationSound: true
       }).success
     ).toBe(true);
+  });
+
+  it("updateMeSchema: accepts a server-issued global place without a legacy city", () => {
+    const { city: _city, ...profile } = validGuestDraft;
+    expect(
+      updateMeSchema.safeParse({
+        ...profile,
+        locationPlaceId: "nominatim:relation:62422",
+        locationSource: "manual"
+      }).success
+    ).toBe(true);
+  });
+
+  it("updateMeSchema: ignores compatibility city labels when a place id is present", () => {
+    expect(
+      updateMeSchema.safeParse({
+        ...validGuestDraft,
+        city: "Берлин",
+        locationPlaceId: "nominatim:relation:62422"
+      }).success
+    ).toBe(true);
+  });
+
+  it("updateMeSchema: accepts an existing global city echoed by an old client", () => {
+    expect(updateMeSchema.safeParse({ ...validGuestDraft, city: "Берлин" }).success).toBe(true);
+  });
+
+  it("updateMeSchema: requires either a place id or a supported legacy city", () => {
+    const { city: _city, ...profile } = validGuestDraft;
+    expect(updateMeSchema.safeParse(profile).success).toBe(false);
   });
 });
 

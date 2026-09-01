@@ -31,6 +31,14 @@ export async function ensureGroupSearchLobby(
 
   const primaryRequest = selectPrimaryGroupRequest(uniqueRequests);
   const nextStatus = resolveSearchStatus(uniqueRequests);
+  const ownerLocation = await db.user.findUnique({
+    where: { id: primaryRequest.createdByUserId },
+    select: {
+      city: true,
+      locationPlaceId: true,
+      location: { select: { countryCode: true, city: true } }
+    }
+  });
   const existing = options.existingLobbyId
     ? await db.gameSearch.findUnique({
         where: { id: options.existingLobbyId },
@@ -57,6 +65,9 @@ export async function ensureGroupSearchLobby(
 
   const lobbyData = {
     preferredCourtId: primaryRequest.proposedCourtId,
+    locationPlaceId: ownerLocation?.locationPlaceId ?? null,
+    locationCountryCode: ownerLocation?.location?.countryCode ?? null,
+    locationCity: ownerLocation?.location?.city ?? ownerLocation?.city ?? null,
     scheduledCourtId: primaryRequest.proposedCourtId,
     preferredDays: [] as Prisma.InputJsonValue,
     preferredTimeRanges: [] as Prisma.InputJsonValue,

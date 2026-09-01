@@ -11,6 +11,7 @@ import {
   scoreCandidates
 } from "@/lib/scoring";
 import type { GuestOnboardingDraft } from "@/lib/guest-draft";
+import { getLocationPlace } from "@/server/locations";
 import { recordDiscoverImpressions, rerankDiscoverCandidates } from "@/server/recommendations";
 
 const candidateBaseSelect = {
@@ -19,6 +20,8 @@ const candidateBaseSelect = {
   age: true,
   gender: true,
   city: true,
+  locationPlaceId: true,
+  location: { include: { serviceArea: true } },
   district: true,
   preferredDistricts: true,
   bio: true,
@@ -214,6 +217,10 @@ function filterCandidatesForView(
           return false;
         }
 
+        if (viewer.locationPlaceId && search.locationPlaceId && viewer.locationPlaceId !== search.locationPlaceId) {
+          return false;
+        }
+
         return viewerSports.includes(search.sport);
       });
 
@@ -235,6 +242,7 @@ function toCandidateViewer(viewer: CandidateUser) {
     age: viewer.age,
     gender: viewer.gender,
     city: viewer.city,
+    locationPlaceId: viewer.locationPlaceId,
     district: viewer.district,
     preferredDistricts: viewer.preferredDistricts,
     bio: viewer.bio,
@@ -288,8 +296,16 @@ export async function getDiscoverCandidates(userId: string, filters: DiscoverFil
 }
 
 export async function getDiscoverCandidatesForGuestDraft(draft: GuestOnboardingDraft, filters: DiscoverFilters = {}) {
-  const primaryDistrict = draft.preferredDistricts[0] ?? draft.district ?? null;
-  const location = resolveLocationFromDistrict(primaryDistrict) ?? (await resolveLocationFromCity(draft.city));
+  const canonicalPlace = draft.locationPlaceId ? await getLocationPlace(draft.locationPlaceId) : null;
+  if (draft.locationPlaceId && !canonicalPlace) {
+    throw new Error("Выбранный город не найден. Выполните поиск города ещё раз");
+  }
+  const preferredDistricts = canonicalPlace && !canonicalPlace.coverage.districtsEnabled ? [] : draft.preferredDistricts;
+  const primaryDistrict = preferredDistricts[0] ?? (canonicalPlace && !canonicalPlace.coverage.districtsEnabled ? null : draft.district) ?? null;
+  const districtLocation = resolveLocationFromDistrict(primaryDistrict);
+  const location = canonicalPlace
+    ? { lat: canonicalPlace.latitude, lng: canonicalPlace.longitude }
+    : districtLocation ?? (await resolveLocationFromCity(draft.city));
   const sportLevels = normalizeSportLevels(draft.sportLevels, draft.preferredSports, 5);
   const tennisLevel = getPrimarySportLevel(draft.preferredSports, sportLevels, 5);
   const availabilityByDay = Object.fromEntries(
@@ -308,9 +324,10 @@ export async function getDiscoverCandidatesForGuestDraft(draft: GuestOnboardingD
     name: draft.name,
     age: draft.age,
     gender: draft.gender ?? null,
-    city: draft.city,
+    city: canonicalPlace?.city ?? draft.city,
+    locationPlaceId: canonicalPlace?.id ?? null,
     district: primaryDistrict,
-    preferredDistricts: draft.preferredDistricts,
+    preferredDistricts,
     bio: null,
     avatarUrl: null,
     homeLat: location?.lat ?? null,

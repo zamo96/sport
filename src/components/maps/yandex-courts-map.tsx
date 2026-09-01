@@ -7,10 +7,12 @@ import {
   DEFAULT_CITY_COORDINATES,
   DISTRICT_MAP_AREAS,
   SPORT_EMOJIS,
-  SPORT_LABELS,
   getDistrictArea
 } from "@/lib/constants";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { getPrimaryCourtSport, normalizeCourtSports } from "@/lib/courts";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
+import { translateCourts } from "@/lib/i18n/web/courts";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { loadYandexMaps } from "@/lib/maps/yandex";
 import { Panel } from "@/components/ui/panel";
@@ -54,8 +56,10 @@ export function YandexCourtsMap({
       }
     | null;
 }) {
+  const { locale } = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"apiKey" | "load" | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const apiKey = getYandexMapsApiKey();
   const initialLocation = useMemo(() => {
     if (focus?.type === "metro" || focus?.type === "club") {
@@ -99,19 +103,34 @@ export function YandexCourtsMap({
   useEffect(() => {
     let mapInstance: { destroy: () => void } | null = null;
     let cancelled = false;
+    const requestedMapLocale = locale === "ru" ? "ru_RU" : "en_US";
 
     async function initMap() {
       if (!containerRef.current) {
         return;
       }
 
+      setIsLoading(true);
+      setError(null);
+
       if (!apiKey) {
-        setError("Добавь NEXT_PUBLIC_YANDEX_MAPS_API_KEY, чтобы включить карту.");
+        setError("apiKey");
+        setIsLoading(false);
+        return;
+      }
+
+      const loadedMapScript = document.querySelector<HTMLScriptElement>('script[data-map-provider="yandex"]');
+      if (
+        window.ymaps3 &&
+        loadedMapScript?.dataset.mapLanguage &&
+        loadedMapScript.dataset.mapLanguage !== requestedMapLocale
+      ) {
+        window.location.reload();
         return;
       }
 
       try {
-        const ymaps3 = await loadYandexMaps(apiKey, "ru_RU");
+        const ymaps3 = await loadYandexMaps(apiKey, requestedMapLocale);
         if (cancelled || !containerRef.current) {
           return;
         }
@@ -204,7 +223,7 @@ export function YandexCourtsMap({
             const sportEmoji = SPORT_EMOJIS[primarySport];
             const isFocusedCourt = focus?.type === "club" && focus.courtId === court.id;
             const sportLabels = normalizeCourtSports(court.supportedSports)
-              .map((sport) => SPORT_LABELS[sport as Sport])
+              .map((sport) => getAuthSportLabel(locale, sport as Sport))
               .join(" · ");
             const markerElement = document.createElement("a");
             markerElement.href = `/play/proposals/new?courtId=${court.id}`;
@@ -251,9 +270,11 @@ export function YandexCourtsMap({
 
         mapInstance = map;
         setError(null);
-      } catch (mapError) {
+        setIsLoading(false);
+      } catch {
         if (!cancelled) {
-          setError(mapError instanceof Error ? mapError.message : "Не удалось загрузить Яндекс Карты.");
+          setError("load");
+          setIsLoading(false);
         }
       }
     }
@@ -264,13 +285,36 @@ export function YandexCourtsMap({
       cancelled = true;
       mapInstance?.destroy();
     };
-  }, [apiKey, compact, courts, district, focus, initialLocation, radiusKm]);
+  }, [apiKey, compact, courts, district, focus, initialLocation, locale, radiusKm]);
 
   if (error) {
-    return <Panel className="text-sm leading-6 text-ink/70">{error}</Panel>;
+    return (
+      <div role="alert">
+        <Panel className="text-sm leading-6 text-ink/70">
+          {translateCourts(locale, error === "apiKey" ? "courts.map.apiKeyError" : "courts.map.loadError")}
+        </Panel>
+      </div>
+    );
   }
 
-  return <div ref={containerRef} className={`${compact ? "h-[220px]" : "h-[420px]"} w-full overflow-hidden rounded-[28px]`} />;
+  return (
+    <div className="relative" aria-busy={isLoading}>
+      <div
+        ref={containerRef}
+        className={`${compact ? "h-[220px]" : "h-[420px]"} w-full overflow-hidden rounded-[28px]`}
+        role="region"
+        aria-label={translateCourts(locale, "courts.map.label")}
+      />
+      {isLoading ? (
+        <div
+          className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-cream/90 text-sm font-semibold text-ink/65"
+          role="status"
+        >
+          {translateCourts(locale, "courts.map.loading")}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function getVisibleCourtsForZoom(

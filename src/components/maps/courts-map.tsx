@@ -1,6 +1,8 @@
 "use client";
 
 import { getMapProvider } from "@/lib/maps/config";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { translateCourts } from "@/lib/i18n/web/courts";
 import { Panel } from "@/components/ui/panel";
 import { YandexCourtsMap } from "@/components/maps/yandex-courts-map";
 
@@ -44,6 +46,7 @@ export function CourtsMap({
   compact?: boolean;
   focus?: CourtsMapFocus | null;
 }) {
+  const { locale } = useLocale();
   const provider = getMapProvider();
 
   if (provider === "yandex") {
@@ -52,8 +55,7 @@ export function CourtsMap({
 
   return (
     <Panel className="text-sm leading-6 text-ink/70">
-      Карта отключена. Укажи `NEXT_PUBLIC_MAP_PROVIDER=yandex` и `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`,
-      чтобы включить Яндекс Карты.
+      {translateCourts(locale, "courts.map.disabled")}
     </Panel>
   );
 }

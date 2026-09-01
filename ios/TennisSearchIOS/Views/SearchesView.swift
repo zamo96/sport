@@ -164,7 +164,7 @@ struct SearchesView: View {
     private var nextUpcomingLine: String {
         let candidates = visibleSearches.compactMap(nextEventDate(for:))
         guard let next = candidates.sorted().first else {
-            return "Пока нет"
+            return L10n.string("None yet", "Пока нет")
         }
         return next.formattedShortRelative()
     }
@@ -195,10 +195,10 @@ struct SearchesView: View {
         let completed = visibleSearches.filter { isOwnedSearch($0) && isCompletedSearch($0) }
 
         return [
-            SearchSectionModel(id: "active", title: "Активные", subtitle: "Поиски, которые сейчас видят игроки.", searches: active),
-            SearchSectionModel(id: "applications", title: "Мои отклики", subtitle: "Поиски других игроков, куда ты уже откликнулся.", searches: applications),
-            SearchSectionModel(id: "paused", title: "Остановлены", subtitle: "Эти поиски сняты с показа и ждут перезапуска.", searches: paused),
-            SearchSectionModel(id: "completed", title: "Завершены", subtitle: "Игроки найдены или поиск уже закрыт.", searches: completed)
+            SearchSectionModel(id: "active", title: L10n.string("Active", "Активные"), subtitle: L10n.string("Searches currently visible to players.", "Поиски, которые сейчас видят игроки."), searches: active),
+            SearchSectionModel(id: "applications", title: L10n.string("My responses", "Мои отклики"), subtitle: L10n.string("Other players’ searches you have responded to.", "Поиски других игроков, куда ты уже откликнулся."), searches: applications),
+            SearchSectionModel(id: "paused", title: L10n.string("Paused", "Остановлены"), subtitle: L10n.string("These searches are hidden and waiting to be resumed.", "Эти поиски сняты с показа и ждут перезапуска."), searches: paused),
+            SearchSectionModel(id: "completed", title: L10n.string("Completed", "Завершены"), subtitle: L10n.string("Players have been found or the search is closed.", "Игроки найдены или поиск уже закрыт."), searches: completed)
         ]
         .filter { !$0.searches.isEmpty }
     }
@@ -313,7 +313,7 @@ struct SearchesView: View {
 
     private var searchesHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Мои поиски")
+            Text(L10n.string("My searches", "Мои поиски"))
                 .font(.system(size: 25, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -341,7 +341,7 @@ struct SearchesView: View {
                     .frame(width: 24, height: 24)
 
                 if isCreateFABExpanded {
-                    Text("Создать поиск")
+                    Text(L10n.string("Create search", "Создать поиск"))
                         .font(.system(size: 16, weight: .semibold))
                         .lineLimit(1)
                         .transition(.opacity)
@@ -358,7 +358,7 @@ struct SearchesView: View {
         .animation(.spring(response: 0.22, dampingFraction: 0.65), value: createButtonPressed)
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86), value: isCreateFABExpanded)
         .buttonStyle(.plain)
-        .accessibilityLabel("Создать поиск")
+        .accessibilityLabel(L10n.string("Create search", "Создать поиск"))
         .padding(.trailing, 18)
         .padding(.bottom, createSearchFABBottomPadding)
     }
@@ -404,17 +404,17 @@ struct SearchesView: View {
 
     private var emptySearchesState: some View {
         SectionCard(
-            title: activeSearchCount == 0 ? "Активных поисков нет" : "Пока пусто",
+            title: activeSearchCount == 0 ? L10n.string("No active searches", "Активных поисков нет") : L10n.string("Nothing here yet", "Пока пусто"),
             subtitle: activeSearchCount == 0
-                ? "Создай поиск, чтобы игроки рядом могли откликнуться."
-                : "В этом разделе сейчас нет поисков."
+                ? L10n.string("Create a search so nearby players can respond.", "Создай поиск, чтобы игроки рядом могли откликнуться.")
+                : L10n.string("There are no searches in this section right now.", "В этом разделе сейчас нет поисков.")
         ) {
             VStack(spacing: 14) {
                 EmptyStateView(
-                    title: activeSearchCount == 0 ? "Создай свой поиск" : "Нет поисков в этом разделе",
+                    title: activeSearchCount == 0 ? L10n.string("Create your search", "Создай свой поиск") : L10n.string("No searches in this section", "Нет поисков в этом разделе"),
                     subtitle: activeSearchCount == 0
-                        ? "Укажи вид спорта, время и место. Отклики появятся здесь."
-                        : "Смени фильтр или вернись позже.",
+                        ? L10n.string("Choose a sport, time, and place. Responses will appear here.", "Укажи вид спорта, время и место. Отклики появятся здесь.")
+                        : L10n.string("Change the filter or come back later.", "Смени фильтр или вернись позже."),
                     systemImage: "magnifyingglass.circle"
                 )
             }
@@ -423,13 +423,13 @@ struct SearchesView: View {
 
     private var summaryStrip: some View {
         HStack(spacing: 0) {
-            summaryCell(title: "Активные срочные", value: "\(activeSearchCount)", accent: AppTheme.court, systemImage: "flame")
+            summaryCell(title: L10n.string("Active urgent", "Активные срочные"), value: "\(activeSearchCount)", accent: AppTheme.court, systemImage: "flame")
             Divider()
                 .frame(height: 44)
-            summaryCell(title: "Новые отклики", value: "\(pendingResponsesCount)", accent: .red.opacity(0.9), systemImage: "person.2")
+            summaryCell(title: L10n.string("New responses", "Новые отклики"), value: "\(pendingResponsesCount)", accent: .red.opacity(0.9), systemImage: "person.2")
             Divider()
                 .frame(height: 44)
-            summaryCell(title: "Ближайшая игра", value: nextUpcomingLine, accent: AppTheme.court, systemImage: "clock")
+            summaryCell(title: L10n.string("Next game", "Ближайшая игра"), value: nextUpcomingLine, accent: AppTheme.court, systemImage: "clock")
         }
         .padding(.vertical, 14)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -632,11 +632,11 @@ private enum SearchListFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "Все"
-        case .active: return "Активные"
-        case .withResponses: return "С откликами"
-        case .paused: return "На паузе"
-        case .completed: return "Завершённые"
+        case .all: return L10n.string("All", "Все")
+        case .active: return L10n.string("Active", "Активные")
+        case .withResponses: return L10n.string("With responses", "С откликами")
+        case .paused: return L10n.string("Paused", "На паузе")
+        case .completed: return L10n.string("Completed", "Завершённые")
         }
     }
 }
@@ -686,10 +686,10 @@ private enum SearchResponsesFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "Все"
-        case .pending: return "Новые"
-        case .approved: return "Одобрены"
-        case .rejected: return "Отклонены"
+        case .all: return L10n.string("All", "Все")
+        case .pending: return L10n.string("New", "Новые")
+        case .approved: return L10n.string("Approved", "Одобрены")
+        case .rejected: return L10n.string("Rejected", "Отклонены")
         }
     }
 
@@ -789,20 +789,20 @@ private struct SearchOverviewCard: View {
     private var headlineText: String {
         if !isOwnedByCurrentUser {
             if let min = search.desiredLevelMin, let max = search.desiredLevelMax {
-                return "Вы откликнулись на поиск уровня \(min)–\(max)"
+                return L10n.string("You responded to a level \(min)–\(max) search", "Вы откликнулись на поиск уровня \(min)–\(max)")
             }
-            return "Вы откликнулись на этот поиск"
+            return L10n.string("You responded to this search", "Вы откликнулись на этот поиск")
         }
 
         if isCompleted {
-            return "Игра собрана"
+            return L10n.string("Game is full", "Игра собрана")
         }
 
         if let min = search.desiredLevelMin, let max = search.desiredLevelMax {
-            return "Ищу \(playerNoun(count: search.playersNeeded)) уровня \(min)–\(max)"
+            return L10n.string("Looking for \(search.playersNeeded) player(s), level \(min)–\(max)", "Ищу \(playerNoun(count: search.playersNeeded)) уровня \(min)–\(max)")
         }
 
-        return "Ищу \(playerNoun(count: search.playersNeeded))"
+        return L10n.string("Looking for \(search.playersNeeded) player(s)", "Ищу \(playerNoun(count: search.playersNeeded))")
     }
 
     private var scheduleText: String {
@@ -825,14 +825,14 @@ private struct SearchOverviewCard: View {
         if let district = search.preferredDistricts.first {
             return localizedDistrictName(district) ?? district
         }
-        return "Любой район"
+        return L10n.string("Any district", "Любой район")
     }
 
     private var courtText: String {
         search.preferredCourt?.name
             ?? search.customVenueAddress
             ?? search.customVenueTitle
-            ?? (search.sport.isRouteSport ? "Маршрут уточняется" : "Без клуба")
+            ?? (search.sport.isRouteSport ? L10n.string("Route to be confirmed", "Маршрут уточняется") : L10n.string("No club", "Без клуба"))
     }
 
     private var responseSummaryTitle: String {
@@ -845,21 +845,21 @@ private struct SearchOverviewCard: View {
             return "\(count) \(peopleWord(count))"
         }
 
-        return remainingSeats == 0 ? "Состав собран" : "Осталось \(remainingSeats)"
+        return remainingSeats == 0 ? L10n.string("Roster complete", "Состав собран") : L10n.string("\(remainingSeats) left", "Осталось \(remainingSeats)")
     }
 
     private var responseSummarySubtitle: String {
         if !isOwnedByCurrentUser {
-            return "Ваш отклик"
+            return L10n.string("Your response", "Ваш отклик")
         }
 
         if isCompleted {
-            return "Все подтвердили"
+            return L10n.string("Everyone confirmed", "Все подтвердили")
         }
 
         return pendingResponses.isEmpty
             ? "\(search.responses.count) \(responseWord(search.responses.count))"
-            : "\(pendingResponses.count) новых"
+            : L10n.string("\(pendingResponses.count) new", "\(pendingResponses.count) новых")
     }
 
     private var cardStatusTitle: String {
@@ -868,15 +868,15 @@ private struct SearchOverviewCard: View {
         }
 
         if isCompleted {
-            return "Собрано"
+            return L10n.string("Full", "Собрано")
         }
         if !(search.isActive ?? true) {
-            return "Остановлен"
+            return L10n.string("Paused", "Остановлен")
         }
         if !pendingResponses.isEmpty {
-            return "Есть отклики"
+            return L10n.string("Has responses", "Есть отклики")
         }
-        return "Активен"
+        return L10n.string("Active", "Активен")
     }
 
     private var cardStatusTint: Color {
@@ -926,16 +926,16 @@ private struct SearchOverviewCard: View {
 
     private var primaryActionTitle: String {
         if !isOwnedByCurrentUser {
-            return myResponse?.status == "approved" ? "Лобби" : myResponseStatusTitle
+            return myResponse?.status == "approved" ? L10n.string("Lobby", "Лобби") : myResponseStatusTitle
         }
 
         if !search.responses.isEmpty {
-            return "Отклики"
+            return L10n.string("Responses", "Отклики")
         }
         if isCompleted {
-            return "Открыть"
+            return L10n.string("Open", "Открыть")
         }
-        return "Детали"
+        return L10n.string("Details", "Детали")
     }
 
     private var primaryActionTint: Color {
@@ -989,13 +989,13 @@ private struct SearchOverviewCard: View {
     private var myResponseStatusTitle: String {
         switch myResponse?.status {
         case "approved":
-            return "Одобрено"
+            return L10n.string("Approved", "Одобрено")
         case "rejected":
-            return "Отклонено"
+            return L10n.string("Rejected", "Отклонено")
         case "withdrawn":
-            return "Отозвано"
+            return L10n.string("Withdrawn", "Отозвано")
         default:
-            return "На рассмотрении"
+            return L10n.string("Pending", "На рассмотрении")
         }
     }
 
@@ -1038,7 +1038,7 @@ private struct SearchOverviewCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 if search.searchType == .hot {
                     HStack(spacing: 12) {
-                        hotSearchMetaPill(systemImage: "flame.fill", text: "Срочно")
+                        hotSearchMetaPill(systemImage: "flame.fill", text: L10n.string("Urgent", "Срочно"))
                         hotSearchMetaPill(systemImage: "clock.fill", text: hotCardTimeText)
                     }
                 } else {
@@ -1065,7 +1065,7 @@ private struct SearchOverviewCard: View {
                                 .stroke(cardAccentColor.opacity(0.24), lineWidth: 1)
                         )
                         .overlay(alignment: .bottomTrailing) {
-                            Label("Открыть маршрут", systemImage: "arrow.up.left.and.arrow.down.right")
+                            Label(L10n.string("Open route", "Открыть маршрут"), systemImage: "arrow.up.left.and.arrow.down.right")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10)
@@ -1106,7 +1106,7 @@ private struct SearchOverviewCard: View {
                             .foregroundStyle(AppTheme.ink)
                         Text(responseSummarySubtitle)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(responseSummarySubtitle.contains("нов") ? .red.opacity(0.9) : AppTheme.ink.opacity(0.48))
+                            .foregroundStyle(pendingResponses.isEmpty ? AppTheme.ink.opacity(0.48) : .red.opacity(0.9))
                     }
                 }
                 .buttonStyle(.plain)
@@ -1119,7 +1119,7 @@ private struct SearchOverviewCard: View {
 
             HStack(spacing: 10) {
                 Button(action: openDetailsIfAllowed) {
-                    Label(primaryActionTitle, systemImage: primaryActionTitle == "Отклики" ? "person.crop.circle.badge.checkmark" : "arrow.up.right")
+                    Label(primaryActionTitle, systemImage: primaryActionTitle == L10n.string("Responses", "Отклики") ? "person.crop.circle.badge.checkmark" : "arrow.up.right")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
@@ -1131,7 +1131,7 @@ private struct SearchOverviewCard: View {
 
                 if canManageSearch {
                     Button(action: onEdit) {
-                        Label("Изм.", systemImage: "pencil")
+                        Label(L10n.string("Edit", "Изм."), systemImage: "pencil")
                             .font(.system(size: 13, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
@@ -1156,7 +1156,7 @@ private struct SearchOverviewCard: View {
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 38)
                         } else {
-                            Label((search.isActive ?? true) ? "Остановить" : "Возобновить", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                            Label((search.isActive ?? true) ? L10n.string("Pause", "Остановить") : L10n.string("Resume", "Возобновить"), systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
                                 .font(.system(size: 13, weight: .semibold))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 38)
@@ -1237,7 +1237,7 @@ private struct SearchOverviewCard: View {
             formatter.dateFormat = "d MMM, HH:mm"
             return formatter.string(from: startsAt)
         }
-        return search.hotStartsAt?.formattedDateTime() ?? "Время не указано"
+        return search.hotStartsAt?.formattedDateTime() ?? L10n.string("Time not specified", "Время не указано")
     }
 
     private func hotSearchMetaPill(systemImage: String, text: String) -> some View {
@@ -1255,6 +1255,7 @@ private struct SearchOverviewCard: View {
     }
 
     private func playerNoun(count: Int) -> String {
+        if LocaleStore.currentEffectiveLocale == .en { return "\(count) \(count == 1 ? "player" : "players")" }
         switch count {
         case 1:
             return "1 игрока"
@@ -1266,6 +1267,7 @@ private struct SearchOverviewCard: View {
     }
 
     private func responseWord(_ count: Int) -> String {
+        if LocaleStore.currentEffectiveLocale == .en { return count == 1 ? "response" : "responses" }
         switch count {
         case 1:
             return "отклик"
@@ -1277,6 +1279,7 @@ private struct SearchOverviewCard: View {
     }
 
     private func peopleWord(_ count: Int) -> String {
+        if LocaleStore.currentEffectiveLocale == .en { return count == 1 ? "player" : "players" }
         switch count {
         case 1:
             return "игрок"
@@ -1349,27 +1352,27 @@ private struct SearchDetailSheet: View {
     }
 
     private var lobbyActionTitle: String {
-        usesRegularSlotLobby ? "Предложите время для игры" : "Состав и чат игры"
+        usesRegularSlotLobby ? L10n.string("Suggest a time to play", "Предложите время для игры") : L10n.string("Roster and game chat", "Состав и чат игры")
     }
 
     private var lobbyActionSubtitle: String {
         usesRegularSlotLobby
-            ? "Открой общий состав, чтобы предложить слоты и обсудить детали игры."
-            : "Открой общий чат состава, чтобы уточнить детали без опроса по слотам."
+            ? L10n.string("Open the shared roster to suggest time slots and discuss the game.", "Открой общий состав, чтобы предложить слоты и обсудить детали игры.")
+            : L10n.string("Open the roster chat to discuss details without a time-slot poll.", "Открой общий чат состава, чтобы уточнить детали без опроса по слотам.")
     }
 
     private var lobbyActionButtonTitle: String {
-        usesRegularSlotLobby ? "Предложить слоты" : "Открыть состав"
+        usesRegularSlotLobby ? L10n.string("Suggest time slots", "Предложить слоты") : L10n.string("Open roster", "Открыть состав")
     }
 
     private var parameterRows: [(icon: String, title: String, value: String)] {
         var rows: [(String, String, String)] = []
 
-        rows.append(("sportscourt", "Формат игры", search.sport.formatTitle(format: search.format, playersNeeded: search.playersNeeded)))
-        rows.append(("person.2", "Нужно игроков", remainingSeats == 0 ? "\(search.playersNeeded) · состав собран" : "\(search.playersNeeded) · осталось \(remainingSeats)"))
+        rows.append(("sportscourt", L10n.string("Game format", "Формат игры"), search.sport.formatTitle(format: search.format, playersNeeded: search.playersNeeded)))
+        rows.append(("person.2", L10n.string("Players needed", "Нужно игроков"), remainingSeats == 0 ? L10n.string("\(search.playersNeeded) · roster complete", "\(search.playersNeeded) · состав собран") : L10n.string("\(search.playersNeeded) · \(remainingSeats) left", "\(search.playersNeeded) · осталось \(remainingSeats)")))
 
         if let min = search.desiredLevelMin, let max = search.desiredLevelMax {
-            rows.append(("chart.bar.xaxis", "Уровень", "\(min)–\(max)"))
+            rows.append(("chart.bar.xaxis", L10n.string("Level", "Уровень"), "\(min)–\(max)"))
         }
 
         let schedule: String
@@ -1389,25 +1392,25 @@ private struct SearchDetailSheet: View {
             .joined(separator: " · ")
         }
         if !schedule.isEmpty {
-            rows.append(("clock", "Время", schedule))
+            rows.append(("clock", L10n.string("Time", "Время"), schedule))
         }
 
         let districts = search.preferredDistricts.compactMap(localizedDistrictName).joined(separator: ", ")
         if !districts.isEmpty {
-            rows.append(("map", "Районы", districts))
+            rows.append(("map", L10n.string("Districts", "Районы"), districts))
         }
 
         let venue = search.preferredCourt?.name
             ?? search.customVenueAddress
             ?? search.customVenueTitle
-            ?? (search.sport.isRouteSport ? "Маршрут не указан" : "Не указан")
-        rows.append(("building.2", search.sport.isRouteSport ? "Маршрут" : "Корт / клуб", venue))
+            ?? (search.sport.isRouteSport ? L10n.string("Route not specified", "Маршрут не указан") : L10n.string("Not specified", "Не указан"))
+        rows.append(("building.2", search.sport.isRouteSport ? L10n.string("Route", "Маршрут") : L10n.string("Court / club", "Корт / клуб"), venue))
         if search.sport.isRouteSport,
            let route = search.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines),
            !route.isEmpty {
-            rows.append(("point.topleft.down.curvedto.point.bottomright.up", "Детали маршрута", route))
+            rows.append(("point.topleft.down.curvedto.point.bottomright.up", L10n.string("Route details", "Детали маршрута"), route))
         }
-        rows.append(("bubble.left", "Комментарий", (search.comment?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? search.comment! : "Не указан")))
+        rows.append(("bubble.left", L10n.string("Comment", "Комментарий"), (search.comment?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? search.comment! : L10n.string("Not specified", "Не указан"))))
         return rows
     }
 
@@ -1436,8 +1439,8 @@ private struct SearchDetailSheet: View {
 
                     if let regularPair = search.regularPair {
                         SearchEmbeddedSection(
-                            title: "Регулярные слоты",
-                            subtitle: "Подтверждай ближайшие слоты и открывай чат пары."
+                            title: L10n.string("Recurring time slots", "Регулярные слоты"),
+                            subtitle: L10n.string("Confirm upcoming slots and open the pair chat.", "Подтверждай ближайшие слоты и открывай чат пары.")
                         ) {
                             RegularPairCard(
                                 regularPair: regularPair,
@@ -1474,7 +1477,7 @@ private struct SearchDetailSheet: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 54)
                             } else {
-                                Label((search.isActive ?? true) ? "Остановить поиск" : "Запустить поиск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                                Label((search.isActive ?? true) ? L10n.string("Pause search", "Остановить поиск") : L10n.string("Start search", "Запустить поиск"), systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
                                     .frame(maxWidth: .infinity)
                             }
                         }
@@ -1486,7 +1489,7 @@ private struct SearchDetailSheet: View {
                 .padding(.bottom, 34)
             }
             .background(Color.white.ignoresSafeArea())
-            .navigationTitle("Поиск игры")
+            .navigationTitle(L10n.string("Game search", "Поиск игры"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -1574,7 +1577,7 @@ private struct SearchDetailSheet: View {
                 Spacer(minLength: 10)
 
                 AppInlineChip(
-                    text: (search.isActive ?? true) ? "Активен" : "На паузе",
+                    text: (search.isActive ?? true) ? L10n.string("Active", "Активен") : L10n.string("Paused", "На паузе"),
                     tint: .white.opacity(0.18),
                     foreground: .white
                 )
@@ -1587,7 +1590,7 @@ private struct SearchDetailSheet: View {
                 }
                 HStack(spacing: 12) {
                     detailMetaRow(icon: "map", text: search.preferredDistricts.compactMap(localizedDistrictName).joined(separator: ", "))
-                    detailMetaRow(icon: "building.2", text: search.preferredCourt?.name ?? "Без клуба")
+                    detailMetaRow(icon: "building.2", text: search.preferredCourt?.name ?? L10n.string("No club", "Без клуба"))
                 }
             }
         }
@@ -1605,16 +1608,16 @@ private struct SearchDetailSheet: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text("\(search.responses.count) откликов")
+                        Text(L10n.string("\(search.responses.count) responses", "\(search.responses.count) откликов"))
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
                         if !pendingResponses.isEmpty {
-                            Text("· \(pendingResponses.count) новых")
+                            Text(L10n.string("· \(pendingResponses.count) new", "· \(pendingResponses.count) новых"))
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(.red.opacity(0.9))
                         }
                     }
-                    Text("Откликнувшиеся игроки по этому поиску")
+                    Text(L10n.string("Players who responded to this search", "Откликнувшиеся игроки по этому поиску"))
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.ink.opacity(0.56))
                 }
@@ -1656,7 +1659,7 @@ private struct SearchDetailSheet: View {
             Button {
                 isPresentingResponses = true
             } label: {
-                Label("Отклики", systemImage: "person.crop.circle.badge.checkmark")
+                Label(L10n.string("Responses", "Отклики"), systemImage: "person.crop.circle.badge.checkmark")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
@@ -1669,7 +1672,7 @@ private struct SearchDetailSheet: View {
                 Button {
                     onEdit(search)
                 } label: {
-                    Label("Изменить", systemImage: "pencil")
+                    Label(L10n.string("Edit", "Изменить"), systemImage: "pencil")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
@@ -1685,7 +1688,7 @@ private struct SearchDetailSheet: View {
                 Button {
                     Task { await toggleSearchActive() }
                 } label: {
-                    Label((search.isActive ?? true) ? "Пауза" : "Запуск", systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
+                    Label((search.isActive ?? true) ? L10n.string("Pause", "Пауза") : L10n.string("Start", "Запуск"), systemImage: (search.isActive ?? true) ? "pause.fill" : "play.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
@@ -1703,7 +1706,7 @@ private struct SearchDetailSheet: View {
 
     private var parameterCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Параметры")
+            Text(L10n.string("Details", "Параметры"))
                 .font(.system(size: 21, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
                 .padding(.horizontal, 18)
@@ -1749,16 +1752,16 @@ private struct SearchDetailSheet: View {
 
     private var inviteCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Ссылка-приглашение")
+            Text(L10n.string("Invitation link", "Ссылка-приглашение"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
-            Text("Делитесь ссылкой, чтобы игроки могли откликнуться")
+            Text(L10n.string("Share the link so players can respond", "Делитесь ссылкой, чтобы игроки могли откликнуться"))
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.ink.opacity(0.58))
 
             HStack(spacing: 10) {
-                Text(AppConfig.searchInviteURL(searchId: search.inviteSlug ?? search.id)?.absoluteString ?? "Ссылка недоступна")
+                Text(AppConfig.searchInviteURL(searchId: search.inviteSlug ?? search.id)?.absoluteString ?? L10n.string("Link unavailable", "Ссылка недоступна"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.court)
                     .lineLimit(1)
@@ -1770,7 +1773,7 @@ private struct SearchDetailSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         if didCopyInviteLink {
-                            Text("Скопировано")
+                            Text(L10n.string("Copied", "Скопировано"))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(AppTheme.court)
                                 .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -1834,12 +1837,12 @@ private struct SearchDetailSheet: View {
 
     private var detailHeadline: String {
         if search.status == "matched" || approvedResponses.count >= max(search.playersNeeded, 1) {
-            return "Состав собран"
+            return L10n.string("Roster complete", "Состав собран")
         }
         if let min = search.desiredLevelMin, let max = search.desiredLevelMax {
-            return "Ищу \(search.playersNeeded) игроков уровня \(min)–\(max)"
+            return L10n.string("Looking for \(search.playersNeeded) player(s), level \(min)–\(max)", "Ищу \(search.playersNeeded) игроков уровня \(min)–\(max)")
         }
-        return "Ищу \(search.playersNeeded) игроков"
+        return L10n.string("Looking for \(search.playersNeeded) player(s)", "Ищу \(search.playersNeeded) игроков")
     }
 
     private func detailMetaRow(icon: String, text: String) -> some View {
@@ -1847,7 +1850,7 @@ private struct SearchDetailSheet: View {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
-            Text(text.isEmpty ? "Не указано" : text)
+            Text(text.isEmpty ? L10n.string("Not specified", "Не указано") : text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
@@ -1857,16 +1860,16 @@ private struct SearchDetailSheet: View {
 
     private func shareInviteLink() {
         guard let inviteURL = AppConfig.searchInviteURL(searchId: search.inviteSlug ?? search.id) else {
-            appModel.errorMessage = "Не удалось подготовить ссылку приглашения"
+            appModel.errorMessage = L10n.string("Could not prepare the invitation link", "Не удалось подготовить ссылку приглашения")
             return
         }
         AppHaptics.selection()
-        shareItems = ["Присоединяйся к моему поиску игры в TennisSearch", inviteURL]
+        shareItems = [L10n.string("Join my game search on TennisSearch", "Присоединяйся к моему поиску игры в TennisSearch"), inviteURL]
     }
 
     private func copyInviteLink() {
         guard let inviteURL = AppConfig.searchInviteURL(searchId: search.inviteSlug ?? search.id) else {
-            appModel.errorMessage = "Не удалось подготовить ссылку приглашения"
+            appModel.errorMessage = L10n.string("Could not prepare the invitation link", "Не удалось подготовить ссылку приглашения")
             return
         }
 
@@ -1927,7 +1930,7 @@ private struct SearchDetailSheet: View {
 
     private func finalizeApprovedRoster() async {
         guard let scheduledAt = search.hotStartsAt?.parsedISODateValue() else {
-            appModel.errorMessage = "Не удалось определить время игры"
+            appModel.errorMessage = L10n.string("Could not determine the game time", "Не удалось определить время игры")
             return
         }
 
@@ -2073,8 +2076,8 @@ private struct SearchResponsesSheet: View {
                             } else {
                                 Label(
                                     approvedResponsesCount >= max(search.playersNeeded, 1)
-                                        ? "Перейти к составу"
-                                        : "Завершить без полного добора",
+                                        ? L10n.string("Open roster", "Перейти к составу")
+                                        : L10n.string("Finish without a full roster", "Завершить без полного добора"),
                                     systemImage: "person.3.fill"
                                 )
                                 .frame(maxWidth: .infinity)
@@ -2087,7 +2090,7 @@ private struct SearchResponsesSheet: View {
                     Button {
                         onShareInviteLink()
                     } label: {
-                        Label("Пригласить ещё игроков", systemImage: "person.badge.plus")
+                        Label(L10n.string("Invite more players", "Пригласить ещё игроков"), systemImage: "person.badge.plus")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.court))
@@ -2098,7 +2101,7 @@ private struct SearchResponsesSheet: View {
                 .padding(.bottom, 32)
             }
             .background(Color.white.ignoresSafeArea())
-            .navigationTitle("Отклики")
+            .navigationTitle(L10n.string("Responses", "Отклики"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -2110,7 +2113,7 @@ private struct SearchResponsesSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     AppInlineChip(
-                        text: "\(search.responses.count) откликов · \(search.responses.filter { $0.status == "pending" }.count) новых",
+                        text: L10n.string("\(search.responses.count) responses · \(search.responses.filter { $0.status == "pending" }.count) new", "\(search.responses.count) откликов · \(search.responses.filter { $0.status == "pending" }.count) новых"),
                         tint: AppTheme.mint,
                         foreground: AppTheme.court
                     )
@@ -2138,7 +2141,7 @@ private struct SearchResponsesSheet: View {
                     Text("\(search.sport.title) · \(search.sport.formatTitle(format: search.format, playersNeeded: search.playersNeeded))")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(AppTheme.ink)
-                    Text(search.desiredLevelMin != nil && search.desiredLevelMax != nil ? "Ищу \(search.playersNeeded) игроков уровня \(search.desiredLevelMin!)–\(search.desiredLevelMax!)" : "Ищу \(search.playersNeeded) игроков")
+                    Text(search.desiredLevelMin != nil && search.desiredLevelMax != nil ? L10n.string("Looking for \(search.playersNeeded) player(s), level \(search.desiredLevelMin!)–\(search.desiredLevelMax!)", "Ищу \(search.playersNeeded) игроков уровня \(search.desiredLevelMin!)–\(search.desiredLevelMax!)") : L10n.string("Looking for \(search.playersNeeded) player(s)", "Ищу \(search.playersNeeded) игроков"))
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(AppTheme.ink)
                         .lineLimit(2)
@@ -2196,7 +2199,7 @@ private struct SearchResponsesSheet: View {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(AppTheme.ink.opacity(0.72))
-            Text(text.isEmpty ? "Не указано" : text)
+            Text(text.isEmpty ? L10n.string("Not specified", "Не указано") : text)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(AppTheme.ink.opacity(0.82))
                 .lineLimit(2)
@@ -2261,7 +2264,7 @@ private struct SearchResponseActionRow: View {
                     if canApprove {
                         circleAction(systemImage: "checkmark", tint: AppTheme.court, foreground: .white, status: "approved")
                     } else {
-                        Text("Состав собран")
+                        Text(L10n.string("Roster complete", "Состав собран"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.ink.opacity(0.54))
                             .padding(.horizontal, 10)
@@ -2287,11 +2290,11 @@ private struct SearchResponseActionRow: View {
     private var defaultSubtitle: String {
         switch response.status {
         case "approved":
-            return "Игрок уже в составе"
+            return L10n.string("Player is already on the roster", "Игрок уже в составе")
         case "rejected":
-            return "Отклик был отклонён"
+            return L10n.string("The response was rejected", "Отклик был отклонён")
         default:
-            return "Хочет присоединиться к игре"
+            return L10n.string("Wants to join the game", "Хочет присоединиться к игре")
         }
     }
 
@@ -2299,9 +2302,9 @@ private struct SearchResponseActionRow: View {
     private var statusPill: some View {
         switch response.status {
         case "approved":
-            AppInlineChip(text: "ОДОБРЕН", tint: AppTheme.mint, foreground: AppTheme.court)
+            AppInlineChip(text: L10n.string("APPROVED", "ОДОБРЕН"), tint: AppTheme.mint, foreground: AppTheme.court)
         case "rejected":
-            AppInlineChip(text: "ОТКЛОНЁН", tint: Color.red.opacity(0.12), foreground: .red.opacity(0.9))
+            AppInlineChip(text: L10n.string("REJECTED", "ОТКЛОНЁН"), tint: Color.red.opacity(0.12), foreground: .red.opacity(0.9))
         default:
             EmptyView()
         }
@@ -2332,11 +2335,11 @@ private extension TimeRange {
     var detailTitle: String {
         switch self {
         case .morning:
-            return "Утро"
+            return L10n.string("Morning", "Утро")
         case .day:
-            return "День"
+            return L10n.string("Afternoon", "День")
         case .evening:
-            return "Вечер (после 18:00)"
+            return L10n.string("Evening (after 6 PM)", "Вечер (после 18:00)")
         }
     }
 }
@@ -2350,10 +2353,10 @@ private extension String {
 private extension Date {
     func formattedShortRelative() -> String {
         if Calendar.current.isDateInToday(self) {
-            return "Сегодня, \(formattedHourMinute())"
+            return L10n.string("Today, \(formattedHourMinute())", "Сегодня, \(formattedHourMinute())")
         }
         if Calendar.current.isDateInTomorrow(self) {
-            return "Завтра, \(formattedHourMinute())"
+            return L10n.string("Tomorrow, \(formattedHourMinute())", "Завтра, \(formattedHourMinute())")
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
@@ -2600,7 +2603,7 @@ struct SearchLobbySheet: View {
                     }
                 }
             }
-            .navigationTitle("Лобби поиска")
+            .navigationTitle(L10n.string("Search lobby", "Лобби поиска"))
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 appModel.notificationManager.setNotificationMuted(href: "/play/searches/\(searchId)", isMuted: true)
@@ -2645,7 +2648,7 @@ struct SearchLobbySheet: View {
                 NavigationStack {
                     VStack(spacing: 20) {
                         DatePicker(
-                            "Дата игры",
+                            L10n.string("Game date", "Дата игры"),
                             selection: Binding(
                                 get: { proposedAt },
                                 set: { date in
@@ -2659,18 +2662,18 @@ struct SearchLobbySheet: View {
                         .datePickerStyle(.graphical)
                         .labelsHidden()
 
-                        Button("Готово") {
+                        Button(L10n.string("Done", "Готово")) {
                             isDatePickerPresented = false
                         }
                         .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
                     }
                     .padding(20)
                     .background(Color.white.ignoresSafeArea())
-                    .navigationTitle("Выбрать дату")
+                    .navigationTitle(L10n.string("Choose date", "Выбрать дату"))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
-                            Button("Закрыть") {
+                            Button(L10n.string("Close", "Закрыть")) {
                                 isDatePickerPresented = false
                             }
                             .foregroundStyle(AppTheme.ink)
@@ -2692,12 +2695,12 @@ struct SearchLobbySheet: View {
     private var searchLobbyContent: some View {
         if let lobby {
             SectionCard(
-                title: "Состав и общий чат",
-                subtitle: "Это общее пространство по этому поиску. Здесь видно состав и обсуждение до финальной игры."
+                title: L10n.string("Roster and group chat", "Состав и общий чат"),
+                subtitle: L10n.string("This is the shared space for this search. The roster and discussion are visible here before the final game.", "Это общее пространство по этому поиску. Здесь видно состав и обсуждение до финальной игры.")
             ) {
                 HStack(spacing: 10) {
                     AppInlineChip(
-                        text: "\(approvedResponses.count) из \(max(lobby.playersNeeded, 1)) подтверждено",
+                        text: L10n.string("\(approvedResponses.count) of \(max(lobby.playersNeeded, 1)) confirmed", "\(approvedResponses.count) из \(max(lobby.playersNeeded, 1)) подтверждено"),
                         tint: AppTheme.mint,
                         foreground: AppTheme.court
                     )
@@ -2727,7 +2730,7 @@ struct SearchLobbySheet: View {
                                 Image(systemName: "wand.and.stars")
                                     .font(.system(size: 14, weight: .bold))
                             }
-                            Text("Симулировать отклики и слоты")
+                            Text(L10n.string("Simulate responses and slots", "Симулировать отклики и слоты"))
                                 .font(.subheadline.weight(.semibold))
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -2754,16 +2757,16 @@ struct SearchLobbySheet: View {
             }
 
             SectionCard(
-                title: "Участники",
-                subtitle: "Подтвержденные игроки уже в составе, ожидающие пока не приняты."
+                title: L10n.string("Participants", "Участники"),
+                subtitle: L10n.string("Confirmed players are on the roster; pending players haven’t been accepted yet.", "Подтвержденные игроки уже в составе, ожидающие пока не приняты.")
             ) {
                 VStack(spacing: 10) {
                     ForEach(approvedResponses) { response in
-                        lobbyParticipantRow(response: response, title: "В составе", tint: AppTheme.court)
+                        lobbyParticipantRow(response: response, title: L10n.string("On roster", "В составе"), tint: AppTheme.court)
                     }
 
                     ForEach(pendingResponses) { response in
-                        lobbyParticipantRow(response: response, title: "Ожидаем ответ", tint: Color(red: 1.0, green: 0.70, blue: 0.30))
+                        lobbyParticipantRow(response: response, title: L10n.string("Awaiting response", "Ожидаем ответ"), tint: Color(red: 1.0, green: 0.70, blue: 0.30))
                     }
                 }
             }
@@ -2775,8 +2778,8 @@ struct SearchLobbySheet: View {
             }
 
             SectionCard(
-                title: "Общий чат",
-                subtitle: "Здесь удобно договориться по составу, району и ожиданиям до финальной игры."
+                title: L10n.string("Group chat", "Общий чат"),
+                subtitle: L10n.string("Use this chat to agree on the roster, district, and expectations before the final game.", "Здесь удобно договориться по составу, району и ожиданиям до финальной игры.")
             ) {
                 VStack(spacing: 10) {
                     ForEach(lobby.messages) { message in
@@ -2824,7 +2827,7 @@ struct SearchLobbySheet: View {
                     .disabled(isSendingMessage)
 
                     FieldShell {
-                        TextField("Сообщение для состава...", text: $messageText, axis: .vertical)
+                        TextField(L10n.string("Message the roster…", "Сообщение для состава..."), text: $messageText, axis: .vertical)
                             .lineLimit(1 ... 4)
                             .focused($isMessageComposerFocused)
                     }
@@ -2849,7 +2852,7 @@ struct SearchLobbySheet: View {
                 }
             }
         } else if let lobbyLoadError {
-            SectionCard(title: "Состав и общий чат", subtitle: "Не удалось загрузить детали поиска.") {
+            SectionCard(title: L10n.string("Roster and group chat", "Состав и общий чат"), subtitle: L10n.string("Could not load search details.", "Не удалось загрузить детали поиска.")) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(lobbyLoadError)
                         .font(.footnote)
@@ -2860,7 +2863,7 @@ struct SearchLobbySheet: View {
                             await loadLobby()
                         }
                     } label: {
-                        Label("Повторить", systemImage: "arrow.clockwise")
+                        Label(L10n.string("Try again", "Повторить"), systemImage: "arrow.clockwise")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 46)
@@ -2871,7 +2874,7 @@ struct SearchLobbySheet: View {
                 }
             }
         } else {
-            SectionCard(title: "Состав и общий чат", subtitle: "Загружаем детали поиска.") {
+            SectionCard(title: L10n.string("Roster and group chat", "Состав и общий чат"), subtitle: L10n.string("Loading search details.", "Загружаем детали поиска.")) {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 24)
@@ -3313,12 +3316,12 @@ struct SearchLobbySheet: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                RemoteAvatarView(name: message.senderUser?.name ?? "Игрок", path: message.senderUser?.avatarUrl, size: 34)
+                RemoteAvatarView(name: message.senderUser?.name ?? L10n.string("Player", "Игрок"), path: message.senderUser?.avatarUrl, size: 34)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 if !isMine {
-                    Text(message.senderUser?.name ?? "Игрок")
+                    Text(message.senderUser?.name ?? L10n.string("Player", "Игрок"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.ink.opacity(0.58))
                 }
@@ -3382,10 +3385,10 @@ struct SearchLobbySheet: View {
     private func slotProposalSection(lobby: SearchLobbyGameSearch) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .center, spacing: 4) {
-                Text("Регулярное расписание")
+                Text(L10n.string("Recurring schedule", "Регулярное расписание"))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Выберите дни и время, которые будут повторяться каждую неделю")
+                Text(L10n.string("Choose days and times that repeat every week", "Выберите дни и время, которые будут повторяться каждую неделю"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -3507,7 +3510,7 @@ struct SearchLobbySheet: View {
                 }
             }
 
-            Text("Можно выбрать несколько дней и несколько времен")
+            Text(L10n.string("You can choose multiple days and times", "Можно выбрать несколько дней и несколько времен"))
                 .font(.footnote)
                 .foregroundStyle(AppTheme.ink.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -3561,11 +3564,11 @@ struct SearchLobbySheet: View {
     private func activeSlotProposalCard(_ proposal: SearchSlotProposalSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Текущее голосование")
+                Text(L10n.string("Current poll", "Текущее голосование"))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                AppInlineChip(text: "\(proposal.options.count) регулярных", tint: AppTheme.mint, foreground: AppTheme.court)
+                AppInlineChip(text: L10n.string("\(proposal.options.count) recurring", "\(proposal.options.count) регулярных"), tint: AppTheme.mint, foreground: AppTheme.court)
             }
 
             if let comment = proposal.comment?.trimmingCharacters(in: .whitespacesAndNewlines), !comment.isEmpty {
@@ -3619,10 +3622,10 @@ struct SearchLobbySheet: View {
     private func slotVotingSection(_ proposal: SearchSlotProposalSummary) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Выберите регулярные слоты")
+                Text(L10n.string("Choose recurring time slots", "Выберите регулярные слоты"))
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Отметь дни и время, которые реально подходят каждую неделю")
+                Text(L10n.string("Select the days and times that really work every week", "Отметь дни и время, которые реально подходят каждую неделю"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -3650,7 +3653,7 @@ struct SearchLobbySheet: View {
                         .tint(.white)
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text("Отправить выбор")
+                    Text(L10n.string("Submit selection", "Отправить выбор"))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -3707,7 +3710,7 @@ struct SearchLobbySheet: View {
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Клуб")
+                    Text(L10n.string("Club", "Клуб"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(AppTheme.ink.opacity(0.52))
                     Text(selectedCourtName)
@@ -3718,7 +3721,7 @@ struct SearchLobbySheet: View {
 
                 Spacer()
 
-                Text("Выбрать")
+                Text(L10n.string("Choose", "Выбрать"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.ink.opacity(0.88))
                     .padding(.horizontal, 14)
@@ -3738,13 +3741,13 @@ struct SearchLobbySheet: View {
 
     private var slotCommentCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Комментарий (необязательно)")
+            Text(L10n.string("Comment (optional)", "Комментарий (необязательно)"))
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(AppTheme.ink)
 
             ZStack(alignment: .leading) {
                 if slotComment.isEmpty {
-                    Text("Например: корт с крышей желателен")
+                    Text(L10n.string("For example: an indoor court is preferred", "Например: корт с крышей желателен"))
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(AppTheme.ink.opacity(0.28))
                         .padding(.horizontal, 14)
@@ -3778,7 +3781,7 @@ struct SearchLobbySheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                 } else {
-                    Text("Предложить \(selectedSlotCount) \(slotWord(selectedSlotCount))")
+                    Text(L10n.string("Suggest \(selectedSlotCount) \(selectedSlotCount == 1 ? "slot" : "slots")", "Предложить \(selectedSlotCount) \(slotWord(selectedSlotCount))"))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                 }
@@ -3786,7 +3789,7 @@ struct SearchLobbySheet: View {
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
             .disabled(isScheduling || selectedSlotTimes.isEmpty || selectedSlotDates.isEmpty)
 
-            Text("Выбранные дни и время будут повторяться каждую неделю")
+            Text(L10n.string("Selected days and times will repeat every week", "Выбранные дни и время будут повторяться каждую неделю"))
                 .font(.footnote)
                 .foregroundStyle(AppTheme.ink.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -3794,7 +3797,7 @@ struct SearchLobbySheet: View {
     }
 
     private var selectedCourtName: String {
-        availableCourts.first(where: { $0.id == proposedCourtId })?.name ?? (lobby?.preferredCourt?.name ?? "Без клуба")
+        availableCourts.first(where: { $0.id == proposedCourtId })?.name ?? (lobby?.preferredCourt?.name ?? L10n.string("No club", "Без клуба"))
     }
 
     private var primaryTimeRangeTitle: String {
@@ -3820,9 +3823,9 @@ struct SearchLobbySheet: View {
 
     private func slotHeadline(for lobby: SearchLobbyGameSearch) -> String {
         if let min = lobby.desiredLevelMin, let max = lobby.desiredLevelMax {
-            return "Ищу \(lobby.playersNeeded) игроков уровня \(min)–\(max)"
+            return L10n.string("Looking for \(lobby.playersNeeded) player(s), level \(min)–\(max)", "Ищу \(lobby.playersNeeded) игроков уровня \(min)–\(max)")
         }
-        return "Ищу \(lobby.playersNeeded) игроков"
+        return L10n.string("Looking for \(lobby.playersNeeded) player(s)", "Ищу \(lobby.playersNeeded) игроков")
     }
 
     private func updateSelectedDate(_ date: Date) {
@@ -3977,7 +3980,7 @@ private struct RegularPairCard: View {
                 )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Регулярная пара активна")
+                    Text(L10n.string("Recurring pair is active", "Регулярная пара активна"))
                         .font(.caption.weight(.semibold))
                         .textCase(.uppercase)
                         .tracking(1.6)
@@ -4004,11 +4007,11 @@ private struct RegularPairCard: View {
                         .background(AppTheme.ink, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Открыть чат")
+                .accessibilityLabel(L10n.string("Open chat", "Открыть чат"))
             }
 
             if visibleOccurrences.isEmpty {
-                Text("Пара создана, но ближайшие слоты пока не появились. Проверь дни и время в параметрах поиска.")
+                Text(L10n.string("The pair is created, but upcoming slots haven’t appeared yet. Check the days and times in search settings.", "Пара создана, но ближайшие слоты пока не появились. Проверь дни и время в параметрах поиска."))
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                     .padding(12)
@@ -4017,7 +4020,7 @@ private struct RegularPairCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Ближайшие слоты")
+                        Text(L10n.string("Upcoming time slots", "Ближайшие слоты"))
                             .font(.caption.weight(.semibold))
                             .textCase(.uppercase)
                             .tracking(1.6)
@@ -4050,7 +4053,7 @@ private struct RegularPairCard: View {
                     }
 
                     if upcomingOccurrences.count > visibleOccurrences.count {
-                        Text("Ещё \(upcomingOccurrences.count - visibleOccurrences.count) слота доступны в регулярной паре.")
+                        Text(L10n.string("\(upcomingOccurrences.count - visibleOccurrences.count) more slots are available in the recurring pair.", "Ещё \(upcomingOccurrences.count - visibleOccurrences.count) слота доступны в регулярной паре."))
                             .font(.footnote)
                             .foregroundStyle(AppTheme.ink.opacity(0.6))
                     }
@@ -4104,18 +4107,18 @@ private struct RegularOccurrenceRow: View {
 
         switch occurrence.status.lowercased() {
         case "confirmed":
-            return ("Подтверждено", AppTheme.court, AppTheme.mint)
+            return (L10n.string("Confirmed", "Подтверждено"), AppTheme.court, AppTheme.mint)
         case "declined":
             if let currentUserId, declinedUserId == currentUserId {
-                return ("Ты отказался", .red.opacity(0.9), Color.red.opacity(0.12))
+                return (L10n.string("You declined", "Ты отказался"), .red.opacity(0.9), Color.red.opacity(0.12))
             }
-            return ("Партнер не может", .red.opacity(0.9), Color.red.opacity(0.12))
+            return (L10n.string("Partner can’t make it", "Партнер не может"), .red.opacity(0.9), Color.red.opacity(0.12))
         case "canceled", "cancelled":
-            return ("Отменено", AppTheme.ink.opacity(0.72), Color.gray.opacity(0.18))
+            return (L10n.string("Cancelled", "Отменено"), AppTheme.ink.opacity(0.72), Color.gray.opacity(0.18))
         case "expired":
-            return ("Уже прошло", AppTheme.ink.opacity(0.72), Color.gray.opacity(0.18))
+            return (L10n.string("Past", "Уже прошло"), AppTheme.ink.opacity(0.72), Color.gray.opacity(0.18))
         default:
-            return ("Ждет подтверждения", AppTheme.ink, AppTheme.cream)
+            return (L10n.string("Awaiting confirmation", "Ждет подтверждения"), AppTheme.ink, AppTheme.cream)
         }
     }
 
@@ -4167,12 +4170,12 @@ private struct RegularOccurrenceRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isUpdating)
-                .accessibilityLabel("Изменить дату, время или клуб")
+                .accessibilityLabel(L10n.string("Change date, time, or club", "Изменить дату, время или клуб"))
             }
 
             HStack(spacing: 8) {
-                confirmationPill(title: "Ты", value: myConfirmationLabel, valueColor: confirmationColor(for: currentUserId))
-                confirmationPill(title: "Партнер", value: partnerConfirmationLabel, valueColor: confirmationColor(for: partnerUserId))
+                confirmationPill(title: L10n.string("You", "Ты"), value: myConfirmationLabel, valueColor: confirmationColor(for: currentUserId))
+                confirmationPill(title: L10n.string("Partner", "Партнер"), value: partnerConfirmationLabel, valueColor: confirmationColor(for: partnerUserId))
             }
         }
         .padding(12)
@@ -4197,17 +4200,17 @@ private struct RegularOccurrenceRow: View {
 
     private func confirmationLabel(for userId: String?) -> String {
         guard let userId else {
-            return "Ждет подтверждения"
+            return L10n.string("Awaiting confirmation", "Ждет подтверждения")
         }
 
         let status = occurrence.confirmations.first(where: { $0.user.id == userId })?.status.lowercased()
         switch status {
         case "confirmed":
-            return "Подтверждено"
+            return L10n.string("Confirmed", "Подтверждено")
         case "declined":
-            return "Не смогу"
+            return L10n.string("Can’t make it", "Не смогу")
         default:
-            return "Ждет подтверждения"
+            return L10n.string("Awaiting confirmation", "Ждет подтверждения")
         }
     }
 
@@ -4249,7 +4252,7 @@ private struct SearchResponseGroupSection: View {
         self.responses = responses
         self.updatingResponseID = updatingResponseID
         self.onUpdateResponseStatus = onUpdateResponseStatus
-        _isExpanded = State(initialValue: !responses.isEmpty && (title == "Хочет присоединиться" || title == "В составе"))
+        _isExpanded = State(initialValue: !responses.isEmpty && (title == L10n.string("Wants to join the game", "Хочет присоединиться к игре") || title == L10n.string("On roster", "В составе")))
     }
 
     var body: some View {
@@ -4316,11 +4319,11 @@ private struct SearchResponseRow: View {
 
             if response.status == "pending" {
                 HStack(spacing: 8) {
-                    actionButton(title: "Принять", tint: AppTheme.court, status: "approved")
-                    actionButton(title: "Отклонить", tint: .red, status: "rejected", secondary: true)
+                    actionButton(title: L10n.string("Accept", "Принять"), tint: AppTheme.court, status: "approved")
+                    actionButton(title: L10n.string("Reject", "Отклонить"), tint: .red, status: "rejected", secondary: true)
                 }
             } else if response.status == "approved" {
-                actionButton(title: "Убрать из состава", tint: .red, status: "rejected", secondary: true)
+                actionButton(title: L10n.string("Remove from roster", "Убрать из состава"), tint: .red, status: "rejected", secondary: true)
             }
         }
         .padding(12)
@@ -4367,13 +4370,13 @@ private struct SearchResponseRow: View {
     private func responseStatusText(_ status: String) -> String {
         switch status {
         case "approved":
-            return "Подтвержден"
+            return L10n.string("Confirmed", "Подтвержден")
         case "rejected":
-            return "Отклонен"
+            return L10n.string("Rejected", "Отклонен")
         case "withdrawn":
-            return "Отменил сам"
+            return L10n.string("Withdrawn", "Отменил сам")
         default:
-            return "Ожидаем ответ"
+            return L10n.string("Awaiting response", "Ожидаем ответ")
         }
     }
 
@@ -4414,7 +4417,7 @@ private struct SearchOverviewHero: View {
                     Spacer()
 
                     heroStatusChip(
-                        text: isOpen ? "Открыт" : statusTitle,
+                        text: isOpen ? L10n.string("Open", "Открыт") : statusTitle,
                         tint: isOpen ? Color.black.opacity(0.4) : Color.black.opacity(0.5)
                     )
                 }
@@ -4855,14 +4858,14 @@ struct SearchComposerView: View {
 
     private var hotDateTitle: String {
         if Calendar.current.isDateInToday(resolvedHotDate) {
-            return "Сегодня"
+            return L10n.string("Today", "Сегодня")
         }
         if Calendar.current.isDateInTomorrow(resolvedHotDate) {
-            return "Завтра"
+            return L10n.string("Tomorrow", "Завтра")
         }
         if let dayAfterTomorrow = Calendar.current.date(byAdding: .day, value: 2, to: Date()),
            Calendar.current.isDate(resolvedHotDate, inSameDayAs: dayAfterTomorrow) {
-            return "Послезавтра"
+            return L10n.string("Day after tomorrow", "Послезавтра")
         }
 
         let formatter = DateFormatter()
@@ -4888,15 +4891,15 @@ struct SearchComposerView: View {
         let level = editableSportLevel
         switch level {
         case 1 ... 2:
-            return ("Начальный", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+            return (L10n.string("Beginner", "Начальный"), L10n.string("Looking for level \(draft.desiredLevelMin)-\(draft.desiredLevelMax) players", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)"))
         case 3 ... 4:
-            return ("Базовый", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+            return (L10n.string("Basic", "Базовый"), L10n.string("Looking for level \(draft.desiredLevelMin)-\(draft.desiredLevelMax) players", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)"))
         case 5 ... 6:
-            return ("Средний", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+            return (L10n.string("Intermediate", "Средний"), L10n.string("Looking for level \(draft.desiredLevelMin)-\(draft.desiredLevelMax) players", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)"))
         case 7 ... 8:
-            return ("Продвинутый", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+            return (L10n.string("Advanced", "Продвинутый"), L10n.string("Looking for level \(draft.desiredLevelMin)-\(draft.desiredLevelMax) players", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)"))
         default:
-            return ("Сильный", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+            return (L10n.string("Expert", "Сильный"), L10n.string("Looking for level \(draft.desiredLevelMin)-\(draft.desiredLevelMax) players", "Ищем игроков \(draft.desiredLevelMin)-\(draft.desiredLevelMax)"))
         }
     }
 
@@ -4909,13 +4912,13 @@ struct SearchComposerView: View {
             if draft.runningRoutePoints?.isEmpty == false {
                 return selectedSport.routeDefaultTitle
             }
-            return "Без маршрута"
+            return L10n.string("No route", "Без маршрута")
         }
 
         return selectedCourt?.name
             ?? draft.customVenueAddress
             ?? draft.customVenueTitle
-            ?? (draft.preferredDistricts.isEmpty ? "Без привязки" : districtsSummary)
+            ?? (draft.preferredDistricts.isEmpty ? L10n.string("No preference", "Без привязки") : districtsSummary)
     }
 
     private var locationSubtitle: String {
@@ -4927,9 +4930,9 @@ struct SearchComposerView: View {
 
         if selectedSport.isRouteSport {
             if let points = draft.runningRoutePoints, points.count >= 2 {
-                return "Маршрут на карте · \(points.count) точек"
+                return L10n.string("Route on map · \(points.count) points", "Маршрут на карте · \(points.count) точек")
             }
-            return "Нарисуйте старт, финиш и ключевые точки"
+            return L10n.string("Mark the start, finish, and key points", "Нарисуйте старт, финиш и ключевые точки")
         }
 
         if let address = draft.customVenueAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -4937,12 +4940,12 @@ struct SearchComposerView: View {
             return address
         }
 
-        return draft.preferredDistricts.isEmpty ? "Покажем клубы рядом" : "Будем искать в выбранных районах"
+        return draft.preferredDistricts.isEmpty ? L10n.string("We’ll show nearby clubs", "Покажем клубы рядом") : L10n.string("We’ll search in selected districts", "Будем искать в выбранных районах")
     }
 
     private var districtsSummary: String {
         let names = draft.preferredDistricts.compactMap(localizedDistrictName)
-        return names.isEmpty ? "Будем показывать клубы поблизости" : names.prefix(3).joined(separator: ", ")
+        return names.isEmpty ? L10n.string("We’ll show nearby clubs", "Будем показывать клубы поблизости") : names.prefix(3).joined(separator: ", ")
     }
 
     private var shouldApplyPreferredSportOnFirstLoad: Bool {
@@ -4976,8 +4979,8 @@ struct SearchComposerView: View {
 
                 if isRocketLaunchPresented {
                     SuccessCelebrationOverlay(
-                        title: "Срочный поиск опубликован",
-                        subtitle: "Игроки увидят его в ленте",
+                        title: L10n.string("Urgent search published", "Срочный поиск опубликован"),
+                        subtitle: L10n.string("Players will see it in the feed", "Игроки увидят его в ленте"),
                         icon: "🚀"
                     )
                         .transition(.opacity)
@@ -5029,23 +5032,23 @@ struct SearchComposerView: View {
                 .presentationDetents([.medium, .large])
             }
             .confirmationDialog(
-                "Удалось забронировать?",
+                L10n.string("Were you able to book?", "Удалось забронировать?"),
                 isPresented: $bookingCallFlow.isResultPresented,
                 titleVisibility: .visible
             ) {
-                Button("Да, время совпало") {
+                Button(L10n.string("Yes, at the selected time", "Да, время совпало")) {
                     draft.hasCourtBooked = true
                 }
-                Button("Забронировал на другое время") {
+                Button(L10n.string("Booked for another time", "Забронировал на другое время")) {
                     draft.hasCourtBooked = true
                     hotStep = .when
                 }
-                Button("Не забронировал") {
+                Button(L10n.string("Didn’t book", "Не забронировал")) {
                     draft.hasCourtBooked = false
                 }
-                Button("Отмена", role: .cancel) {}
+                Button(L10n.string("Cancel", "Отмена"), role: .cancel) {}
             } message: {
-                Text("Подтвердите бронь или измените дату и время поиска.")
+                Text(L10n.string("Confirm the booking or change the search date and time.", "Подтвердите бронь или измените дату и время поиска."))
             }
             .task {
                 guard !didInitializeComposer else {
@@ -5116,7 +5119,7 @@ struct SearchComposerView: View {
 
             Spacer()
 
-            Text(initialSearch == nil ? "Найти партнёров" : "Изменить поиск")
+            Text(initialSearch == nil ? L10n.string("Find partners", "Найти партнёров") : L10n.string("Edit search", "Изменить поиск"))
                 .font(.system(size: 19, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -5139,10 +5142,10 @@ struct SearchComposerView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Быстрее с друзьями")
+                Text(L10n.string("Faster with friends", "Быстрее с друзьями"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Пригласите друзей и собирайте игры чаще")
+                Text(L10n.string("Invite friends and play more often", "Пригласите друзей и собирайте игры чаще"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.64))
                     .lineLimit(2)
@@ -5152,7 +5155,7 @@ struct SearchComposerView: View {
 
             if let inviteURL = resolvedInviteURL {
                 ShareLink(item: inviteURL) {
-                    Text("Пригласить")
+                    Text(L10n.string("Invite", "Пригласить"))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
@@ -5166,7 +5169,7 @@ struct SearchComposerView: View {
                     }
                 )
             } else {
-                Text("Пригласить")
+                Text(L10n.string("Invite", "Пригласить"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.78))
                     .padding(.horizontal, 16)
@@ -5192,8 +5195,8 @@ struct SearchComposerView: View {
 
     private var searchTypeModeSwitch: some View {
         HStack(spacing: 8) {
-            searchTypeButton(type: .regular, systemImage: "calendar", title: "Регулярный")
-            searchTypeButton(type: .hot, systemImage: "rocket", title: "Срочный")
+            searchTypeButton(type: .regular, systemImage: "calendar", title: L10n.string("Recurring", "Регулярный"))
+            searchTypeButton(type: .hot, systemImage: "rocket", title: L10n.string("Urgent", "Срочный"))
         }
         .padding(5)
         .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -5231,7 +5234,7 @@ struct SearchComposerView: View {
             HStack(spacing: 10) {
                 Text("🚀")
                     .font(.system(size: 22))
-                Text("Срочный поиск")
+                Text(L10n.string("Urgent search", "Срочный поиск"))
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
@@ -5276,7 +5279,7 @@ struct SearchComposerView: View {
     private var hotStepActions: some View {
         HStack(spacing: 12) {
             if hotStep != .when {
-                Button("Назад") {
+                Button(L10n.string("Back", "Назад")) {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                         hotStep = HotSearchStep(rawValue: hotStep.rawValue - 1) ?? .when
                     }
@@ -5298,7 +5301,7 @@ struct SearchComposerView: View {
                     if hotStep == .confirm {
                         Text("🚀")
                     }
-                    Text(hotStep == .confirm ? "Опубликовать срочно" : "Продолжить")
+                    Text(hotStep == .confirm ? L10n.string("Publish urgent search", "Опубликовать срочно") : L10n.string("Continue", "Продолжить"))
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -5311,11 +5314,11 @@ struct SearchComposerView: View {
     private var sportRailSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Что ищем?")
+                Text(L10n.string("What are you looking for?", "Что ищем?"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                Text("Выбрать вид спорта")
+                Text(L10n.string("Choose a sport", "Выбрать вид спорта"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(AppTheme.court)
             }
@@ -5361,7 +5364,7 @@ struct SearchComposerView: View {
 
     private var formatSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Формат игры")
+            Text(L10n.string("Game format", "Формат игры"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -5391,7 +5394,7 @@ struct SearchComposerView: View {
     private var compactStatsSection: some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Нужно игроков")
+                Text(L10n.string("Players needed", "Нужно игроков"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
 
@@ -5442,7 +5445,7 @@ struct SearchComposerView: View {
                             .frame(width: 28, height: 28)
                             .overlay(Circle().stroke(.white, lineWidth: 2))
                     }
-                    Text("Вы + \(openSeatsLabel)")
+                    Text(L10n.string("You + \(openSeatsLabel)", "Вы + \(openSeatsLabel)"))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(AppTheme.court)
                         .lineLimit(2)
@@ -5456,7 +5459,7 @@ struct SearchComposerView: View {
             .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 14) {
-                Text("Уровень")
+                Text(L10n.string("Level", "Уровень"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
 
@@ -5502,7 +5505,7 @@ struct SearchComposerView: View {
     }
 
     private var openSeatsLabel: String {
-        "\(draft.playersNeeded) \(openSeatsWord(for: draft.playersNeeded)) открыто"
+        L10n.string("\(draft.playersNeeded) open \(draft.playersNeeded == 1 ? "spot" : "spots")", "\(draft.playersNeeded) \(openSeatsWord(for: draft.playersNeeded)) открыто")
     }
 
     private func openSeatsWord(for count: Int) -> String {
@@ -5523,7 +5526,7 @@ struct SearchComposerView: View {
 
     private var scheduleSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Когда играть?")
+            Text(L10n.string("When do you want to play?", "Когда играть?"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -5574,10 +5577,10 @@ struct SearchComposerView: View {
     private var hotSettingsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Когда хотите сыграть?")
+                Text(L10n.string("When would you like to play?", "Когда хотите сыграть?"))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Выберите день и удобное время")
+                Text(L10n.string("Choose a day and a convenient time", "Выберите день и удобное время"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -5598,7 +5601,7 @@ struct SearchComposerView: View {
                 }
             }
 
-            Text("Во сколько?")
+            Text(L10n.string("What time?", "Во сколько?"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -5622,12 +5625,12 @@ struct SearchComposerView: View {
                 }
             }
 
-            FieldShell(title: "Длительность") {
+            FieldShell(title: L10n.string("Duration", "Длительность")) {
                 Stepper(value: Binding(
                     get: { draft.durationMinutes ?? selectedSport.defaultDurationMinutes },
                     set: { draft.durationMinutes = $0 }
                 ), in: 30 ... 180, step: 30) {
-                    Text("\(draft.durationMinutes ?? selectedSport.defaultDurationMinutes) мин")
+                    Text(L10n.string("\(draft.durationMinutes ?? selectedSport.defaultDurationMinutes) min", "\(draft.durationMinutes ?? selectedSport.defaultDurationMinutes) мин"))
                         .font(.headline)
                 }
             }
@@ -5637,10 +5640,10 @@ struct SearchComposerView: View {
     private var hotLocationSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(selectedSport.isRouteSport ? "Где маршрут?" : "Где играем?")
+                Text(selectedSport.isRouteSport ? L10n.string("Where is the route?", "Где маршрут?") : L10n.string("Where are we playing?", "Где играем?"))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text(selectedSport.isRouteSport ? "Отметьте маршрут на карте. Клубы и районы здесь не нужны." : "Выберите район или клуб, если он уже забронирован")
+                Text(selectedSport.isRouteSport ? L10n.string("Mark the route on the map. Clubs and districts aren’t needed here.", "Отметьте маршрут на карте. Клубы и районы здесь не нужны.") : L10n.string("Choose a district or a club if it’s already booked", "Выберите район или клуб, если он уже забронирован"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -5654,7 +5657,7 @@ struct SearchComposerView: View {
                     Button {
                         bookingCallFlow.start(url: phoneURL, openURL: openURL)
                     } label: {
-                        Label("Позвонить и забронировать", systemImage: "phone.fill")
+                        Label(L10n.string("Call and book", "Позвонить и забронировать"), systemImage: "phone.fill")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -5686,7 +5689,7 @@ struct SearchComposerView: View {
                     isRunningRoutePickerPresented = true
                     AppHaptics.selection()
                 } label: {
-                    Label(draft.runningRoutePoints?.isEmpty == false ? "Изменить" : "Нарисовать", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    Label(draft.runningRoutePoints?.isEmpty == false ? L10n.string("Edit", "Изменить") : L10n.string("Draw", "Нарисовать"), systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                         .font(.system(size: 13, weight: .bold))
                 }
                 .buttonStyle(.plain)
@@ -5717,10 +5720,10 @@ struct SearchComposerView: View {
                             .background(AppTheme.mint, in: Circle())
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Отметьте точки маршрута на карте")
+                            Text(L10n.string("Mark route points on the map", "Отметьте точки маршрута на карте"))
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(AppTheme.ink)
-                            Text("Маршрут будет виден игрокам в карточке поиска.")
+                            Text(L10n.string("Players will see the route on the search card.", "Маршрут будет виден игрокам в карточке поиска."))
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(AppTheme.ink.opacity(0.56))
                         }
@@ -5745,22 +5748,22 @@ struct SearchComposerView: View {
     private var runningRouteSummary: String {
         let pointsCount = draft.runningRoutePoints?.count ?? 0
         if pointsCount >= 2 {
-            return "\(pointsCount) точек · \(draft.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? draft.runningRoute! : "Маршрут на карте")"
+            return L10n.string("\(pointsCount) points · \(draft.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? draft.runningRoute! : "Route on map")", "\(pointsCount) точек · \(draft.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? draft.runningRoute! : "Маршрут на карте")")
         }
-        return "Нарисуйте старт, финиш и ключевые точки"
+        return L10n.string("Mark the start, finish, and key points", "Нарисуйте старт, финиш и ключевые точки")
     }
 
     @ViewBuilder
     private var hotDistrictRail: some View {
         if !availableDistricts.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Районы")
+                Text(L10n.string("Districts", "Районы"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        districtChip(title: "Любой", district: nil)
+                        districtChip(title: L10n.string("Any", "Любой"), district: nil)
                         ForEach(availableDistricts.prefix(10), id: \.self) { district in
                             districtChip(title: prettifyDistrict(district), district: district)
                         }
@@ -5848,10 +5851,10 @@ struct SearchComposerView: View {
                     .background(selected ? AppTheme.mint : Color.black.opacity(0.04), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Другая дата")
+                    Text(L10n.string("Another date", "Другая дата"))
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(selected ? AppTheme.court : AppTheme.ink)
-                    Text(selected ? hotDateTitle : "Выбрать в календаре")
+                    Text(selected ? hotDateTitle : L10n.string("Choose in calendar", "Выбрать в календаре"))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(AppTheme.ink.opacity(0.48))
                 }
@@ -6054,7 +6057,7 @@ struct SearchComposerView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(selectedCourt?.name ?? "Клубы и районы")
+                    Text(selectedCourt?.name ?? L10n.string("Clubs and districts", "Клубы и районы"))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(AppTheme.ink)
                     Text(districtsSummary)
@@ -6091,10 +6094,10 @@ struct SearchComposerView: View {
                 .padding(.top, 4)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Комментарий (необязательно)")
+                Text(L10n.string("Comment (optional)", "Комментарий (необязательно)"))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
-                TextField("Например: хочу сыграть после 19:00", text: $draft.comment, axis: .vertical)
+                TextField(L10n.string("For example: I’d like to play after 7 PM", "Например: хочу сыграть после 19:00"), text: $draft.comment, axis: .vertical)
                     .lineLimit(2 ... 4)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.ink)
@@ -6106,7 +6109,7 @@ struct SearchComposerView: View {
                     .toolbar {
                         ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
-                            Button("Готово") {
+                            Button(L10n.string("Done", "Готово")) {
                                 isSearchCommentFocused = false
                             }
                         }
@@ -6119,22 +6122,22 @@ struct SearchComposerView: View {
 
     private var urgentConfirmationSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Проверьте и опубликуйте")
+            Text(L10n.string("Review and publish", "Проверьте и опубликуйте"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
             inviteBanner
 
             VStack(spacing: 0) {
-                urgentConfirmationRow(icon: "calendar", title: "Когда", value: "\(hotDateTitle), \(draft.hotStartTime ?? "19:00")")
+                urgentConfirmationRow(icon: "calendar", title: L10n.string("When", "Когда"), value: "\(hotDateTitle), \(draft.hotStartTime ?? "19:00")")
                 Divider()
-                urgentConfirmationRow(icon: "tennis.racket", title: "Вид спорта", value: selectedSport.title)
+                urgentConfirmationRow(icon: "tennis.racket", title: L10n.string("Sport", "Вид спорта"), value: selectedSport.title)
                 Divider()
-                urgentConfirmationRow(icon: "person.badge.plus", title: "Нужно игроков", value: "Вы + \(openSeatsLabel)")
+                urgentConfirmationRow(icon: "person.badge.plus", title: L10n.string("Players needed", "Нужно игроков"), value: L10n.string("You + \(openSeatsLabel)", "Вы + \(openSeatsLabel)"))
                 Divider()
-                urgentConfirmationRow(icon: "chart.bar", title: "Уровень", value: "\(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
+                urgentConfirmationRow(icon: "chart.bar", title: L10n.string("Level", "Уровень"), value: "\(draft.desiredLevelMin)-\(draft.desiredLevelMax)")
                 Divider()
-                urgentConfirmationRow(icon: "mappin.and.ellipse", title: "Место", value: locationTitle)
+                urgentConfirmationRow(icon: "mappin.and.ellipse", title: L10n.string("Location", "Место"), value: locationTitle)
             }
             .padding(14)
             .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -6186,7 +6189,7 @@ struct SearchComposerView: View {
             .scaleEffect(submitButtonPressed ? 0.97 : 1)
             .disabled(!canSubmit || isSavingSearch)
 
-            Text(draft.searchType == .hot ? "Поиск будет активен до начала игры" : "Партнёрам придёт уведомление о вашем запросе")
+            Text(draft.searchType == .hot ? L10n.string("The search will stay active until the game starts", "Поиск будет активен до начала игры") : L10n.string("Partners will be notified about your request", "Партнёрам придёт уведомление о вашем запросе"))
                 .font(.footnote)
                 .foregroundStyle(AppTheme.ink.opacity(0.38))
                 .frame(maxWidth: .infinity)
@@ -6195,9 +6198,9 @@ struct SearchComposerView: View {
 
     private var submitButtonTitle: String {
         if initialSearch != nil {
-            return "Сохранить поиск"
+            return L10n.string("Save search", "Сохранить поиск")
         }
-        return draft.searchType == .hot ? "Опубликовать срочно" : "Создать поиск"
+        return draft.searchType == .hot ? L10n.string("Publish urgent search", "Опубликовать срочно") : L10n.string("Create search", "Создать поиск")
     }
 
     private func decrementPlayersNeeded() {
@@ -6373,11 +6376,11 @@ struct SearchComposerView: View {
     private func formatTitle(for format: PlayFormat) -> String {
         switch format {
         case .singles:
-            return "Одиночная"
+            return L10n.string("Singles", "Одиночная")
         case .doubles:
-            return "Парная"
+            return L10n.string("Doubles", "Парная")
         case .both:
-            return "Любой"
+            return L10n.string("Any", "Любой")
         }
     }
 
@@ -6450,7 +6453,7 @@ struct SearchComposerView: View {
                 Text(selectedSport.venueBookedTitle)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Отметь, если осталось только согласовать состав и время.")
+                Text(L10n.string("Select this if you only need to agree on the roster and time.", "Отметь, если осталось только согласовать состав и время."))
                     .font(.caption)
                     .foregroundStyle(AppTheme.ink.opacity(0.6))
             }
@@ -6954,7 +6957,7 @@ private final class SearchClubAggregateAnnotation: NSObject, MKAnnotation {
 
 private final class SearchPreviewUserAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
-    let title: String? = "Вы здесь"
+    let title: String? = L10n.string("You are here", "Вы здесь")
     let subtitle: String?
 
     init(coordinate: CLLocationCoordinate2D, districtLabel: String?) {
@@ -7134,7 +7137,7 @@ private struct HotDateCalendarCard: View {
     }
 
     private var weekdayTitles: [String] {
-        ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        LocaleStore.currentEffectiveLocale == .ru ? ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     }
 
     private var minimumDay: Date {
@@ -7237,13 +7240,13 @@ private enum HotSearchStep: Int, CaseIterable {
     var badgeTitle: String {
         switch self {
         case .when:
-            return "1. Когда"
+            return L10n.string("1. When", "1. Когда")
         case .who:
-            return "2. Кого"
+            return L10n.string("2. Who", "2. Кого")
         case .location:
-            return "3. Где"
+            return L10n.string("3. Where", "3. Где")
         case .confirm:
-            return "4. Подтверждение"
+            return L10n.string("4. Review", "4. Подтверждение")
         }
     }
 }
@@ -7296,7 +7299,7 @@ struct RunningRouteDetailSheet: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.82)
 
-                        Text("\(points.count) точек · \(sport.routeFollowsRoads ? "маршрут по улицам" : "маршрут по воде")")
+                        Text(L10n.string("\(points.count) points · \(sport.routeFollowsRoads ? "street route" : "water route")", "\(points.count) точек · \(sport.routeFollowsRoads ? "маршрут по улицам" : "маршрут по воде")"))
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(AppTheme.ink.opacity(0.56))
                     }
@@ -7307,7 +7310,7 @@ struct RunningRouteDetailSheet: View {
                         usesSatelliteMap.toggle()
                         AppHaptics.selection()
                     } label: {
-                        Text(usesSatelliteMap ? "Карта" : "Спутник")
+                        Text(usesSatelliteMap ? L10n.string("Map", "Карта") : L10n.string("Satellite", "Спутник"))
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
                             .padding(.horizontal, 12)
@@ -7378,10 +7381,10 @@ private struct RunningRoutePickerSheet: View {
                         .ignoresSafeArea(edges: .horizontal)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Нажимайте на карту по маршруту")
+                        Text(L10n.string("Tap along the route on the map", "Нажимайте на карту по маршруту"))
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
-                        Text(sport.routeFollowsRoads ? "Поставьте минимум старт и финиш. Линия будет строиться по улицам." : "Поставьте минимум старт и финиш. Линия пойдёт по воде между точками.")
+                        Text(sport.routeFollowsRoads ? L10n.string("Add at least a start and finish. The line will follow streets.", "Поставьте минимум старт и финиш. Линия будет строиться по улицам.") : L10n.string("Add at least a start and finish. The line will follow the water between points.", "Поставьте минимум старт и финиш. Линия пойдёт по воде между точками."))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(AppTheme.ink.opacity(0.58))
                             .fixedSize(horizontal: false, vertical: true)
@@ -7403,7 +7406,7 @@ private struct RunningRoutePickerSheet: View {
                 Text(sport.routeDefaultTitle)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("\(draftPoints.count) точек на карте")
+                Text(L10n.string("\(draftPoints.count) points on map", "\(draftPoints.count) точек на карте"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
             }
@@ -7414,7 +7417,7 @@ private struct RunningRoutePickerSheet: View {
                 usesSatelliteMap.toggle()
                 AppHaptics.selection()
             } label: {
-                Text(usesSatelliteMap ? "Карта" : "Спутник")
+                Text(usesSatelliteMap ? L10n.string("Map", "Карта") : L10n.string("Satellite", "Спутник"))
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                     .padding(.horizontal, 12)
@@ -7443,7 +7446,7 @@ private struct RunningRoutePickerSheet: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField(sport == .supboard ? "Название маршрута, например: Крестовский, круг по воде" : "Название маршрута, например: Парк 300-летия, круг 5 км", text: $draftTitle, axis: .vertical)
+            TextField(sport == .supboard ? L10n.string("Route name, for example: island loop on the water", "Название маршрута, например: Крестовский, круг по воде") : L10n.string("Route name, for example: park loop, 5 km", "Название маршрута, например: Парк 300-летия, круг 5 км"), text: $draftTitle, axis: .vertical)
                 .lineLimit(1 ... 3)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(AppTheme.ink)
@@ -7461,7 +7464,7 @@ private struct RunningRoutePickerSheet: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
-                        Button("Готово") {
+                        Button(L10n.string("Done", "Готово")) {
                             isRouteTitleFocused = false
                         }
                     }
@@ -7473,7 +7476,7 @@ private struct RunningRoutePickerSheet: View {
                     _ = draftPoints.popLast()
                     AppHaptics.selection()
                 } label: {
-                    Label("Назад", systemImage: "arrow.uturn.backward")
+                    Label(L10n.string("Undo", "Назад"), systemImage: "arrow.uturn.backward")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
@@ -7484,7 +7487,7 @@ private struct RunningRoutePickerSheet: View {
                     draftPoints.removeAll()
                     AppHaptics.selection()
                 } label: {
-                    Label("Очистить", systemImage: "trash")
+                    Label(L10n.string("Clear", "Очистить"), systemImage: "trash")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryActionButtonStyle(tint: .red.opacity(0.88)))
@@ -7495,11 +7498,11 @@ private struct RunningRoutePickerSheet: View {
                 isRouteTitleFocused = false
                 points = draftPoints
                 let normalizedTitle = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                routeTitle = normalizedTitle.isEmpty && draftPoints.count >= 2 ? "Маршрут на карте" : normalizedTitle
+                routeTitle = normalizedTitle.isEmpty && draftPoints.count >= 2 ? L10n.string("Route on map", "Маршрут на карте") : normalizedTitle
                 AppHaptics.notification(.success)
                 dismiss()
             } label: {
-                Text("Готово")
+                Text(L10n.string("Done", "Готово"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
@@ -7713,9 +7716,9 @@ private struct SearchComposerAdvancedSheet: View {
             AppScreen {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
-                        SectionCard(title: "Дополнительно", subtitle: "Скрытые настройки поиска: тип, срочное окно, районы и бронирование клуба.") {
+                        SectionCard(title: L10n.string("Advanced", "Дополнительно"), subtitle: L10n.string("Additional search settings: type, urgent window, districts, and club booking.", "Скрытые настройки поиска: тип, срочное окно, районы и бронирование клуба.")) {
                             AppSegmentedChoice(
-                                title: "Тип поиска",
+                                title: L10n.string("Search type", "Тип поиска"),
                                 items: SearchType.userVisibleCases,
                                 selection: $draft.searchType,
                                 titleForItem: \.title
@@ -7723,7 +7726,7 @@ private struct SearchComposerAdvancedSheet: View {
 
                             if draft.searchType == .hot {
                                 AppSegmentedChoice(
-                                    title: "Окно",
+                                    title: L10n.string("Window", "Окно"),
                                     items: HotWindow.allCases,
                                     selection: Binding(
                                         get: { draft.hotWindow ?? .today },
@@ -7733,7 +7736,7 @@ private struct SearchComposerAdvancedSheet: View {
                                 )
 
                                 HStack(spacing: 12) {
-                                    FieldShell(title: "Время старта") {
+                                    FieldShell(title: L10n.string("Start time", "Время старта")) {
                                         TextField("19:00", text: Binding(
                                             get: { draft.hotStartTime ?? "19:00" },
                                             set: { draft.hotStartTime = $0 }
@@ -7741,12 +7744,12 @@ private struct SearchComposerAdvancedSheet: View {
                                         .keyboardType(.numbersAndPunctuation)
                                     }
 
-                                    FieldShell(title: "Длительность") {
+                                    FieldShell(title: L10n.string("Duration", "Длительность")) {
                                         Stepper(value: Binding(
                                             get: { draft.durationMinutes ?? sport.defaultDurationMinutes },
                                             set: { draft.durationMinutes = $0 }
                                         ), in: 30 ... 180, step: 30) {
-                                            Text("\(draft.durationMinutes ?? sport.defaultDurationMinutes) мин")
+                                            Text(L10n.string("\(draft.durationMinutes ?? sport.defaultDurationMinutes) min", "\(draft.durationMinutes ?? sport.defaultDurationMinutes) мин"))
                                                 .font(.headline)
                                         }
                                     }
@@ -7758,7 +7761,7 @@ private struct SearchComposerAdvancedSheet: View {
                                     Text(sport.venueBookedTitle)
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(AppTheme.ink)
-                                    Text("Отметь, если место уже есть и нужно только собрать состав.")
+                                    Text(L10n.string("Select this if the venue is ready and you only need to fill the roster.", "Отметь, если место уже есть и нужно только собрать состав."))
                                         .font(.caption)
                                         .foregroundStyle(AppTheme.ink.opacity(0.6))
                                 }
@@ -7769,20 +7772,20 @@ private struct SearchComposerAdvancedSheet: View {
                             }
 
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Удобные районы")
+                                Text(L10n.string("Preferred districts", "Удобные районы"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                                     .textCase(.uppercase)
                                     .tracking(1.4)
 
                                 if availableDistricts.isEmpty {
-                                    Text("Районы появятся, когда загрузятся клубы для выбранного спорта.")
+                                    Text(L10n.string("Districts will appear after clubs for the selected sport load.", "Районы появятся, когда загрузятся клубы для выбранного спорта."))
                                         .font(.footnote)
                                         .foregroundStyle(AppTheme.ink.opacity(0.58))
                                 } else {
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 8) {
-                                            advancedDistrictChip(title: "Любой район", district: nil)
+                                            advancedDistrictChip(title: L10n.string("Any district", "Любой район"), district: nil)
                                             ForEach(availableDistricts, id: \.self) { district in
                                                 advancedDistrictChip(title: localizedDistrictName(district) ?? district, district: district)
                                             }
@@ -7792,7 +7795,7 @@ private struct SearchComposerAdvancedSheet: View {
                             }
 
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Текущая доступность")
+                                Text(L10n.string("Current availability", "Текущая доступность"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                                     .textCase(.uppercase)
@@ -7801,7 +7804,7 @@ private struct SearchComposerAdvancedSheet: View {
                             }
                         }
 
-                        Button("Готово") {
+                        Button(L10n.string("Done", "Готово")) {
                             dismiss()
                         }
                         .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
@@ -7811,7 +7814,7 @@ private struct SearchComposerAdvancedSheet: View {
                     .padding(.bottom, 30)
                 }
             }
-            .navigationTitle("Параметры")
+            .navigationTitle(L10n.string("Settings", "Параметры"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -7895,7 +7898,7 @@ struct SearchClubPickerSheet: View {
     }
 
     private var suggestionCity: String? {
-        courts.first(where: { $0.city?.isEmpty == false })?.city ?? "Санкт-Петербург"
+        courts.first(where: { $0.city?.isEmpty == false })?.city ?? L10n.string("Saint Petersburg", "Санкт-Петербург")
     }
 
     private var filteredCourts: [Court] {
@@ -7999,12 +8002,12 @@ struct SearchClubPickerSheet: View {
 
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Выбор клуба")
+                        Text(L10n.string("Choose a club", "Выбор клуба"))
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(1)
                             .minimumScaleFactor(0.86)
-                        Text("Название, метро, район или адрес")
+                        Text(L10n.string("Name, transit station, district, or address", "Название, метро, район или адрес"))
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.ink.opacity(0.58))
                             .lineLimit(1)
@@ -8032,7 +8035,7 @@ struct SearchClubPickerSheet: View {
                         .foregroundStyle(AppTheme.ink.opacity(0.36))
                     ZStack(alignment: .leading) {
                         if query.isEmpty {
-                            Text("Название клуба, метро, район или адрес")
+                            Text(L10n.string("Club name, transit station, district, or address", "Название клуба, метро, район или адрес"))
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(AppTheme.ink.opacity(0.28))
                         }
@@ -8120,7 +8123,7 @@ struct SearchClubPickerSheet: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        chip(title: "Все", selected: true)
+                        chip(title: L10n.string("All", "Все"), selected: true)
                         chip(title: sport.title, selected: false)
                     }
                     .padding(.horizontal, 18)
@@ -8134,7 +8137,7 @@ struct SearchClubPickerSheet: View {
                                 Image(systemName: "location")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(AppTheme.ink)
-                                Text("Рядом с вами")
+                                Text(L10n.string("Near you", "Рядом с вами"))
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(AppTheme.ink)
                             }
@@ -8144,7 +8147,7 @@ struct SearchClubPickerSheet: View {
                                     [court.name, localizedDistrictName(court.district)]
                                         .compactMap { $0 }
                                         .joined(separator: " · ")
-                                } ?? "Санкт-Петербург"
+                                } ?? L10n.string("Saint Petersburg", "Санкт-Петербург")
                             )
                             .font(.caption)
                             .foregroundStyle(AppTheme.ink.opacity(0.56))
@@ -8154,7 +8157,7 @@ struct SearchClubPickerSheet: View {
                                 isMapExpanded = true
                                 AppHaptics.selection()
                             } label: {
-                                Label("Развернуть карту", systemImage: "arrow.up.left.and.arrow.down.right")
+                                Label(L10n.string("Expand map", "Развернуть карту"), systemImage: "arrow.up.left.and.arrow.down.right")
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(AppTheme.court)
                             }
@@ -8194,7 +8197,7 @@ struct SearchClubPickerSheet: View {
                 .padding(.top, 16)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Рекомендуемые")
+                    Text(L10n.string("Recommended", "Рекомендуемые"))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(AppTheme.ink)
                         .padding(.horizontal, 18)
@@ -8204,8 +8207,8 @@ struct SearchClubPickerSheet: View {
                             if allowsNoCourt {
                                 CourtBrowseCard(
                                     sport: sport,
-                                    title: "Без привязки",
-                                    subtitleLines: ["Покажем ближайшие подходящие клубы"],
+                                    title: L10n.string("No preference", "Без привязки"),
+                                    subtitleLines: [L10n.string("We’ll show the nearest suitable clubs", "Покажем ближайшие подходящие клубы")],
                                     distance: nil,
                                     isSelected: pendingSelectionId == nil
                                 ) {
@@ -8219,7 +8222,7 @@ struct SearchClubPickerSheet: View {
                                     title: court.name,
                                     subtitleLines: [
                                         sport.title,
-                                        court.metroDisplayName ?? "Метро не указано",
+                                        court.metroDisplayName ?? L10n.string("Transit station not specified", "Метро не указано"),
                                         court.address
                                     ],
                                     distance: court.distanceLabel,
@@ -8239,14 +8242,14 @@ struct SearchClubPickerSheet: View {
                 .padding(.top, 20)
 
                 VStack(spacing: 10) {
-                    Button(pendingSelectionId == nil && allowsNoCourt ? "Оставить без привязки" : "Выбрать этот клуб") {
+                    Button(pendingSelectionId == nil && allowsNoCourt ? L10n.string("Keep no preference", "Оставить без привязки") : L10n.string("Choose this club", "Выбрать этот клуб")) {
                         onSelect(pendingCourtSnapshot ?? pendingSelectionId.flatMap { id in courts.first(where: { $0.id == id }) })
                         dismiss()
                     }
                     .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
                     .disabled(!allowsNoCourt && pendingSelectionId == nil)
 
-                    Text("Клуб можно будет изменить позже")
+                    Text(L10n.string("You can change the club later", "Клуб можно будет изменить позже"))
                         .font(.footnote)
                         .foregroundStyle(AppTheme.ink.opacity(0.38))
                 }
@@ -8293,7 +8296,7 @@ struct SearchClubPickerSheet: View {
                 HStack(spacing: 12) {
                     ProgressView()
                         .tint(AppTheme.court)
-                    Text("Ищем адрес")
+                    Text(L10n.string("Searching for address", "Ищем адрес"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.ink.opacity(0.62))
                     Spacer()
@@ -8307,11 +8310,11 @@ struct SearchClubPickerSheet: View {
             } else if !addressSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Адреса")
+                        Text(L10n.string("Addresses", "Адреса"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.ink.opacity(0.48))
                             .textCase(.uppercase)
-                        Text("Если клуба нет в списке, выберите точный адрес из подсказок.")
+                        Text(L10n.string("If the club isn’t listed, choose the exact address from suggestions.", "Если клуба нет в списке, выберите точный адрес из подсказок."))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(AppTheme.ink.opacity(0.54))
                     }
@@ -8554,7 +8557,7 @@ private struct MissingClubAddressHint: View {
                     .background(AppTheme.mint, in: Circle())
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Использовать введённый адрес")
+                    Text(L10n.string("Use entered address", "Использовать введённый адрес"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(AppTheme.ink)
 
@@ -8563,7 +8566,7 @@ private struct MissingClubAddressHint: View {
                         .foregroundStyle(AppTheme.court)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Если адреса нет в подсказках, сохраним введённый текст как место поиска.")
+                    Text(L10n.string("If the address isn’t in suggestions, we’ll save the entered text as the search location.", "Если адреса нет в подсказках, сохраним введённый текст как место поиска."))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(AppTheme.ink.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
@@ -8696,7 +8699,7 @@ private struct MapSelectedCourtMiniCard: View {
 
             Spacer(minLength: 8)
 
-            Button("Выбрать") {
+            Button(L10n.string("Choose", "Выбрать")) {
                 onChoose()
             }
             .font(.caption.weight(.bold))
@@ -8784,10 +8787,10 @@ private struct SearchClubExpandedMapSheet: View {
 
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Карта клубов")
+                        Text(L10n.string("Club map", "Карта клубов"))
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
-                        Text("Нажмите на значок, чтобы увидеть клуб и выбрать его")
+                        Text(L10n.string("Tap a marker to view and choose a club", "Нажмите на значок, чтобы увидеть клуб и выбрать его"))
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.ink.opacity(0.58))
                     }
@@ -8950,7 +8953,7 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
         detailCalloutAccessoryView = SearchClubCalloutContentView(court: court)
 
         let chooseButton = UIButton(type: .system)
-        chooseButton.setTitle("Выбрать", for: .normal)
+        chooseButton.setTitle(L10n.string("Choose", "Выбрать"), for: .normal)
         chooseButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
         chooseButton.tintColor = UIColor(red: 0.09, green: 0.17, blue: 0.16, alpha: 1)
         chooseButton.frame = CGRect(x: 0, y: 0, width: 74, height: 34)
@@ -9008,7 +9011,7 @@ private final class SearchClubPickerAnnotationView: MKAnnotationView {
             y: iconSize.height / 2 - iconAnchor.y
         )
         calloutOffset = CGPoint(x: iconAnchor.x - markerWidth / 2, y: 0)
-        accessibilityLabel = title.isEmpty ? "Спортивный клуб" : title
+        accessibilityLabel = title.isEmpty ? L10n.string("Sports club", "Спортивный клуб") : title
     }
 
     private func makePhotoView(for court: Court) -> UIImageView {
@@ -9057,7 +9060,7 @@ private final class SearchClubCalloutContentView: UIStackView {
         let sportsLine = (court.supportedSports?.isEmpty == false ? court.supportedSports : nil)?
             .map(\.title)
             .joined(separator: " · ")
-            ?? "Клуб"
+            ?? L10n.string("Club", "Клуб")
         addArrangedSubview(makeLabel(sportsLine, font: .systemFont(ofSize: 12, weight: .semibold), color: UIColor(red: 0.08, green: 0.54, blue: 0.36, alpha: 1), lines: 1))
 
         let placeLine = [court.metroDisplayName, localizedDistrictName(court.district), court.distanceLabel]
@@ -9069,7 +9072,7 @@ private final class SearchClubCalloutContentView: UIStackView {
 
         addArrangedSubview(makeLabel(court.address, font: .systemFont(ofSize: 12, weight: .medium), color: .label, lines: 2))
 
-        let extraLine = [court.workingHours, court.priceRange, court.rating.map { String(format: "Рейтинг %.1f", $0) }]
+        let extraLine = [court.workingHours, court.priceRange, court.rating.map { L10n.string(String(format: "Rating %.1f", $0), String(format: "Рейтинг %.1f", $0)) }]
             .compactMap { $0 }
             .joined(separator: " · ")
         if !extraLine.isEmpty {
@@ -9146,12 +9149,12 @@ private struct SearchMapItem: Identifiable {
             return districtName
         }
 
-        return "Место уточняется"
+        return L10n.string("Location to be confirmed", "Место уточняется")
     }
 
     var timeTitle: String {
         guard let hotStartsAt = search.hotStartsAt else {
-            return "Время уточняется"
+            return L10n.string("Time to be confirmed", "Время уточняется")
         }
 
         return hotStartsAt.formattedDateTime()
@@ -9159,7 +9162,7 @@ private struct SearchMapItem: Identifiable {
 
     var playersTitle: String {
         let approved = search.responses.filter { $0.status == "approved" }.count
-        return "\(approved) / \(max(search.playersNeeded, 1)) собрано"
+        return L10n.string("\(approved) / \(max(search.playersNeeded, 1)) confirmed", "\(approved) / \(max(search.playersNeeded, 1)) собрано")
     }
 }
 
@@ -9218,7 +9221,7 @@ private struct SearchMapPreviewCard: View {
                     .lineLimit(1)
 
                 Button(action: onOpen) {
-                    Text("Открыть")
+                    Text(L10n.string("Open", "Открыть"))
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 14)

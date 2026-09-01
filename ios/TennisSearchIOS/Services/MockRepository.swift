@@ -397,6 +397,73 @@ actor MockRepository: TennisRepository {
         return currentUser
     }
 
+    func updateLocaleOverride(_ locale: String?) async throws -> String? {
+        currentUser.localeOverride = locale
+        return locale
+    }
+
+    func fetchLocationCountries(query: String?) async throws -> [GeoCountry] {
+        let countries = [
+            GeoCountry(code: "RU", name: "Россия"),
+            GeoCountry(code: "DE", name: "Германия"),
+            GeoCountry(code: "ES", name: "Испания"),
+            GeoCountry(code: "FR", name: "Франция")
+        ]
+        let normalized = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalized.isEmpty else { return countries }
+        return countries.filter {
+            $0.name.localizedCaseInsensitiveContains(normalized)
+                || $0.code.localizedCaseInsensitiveContains(normalized)
+        }
+    }
+
+    func fetchLocationCities(countryCode: String, query: String, limit: Int) async throws -> [GeoPlace] {
+        let places = Self.mockGeoPlaces.filter { $0.countryCode == countryCode.uppercased() }
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = normalized.isEmpty ? places : places.filter {
+            $0.city.localizedCaseInsensitiveContains(normalized)
+                || ($0.region?.localizedCaseInsensitiveContains(normalized) == true)
+        }
+        return Array(filtered.prefix(max(1, limit)))
+    }
+
+    func reverseGeocodeLocation(latitude: Double, longitude: Double) async throws -> GeoPlace {
+        Self.mockGeoPlaces.min { lhs, rhs in
+            hypot(lhs.latitude - latitude, lhs.longitude - longitude)
+                < hypot(rhs.latitude - latitude, rhs.longitude - longitude)
+        } ?? Self.mockGeoPlaces[0]
+    }
+
+    private static let mockGeoPlaces = [
+        GeoPlace(
+            id: "mock:ru:saint-petersburg", provider: "mock", countryCode: "RU", countryName: "Россия",
+            region: "Санкт-Петербург", city: "Санкт-Петербург", latitude: 59.9386, longitude: 30.3141,
+            coverage: LocationCoverage(isSupported: true, clubsEnabled: true, districtsEnabled: true, legacyCity: "Санкт-Петербург"),
+            recommendedLocale: "ru"
+        ),
+        GeoPlace(
+            id: "mock:ru:moscow", provider: "mock", countryCode: "RU", countryName: "Россия",
+            region: "Москва", city: "Москва", latitude: 55.7558, longitude: 37.6173,
+            coverage: LocationCoverage(isSupported: true, clubsEnabled: true, districtsEnabled: true, legacyCity: "Москва"),
+            recommendedLocale: "ru"
+        ),
+        GeoPlace(
+            id: "mock:de:berlin", provider: "mock", countryCode: "DE", countryName: "Германия",
+            region: "Берлин", city: "Берлин", latitude: 52.5200, longitude: 13.4050,
+            coverage: .unavailable, recommendedLocale: "en"
+        ),
+        GeoPlace(
+            id: "mock:es:barcelona", provider: "mock", countryCode: "ES", countryName: "Испания",
+            region: "Каталония", city: "Барселона", latitude: 41.3874, longitude: 2.1686,
+            coverage: .unavailable, recommendedLocale: "en"
+        ),
+        GeoPlace(
+            id: "mock:fr:paris", provider: "mock", countryCode: "FR", countryName: "Франция",
+            region: "Иль-де-Франс", city: "Париж", latitude: 48.8566, longitude: 2.3522,
+            coverage: .unavailable, recommendedLocale: "en"
+        )
+    ]
+
     func deleteAccount() async throws {
         matches = []
         searches = []

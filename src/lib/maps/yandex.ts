@@ -66,6 +66,7 @@ export function loadYandexMaps(apiKey: string, lang = "ru_RU") {
     script.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(apiKey)}&lang=${encodeURIComponent(lang)}`;
     script.async = true;
     script.dataset.mapProvider = "yandex";
+    script.dataset.mapLanguage = lang;
     script.onload = () => {
       if (!window.ymaps3) {
         reject(new Error("Yandex Maps script loaded, but ymaps3 is unavailable"));

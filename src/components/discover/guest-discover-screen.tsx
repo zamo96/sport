@@ -21,7 +21,8 @@ import { SeekingPlayersList } from "@/components/discover/seeking-players-list";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
 import { PageShell } from "@/components/layout/page-shell";
 import { Panel } from "@/components/ui/panel";
-import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { getDiscoverFormatLabel, translateDiscover } from "@/lib/i18n/web/discover";
 
 type GuestDiscoverUser = {
   id: string;
@@ -73,6 +74,8 @@ export function GuestDiscoverScreen() {
   const [users, setUsers] = useState<GuestDiscoverUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { locale } = useLocale();
+  const t = (key: Parameters<typeof translateDiscover>[1]) => translateDiscover(locale, key);
 
   const currentView =
     searchParams.get("view") === "hot"
@@ -128,7 +131,7 @@ export function GuestDiscoverScreen() {
         }
       } catch (requestError) {
         if (!cancelled) {
-          setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить подбор");
+          setError(requestError instanceof Error ? requestError.message : translateDiscover(locale, "discover.guest.error"));
         }
       } finally {
         if (!cancelled) {
@@ -142,7 +145,7 @@ export function GuestDiscoverScreen() {
     return () => {
       cancelled = true;
     };
-  }, [draft, searchParams]);
+  }, [draft, locale, searchParams]);
 
   const profileSports = useMemo(() => normalizeSports(draft?.preferredSports ?? []), [draft]);
   const userSportLevels = useMemo(
@@ -156,17 +159,17 @@ export function GuestDiscoverScreen() {
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 px-1">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">Гостевой режим</div>
-            <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">Игроки рядом</h1>
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">{t("discover.guest.eyebrow")}</div>
+            <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">{t("discover.page.title")}</h1>
             <div className="mt-1 text-sm text-ink/62">
-              {draft?.name || "Твой профиль"} · {draft ? getSportPlayFormatLabelRu(profileSports[0] ?? null, draft.preferredPlayFormat) : "Формат по умолчанию"}
+              {draft?.name || t("discover.guest.profile")} · {draft ? getDiscoverFormatLabel(locale, draft.preferredPlayFormat) : t("discover.guest.defaultFormat")}
             </div>
           </div>
         </div>
 
         {quickSummary.length > 0 ? (
           <Panel className="bg-cream/75 py-3 text-sm leading-6 text-ink/68">
-            Уже собран черновик профиля. Смотри карточки и активные поиски, а email попросим только в момент действия.
+            {t("discover.guest.draft")}
           </Panel>
         ) : null}
 
@@ -181,13 +184,13 @@ export function GuestDiscoverScreen() {
               }`}
             >
               {currentView === "hot" ? <Flame className="h-4 w-4 text-orange-200" /> : <CalendarDays className="h-4 w-4 text-court" />}
-              {currentView === "hot" ? "Создать быструю игру" : "Создать регулярный поиск"}
+              {currentView === "hot" ? t("discover.guest.createHot") : t("discover.page.createRegular")}
             </div>
           </Link>
         ) : null}
 
         {loading ? (
-          <Panel className="py-10 text-center text-sm text-ink/60">Подбираем игроков под твой профиль…</Panel>
+          <Panel className="py-10 text-center text-sm text-ink/60">{t("discover.guest.loading")}</Panel>
         ) : error ? (
           <Panel className="bg-red-50 py-6 text-center text-sm text-red-700">{error}</Panel>
         ) : currentView === "seeking" || currentView === "hot" ? (

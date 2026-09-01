@@ -1,6 +1,47 @@
 import SwiftUI
 import PhotosUI
 
+private extension String {
+    var localizedMatchesText: String {
+        guard LocaleStore.currentEffectiveLocale == .en else { return self }
+
+        let exact: [String: String] = [
+            "Новый мэтч": "New match",
+            "Нужно действие": "Action needed",
+            "Игра закончилась": "Game ended",
+            "Игра подтверждена": "Game confirmed",
+            "Ждёт подтверждения": "Awaiting confirmation",
+            "Ждем подтверждения": "Awaiting confirmation",
+            "Отменена": "Canceled",
+            "Поиск": "Search",
+            "Подбор игроков": "Finding players",
+            "Скоро начнется": "Starting soon",
+            "Игра началась": "Game started",
+            "Игра идет": "Game in progress",
+            "Игра прошла": "Game played",
+            "Не сыграли": "Not played",
+            "Одиночная": "Singles",
+            "Парная": "Doubles",
+            "Любой": "Any",
+            "Игрок уже отметил, что хочет с вами сыграть.": "This player has already said they would like to play with you."
+        ]
+        if let translated = exact[self] { return translated }
+
+        var value = self
+        let fragments: [(String, String)] = [
+            ("Совпадает вид спорта", "Same sport"),
+            ("Подходит уровень", "Compatible level"),
+            ("Совпадает район", "Same preferred area"),
+            ("Совпадает время", "Compatible availability"),
+            ("Недалеко от вас", "Near you")
+        ]
+        for (russian, english) in fragments {
+            value = value.replacingOccurrences(of: russian, with: english)
+        }
+        return value
+    }
+}
+
 private struct AvatarPreviewItem: Identifiable {
     let id = UUID()
     let name: String
@@ -61,10 +102,10 @@ struct MatchesView: View {
                 }
 
                 if filteredMatches.isEmpty, visibleIncomingLikes.isEmpty, !isLoading {
-                    SectionCard(title: "Пока нет мэтчей", subtitle: nil) {
+                    SectionCard(title: L10n.string("No matches yet", "Пока нет мэтчей"), subtitle: nil) {
                         EmptyStateView(
-                            title: "Пока нет мэтчей",
-                            subtitle: "Поставь несколько лайков в поиске. Взаимные интересы автоматически появятся здесь.",
+                            title: L10n.string("No matches yet", "Пока нет мэтчей"),
+                            subtitle: L10n.string("Like a few players in Discover. Mutual interest will automatically appear here.", "Поставь несколько лайков в поиске. Взаимные интересы автоматически появятся здесь."),
                             systemImage: "message.badge"
                         )
                     }
@@ -152,10 +193,10 @@ struct MatchesView: View {
     private var matchesHeader: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Мэтчи")
+                Text(L10n.string("Matches", "Мэтчи"))
                     .font(.system(size: 42, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Чаты и договоренности по играм")
+                Text(L10n.string("Chats and game arrangements", "Чаты и договоренности по играм"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.62))
             }
@@ -181,7 +222,7 @@ struct MatchesView: View {
                         }
                     } label: {
                         HStack(spacing: 7) {
-                            Text(filter.title)
+                            Text(filter.localizedTitle)
                             if count > 0 {
                                 Text("\(count)")
                                     .font(.system(size: 11, weight: .bold))
@@ -249,7 +290,7 @@ struct MatchesView: View {
     private var incomingLikesDecisionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Ждут решения")
+                Text(L10n.string("Waiting for your response", "Ждут решения"))
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(visibleIncomingLikes.count)")
@@ -442,18 +483,18 @@ private enum MatchListFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    var localizedTitle: String {
         switch self {
         case .all:
-            return "Все"
+            return L10n.string("All", "Все")
         case .new:
-            return "Новые"
+            return L10n.string("New", "Новые")
         case .action:
-            return "Нужно действие"
+            return L10n.string("Action needed", "Нужно действие")
         case .withGame:
-            return "Подтверждены"
+            return L10n.string("Confirmed", "Подтверждены")
         case .archive:
-            return "Архив"
+            return L10n.string("Archive", "Архив")
         }
     }
 
@@ -519,7 +560,7 @@ private struct IncomingLikeDecisionCard: View {
     }
 
     private var reasonLine: String {
-        user.explainabilityReasons.first ?? "Игрок уже отметил, что хочет с вами сыграть."
+        user.explainabilityReasons.first?.localizedMatchesText ?? L10n.string("This player has already said they would like to play with you.", "Игрок уже отметил, что хочет с вами сыграть.")
     }
 
     var body: some View {
@@ -547,7 +588,7 @@ private struct IncomingLikeDecisionCard: View {
                             .minimumScaleFactor(0.82)
 
                         AppInlineChip(
-                            text: "Хочет сыграть",
+                            text: L10n.string("Wants to play", "Хочет сыграть"),
                             tint: AppTheme.court.opacity(0.18),
                             foreground: AppTheme.mint
                         )
@@ -572,7 +613,7 @@ private struct IncomingLikeDecisionCard: View {
                 Button {
                     Task { await onDecline() }
                 } label: {
-                    Label("Пропустить", systemImage: "xmark")
+                    Label(L10n.string("Skip", "Пропустить"), systemImage: "xmark")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(IncomingLikeDecisionButtonStyle(tint: .white.opacity(0.12), foreground: .white.opacity(0.82)))
@@ -588,7 +629,7 @@ private struct IncomingLikeDecisionCard: View {
                                 .tint(.white)
                         }
                         SportIconView(sport: primarySport, color: .white, size: 16)
-                        Text("Можно сыграть")
+                        Text(L10n.string("Let's play", "Можно сыграть"))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -656,7 +697,7 @@ private struct MatchInboxCard: View {
         if let min = match.otherUser.sportLevels[primarySport.rawValue] ?? match.otherUser.tennisLevel {
             return "\(max(min - 1, 1))–\(min + 1)"
         }
-        return "уровень не указан"
+        return L10n.string("level not specified", "уровень не указан")
     }
 
     private var timestampText: String {
@@ -670,17 +711,17 @@ private struct MatchInboxCard: View {
         }
 
         if Calendar.current.isDateInYesterday(date) {
-            return "Вчера"
+            return L10n.string("Yesterday", "Вчера")
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: L10n.string("en_US", "ru_RU"))
         formatter.dateFormat = "d MMM"
         return formatter.string(from: date)
     }
 
     private var statusBadgeText: String {
-        latestRequest?.statusLabel ?? "Новый мэтч"
+        latestRequest?.statusLabel.localizedMatchesText ?? L10n.string("New match", "Новый мэтч")
     }
 
     private var statusBadgeTint: Color {
@@ -694,12 +735,12 @@ private struct MatchInboxCard: View {
     private var statusLineText: String {
         if let latestRequest {
             if latestRequest.isPendingForRecipient(currentUserId: currentUserId) {
-                return "Нужно действие"
+                return L10n.string("Action needed", "Нужно действие")
             }
-            return latestRequest.statusLabel
+            return latestRequest.statusLabel.localizedMatchesText
         }
 
-        return "Новый мэтч"
+        return L10n.string("New match", "Новый мэтч")
     }
 
     private var statusLineTint: Color {
@@ -713,7 +754,7 @@ private struct MatchInboxCard: View {
     private var matchReasonItems: [String] {
         let sportLine = "\(primarySport.title) · \(primarySport.formatTitle(format: match.otherUser.preferredPlayFormat))"
         let districtLine = match.otherUser.districtDisplayNames.first ?? match.otherUser.districtDisplaySummary
-        let timeLine = match.otherUser.availableTimeRanges.compactMap { timeRangeTitle(for: $0) }.first ?? "Время уточняется"
+        let timeLine = match.otherUser.availableTimeRanges.compactMap { timeRangeTitle(for: $0) }.first ?? L10n.string("Time to be confirmed", "Время уточняется")
         return [sportLine, districtLine, timeLine]
     }
 
@@ -741,15 +782,15 @@ private struct MatchInboxCard: View {
         if !text.isEmpty {
             content = text
         } else if message.attachments.count > 1 {
-            content = "\(message.attachments.count) фото"
+            content = L10n.string("\(message.attachments.count) photos", "\(message.attachments.count) фото")
         } else if !message.attachments.isEmpty {
-            content = "Фото"
+            content = L10n.string("Photo", "Фото")
         } else {
             return nil
         }
 
         if message.senderUserId == currentUserId {
-            return "Вы: \(content)"
+            return L10n.string("You: \(content)", "Вы: \(content)")
         }
 
         let senderName = message.senderUser?.name ?? match.otherUser.displayName
@@ -757,7 +798,7 @@ private struct MatchInboxCard: View {
     }
 
     private var conversationPreview: String {
-        lastMessagePreview ?? latestRequest?.comment ?? "Сообщений пока нет. Напиши первым."
+        lastMessagePreview ?? latestRequest?.comment ?? L10n.string("No messages yet. Be the first to say hi.", "Сообщений пока нет. Напиши первым.")
     }
 
     var body: some View {
@@ -909,11 +950,11 @@ private struct MatchInboxCard: View {
 
         switch range {
         case .morning:
-            return "Утро"
+            return L10n.string("Morning", "Утро")
         case .day:
-            return "День"
+            return L10n.string("Afternoon", "День")
         case .evening:
-            return "Вечер"
+            return L10n.string("Evening", "Вечер")
         }
     }
 }
@@ -1099,7 +1140,7 @@ struct ChatView: View {
                 .disabled(isSendingMessage)
 
                 FieldShell {
-                    TextField("Написать сообщение...", text: $text, axis: .vertical)
+                    TextField(L10n.string("Write a message...", "Написать сообщение..."), text: $text, axis: .vertical)
                         .lineLimit(1 ... 4)
                         .focused($isComposerFocused)
                 }
@@ -1255,7 +1296,7 @@ struct ChatView: View {
     }
 
     private var chatSubtitle: String {
-        "Ищет партнера для \(chatPrimarySport.purposeTitle)"
+        L10n.string("Looking for a \(chatPrimarySport.localizedPurposeTitle) partner", "Ищет партнера для \(chatPrimarySport.purposeTitle)")
     }
 
     private func gameReport(for message: ChatMessage) -> GameReport? {
@@ -1331,7 +1372,7 @@ struct ChatView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .frame(width: 36, height: 36)
                         .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 1))
-                    Text("Профиль")
+                    Text(L10n.string("Profile", "Профиль"))
                         .font(.system(size: 11, weight: .medium))
                 }
                 .foregroundStyle(.white.opacity(0.82))
@@ -1463,7 +1504,7 @@ struct ChatView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
 
-                Text(request.statusLabel)
+                Text(request.statusLabel.localizedMatchesText)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(request.statusTintColor)
                     .lineLimit(1)
@@ -1515,7 +1556,7 @@ struct ChatView: View {
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: L10n.string("en_US", "ru_RU"))
         formatter.setLocalizedDateFormatFromTemplate("EEE, d MMMM")
         let value = formatter.string(from: date)
         return value.prefix(1).uppercased() + String(value.dropFirst())
@@ -1542,7 +1583,7 @@ struct ChatView: View {
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: L10n.string("en_US", "ru_RU"))
         formatter.setLocalizedDateFormatFromTemplate("EEEE, d MMMM")
         let value = formatter.string(from: date)
         return value.prefix(1).uppercased() + String(value.dropFirst())
@@ -1568,7 +1609,7 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("ПРЕДЛОЖЕНИЕ ИГРЫ")
+                    Text(L10n.string("GAME PROPOSAL", "ПРЕДЛОЖЕНИЕ ИГРЫ"))
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.42))
                     Text(nextStepLabel(for: request))
@@ -1591,7 +1632,7 @@ struct ChatView: View {
                     .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(request.sport.title) · \(request.effectiveFormatTitle)")
+                    Text("\(request.sport.title) · \(request.effectiveFormatTitle.localizedMatchesText)")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
 
@@ -1643,11 +1684,11 @@ struct ChatView: View {
                     )
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Предложить игру")
+                    Text(L10n.string("Propose a game", "Предложить игру"))
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
 
-                    Text("Выберите дату, время, корт и отправьте предложение")
+                    Text(L10n.string("Choose a date, time, and venue, then send your proposal.", "Выберите дату, время, корт и отправьте предложение"))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(3)
@@ -1686,7 +1727,7 @@ struct ChatView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Color(red: 0.46, green: 0.96, blue: 0.70))
 
-                Text(hasActiveProposal ? "Изменить игру" : "Предложить игру")
+                Text(hasActiveProposal ? L10n.string("Edit game", "Изменить игру") : L10n.string("Propose a game", "Предложить игру"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(red: 0.36, green: 0.92, blue: 0.62))
                     .lineLimit(1)
@@ -1767,7 +1808,7 @@ struct ChatView: View {
     }
 
     private func statusPill(for request: MatchGameRequest) -> some View {
-        Text(request.statusLabel)
+        Text(request.statusLabel.localizedMatchesText)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(request.statusTintColor)
             .lineLimit(1)
@@ -1782,7 +1823,7 @@ struct ChatView: View {
         if request.isPendingForRecipient(currentUserId: appModel.currentUser?.id) {
             HStack(spacing: 10) {
                 chatQuickAsyncActionButton(
-                    title: "Подтвердить",
+                    title: L10n.string("Confirm", "Подтвердить"),
                     systemImage: "checkmark.circle.fill",
                     tint: AppTheme.court,
                     foreground: .white,
@@ -1792,7 +1833,7 @@ struct ChatView: View {
                 }
 
                 chatQuickAsyncActionButton(
-                    title: "Отклонить",
+                    title: L10n.string("Decline", "Отклонить"),
                     systemImage: "xmark.circle",
                     tint: Color(red: 0.25, green: 0.10, blue: 0.10),
                     foreground: Color(red: 1.0, green: 0.47, blue: 0.43),
@@ -1804,7 +1845,7 @@ struct ChatView: View {
         } else {
             HStack(spacing: 10) {
                 chatQuickActionButton(
-                    title: isInactive(request) ? "Предложить заново" : "Изменить",
+                    title: isInactive(request) ? L10n.string("Propose again", "Предложить заново") : L10n.string("Edit", "Изменить"),
                     systemImage: isInactive(request) ? "calendar.badge.plus" : "square.and.pencil",
                     tint: isInactive(request) ? AppTheme.court : Color.white.opacity(0.06),
                     foreground: .white
@@ -1814,7 +1855,7 @@ struct ChatView: View {
                 }
 
                 chatQuickAsyncActionButton(
-                    title: "Отменить",
+                    title: L10n.string("Cancel", "Отменить"),
                     systemImage: "xmark.circle",
                     tint: Color(red: 0.25, green: 0.10, blue: 0.10),
                     foreground: Color(red: 1.0, green: 0.47, blue: 0.43),
@@ -1836,7 +1877,7 @@ struct ChatView: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(AppTheme.court)
 
-                    Text("Выбрана: \(gameRequestDayText(request)), \(gameRequestTimeText(request))")
+                    Text(L10n.string("Selected: \(gameRequestDayText(request)), \(gameRequestTimeText(request))", "Выбрана: \(gameRequestDayText(request)), \(gameRequestTimeText(request))"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
@@ -1847,7 +1888,7 @@ struct ChatView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     chatQuickActionButton(
-                        title: "Новая игра",
+                        title: L10n.string("New game", "Новая игра"),
                         systemImage: "calendar.badge.plus",
                         tint: AppTheme.court,
                         foreground: .white
@@ -1858,7 +1899,7 @@ struct ChatView: View {
 
                     if request.isPendingForRecipient(currentUserId: appModel.currentUser?.id) {
                         chatQuickAsyncActionButton(
-                            title: "Подтвердить",
+                            title: L10n.string("Confirm", "Подтвердить"),
                             systemImage: "checkmark.circle.fill",
                             tint: AppTheme.court,
                             foreground: .white,
@@ -1868,7 +1909,7 @@ struct ChatView: View {
                         }
 
                         chatQuickAsyncActionButton(
-                            title: "Отклонить",
+                            title: L10n.string("Decline", "Отклонить"),
                             systemImage: "xmark.circle",
                             tint: Color(red: 0.25, green: 0.10, blue: 0.10),
                             foreground: Color(red: 1.0, green: 0.47, blue: 0.43),
@@ -1878,7 +1919,7 @@ struct ChatView: View {
                         }
                     } else if !isInactive(request) {
                         chatQuickActionButton(
-                            title: "Предложить время",
+                            title: L10n.string("Suggest a time", "Предложить время"),
                             systemImage: "clock",
                             tint: Color.white.opacity(0.06),
                             foreground: .white
@@ -1888,7 +1929,7 @@ struct ChatView: View {
                         }
 
                         chatQuickActionButton(
-                            title: "Изменить игру",
+                            title: L10n.string("Edit game", "Изменить игру"),
                             systemImage: "slider.horizontal.3",
                             tint: Color.white.opacity(0.06),
                             foreground: .white
@@ -1898,7 +1939,7 @@ struct ChatView: View {
                         }
 
                         chatQuickAsyncActionButton(
-                            title: "Отмена игры",
+                            title: L10n.string("Cancel game", "Отмена игры"),
                             systemImage: "xmark",
                             tint: Color(red: 0.25, green: 0.10, blue: 0.10),
                             foreground: Color(red: 1.0, green: 0.47, blue: 0.43),
@@ -1978,14 +2019,14 @@ struct ChatView: View {
 
     private func nextStepLabel(for request: MatchGameRequest) -> String {
         guard request.status.lowercased() == "pending" else {
-            return request.nextStepLabel
+            return request.nextStepLabel.localizedMatchesText
         }
 
         if request.isPendingForRecipient(currentUserId: appModel.currentUser?.id) {
-            return "Подтверди или отклони предложение, чтобы игра стала понятна обоим."
+            return L10n.string("Confirm or decline the proposal so both players know the plan.", "Подтверди или отклони предложение, чтобы игра стала понятна обоим.")
         }
 
-        return "Предложение отправлено. Ждём подтверждение второго игрока."
+        return L10n.string("Proposal sent. Waiting for the other player's confirmation.", "Предложение отправлено. Ждём подтверждение второго игрока.")
     }
 
     private func updateCurrentRequest(_ request: MatchGameRequest, status: String) async {
@@ -2135,7 +2176,7 @@ struct ChatView: View {
             return ChatMessagePresentation(
                 text: cleanActionLinkText(message.text),
                 action: ChatMessageAction(
-                    title: "Открыть игру",
+                    title: L10n.string("Open game", "Открыть игру"),
                     systemImage: "calendar.badge.clock",
                     target: .discover(.upcoming, highlightedGameRequestID: gameRequestId)
                 )
@@ -2146,7 +2187,7 @@ struct ChatView: View {
             return ChatMessagePresentation(
                 text: cleanActionLinkText(message.text),
                 action: ChatMessageAction(
-                    title: "Открыть игру",
+                    title: L10n.string("Open game", "Открыть игру"),
                     systemImage: "calendar.badge.clock",
                     target: .discover(.upcoming, highlightedGameRequestID: gameRequestId)
                 )
@@ -2157,7 +2198,7 @@ struct ChatView: View {
             return ChatMessagePresentation(
                 text: cleanActionLinkText(message.text),
                 action: ChatMessageAction(
-                    title: "Открыть поиск",
+                    title: L10n.string("Open search", "Открыть поиск"),
                     systemImage: "magnifyingglass",
                     target: .discover(.hot, highlightedSearchID: searchId)
                 )
@@ -2450,7 +2491,7 @@ private extension ChatMessage {
         let normalized = text.lowercased()
 
         if normalized.contains("добав") || normalized.contains("загруж") {
-            return "Фотоотчёт загружен"
+            return L10n.string("Photo report uploaded", "Фотоотчёт загружен")
         }
 
         return text
@@ -2484,6 +2525,23 @@ private extension Sport {
             return "бега"
         case .supboard:
             return "сапборда"
+        }
+    }
+
+    var localizedPurposeTitle: String {
+        switch self {
+        case .tableTennis: return L10n.string("table tennis", purposeTitle)
+        case .tennis: return L10n.string("tennis", purposeTitle)
+        case .padel: return L10n.string("padel", purposeTitle)
+        case .squash: return L10n.string("squash", purposeTitle)
+        case .badminton: return L10n.string("badminton", purposeTitle)
+        case .volleyball: return L10n.string("volleyball", purposeTitle)
+        case .fitness: return L10n.string("fitness", purposeTitle)
+        case .boxing: return L10n.string("boxing", purposeTitle)
+        case .yoga: return L10n.string("yoga", purposeTitle)
+        case .football: return L10n.string("football", purposeTitle)
+        case .running: return L10n.string("running", purposeTitle)
+        case .supboard: return L10n.string("SUP", purposeTitle)
         }
     }
 }
@@ -2522,13 +2580,13 @@ private struct MatchPlayerSheet: View {
 
     private var sportsSummary: String {
         let titles = commonSports.prefix(3).map(\.title)
-        return titles.isEmpty ? "Спорт уточняется" : titles.joined(separator: " · ")
+        return titles.isEmpty ? L10n.string("Sport to be confirmed", "Спорт уточняется") : titles.joined(separator: " · ")
     }
 
     private var levelSummary: String {
         let level = match.otherUser.sportLevels[primarySport.rawValue] ?? match.otherUser.tennisLevel
         guard let level else {
-            return "уровень не указан"
+            return L10n.string("level not specified", "уровень не указан")
         }
         return "\(level)/10"
     }
@@ -2536,7 +2594,7 @@ private struct MatchPlayerSheet: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                SectionCard(title: match.otherUser.displayName, subtitle: match.otherUser.bio ?? "Игрок из твоего мэтча.") {
+                SectionCard(title: match.otherUser.displayName, subtitle: match.otherUser.bio ?? L10n.string("A player from your matches.", "Игрок из твоего мэтча.")) {
                     HStack(alignment: .top, spacing: 14) {
                         RemoteAvatarView(name: match.otherUser.displayName, path: match.otherUser.avatarUrl, size: 92)
 
@@ -2552,7 +2610,7 @@ private struct MatchPlayerSheet: View {
                             }
 
                             if let age = match.otherUser.age, let city = match.otherUser.city {
-                                Text("\(age) лет, \(city)")
+                                Text(L10n.string("\(age) years old, \(city)", "\(age) лет, \(city)"))
                                     .font(.subheadline)
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                             }
@@ -2564,53 +2622,53 @@ private struct MatchPlayerSheet: View {
                 }
 
                 SectionCard(
-                    title: "Почему вам стоит сыграть",
-                    subtitle: "Пока это базовые причины: мэтч, районы для игры, спорт и уровень."
+                    title: L10n.string("Why you should play", "Почему вам стоит сыграть"),
+                    subtitle: L10n.string("Based on your match, preferred areas, sport, and level.", "Пока это базовые причины: мэтч, районы для игры, спорт и уровень.")
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         MatchReasonRow(
                             systemImage: "checkmark.seal.fill",
-                            text: "У вас уже есть мэтч — можно сразу переходить к делу."
+                            text: L10n.string("You already matched, so you can start planning right away.", "У вас уже есть мэтч — можно сразу переходить к делу.")
                         )
                         MatchReasonRow(
                             systemImage: "location.fill",
-                            text: "Удобные районы: \(match.otherUser.districtDisplaySummary)"
+                            text: L10n.string("Preferred areas: \(match.otherUser.districtDisplaySummary)", "Удобные районы: \(match.otherUser.districtDisplaySummary)")
                         )
                         MatchReasonRow(
                             systemImage: "sportscourt",
-                            text: "Общий спорт: \(sportsSummary)"
+                            text: L10n.string("Sport in common: \(sportsSummary)", "Общий спорт: \(sportsSummary)")
                         )
                         MatchReasonRow(
                             systemImage: "chart.bar.fill",
-                            text: "Уровень в \(primarySport.title): \(levelSummary)"
+                            text: L10n.string("\(primarySport.title) level: \(levelSummary)", "Уровень в \(primarySport.title): \(levelSummary)")
                         )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 SectionCard(
-                    title: "Что дальше",
-                    subtitle: "Обычно быстрее всего начать с чата. Если хочешь зафиксировать время — создай предложение игры."
+                    title: L10n.string("What's next", "Что дальше"),
+                    subtitle: L10n.string("Starting with a chat is usually fastest. Create a game proposal when you want to set a time.", "Обычно быстрее всего начать с чата. Если хочешь зафиксировать время — создай предложение игры.")
                 ) {
                     VStack(spacing: 12) {
                         Button(action: onOpenChat) {
-                            Label("Открыть чат", systemImage: "message.fill")
+                            Label(L10n.string("Open chat", "Открыть чат"), systemImage: "message.fill")
                         }
                         .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
 
                         Button(action: onProposeGame) {
-                            Label("Предложить игру", systemImage: "calendar.badge.plus")
+                            Label(L10n.string("Propose a game", "Предложить игру"), systemImage: "calendar.badge.plus")
                         }
                         .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.court))
 
-                        Text("Совет: предложи 2–3 времени и один короткий вариант места — так быстрее договориться.")
+                        Text(L10n.string("Tip: suggest 2–3 times and one convenient venue to make planning faster.", "Совет: предложи 2–3 времени и один короткий вариант места — так быстрее договориться."))
                             .font(.caption)
                             .foregroundStyle(AppTheme.ink.opacity(0.6))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
-                SectionCard(title: "Безопасность", subtitle: "Можно пожаловаться модератору или полностью скрыть пользователя.") {
+                SectionCard(title: L10n.string("Safety", "Безопасность"), subtitle: L10n.string("You can report this player to moderators or hide them completely.", "Можно пожаловаться модератору или полностью скрыть пользователя.")) {
                     UserSafetyActions(
                         userId: match.otherUser.id,
                         displayName: match.otherUser.displayName,
@@ -2623,9 +2681,9 @@ private struct MatchPlayerSheet: View {
                 }
 
                 if let request = match.latestGameRequest {
-                    SectionCard(title: "Последнее предложение игры", subtitle: request.comment ?? "Договоренность уже заведена в мэтче.") {
+                    SectionCard(title: L10n.string("Latest game proposal", "Последнее предложение игры"), subtitle: request.comment ?? L10n.string("This game is already linked to your match.", "Договоренность уже заведена в мэтче.")) {
                         VStack(alignment: .leading, spacing: 10) {
-                            AppInlineChip(text: request.statusLabel, tint: request.statusTintColor, foreground: .white)
+                            AppInlineChip(text: request.statusLabel.localizedMatchesText, tint: request.statusTintColor, foreground: .white)
                             HStack(spacing: 8) {
                                 AppInlineChip(text: request.sport.title, tint: AppTheme.cream, foreground: AppTheme.ink)
                                 AppInlineChip(text: request.effectiveFormatTitle, tint: AppTheme.cream, foreground: AppTheme.ink)
@@ -2636,7 +2694,7 @@ private struct MatchPlayerSheet: View {
                                     .font(.subheadline)
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                             }
-                            Text(request.nextStepLabel)
+                            Text(request.nextStepLabel.localizedMatchesText)
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.ink.opacity(0.6))
                         }
@@ -2645,16 +2703,16 @@ private struct MatchPlayerSheet: View {
                 }
 
                 if isLoadingHistory {
-                    SectionCard(title: "Договоренности", subtitle: "Загружаю историю игр в этом мэтче.") {
+                    SectionCard(title: L10n.string("Games", "Договоренности"), subtitle: L10n.string("Loading game history for this match.", "Загружаю историю игр в этом мэтче.")) {
                         HStack(spacing: 10) {
                             ProgressView()
-                            Text("Загружаю договоренности")
+                            Text(L10n.string("Loading games", "Загружаю договоренности"))
                                 .foregroundStyle(AppTheme.mutedInk)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } else if !gameHistory.isEmpty {
-                    SectionCard(title: "Договоренности", subtitle: "Текущие и прошлые игры. Нажми, чтобы открыть их в ближайших играх.") {
+                    SectionCard(title: L10n.string("Games", "Договоренности"), subtitle: L10n.string("Current and past games. Tap one to open it in Upcoming Games.", "Текущие и прошлые игры. Нажми, чтобы открыть их в ближайших играх.")) {
                         VStack(spacing: 10) {
                             ForEach(gameHistory) { request in
                                 Button {
@@ -2675,7 +2733,7 @@ private struct MatchPlayerSheet: View {
 
                                         Spacer(minLength: 0)
 
-                                        AppInlineChip(text: request.statusLabel, tint: request.statusTintColor, foreground: .white)
+                                        AppInlineChip(text: request.statusLabel.localizedMatchesText, tint: request.statusTintColor, foreground: .white)
                                     }
                                     .padding(12)
                                     .background(request.statusSurfaceColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2759,39 +2817,39 @@ enum ProposalSheetContext {
     var title: String {
         switch self {
         case .new:
-            return "Предложить игру"
+            return L10n.string("Propose a game", "Предложить игру")
         case .edit:
-            return "Изменить предложение"
+            return L10n.string("Edit proposal", "Изменить предложение")
         case .reschedule:
-            return "Предложить другое время"
+            return L10n.string("Suggest another time", "Предложить другое время")
         case .relocate:
-            return "Предложить другое место"
+            return L10n.string("Suggest another venue", "Предложить другое место")
         }
     }
 
     var subtitlePrefix: String {
         switch self {
         case .new:
-            return "Создай новую договоренность"
+            return L10n.string("Create a new game", "Создай новую договоренность")
         case .edit:
-            return "Обнови текущую договоренность"
+            return L10n.string("Update the current game", "Обнови текущую договоренность")
         case .reschedule:
-            return "Обнови время договоренности"
+            return L10n.string("Update the game time", "Обнови время договоренности")
         case .relocate:
-            return "Обнови место договоренности"
+            return L10n.string("Update the game venue", "Обнови место договоренности")
         }
     }
 
     var submitTitle: String {
         switch self {
         case .new:
-            return "Отправить предложение"
+            return L10n.string("Send proposal", "Отправить предложение")
         case .edit:
-            return "Сохранить изменения"
+            return L10n.string("Save changes", "Сохранить изменения")
         case .reschedule:
-            return "Отправить новое время"
+            return L10n.string("Send new time", "Отправить новое время")
         case .relocate:
-            return "Отправить новое место"
+            return L10n.string("Send new venue", "Отправить новое место")
         }
     }
 }
@@ -2909,8 +2967,8 @@ struct GameProposalSheet: View {
     private var proposalSummarySubtitle: String {
         [
             draft.sport.title,
-            draft.sport.formatTitle(format: draft.format),
-            selectedCourt?.name ?? draft.sport.venuePendingTitle
+            draft.sport.formatTitle(format: draft.format).localizedMatchesText,
+            selectedCourt?.name ?? draft.sport.venuePendingTitle.localizedMatchesText
         ].joined(separator: " · ")
     }
 
@@ -2938,8 +2996,8 @@ struct GameProposalSheet: View {
 
                 if isGameUpdateCelebrationPresented {
                     SuccessCelebrationOverlay(
-                        title: "Игра изменена",
-                        subtitle: "Ждем подтверждения партнера",
+                        title: L10n.string("Game updated", "Игра изменена"),
+                        subtitle: L10n.string("Waiting for your partner's confirmation", "Ждем подтверждения партнера"),
                         icon: "✅"
                     )
                     .transition(.opacity)
@@ -2972,29 +3030,29 @@ struct GameProposalSheet: View {
                 .presentationDragIndicator(.hidden)
             }
             .confirmationDialog(
-                "Удалось забронировать?",
+                L10n.string("Were you able to book?", "Удалось забронировать?"),
                 isPresented: $bookingCallFlow.isResultPresented,
                 titleVisibility: .visible
             ) {
-                Button("Да, время совпало") {
+                Button(L10n.string("Yes, the time matches", "Да, время совпало")) {
                     clearBookingDateTimeRequirement()
                 }
-                Button("Забронировал на другое время") {
+                Button(L10n.string("Booked a different time", "Забронировал на другое время")) {
                     bookingDateTimeBaseline = draft.proposedDatetime
                     requiresBookingDateTimeChange = true
-                    localError = "Измените дату или время на фактически забронированные"
+                    localError = L10n.string("Update the date or time to match the actual booking", "Измените дату или время на фактически забронированные")
                     Task { @MainActor in
                         withAnimation(.easeInOut(duration: 0.3)) {
                             proxy.scrollTo("dateTimeSection", anchor: .top)
                         }
                     }
                 }
-                Button("Не забронировал") {
+                Button(L10n.string("I didn't book", "Не забронировал")) {
                     clearBookingDateTimeRequirement()
                 }
-                Button("Отмена", role: .cancel) {}
+                Button(L10n.string("Cancel", "Отмена"), role: .cancel) {}
             } message: {
-                Text("Подтвердите бронь или измените дату и время предложения.")
+                Text(L10n.string("Confirm the booking or update the proposal's date and time.", "Подтвердите бронь или измените дату и время предложения."))
             }
             .onChange(of: scenePhase) { phase in
                 bookingCallFlow.handle(scenePhase: phase)
@@ -3055,12 +3113,12 @@ struct GameProposalSheet: View {
                 }
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("\(context.subtitlePrefix) с \(match.otherUser.displayName)")
+                    Text(L10n.string("\(context.subtitlePrefix) with \(match.otherUser.displayName)", "\(context.subtitlePrefix) с \(match.otherUser.displayName)"))
                         .font(.system(size: 23, weight: .bold))
                         .foregroundStyle(AppTheme.ink)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Выбери спорт, время и клуб. Второй игрок увидит предложение в мэтче и сможет подтвердить игру.")
+                    Text(L10n.string("Choose a sport, time, and venue. The other player will see the proposal in Matches and can confirm it.", "Выбери спорт, время и клуб. Второй игрок увидит предложение в мэтче и сможет подтвердить игру."))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(AppTheme.ink.opacity(0.56))
                         .lineSpacing(3)
@@ -3100,11 +3158,11 @@ struct GameProposalSheet: View {
     private var sportSelector: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Что играем?")
+                Text(L10n.string("What are you playing?", "Что играем?"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                Text("Вид спорта")
+                Text(L10n.string("Sport", "Вид спорта"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(AppTheme.court)
             }
@@ -3134,7 +3192,7 @@ struct GameProposalSheet: View {
                                     .frame(width: 86)
 
                                 if let level {
-                                    Text("ур. \(level)")
+                                    Text(L10n.string("lvl \(level)", "ур. \(level)"))
                                         .font(.caption2.weight(.bold))
                                         .foregroundStyle(isSelected ? AppTheme.court : AppTheme.ink.opacity(0.54))
                                 }
@@ -3157,7 +3215,7 @@ struct GameProposalSheet: View {
 
     private var formatSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Формат игры")
+            Text(L10n.string("Game format", "Формат игры"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
@@ -3169,7 +3227,7 @@ struct GameProposalSheet: View {
                             draft.format = format
                         }
                     } label: {
-                        Text(draft.sport.formatTitle(format: format))
+                        Text(draft.sport.formatTitle(format: format).localizedMatchesText)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(isSelected ? .white : AppTheme.ink.opacity(0.82))
                             .frame(maxWidth: .infinity)
@@ -3186,20 +3244,20 @@ struct GameProposalSheet: View {
 
     private var dateTimeSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Когда играем?")
+            Text(L10n.string("When are you playing?", "Когда играем?"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(AppTheme.ink)
 
             if requiresBookingDateTimeChange {
-                Label("Укажите дату или время фактической брони", systemImage: "exclamationmark.circle.fill")
+                Label(L10n.string("Enter the actual booking date or time", "Укажите дату или время фактической брони"), systemImage: "exclamationmark.circle.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.orange)
             }
 
             HStack(spacing: 10) {
-                proposalDayButton(title: "Сегодня", offset: 0)
-                proposalDayButton(title: "Завтра", offset: 1)
-                proposalDayButton(title: "Послезавтра", offset: 2)
+                proposalDayButton(title: L10n.string("Today", "Сегодня"), offset: 0)
+                proposalDayButton(title: L10n.string("Tomorrow", "Завтра"), offset: 1)
+                proposalDayButton(title: L10n.string("Day after tomorrow", "Послезавтра"), offset: 2)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -3211,7 +3269,7 @@ struct GameProposalSheet: View {
             }
 
             DatePicker(
-                "Точная дата и время",
+                L10n.string("Exact date and time", "Точная дата и время"),
                 selection: Binding(
                     get: { draft.proposedDatetime },
                     set: { nextDate in
@@ -3289,7 +3347,7 @@ struct GameProposalSheet: View {
                         AppHaptics.selection()
                         isClubPickerPresented = true
                     } label: {
-                        Label("Выбрать на карте", systemImage: "magnifyingglass")
+                        Label(L10n.string("Choose on map", "Выбрать на карте"), systemImage: "magnifyingglass")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.court)
                     }
@@ -3300,7 +3358,7 @@ struct GameProposalSheet: View {
             if isLoadingCourts {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text("Загружаем места")
+                    Text(L10n.string("Loading venues", "Загружаем места"))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(AppTheme.ink.opacity(0.58))
                 }
@@ -3308,7 +3366,7 @@ struct GameProposalSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             } else if filteredCourts.isEmpty {
-                Text("Нет доступных мест для этого спорта")
+                Text(L10n.string("No venues available for this sport", "Нет доступных мест для этого спорта"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.58))
                     .padding(18)
@@ -3339,7 +3397,7 @@ struct GameProposalSheet: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(court?.name ?? "Выбери клуб")
+                        Text(court?.name ?? L10n.string("Choose a venue", "Выбери клуб"))
                             .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(2)
@@ -3355,7 +3413,7 @@ struct GameProposalSheet: View {
                         Image(systemName: court == nil ? "chevron.right.circle" : "checkmark.circle.fill")
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundStyle(court == nil ? AppTheme.ink.opacity(0.24) : AppTheme.court)
-                        Text(court == nil ? "Выбрать" : "Изменить")
+                        Text(court == nil ? L10n.string("Choose", "Выбрать") : L10n.string("Change", "Изменить"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.court)
                     }
@@ -3367,7 +3425,7 @@ struct GameProposalSheet: View {
                 Button {
                     bookingCallFlow.start(url: phoneURL, openURL: openURL)
                 } label: {
-                    Label("Позвонить и забронировать", systemImage: "phone.fill")
+                    Label(L10n.string("Call and book", "Позвонить и забронировать"), systemImage: "phone.fill")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -3388,7 +3446,7 @@ struct GameProposalSheet: View {
     private var levelSection: some View {
         HStack(alignment: .top, spacing: 14) {
             proposalLevelCard(
-                title: "Мин. уровень",
+                title: L10n.string("Min. level", "Мин. уровень"),
                 value: Binding(
                     get: { draft.levelRangeMin ?? 1 },
                     set: { newValue in
@@ -3398,7 +3456,7 @@ struct GameProposalSheet: View {
             )
 
             proposalLevelCard(
-                title: "Макс. уровень",
+                title: L10n.string("Max. level", "Макс. уровень"),
                 value: Binding(
                     get: { draft.levelRangeMax ?? 10 },
                     set: { newValue in
@@ -3473,10 +3531,10 @@ struct GameProposalSheet: View {
                 .padding(.top, 4)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Комментарий (необязательно)")
+                Text(L10n.string("Comment (optional)", "Комментарий (необязательно)"))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.56))
-                TextField("Например: удобно после 19:00", text: $draft.comment, axis: .vertical)
+                TextField(L10n.string("For example: anytime after 7 PM", "Например: удобно после 19:00"), text: $draft.comment, axis: .vertical)
                     .lineLimit(2 ... 4)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.ink)
@@ -3514,7 +3572,7 @@ struct GameProposalSheet: View {
             .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
             .disabled(isSubmitting || requiresBookingDateTimeChange)
 
-            Button("Отмена") {
+            Button(L10n.string("Cancel", "Отмена")) {
                 dismiss()
             }
             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
@@ -3624,14 +3682,14 @@ struct GameProposalSheet: View {
 
     private func proposalDateSubtitle(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: L10n.string("en_US", "ru_RU"))
         formatter.setLocalizedDateFormatFromTemplate("d MMM")
         return formatter.string(from: date)
     }
 
     private func courtSubtitle(_ court: Court?) -> String {
         guard let court else {
-            return "Место можно уточнить позже"
+            return L10n.string("You can confirm the venue later", "Место можно уточнить позже")
         }
 
         let subtitle = [
@@ -3648,7 +3706,7 @@ struct GameProposalSheet: View {
 
     private func proposalDateTimeText(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: L10n.string("en_US", "ru_RU"))
         formatter.dateFormat = "d MMM, HH:mm"
         return formatter.string(from: date)
     }
@@ -3659,12 +3717,12 @@ struct GameProposalSheet: View {
 
     private func submitProposal() async {
         guard !requiresBookingDateTimeChange else {
-            localError = "Измените дату или время на фактически забронированные"
+            localError = L10n.string("Update the date or time to match the actual booking", "Измените дату или время на фактически забронированные")
             return
         }
 
         guard draft.proposedDatetime > Date() else {
-            localError = "Выбери будущую дату и время"
+            localError = L10n.string("Choose a future date and time", "Выбери будущую дату и время")
             draft.proposedDatetime = clampedFutureDate(draft.proposedDatetime)
             return
         }
@@ -3715,7 +3773,7 @@ struct GameProposalSheet: View {
     }
 
     private func clearBookingDateTimeError() {
-        if localError == "Измените дату или время на фактически забронированные" {
+        if localError == L10n.string("Update the date or time to match the actual booking", "Измените дату или время на фактически забронированные") {
             localError = nil
         }
     }

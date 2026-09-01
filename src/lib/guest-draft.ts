@@ -10,6 +10,7 @@ export type GuestOnboardingDraft = {
   age: number;
   gender: Gender | null;
   city: string;
+  locationPlaceId?: string | null;
   district: DistrictOption | null;
   preferredDistricts: DistrictOption[];
   preferredSports: Sport[];
@@ -29,6 +30,7 @@ export function createDefaultGuestOnboardingDraft(): GuestOnboardingDraft {
     age: 0,
     gender: null,
     city: DEFAULT_CITY,
+    locationPlaceId: null,
     district: null,
     preferredDistricts: [],
     preferredSports: [],

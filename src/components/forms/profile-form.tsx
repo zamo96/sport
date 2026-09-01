@@ -8,18 +8,16 @@ import { apiFetch } from "@/lib/client-api";
 import { saveGuestOnboardingDraft, type GuestOnboardingDraft } from "@/lib/guest-draft";
 import {
   AVAILABLE_CITIES,
-  DAY_LABELS,
   DEFAULT_CITY,
   DEFAULT_CITY_COORDINATES,
   type DistrictOption,
   DISTRICT_OPTIONS,
   getDistrictArea,
   getDistrictLabel,
-  PLAY_FORMAT_LABELS,
   SPORT_OPTIONS,
-  SURFACE_LABELS,
-  TIME_RANGE_LABELS
 } from "@/lib/constants";
+import { useLocale } from "@/components/i18n/locale-provider";
+import type { WebMessageKey } from "@/lib/i18n/web";
 import {
   getPrimarySportLevel,
   normalizeSportLevels,
@@ -63,6 +61,22 @@ type ProfilePayload = Pick<
 
 type SportOption = (typeof SPORT_OPTIONS)[number];
 
+const DAY_MESSAGE_KEYS: Record<string, WebMessageKey> = {
+  monday: "availability.day.monday",
+  tuesday: "availability.day.tuesday",
+  wednesday: "availability.day.wednesday",
+  thursday: "availability.day.thursday",
+  friday: "availability.day.friday",
+  saturday: "availability.day.saturday",
+  sunday: "availability.day.sunday"
+};
+
+const TIME_RANGE_MESSAGE_KEYS: Record<string, WebMessageKey> = {
+  morning: "availability.time.morning",
+  day: "availability.time.day",
+  evening: "availability.time.evening"
+};
+
 export function ProfileForm({
   user,
   mode = "profile",
@@ -80,6 +94,7 @@ export function ProfileForm({
   authRequiredHref?: string;
 }) {
   const router = useRouter();
+  const { t } = useLocale();
   const isOnboarding = mode === "onboarding";
   const isGuest = mode === "guest";
   const initialPreferredSports = normalizeSports(user.preferredSports) as SportOption[];
@@ -242,11 +257,11 @@ export function ProfileForm({
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Не удалось загрузить фото");
+        throw new Error(data.error ?? t("profile.error.avatarUpload"));
       }
       setField("avatarUrl", data.avatarUrl);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить фото");
+      setError(uploadError instanceof Error ? uploadError.message : t("profile.error.avatarUpload"));
     } finally {
       setUploading(false);
     }
@@ -270,7 +285,7 @@ export function ProfileForm({
       router.push("/discover");
       router.refresh();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось сохранить профиль");
+      setError(requestError instanceof Error ? requestError.message : t("profile.error.save"));
     } finally {
       setLoading(false);
     }
@@ -305,7 +320,7 @@ export function ProfileForm({
       router.push("/profile");
       router.refresh();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось сохранить профиль");
+      setError(requestError instanceof Error ? requestError.message : t("profile.error.save"));
     } finally {
       setLoading(false);
     }
@@ -318,20 +333,22 @@ export function ProfileForm({
           <Panel className="space-y-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">Шаг {step} из 3</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">
+                  {t("profile.step.progress", { step })}
+                </div>
                 <div className="mt-1 text-lg font-bold text-ink">
                   {step === 1
-                    ? "Расскажи о себе"
+                    ? t("profile.step.basics.title")
                     : step === 2
-                      ? "Какой спорт и как тебе удобно играть"
-                      : "Когда тебе удобно"}
+                      ? t("profile.step.preferences.title")
+                      : t("profile.step.availability.title")}
                 </div>
                 <div className="mt-1 text-sm text-ink/65">
                   {step === 1
-                    ? "Только базовая информация, чтобы сразу начать."
+                    ? t("profile.step.basics.subtitle")
                     : step === 2
-                      ? "Эти параметры влияют на подбор игроков."
-                      : "Этот шаг необязательный. Можно указать позже в профиле."}
+                      ? t("profile.step.preferences.subtitle")
+                      : t("profile.step.availability.subtitle")}
                 </div>
               </div>
               <div className="flex gap-2">
@@ -346,30 +363,30 @@ export function ProfileForm({
 
             {step === 1 ? (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Имя">
+                <Field label={t("profile.field.name")}>
                   <input
                     required
                     value={form.name ?? ""}
                     onChange={(event) => setField("name", event.target.value)}
                     className="input"
-                    placeholder="Анна"
+                    placeholder={t("profile.namePlaceholder")}
                   />
                 </Field>
-                <Field label="Пол">
+                <Field label={t("profile.field.gender")}>
                   <select
                     value={form.gender ?? ""}
                     onChange={(event) => setField("gender", (event.target.value || null) as ProfilePayload["gender"])}
                     className="input"
                   >
-                    <option value="">Не указывать</option>
-                    <option value="male">Мужской</option>
-                    <option value="female">Женский</option>
+                    <option value="">{t("profile.gender.unspecified")}</option>
+                    <option value="male">{t("profile.gender.male")}</option>
+                    <option value="female">{t("profile.gender.female")}</option>
                   </select>
                 </Field>
-                <Field label="Возраст">
+                <Field label={t("profile.field.age")}>
                   <AgeRibbonPicker value={form.age ?? 18} onChange={(age) => setField("age", age)} />
                 </Field>
-                <Field label="Город" className="col-span-2">
+                <Field label={t("profile.field.city")} className="col-span-2">
                   <select
                     required
                     value={form.city ?? DEFAULT_CITY}
@@ -383,7 +400,7 @@ export function ProfileForm({
                       </option>
                     ))}
                   </select>
-                  <div className="mt-2 text-xs leading-5 text-ink/55">Пока запускаемся только в Санкт-Петербурге.</div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.city.onboardingHint")}</div>
                 </Field>
               </div>
             ) : null}
@@ -391,7 +408,7 @@ export function ProfileForm({
             {step === 2 ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3">
-                  <Field label="Виды спорта">
+                  <Field label={t("profile.field.sports")}>
                     <SportPicker
                       multiple
                       value={form.preferredSports}
@@ -403,7 +420,7 @@ export function ProfileForm({
                   </Field>
                 </div>
 
-                <Field label="Удобные районы">
+                <Field label={t("profile.field.districts")}>
                   <div className="flex flex-wrap gap-2">
                     {DISTRICT_OPTIONS.map((district) => {
                       const active = form.preferredDistricts.includes(district);
@@ -421,18 +438,14 @@ export function ProfileForm({
                       );
                     })}
                   </div>
-                  <div className="mt-2 text-xs leading-5 text-ink/55">
-                    Можно выбрать несколько районов. Если не выбирать ничего, покажем игроков шире по Санкт-Петербургу.
-                  </div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.districts.onboardingHint")}</div>
                 </Field>
 
                 <div className="rounded-[24px] bg-cream p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-ink">Ищу игру сейчас</div>
-                      <div className="mt-1 text-xs leading-5 text-ink/60">
-                        Ты появишься во вкладке игроков, которые активно ищут партнера.
-                      </div>
+                      <div className="text-sm font-semibold text-ink">{t("profile.lookingNow.title")}</div>
+                      <div className="mt-1 text-xs leading-5 text-ink/60">{t("profile.lookingNow.onboardingHint")}</div>
                     </div>
                     <button
                       type="button"
@@ -451,10 +464,9 @@ export function ProfileForm({
             {step === 3 ? (
               <div className="space-y-4">
                 <div className="rounded-[24px] bg-cream p-4 text-sm leading-6 text-ink/70">
-                  Укажи дни и интервалы времени, если уже знаешь их. Если нет, просто заверши онбординг и вернись к
-                  этому позже в профиле.
+                  {t("profile.availability.intro")}
                 </div>
-                <Field label="Доступность">
+                <Field label={t("profile.field.availability")}>
                   <AvailabilityPicker
                     availabilityByDay={form.availabilityByDay}
                     onAvailabilityByDayChange={setAvailabilityByDay}
@@ -462,20 +474,20 @@ export function ProfileForm({
                 </Field>
                 <div className="rounded-[24px] bg-mint/60 p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.2em] text-court">
-                    {hasAvailability ? "Выбрано" : "Пока не указано"}
+                    {hasAvailability ? t("profile.availability.selected") : t("profile.availability.empty")}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {hasAvailability ? (
                       <>
                         {Object.entries(form.availabilityByDay).map(([day, ranges]) => (
                           <span key={day} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                            {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? []).map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")}
+                            {translateAvailabilityValue(day, DAY_MESSAGE_KEYS, t)} · {(ranges ?? []).map((range) => translateAvailabilityValue(range, TIME_RANGE_MESSAGE_KEYS, t)).join(", ")}
                           </span>
                         ))}
                       </>
                     ) : (
                       <span className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                        Заполни позже в профиле
+                        {t("profile.availability.later")}
                       </span>
                     )}
                   </div>
@@ -487,7 +499,7 @@ export function ProfileForm({
           <div className="flex gap-3">
             {step > 1 ? (
               <Button type="button" fullWidth variant="ghost" onClick={prevStep} disabled={loading}>
-                Назад
+                {t("profile.action.back")}
               </Button>
             ) : null}
 
@@ -498,7 +510,7 @@ export function ProfileForm({
                 onClick={nextStep}
                 disabled={(step === 1 && !canContinueBasics) || (step === 2 && !hasSports)}
               >
-                Далее
+                {t("profile.action.next")}
               </Button>
             ) : (
               <>
@@ -509,10 +521,10 @@ export function ProfileForm({
                   onClick={() => finishOnboarding(true)}
                   disabled={loading}
                 >
-                  Пропустить пока
+                  {t("profile.action.skip")}
                 </Button>
                 <Button type="submit" fullWidth disabled={loading}>
-                  {loading ? "Сохраняем..." : "Начать поиск"}
+                  {loading ? t("profile.action.saving") : t("profile.action.start")}
                 </Button>
               </>
             )}
@@ -522,41 +534,39 @@ export function ProfileForm({
         <>
           {isGuest ? (
             <Panel className="bg-cream text-sm leading-6 text-ink/68">
-              Профиль уже заполнен как черновик. Можно спокойно поправить данные, а когда захочешь сохранить его в аккаунт и получать отклики, просто подтверди email.
+              {t("profile.guest.banner")}
             </Panel>
           ) : null}
           <Panel>
             <div className="mb-5 flex items-center gap-4">
-              <Avatar src={form.avatarUrl} alt={form.name || "Игрок"} size="xl" />
+              <Avatar src={form.avatarUrl} alt={form.name || t("profile.playerFallback")} size="xl" />
               <div className="flex-1">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">Фото</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">{t("profile.photo.label")}</div>
                 <div className="mt-1 text-lg font-bold text-ink">
-                  {isGuest ? "Черновик карточки игрока" : "Редактирование карточки игрока"}
+                  {isGuest ? t("profile.photo.guestTitle") : t("profile.photo.editTitle")}
                 </div>
                 {!isGuest ? (
                   <label className="mt-3 inline-flex cursor-pointer rounded-2xl bg-mint px-4 py-3 text-sm font-semibold text-ink">
-                    {uploading ? "Загрузка..." : "Загрузить фото"}
+                    {uploading ? t("profile.photo.uploading") : t("profile.photo.upload")}
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                   </label>
                 ) : (
-                  <div className="mt-3 text-xs leading-5 text-ink/55">
-                    Фото можно будет добавить сразу после подтверждения email.
-                  </div>
+                  <div className="mt-3 text-xs leading-5 text-ink/55">{t("profile.photo.guestHint")}</div>
                 )}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Имя">
+              <Field label={t("profile.field.name")}>
                 <input
                   required
                   value={form.name ?? ""}
                   onChange={(event) => setField("name", event.target.value)}
                   className="input"
-                  placeholder="Анна"
+                  placeholder={t("profile.namePlaceholder")}
                 />
               </Field>
-              <Field label="Возраст">
+              <Field label={t("profile.field.age")}>
                 <AgeRibbonPicker
                   value={form.age ?? 18}
                   onChange={(age) => setField("age", age)}
@@ -565,7 +575,7 @@ export function ProfileForm({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Пол">
+              <Field label={t("profile.field.gender")}>
                 <select
                   value={form.gender ?? ""}
                   onChange={(event) =>
@@ -573,12 +583,12 @@ export function ProfileForm({
                   }
                   className="input"
                 >
-                  <option value="">Не указывать</option>
-                  <option value="male">Мужской</option>
-                  <option value="female">Женский</option>
+                  <option value="">{t("profile.gender.unspecified")}</option>
+                  <option value="male">{t("profile.gender.male")}</option>
+                  <option value="female">{t("profile.gender.female")}</option>
                 </select>
               </Field>
-              <Field label="Город">
+              <Field label={t("profile.field.city")}>
                 <select
                   required
                   value={form.city ?? DEFAULT_CITY}
@@ -592,11 +602,11 @@ export function ProfileForm({
                   </option>
                 ))}
               </select>
-              <div className="mt-2 text-xs leading-5 text-ink/55">Пока только Санкт-Петербург.</div>
+              <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.city.hint")}</div>
               </Field>
             </div>
 
-            <Field label="Виды спорта" className="mt-3">
+            <Field label={t("profile.field.sports")} className="mt-3">
               <SportPicker
                 multiple
                 value={form.preferredSports}
@@ -607,7 +617,7 @@ export function ProfileForm({
               />
             </Field>
 
-            <Field label="Удобные районы" className="mt-3">
+            <Field label={t("profile.field.districts")} className="mt-3">
               <div className="flex flex-wrap gap-2">
                 {DISTRICT_OPTIONS.map((district) => {
                   const active = form.preferredDistricts.includes(district);
@@ -625,12 +635,10 @@ export function ProfileForm({
                   );
                 })}
               </div>
-              <div className="mt-2 text-xs leading-5 text-ink/55">
-                Можно выбрать несколько районов, где тебе удобно играть.
-              </div>
+              <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.districts.hint")}</div>
             </Field>
 
-            <Field label="Районы на карте" className="mt-3">
+            <Field label={t("profile.field.districtMap")} className="mt-3">
               {form.preferredDistricts.length > 0 ? (
                 <>
                   <SearchAreaMap
@@ -640,18 +648,16 @@ export function ProfileForm({
                     districts={form.preferredDistricts}
                     isApproximate={isApproximateSearchArea}
                   />
-                  <div className="mt-2 text-xs leading-5 text-ink/55">
-                    Выделили районы, где тебе удобно играть. Подбор будет учитывать их в первую очередь.
-                  </div>
+                  <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.map.selectedHint")}</div>
                 </>
               ) : (
                 <div className="rounded-[20px] bg-cream p-4 text-sm leading-6 text-ink/65">
-                  Районы пока не выбраны. Это нормально: поиск будет шире по Санкт-Петербургу.
+                  {t("profile.map.emptyHint")}
                 </div>
               )}
             </Field>
 
-            <Field label="Доступность" className="mt-3">
+            <Field label={t("profile.field.availability")} className="mt-3">
               <AvailabilityPicker
                 availabilityByDay={form.availabilityByDay}
                 onAvailabilityByDayChange={setAvailabilityByDay}
@@ -661,10 +667,8 @@ export function ProfileForm({
             <div className="mt-3 rounded-[24px] bg-cream p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-ink">Ищу игру сейчас</div>
-                  <div className="mt-1 text-xs leading-5 text-ink/60">
-                    Показывает тебя в отдельной вкладке с активными игроками.
-                  </div>
+                  <div className="text-sm font-semibold text-ink">{t("profile.lookingNow.title")}</div>
+                  <div className="mt-1 text-xs leading-5 text-ink/60">{t("profile.lookingNow.hint")}</div>
                 </div>
                 <button
                   type="button"
@@ -690,29 +694,33 @@ export function ProfileForm({
                   <>
                     {Object.entries(form.availabilityByDay).map(([day, ranges]) => (
                       <span key={day} className="rounded-full bg-white px-3 py-2 font-semibold text-ink">
-                        {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? []).map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS]).join(", ")}
+                        {translateAvailabilityValue(day, DAY_MESSAGE_KEYS, t)} · {(ranges ?? []).map((range) => translateAvailabilityValue(range, TIME_RANGE_MESSAGE_KEYS, t)).join(", ")}
                       </span>
                     ))}
                   </>
                 ) : (
-                  <span className="rounded-full bg-white px-3 py-2 font-semibold text-ink">Не указано</span>
+                  <span className="rounded-full bg-white px-3 py-2 font-semibold text-ink">{t("profile.value.unspecified")}</span>
                 )}
               </div>
             </div>
 
-            <Field label="Коротко о себе" className="mt-3">
+            <Field label={t("profile.field.bio")} className="mt-3">
               <textarea
                 rows={4}
                 value={form.bio ?? ""}
                 onChange={(event) => setField("bio", event.target.value)}
                 className="input min-h-[112px] resize-none py-3"
-                placeholder="Люблю интенсивные розыгрыши и вечерние тренировки, ищу постоянных партнеров."
+                placeholder={t("profile.bioPlaceholder")}
               />
             </Field>
           </Panel>
 
           <Button type="submit" fullWidth disabled={loading || uploading}>
-            {loading ? "Сохраняем..." : isGuest ? "Подтвердить email и сохранить" : "Сохранить профиль"}
+            {loading
+              ? t("profile.action.saving")
+              : isGuest
+                ? t("profile.action.confirmEmail")
+                : t("profile.action.save")}
           </Button>
         </>
       )}
@@ -773,6 +781,15 @@ function normalizeAvailabilityByDay(availabilityByDay: unknown, availableDays: u
     : [];
 
   return Object.fromEntries(days.map((day) => [day, ranges]));
+}
+
+function translateAvailabilityValue(
+  value: string,
+  keys: Record<string, WebMessageKey>,
+  t: (key: WebMessageKey) => string
+) {
+  const key = keys[value];
+  return key ? t(key) : value;
 }
 
 function Field({

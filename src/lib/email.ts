@@ -1,10 +1,13 @@
 import nodemailer from "nodemailer";
 
 import { getConfiguredAdminEmails } from "@/lib/admin";
+import { translateServer } from "@/lib/i18n/server";
+import type { SupportedLocale } from "@/lib/locales";
 
 type SendOtpEmailInput = {
   to: string;
   code: string;
+  locale: SupportedLocale;
 };
 
 function requiredEnv(name: string) {
@@ -31,27 +34,32 @@ function smtpTransporter() {
   });
 }
 
-function buildOtpText(code: string) {
-  return [
-    "Код входа в TennisSearch:",
+export function buildOtpEmail(code: string, locale: SupportedLocale) {
+  const heading = translateServer(locale, "auth.email.heading");
+  const expiry = translateServer(locale, "auth.email.expiry");
+  const text = [
+    heading,
     "",
     code,
     "",
-    "Код действует 10 минут. Если ты не запрашивал вход, просто проигнорируй это письмо."
+    expiry
   ].join("\n");
-}
-
-function buildOtpHtml(code: string) {
-  return `
+  const html = `
     <div style="font-family: Arial, sans-serif; color: #10231b; line-height: 1.5;">
-      <p>Код входа в TennisSearch:</p>
+      <p>${heading}</p>
       <p style="font-size: 28px; font-weight: 700; letter-spacing: 4px; margin: 16px 0;">${code}</p>
-      <p>Код действует 10 минут. Если ты не запрашивал вход, просто проигнорируй это письмо.</p>
+      <p>${expiry}</p>
     </div>
   `;
+
+  return {
+    subject: translateServer(locale, "auth.email.subject"),
+    text,
+    html
+  };
 }
 
-export async function sendOtpEmail({ to, code }: SendOtpEmailInput) {
+export async function sendOtpEmail({ to, code, locale }: SendOtpEmailInput) {
   const mode = resolveEmailMode();
 
   if (mode === "console") {
@@ -64,13 +72,12 @@ export async function sendOtpEmail({ to, code }: SendOtpEmailInput) {
   }
 
   const transporter = smtpTransporter();
+  const message = buildOtpEmail(code, locale);
 
   await transporter.sendMail({
     from: requiredEnv("EMAIL_FROM"),
     to,
-    subject: "Код входа в TennisSearch",
-    text: buildOtpText(code),
-    html: buildOtpHtml(code)
+    ...message
   });
 }
 

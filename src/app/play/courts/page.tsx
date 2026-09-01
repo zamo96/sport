@@ -6,6 +6,8 @@ import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { CourtsBrowser } from "@/components/courts/courts-browser";
 import { DEFAULT_CITY } from "@/lib/constants";
+import { translateCourts } from "@/lib/i18n/web/courts";
+import { getWebRequestLocale } from "@/lib/i18n/web/request-locale";
 import { normalizeSports } from "@/lib/sport-levels";
 import { courtsQuerySchema } from "@/lib/validators";
 import { getCourtsForUser } from "@/server/app-data";
@@ -16,6 +18,8 @@ export default async function CourtsPage({
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  const locale = getWebRequestLocale();
+  const t = (key: Parameters<typeof translateCourts>[1]) => translateCourts(locale, key);
   const user = await getSessionUser();
 
   if (!user) {
@@ -34,9 +38,9 @@ export default async function CourtsPage({
   return (
     <PageShell>
       <SectionTitle
-        eyebrow="Спортивные центры"
-        title="Выбери место до начала переписки."
-        subtitle="Показываем свою базу спортивных центров Санкт-Петербурга. Поиск подсказывает клубы и районы сразу при вводе."
+        eyebrow={t("courts.page.eyebrow")}
+        title={t("courts.page.title")}
+        subtitle={t("courts.page.subtitle")}
       />
       <CourtsBrowser
         courts={courts.map(serializeCourt)}

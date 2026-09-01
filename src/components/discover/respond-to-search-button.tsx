@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { apiFetch } from "@/lib/client-api";
 import { savePendingGuestAction } from "@/lib/pending-guest-action";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,7 @@ export function RespondToSearchButton({
   searchMatched?: boolean;
   authRequiredHref?: string;
 }) {
+  const { t } = useLocale();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
@@ -62,7 +64,7 @@ export function RespondToSearchButton({
   if (existingStatus === "approved") {
     return (
       <Button fullWidth disabled>
-        Тебя уже выбрали
+        {t("discover.respond.approved")}
       </Button>
     );
   }
@@ -70,7 +72,7 @@ export function RespondToSearchButton({
   if (existingStatus === "pending") {
     return (
       <Button fullWidth variant="ghost" onClick={withdraw} disabled={loading || !responseId}>
-        {loading ? "Отзываем..." : "Отменить отклик"}
+        {loading ? t("discover.respond.withdrawing") : t("discover.respond.withdraw")}
       </Button>
     );
   }
@@ -78,7 +80,7 @@ export function RespondToSearchButton({
   if (existingStatus === "rejected" && searchMatched) {
     return (
       <Button fullWidth variant="ghost" disabled>
-        Игрок уже найден
+        {t("discover.respond.found")}
       </Button>
     );
   }
@@ -86,14 +88,14 @@ export function RespondToSearchButton({
   return (
     <>
       <Button fullWidth variant="secondary" onClick={respond} disabled={loading}>
-        {loading ? "Отправляем..." : "Откликнуться"}
+        {loading ? t("discover.respond.sending") : t("discover.respond.action")}
       </Button>
       <AuthRequiredSheet
         open={authPromptOpen}
         onClose={() => setAuthPromptOpen(false)}
         href={authRequiredHref ?? "/auth"}
-        title="Подтверди email, чтобы откликнуться"
-        description="Так мы сможем показать организатору твой отклик, а тебе прислать ответ и открыть чат, если тебя выберут."
+        title={t("discover.respond.authTitle")}
+        description={t("discover.respond.authText")}
         onContinue={() => {
           savePendingGuestAction({
             type: "game_search_respond",

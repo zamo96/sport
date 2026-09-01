@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { DEFAULT_CITY, DEFAULT_CITY_COORDINATES, DISTRICT_MAP_AREAS, getDistrictArea, getDistrictLabel } from "@/lib/constants";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ export function YandexSearchAreaMap({
   isApproximate?: boolean;
   className?: string;
 }) {
+  const { locale, t } = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const apiKey = getYandexMapsApiKey();
@@ -45,6 +47,7 @@ export function YandexSearchAreaMap({
   useEffect(() => {
     let mapInstance: { destroy: () => void } | null = null;
     let cancelled = false;
+    const requestedMapLocale = locale === "ru" ? "ru_RU" : "en_US";
 
     async function initMap() {
       if (!containerRef.current) {
@@ -52,12 +55,24 @@ export function YandexSearchAreaMap({
       }
 
       if (!apiKey) {
-        setError("Добавь NEXT_PUBLIC_YANDEX_MAPS_API_KEY, чтобы включить карту района.");
+        setError(t("profile.map.apiKeyError"));
+        return;
+      }
+
+      const loadedMapScript = document.querySelector<HTMLScriptElement>('script[data-map-provider="yandex"]');
+      if (
+        window.ymaps3 &&
+        loadedMapScript?.dataset.mapLanguage &&
+        loadedMapScript.dataset.mapLanguage !== requestedMapLocale
+      ) {
+        // Yandex Maps fixes its language when the SDK script loads. Reload once so the
+        // profile map cannot reuse base-map labels from the previous app locale.
+        window.location.reload();
         return;
       }
 
       try {
-        const ymaps3 = await loadYandexMaps(apiKey, "ru_RU");
+        const ymaps3 = await loadYandexMaps(apiKey, requestedMapLocale);
         if (cancelled || !containerRef.current) {
           return;
         }
@@ -109,8 +124,8 @@ export function YandexSearchAreaMap({
           </span>
         `;
         markerElement.title = isApproximate
-          ? `Примерный район поиска в ${city}`
-          : `Район поиска в ${city}`;
+          ? t("profile.map.approximateTitle", { city })
+          : t("profile.map.exactTitle", { city });
 
         map.addChild(
           new YMapMarker(
@@ -123,9 +138,9 @@ export function YandexSearchAreaMap({
 
         mapInstance = map;
         setError(null);
-      } catch (mapError) {
+      } catch {
         if (!cancelled) {
-          setError(mapError instanceof Error ? mapError.message : "Не удалось загрузить карту района.");
+          setError(t("profile.map.loadError"));
         }
       }
     }
@@ -136,7 +151,7 @@ export function YandexSearchAreaMap({
       cancelled = true;
       mapInstance?.destroy();
     };
-  }, [apiKey, center, city, districts, initialLocation, isApproximate]);
+  }, [apiKey, center, city, districts, initialLocation, isApproximate, locale, t]);
 
   if (error) {
     return <Panel className={cn("text-sm leading-6 text-ink/70", className)}>{error}</Panel>;

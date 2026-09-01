@@ -29,16 +29,39 @@ struct CourtsView: View {
         _selectedSport = State(initialValue: initialSport)
     }
 
-    private var activeCity: SupportedCity {
+    private var coveredActiveCity: SupportedCity? {
         SupportedCity.resolve(appModel.currentUser?.city)
             ?? SupportedCity.resolve(appModel.guestDraft.city)
-            ?? .saintPetersburg
+    }
+
+    private var activeCityName: String {
+        appModel.currentUser?.location?.city
+            ?? appModel.currentUser?.city
+            ?? appModel.guestDraft.location?.city
+            ?? appModel.guestDraft.city
+    }
+
+    private var activeMapCenter: CLLocationCoordinate2D {
+        if let location = appModel.currentUser?.location ?? appModel.guestDraft.location {
+            return CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)
+        }
+        return coveredActiveCity?.mapCenter ?? SupportedCity.saintPetersburg.mapCenter
+    }
+
+    private var activeMapDiameterMeters: CLLocationDistance {
+        coveredActiveCity?.mapDiameterMeters ?? 50_000
+    }
+
+    private var clubsEnabledForActiveCity: Bool {
+        appModel.currentUser?.location?.coverage.clubsEnabled
+            ?? appModel.guestDraft.location?.coverage.clubsEnabled
+            ?? (coveredActiveCity != nil)
     }
 
     private var courtsCacheKey: String {
         let user = appModel.currentUser
         return [
-            activeCity.rawValue,
+            activeCityName,
             user?.id ?? "guest",
             user?.district ?? "",
             (user?.preferredDistricts ?? []).joined(separator: ","),
@@ -47,11 +70,14 @@ struct CourtsView: View {
     }
 
     private var cityCourts: [Court] {
-        courts.filter { court in
-            guard let courtCity = SupportedCity.resolve(court.city) else {
-                return activeCity == .saintPetersburg
+        let normalizedActiveCity = activeCityName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return courts.filter { court in
+            guard let courtCity = court.city?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !courtCity.isEmpty else { return false }
+            if let coveredActiveCity, let coveredCourtCity = SupportedCity.resolve(courtCity) {
+                return coveredCourtCity == coveredActiveCity
             }
-            return courtCity == activeCity
+            return courtCity.localizedCaseInsensitiveCompare(normalizedActiveCity) == .orderedSame
         }
     }
 
@@ -76,7 +102,10 @@ struct CourtsView: View {
     }
 
     private var preferredDistrictIDs: [String] {
-        guard activeCity.supportsDistrictSelection else {
+        let districtsEnabled = appModel.currentUser?.location.map(\.coverage.districtsEnabled)
+            ?? appModel.guestDraft.location.map(\.coverage.districtsEnabled)
+            ?? (coveredActiveCity != nil)
+        guard districtsEnabled else {
             return []
         }
 
@@ -185,18 +214,31 @@ struct CourtsView: View {
             let distanceKm = haversineDistanceKm(from: currentCoordinate, to: court.coordinate)
             let distance = formattedDistance(distanceKm)
             let driveMinutes = estimatedDriveMinutes(distanceKm)
-            return "\(distance) · на машине \(driveMinutes) мин"
+            return L10n.string(
+                "\(distance) · \(driveMinutes) min by car",
+                "\(distance) · на машине \(driveMinutes) мин"
+            )
         }
 
+        if LocaleStore.currentEffectiveLocale == .en, court.distanceLabel == "Рядом" {
+            return "Nearby"
+        }
         return court.distanceLabel
     }
 
     private func formattedDistance(_ distanceKm: Double) -> String {
         if distanceKm < 1 {
-            return "\(max(Int((distanceKm * 1_000).rounded()), 50)) м"
+            return L10n.string(
+                "\(max(Int((distanceKm * 1_000).rounded()), 50)) m",
+                "\(max(Int((distanceKm * 1_000).rounded()), 50)) м"
+            )
         }
 
-        return String(format: "%.1f км", distanceKm)
+        return String(
+            format: L10n.string("%.1f km", "%.1f км"),
+            locale: LocaleStore.currentEffectiveLocale.locale,
+            distanceKm
+        )
     }
 
     private func estimatedDriveMinutes(_ distanceKm: Double) -> Int {
@@ -236,7 +278,7 @@ struct CourtsView: View {
             .ignoresSafeArea()
 
             if isLoadingCourts && courts.isEmpty {
-                TennisBallsLoader(title: "Загружаем центры")
+                TennisBallsLoader(title: L10n.string("Loading courts", "Загружаем центры"))
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 18) {
@@ -288,7 +330,10 @@ struct CourtsView: View {
                 return
             }
             focusesUserLocation = false
-            appModel.errorMessage = "Разрешите доступ к геолокации в настройках, чтобы показать вашу точку на карте."
+            appModel.errorMessage = L10n.string(
+                "Allow location access in Settings to show your position on the map.",
+                "Разрешите доступ к геолокации в настройках, чтобы показать вашу точку на карте."
+            )
         }
         .onReceive(locationProvider.$locationFailureMessage) { message in
             guard focusesUserLocation, let message else {
@@ -354,11 +399,14 @@ struct CourtsView: View {
     private var headerSection: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Центры")
+                Text(L10n.string("Centers", "Центры"))
                     .font(.system(size: 38, weight: .bold))
                     .foregroundStyle(.white)
 
-                Text("\(activeCity.rawValue) · клубы, корты и секции")
+                Text(L10n.string(
+                    "\(activeCityName) · clubs, courts, and classes",
+                    "\(activeCityName) · клубы, корты и секции"
+                ))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
             }
@@ -374,7 +422,7 @@ struct CourtsView: View {
                 .foregroundStyle(.white.opacity(0.44))
             ZStack(alignment: .leading) {
                 if query.isEmpty {
-                    Text("Клуб, метро, район или спорт")
+                    Text(L10n.string("Club, metro, district, or sport", "Клуб, метро, район или спорт"))
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.32))
                 }
@@ -406,7 +454,7 @@ struct CourtsView: View {
                         .background(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255).opacity(0.13), in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Показать мой район на карте")
+                .accessibilityLabel(L10n.string("Show my area on the map", "Показать мой район на карте"))
             }
         }
         .padding(.horizontal, 16)
@@ -604,7 +652,7 @@ struct CourtsView: View {
     private var sportFilterRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                sportFilterChip(title: "Все", sport: nil)
+                sportFilterChip(title: L10n.string("All", "Все"), sport: nil)
 
                 ForEach(availableSports) { sport in
                     sportFilterChip(title: sport.title, sport: sport)
@@ -648,8 +696,8 @@ struct CourtsView: View {
 
     private var displayModePicker: some View {
         HStack(spacing: 4) {
-            displayModeButton(.list, title: "Список", icon: "list.bullet")
-            displayModeButton(.map, title: "Карта", icon: "map.fill")
+            displayModeButton(.list, title: L10n.string("List", "Список"), icon: "list.bullet")
+            displayModeButton(.map, title: L10n.string("Map", "Карта"), icon: "map.fill")
         }
         .padding(4)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -689,7 +737,7 @@ struct CourtsView: View {
             HStack(spacing: 8) {
                 Image(systemName: showFavoritesOnly ? "heart.fill" : "heart")
                     .font(.system(size: 12, weight: .bold))
-                Text("Избранные")
+                Text(L10n.string("Favorites", "Избранные"))
                     .font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(showFavoritesOnly ? .black : .white)
@@ -714,8 +762,8 @@ struct CourtsView: View {
                     highlightedDistrictIDs: mapHighlightedDistrictIDs,
                     focusRevision: mapFocusRevision,
                     annotationLimit: nil,
-                    cityCenter: activeCity.mapCenter,
-                    cityDiameterMeters: activeCity.mapDiameterMeters,
+                    cityCenter: activeMapCenter,
+                    cityDiameterMeters: activeMapDiameterMeters,
                     userCoordinate: focusesUserLocation ? locationProvider.coordinate : nil,
                     userDistrictLabel: locationProvider.districtName,
                     focusesUserLocation: focusesUserLocation,
@@ -752,7 +800,7 @@ struct CourtsView: View {
             Button {
                 focusUserLocation()
             } label: {
-                Label("Моё местоположение", systemImage: "location.fill")
+                Label(L10n.string("My location", "Моё местоположение"), systemImage: "location.fill")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
                     .frame(maxWidth: .infinity)
@@ -812,7 +860,7 @@ struct CourtsView: View {
                 Button {
                     openCourtDetail(court)
                 } label: {
-                    Text("Подробнее")
+                    Text(L10n.string("Details", "Подробнее"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -828,7 +876,7 @@ struct CourtsView: View {
                 Button {
                     presentSearchComposer(for: court)
                 } label: {
-                    Text("Найти игру")
+                    Text(L10n.string("Find a game", "Найти игру"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
@@ -857,8 +905,8 @@ struct CourtsView: View {
                 highlightedDistrictIDs: mapHighlightedDistrictIDs,
                 focusRevision: mapFocusRevision,
                 annotationLimit: nil,
-                cityCenter: activeCity.mapCenter,
-                cityDiameterMeters: activeCity.mapDiameterMeters,
+                cityCenter: activeMapCenter,
+                cityDiameterMeters: activeMapDiameterMeters,
                 userCoordinate: focusesUserLocation ? locationProvider.coordinate : nil,
                 userDistrictLabel: locationProvider.districtName,
                 focusesUserLocation: focusesUserLocation,
@@ -883,10 +931,12 @@ struct CourtsView: View {
             .allowsHitTesting(false)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(focusesUserLocation ? "Вы здесь" : "На карте")
+                Text(focusesUserLocation
+                     ? L10n.string("You are here", "Вы здесь")
+                     : L10n.string("On the map", "На карте"))
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("\(filteredCourts.count) центров")
+                Text(L10n.string("\(filteredCourts.count) centers", "\(filteredCourts.count) центров"))
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                 Text(mapFocusSubtitle)
@@ -903,7 +953,7 @@ struct CourtsView: View {
                     AppHaptics.impact(.light)
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Открыть карточку")
+                        Text(L10n.string("Open details", "Открыть карточку"))
                         Image(systemName: "chevron.right")
                     }
                     .font(.system(size: 15, weight: .bold))
@@ -938,7 +988,7 @@ struct CourtsView: View {
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
-            return locationLabel.isEmpty ? activeCity.rawValue : locationLabel
+            return locationLabel.isEmpty ? activeCityName : locationLabel
         }
 
         if let focusedCourt {
@@ -951,22 +1001,24 @@ struct CourtsView: View {
             return labels.isEmpty ? area.label : labels.prefix(3).joined(separator: ", ")
         }
 
-        return activeCity.rawValue
+        return activeCityName
     }
 
     private var courtsListSection: some View {
         LazyVStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .lastTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(focusesUserLocation ? "Рядом с вами" : "Все центры")
+                    Text(focusesUserLocation
+                         ? L10n.string("Near you", "Рядом с вами")
+                         : L10n.string("All centers", "Все центры"))
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Найдено \(filteredCourts.count) центров")
+                    Text(L10n.string("\(filteredCourts.count) centers found", "Найдено \(filteredCourts.count) центров"))
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white.opacity(0.52))
                 }
                 Spacer()
-                Text("Сортировка")
+                Text(L10n.string("Sort", "Сортировка"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
             }
@@ -976,10 +1028,17 @@ struct CourtsView: View {
                     Image(systemName: "sportscourt")
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255))
-                    Text(cityCourts.isEmpty ? "В \(activeCity.rawValue) пока нет клубов" : "Ничего не найдено")
+                    Text(cityCourts.isEmpty
+                         ? L10n.string("There are no clubs in \(activeCityName) yet", "В \(activeCityName) пока нет клубов")
+                         : L10n.string("Nothing found", "Ничего не найдено"))
                         .font(.headline)
                         .foregroundStyle(.white)
-                    Text(cityCourts.isEmpty ? "Каталог города постепенно пополняется." : "Попробуйте другой вид спорта или запрос.")
+                    Text(cityCourts.isEmpty
+                         ? L10n.string(
+                            "Clubs have not been added yet, but you can already find partners in this city.",
+                            "Клубы ещё не добавлены, но поиск партнёров в городе уже доступен."
+                         )
+                         : L10n.string("Try another sport or search query.", "Попробуйте другой вид спорта или запрос."))
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.52))
                 }
@@ -1094,7 +1153,7 @@ struct CourtsView: View {
             Circle()
                 .fill(hasSearches ? Color(red: 48 / 255, green: 214 / 255, blue: 147 / 255) : Color.white.opacity(0.28))
                 .frame(width: 8, height: 8)
-            Text(hasSearches ? activeSearchText(count) : "Нет активных поисков")
+            Text(hasSearches ? activeSearchText(count) : L10n.string("No active searches", "Нет активных поисков"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(hasSearches ? .white.opacity(0.82) : .white.opacity(0.46))
                 .lineLimit(1)
@@ -1103,7 +1162,10 @@ struct CourtsView: View {
     }
 
     private func activeSearchText(_ count: Int) -> String {
-        "\(count) \(playerPlural(count)) \(count == 1 ? "ищет" : "ищут") игру"
+        if LocaleStore.currentEffectiveLocale == .en {
+            return count == 1 ? "1 player is looking for a game" : "\(count) players are looking for a game"
+        }
+        return "\(count) \(playerPlural(count)) \(count == 1 ? "ищет" : "ищут") игру"
     }
 
     private func playerPlural(_ count: Int) -> String {
@@ -1129,7 +1191,7 @@ struct CourtsView: View {
             items.append(
                 CourtContactItem(
                     id: "booking-\(court.id)",
-                    title: "Бронь",
+                    title: L10n.string("Book", "Бронь"),
                     icon: "calendar.badge.plus",
                     url: bookingUrl
                 )
@@ -1162,8 +1224,13 @@ struct CourtsView: View {
     }
 
     private func loadCourts(forceRefresh: Bool = false) async {
-        let city = activeCity.rawValue
+        let city = activeCityName
         let cacheKey = courtsCacheKey
+        guard clubsEnabledForActiveCity else {
+            courts = []
+            isLoadingCourts = false
+            return
+        }
         if !forceRefresh,
            let cachedEntry = CourtsViewCache.entries[cacheKey],
            Date().timeIntervalSince(cachedEntry.loadedAt) < CourtsViewCache.maxAge {
@@ -1530,13 +1597,13 @@ private struct CourtDetailSheet: View {
     private var compactContactRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                CompactCourtAction(title: "Бронь", icon: "calendar.badge.plus", isEnabled: court.bookingLinkURL != nil) {
+                CompactCourtAction(title: L10n.string("Book", "Бронь"), icon: "calendar.badge.plus", isEnabled: court.bookingLinkURL != nil) {
                     open(court.bookingLinkURL)
                 }
-                CompactCourtAction(title: "Сайт", icon: "globe", isEnabled: court.websiteLinkURL != nil) {
+                CompactCourtAction(title: L10n.string("Website", "Сайт"), icon: "globe", isEnabled: court.websiteLinkURL != nil) {
                     open(court.websiteLinkURL)
                 }
-                CompactCourtAction(title: "Позвонить", icon: "phone.fill", isEnabled: court.phoneURL != nil) {
+                CompactCourtAction(title: L10n.string("Call", "Позвонить"), icon: "phone.fill", isEnabled: court.phoneURL != nil) {
                     open(court.phoneURL)
                 }
                 CompactCourtAction(title: court.messengerTitle, icon: "paperplane.fill", isEnabled: court.messengerLinkURL != nil) {
@@ -1589,12 +1656,16 @@ private struct CourtDetailSheet: View {
                     .frame(width: 9, height: 9)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(activeSearchPeopleCount > 0 ? activeSearchLine : "Активных поисков пока нет")
+                    Text(activeSearchPeopleCount > 0
+                         ? activeSearchLine
+                         : L10n.string("No active searches yet", "Активных поисков пока нет"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
-                    Text(activeSearchPeopleCount > 0 ? "Можно откликнуться или создать свою игру" : "Создайте поиск в этом клубе")
+                    Text(activeSearchPeopleCount > 0
+                         ? L10n.string("Respond or create your own game", "Можно откликнуться или создать свою игру")
+                         : L10n.string("Create a search at this club", "Создайте поиск в этом клубе"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.54))
                         .lineLimit(1)
@@ -1623,7 +1694,12 @@ private struct CourtDetailSheet: View {
     }
 
     private var activeSearchLine: String {
-        "\(activeSearchPeopleCount) \(playerPlural(activeSearchPeopleCount)) \(activeSearchPeopleCount == 1 ? "ищет" : "ищут") игру"
+        if LocaleStore.currentEffectiveLocale == .en {
+            return activeSearchPeopleCount == 1
+                ? "1 player is looking for a game"
+                : "\(activeSearchPeopleCount) players are looking for a game"
+        }
+        return "\(activeSearchPeopleCount) \(playerPlural(activeSearchPeopleCount)) \(activeSearchPeopleCount == 1 ? "ищет" : "ищут") игру"
     }
 
     private func playerPlural(_ count: Int) -> String {
@@ -1645,7 +1721,7 @@ private struct CourtDetailSheet: View {
     private var compactPlayersBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Игроки клуба")
+                Text(L10n.string("Club players", "Игроки клуба"))
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -1660,7 +1736,9 @@ private struct CourtDetailSheet: View {
             }
 
             if court.members.isEmpty {
-                Text(court.isMember ? "Вы первый отметились в этом клубе." : "Отметьтесь, если ходите сюда.")
+                Text(court.isMember
+                     ? L10n.string("You are the first to check in at this club.", "Вы первый отметились в этом клубе.")
+                     : L10n.string("Check in if you play here.", "Отметьтесь, если ходите сюда."))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.54))
                     .lineLimit(2)
@@ -1707,7 +1785,7 @@ private struct CourtDetailSheet: View {
             Button {
                 onPlanPersonalVisit()
             } label: {
-                Label("Визит", systemImage: "figure.run.circle.fill")
+                Label(L10n.string("Visit", "Визит"), systemImage: "figure.run.circle.fill")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1723,7 +1801,7 @@ private struct CourtDetailSheet: View {
             Button {
                 onProposeGame()
             } label: {
-                Label("Найти игру", systemImage: "calendar.badge.plus")
+                Label(L10n.string("Find a game", "Найти игру"), systemImage: "calendar.badge.plus")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
@@ -1805,8 +1883,8 @@ private struct CourtDetailSheet: View {
     private var actionGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             CourtDetailActionButton(
-                title: "Позвонить",
-                subtitle: court.phone ?? "Нет номера",
+                title: L10n.string("Call", "Позвонить"),
+                subtitle: court.phone ?? L10n.string("No phone number", "Нет номера"),
                 icon: "phone.fill",
                 isEnabled: court.phoneURL != nil
             ) {
@@ -1814,8 +1892,8 @@ private struct CourtDetailSheet: View {
             }
 
             CourtDetailActionButton(
-                title: "Забронировать",
-                subtitle: court.bookingHostLabel ?? "Нет онлайн-брони",
+                title: L10n.string("Book", "Забронировать"),
+                subtitle: court.bookingHostLabel ?? L10n.string("No online booking", "Нет онлайн-брони"),
                 icon: "calendar.badge.plus",
                 isEnabled: court.bookingLinkURL != nil
             ) {
@@ -1823,8 +1901,8 @@ private struct CourtDetailSheet: View {
             }
 
             CourtDetailActionButton(
-                title: "Сайт",
-                subtitle: court.websiteHostLabel ?? "Не указан",
+                title: L10n.string("Website", "Сайт"),
+                subtitle: court.websiteHostLabel ?? L10n.string("Not provided", "Не указан"),
                 icon: "globe",
                 isEnabled: court.websiteLinkURL != nil
             ) {
@@ -1841,8 +1919,10 @@ private struct CourtDetailSheet: View {
             }
 
             CourtDetailActionButton(
-                title: "Сохранить",
-                subtitle: isSaved ? "В избранном" : "В избранное",
+                title: L10n.string("Save", "Сохранить"),
+                subtitle: isSaved
+                    ? L10n.string("In favorites", "В избранном")
+                    : L10n.string("Add to favorites", "В избранное"),
                 icon: isSaved ? "bookmark.fill" : "bookmark",
                 isEnabled: true
             ) {
@@ -1854,14 +1934,14 @@ private struct CourtDetailSheet: View {
 
     private var metaRow: some View {
         HStack(spacing: 10) {
-            CourtInfoPill(icon: "clock", title: court.workingHours ?? "Часы не указаны")
-            CourtInfoPill(icon: "creditcard", title: court.priceRange ?? "Цена не указана")
+            CourtInfoPill(icon: "clock", title: court.workingHours ?? L10n.string("Hours not provided", "Часы не указаны"))
+            CourtInfoPill(icon: "creditcard", title: court.priceRange ?? L10n.string("Price not provided", "Цена не указана"))
         }
     }
 
     private var aboutBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("О клубе")
+            Text(L10n.string("About the club", "О клубе"))
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(.white)
             Text(court.detailDescription)
@@ -1887,10 +1967,12 @@ private struct CourtDetailSheet: View {
                     .background(Color.white.opacity(0.075), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(court.isMember ? "Вы ходите сюда" : "Я хожу сюда")
+                    Text(court.isMember
+                         ? L10n.string("You play here", "Вы ходите сюда")
+                         : L10n.string("I play here", "Я хожу сюда"))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Игроки увидят вас в списке клуба и смогут предложить игру.")
+                    Text(L10n.string("Players will see you in the club list and can invite you to a game.", "Игроки увидят вас в списке клуба и смогут предложить игру."))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(2)
@@ -1921,7 +2003,7 @@ private struct CourtDetailSheet: View {
     private var playersBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Игроки клуба")
+                Text(L10n.string("Club players", "Игроки клуба"))
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -1936,7 +2018,15 @@ private struct CourtDetailSheet: View {
             }
 
             if court.members.isEmpty {
-                Text(court.isMember ? "Вы первый отметились в этом клубе. Когда появятся другие игроки, им можно будет предложить игру отсюда." : "Пока никто не отметился. Отметьтесь, если ходите сюда, чтобы клуб начал собирать игроков.")
+                Text(court.isMember
+                     ? L10n.string(
+                        "You are the first to check in at this club. When other players join, you can propose a game from here.",
+                        "Вы первый отметились в этом клубе. Когда появятся другие игроки, им можно будет предложить игру отсюда."
+                     )
+                     : L10n.string(
+                        "No one has checked in yet. Check in if you play here so the club can start gathering players.",
+                        "Пока никто не отметился. Отметьтесь, если ходите сюда, чтобы клуб начал собирать игроков."
+                     ))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .lineSpacing(3)
@@ -1986,7 +2076,7 @@ private struct CourtDetailSheet: View {
             Button {
                 onProposeToPlayer(player)
             } label: {
-                Text("Предложить")
+                Text(L10n.string("Invite", "Предложить"))
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -2026,7 +2116,7 @@ private struct CourtDetailSheet: View {
 
         private var levelSummary: String {
             guard let level = player.sportLevels[primarySport.rawValue] ?? player.tennisLevel else {
-                return "уровень не указан"
+                return L10n.string("level not provided", "уровень не указан")
             }
             return "\(level)/10"
         }
@@ -2045,7 +2135,7 @@ private struct CourtDetailSheet: View {
                                     .lineLimit(2)
                                     .minimumScaleFactor(0.78)
 
-                                Text([player.age.map { "\($0) лет" }, player.city].compactMap { $0 }.joined(separator: ", "))
+                                Text([player.age.map { L10n.string("\($0) years old", "\($0) лет") }, player.city].compactMap { $0 }.joined(separator: ", "))
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(.white.opacity(0.62))
 
@@ -2071,7 +2161,7 @@ private struct CourtDetailSheet: View {
                     )
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("В этом клубе")
+                        Text(L10n.string("At this club", "В этом клубе"))
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(.white)
 
@@ -2099,7 +2189,7 @@ private struct CourtDetailSheet: View {
                             dismiss()
                             onProposeGame()
                         } label: {
-                            Label("Предложить игру здесь", systemImage: "calendar.badge.plus")
+                            Label(L10n.string("Invite to a game here", "Предложить игру здесь"), systemImage: "calendar.badge.plus")
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
@@ -2124,14 +2214,14 @@ private struct CourtDetailSheet: View {
     }
 
     private func courtPlayerSubtitle(_ player: DiscoverUser) -> String {
-        let sport = player.preferredSports.first?.title ?? court.primarySport?.title ?? "Спорт"
-        let district = player.districtLabel ?? localizedDistrictName(player.district) ?? "район не указан"
+        let sport = player.preferredSports.first?.title ?? court.primarySport?.title ?? L10n.string("Sport", "Спорт")
+        let district = player.districtLabel ?? localizedDistrictName(player.district) ?? L10n.string("area not provided", "район не указан")
         return "\(sport) · \(district)"
     }
 
     private var sportsBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Виды спорта")
+            Text(L10n.string("Sports", "Виды спорта"))
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(.white)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], spacing: 12) {
@@ -2156,7 +2246,7 @@ private struct CourtDetailSheet: View {
 
     private var amenitiesBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Удобства")
+            Text(L10n.string("Amenities", "Удобства"))
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(.white)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 14) {
@@ -2182,9 +2272,9 @@ private struct CourtDetailSheet: View {
             onProposeGame()
         } label: {
             VStack(spacing: 4) {
-                Text("Создать срочный поиск здесь")
+                Text(L10n.string("Create an urgent search here", "Создать срочный поиск здесь"))
                     .font(.system(size: 20, weight: .bold))
-                Text("Найти игроков для игры в этом клубе")
+                Text(L10n.string("Find players for a game at this club", "Найти игроков для игры в этом клубе"))
                     .font(.system(size: 14, weight: .medium))
                     .opacity(0.78)
             }
@@ -2215,10 +2305,10 @@ private struct CourtDetailSheet: View {
                     .background(Color.white.opacity(0.08), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Запланировать визит")
+                    Text(L10n.string("Plan a visit", "Запланировать визит"))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Без поиска игроков: тренировка, зал или индивидуальная игра.")
+                    Text(L10n.string("Without searching for players: practice, court time, or an individual session.", "Без поиска игроков: тренировка, зал или индивидуальная игра."))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(2)
@@ -2330,7 +2420,7 @@ private struct PersonalActivityComposerSheet: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text("Личный визит")
+            Text(L10n.string("Personal visit", "Личный визит"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
             Spacer()
@@ -2367,7 +2457,7 @@ private struct PersonalActivityComposerSheet: View {
 
     private var sportSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Что планируете?")
+            Text(L10n.string("What are you planning?", "Что планируете?"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
@@ -2398,7 +2488,7 @@ private struct PersonalActivityComposerSheet: View {
     }
 
     private var dateSection: some View {
-        FieldShell(title: "Дата") {
+        FieldShell(title: L10n.string("Date", "Дата")) {
             DatePicker(
                 "",
                 selection: $selectedDate,
@@ -2413,7 +2503,7 @@ private struct PersonalActivityComposerSheet: View {
 
     private var timeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Время")
+            Text(L10n.string("Time", "Время"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
@@ -2443,9 +2533,9 @@ private struct PersonalActivityComposerSheet: View {
     }
 
     private var durationSection: some View {
-        FieldShell(title: "Длительность") {
+        FieldShell(title: L10n.string("Duration", "Длительность")) {
             Stepper(value: $durationMinutes, in: 15 ... 360, step: 15) {
-                Text("\(durationMinutes) мин")
+                Text(L10n.string("\(durationMinutes) min", "\(durationMinutes) мин"))
                     .font(.headline)
             }
         }
@@ -2453,10 +2543,10 @@ private struct PersonalActivityComposerSheet: View {
 
     private var commentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Заметка")
+            Text(L10n.string("Note", "Заметка"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-            TextField("Например: тренировка ног, дорожка 40 минут", text: $comment, axis: .vertical)
+            TextField(L10n.string("For example: leg workout, 40 minutes on the track", "Например: тренировка ног, дорожка 40 минут"), text: $comment, axis: .vertical)
                 .lineLimit(3 ... 5)
                 .textInputAutocapitalization(.sentences)
                 .padding(14)
@@ -2474,7 +2564,9 @@ private struct PersonalActivityComposerSheet: View {
                     ProgressView()
                         .tint(.white)
                 }
-                Text(isSaving ? "Сохраняем..." : "Запланировать визит")
+                Text(isSaving
+                     ? L10n.string("Saving...", "Сохраняем...")
+                     : L10n.string("Plan visit", "Запланировать визит"))
             }
             .frame(maxWidth: .infinity)
         }
@@ -2556,7 +2648,7 @@ private struct CourtPhotoHero: View {
             }
 
             if urls.count > 1 {
-                Text("\(urls.count) фото")
+                Text(L10n.string("\(urls.count) photos", "\(urls.count) фото"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -2882,7 +2974,8 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
                 DispatchQueue.main.async {
                     self.cityName = nearestCity?.rawValue
                     self.districtID = polygonDistrictID
-                    self.districtName = localizedDistrictName(polygonDistrictID) ?? "Район не определён"
+                    self.districtName = localizedDistrictName(polygonDistrictID)
+                        ?? L10n.string("Area not identified", "Район не определён")
                 }
                 return
             }
@@ -2913,7 +3006,7 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
             self.districtID = nil
             self.districtName = nil
             self.cityName = nil
-            self.locationFailureMessage = "Не удалось определить геопозицию. Попробуйте ещё раз."
+            self.locationFailureMessage = L10n.string("Could not determine your location. Try again.", "Не удалось определить геопозицию. Попробуйте ещё раз.")
         }
     }
 
@@ -3386,18 +3479,18 @@ extension Court {
         var tags: [String] = []
 
         if let workingHours, !workingHours.isEmpty {
-            tags.append("Открыто: \(workingHours)")
+            tags.append(L10n.string("Open: \(workingHours)", "Открыто: \(workingHours)"))
         }
 
         if let supportedSports, supportedSports.contains(where: { [.tennis, .padel, .badminton, .squash, .tableTennis].contains($0) }) {
-            tags.append("Крытые корты")
+            tags.append(L10n.string("Indoor courts", "Крытые корты"))
         }
 
-        tags.append("Душевые")
-        tags.append("Парковка")
+        tags.append(L10n.string("Showers", "Душевые"))
+        tags.append(L10n.string("Parking", "Парковка"))
 
         if bookingLinkURL != nil {
-            tags.append("Онлайн-бронь")
+            tags.append(L10n.string("Online booking", "Онлайн-бронь"))
         }
 
         return Array(tags.prefix(6))
@@ -3409,8 +3502,11 @@ extension Court {
         }
 
         let sports = sportsTitle(fallback: nil).lowercased()
-        let place = metroDisplayName ?? localizedDistrictName(district) ?? "Санкт-Петербурге"
-        return "Клуб для игры в \(sports) рядом с \(place). Контакты и ссылка на бронирование вынесены выше, чтобы быстро связаться с клубом и уточнить свободное время."
+        let place = metroDisplayName ?? localizedDistrictName(district) ?? L10n.string("Saint Petersburg", "Санкт-Петербурге")
+        return L10n.string(
+            "A club for \(sports) near \(place). Contact details and the booking link are shown above so you can quickly check availability.",
+            "Клуб для игры в \(sports) рядом с \(place). Контакты и ссылка на бронирование вынесены выше, чтобы быстро связаться с клубом и уточнить свободное время."
+        )
     }
 
     var websiteLinkURL: URL? {
@@ -3439,18 +3535,18 @@ extension Court {
         case "telegram", "tg":
             return "Telegram"
         case "max":
-            return "МАКС"
+            return L10n.string("MAX", "МАКС")
         default:
-            return "Мессенджер"
+            return L10n.string("Messenger", "Мессенджер")
         }
     }
 
     var messengerSubtitle: String {
         guard messengerLinkURL != nil else {
-            return "Не указан"
+            return L10n.string("Not specified", "Не указан")
         }
 
-        return "Написать"
+        return L10n.string("Message", "Написать")
     }
 
     var websiteHostLabel: String? {

@@ -13,9 +13,9 @@ export function ok<T>(data: T, init?: ResponseInit) {
   });
 }
 
-export function fail(message: string, status = 400) {
+export function fail(message: string, status = 400, errorCode?: string) {
   return NextResponse.json(
-    { error: message },
+    { error: message, ...(errorCode ? { errorCode } : {}) },
     {
       status,
       headers: {

@@ -2,6 +2,8 @@
 
 import { CalendarClock, CalendarDays, Flame, HeartHandshake, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { translateDiscover } from "@/lib/i18n/web/discover";
 
 export function DiscoverTabs({
   upcomingCount = 0,
@@ -17,6 +19,8 @@ export function DiscoverTabs({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { locale } = useLocale();
+  const t = (key: Parameters<typeof translateDiscover>[1]) => translateDiscover(locale, key);
   const current =
     searchParams.get("view") === "upcoming"
       ? "upcoming"
@@ -49,7 +53,7 @@ export function DiscoverTabs({
             className={`inline-flex items-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold whitespace-nowrap ${current === "upcoming" ? "bg-court text-white" : "bg-white/80 text-ink/65"}`}
           >
             <CalendarClock className="h-4 w-4" />
-            Ближайшие игры
+            {t("discover.tabs.upcoming")}
             <span className={`ml-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${current === "upcoming" ? "bg-white text-court" : "bg-white text-court"}`}>
               {upcomingCount > 99 ? "99+" : upcomingCount}
             </span>
@@ -62,7 +66,7 @@ export function DiscoverTabs({
           className={`inline-flex items-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold whitespace-nowrap ${current === "swipe" ? "bg-ink text-white" : "bg-white/80 text-ink/65"}`}
         >
           <Search className="h-4 w-4" />
-          Похожие игроки
+          {t("discover.tabs.similar")}
         </button>
         {!guestMode ? (
           incomingLikesCount > 0 ? (
@@ -75,7 +79,7 @@ export function DiscoverTabs({
               }`}
             >
               <HeartHandshake className="h-4 w-4" />
-              Хотят с тобой сыграть
+              {t("discover.tabs.likes")}
               <span
                 className={`ml-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${
                   current === "likes" ? "bg-white text-emerald-700" : "bg-white text-emerald-700"
@@ -93,7 +97,7 @@ export function DiscoverTabs({
           className={`inline-flex items-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold whitespace-nowrap ${current === "seeking" ? "bg-clay text-white" : "bg-white/80 text-ink/65"}`}
         >
           <CalendarDays className="h-4 w-4" />
-          Регулярно
+          {t("discover.tabs.regular")}
           {regularCount > 0 ? (
             <span className={`ml-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${current === "seeking" ? "bg-white text-clay" : "bg-white text-clay"}`}>
               {regularCount > 99 ? "99+" : regularCount}
@@ -107,7 +111,7 @@ export function DiscoverTabs({
           className={`inline-flex items-center gap-2 rounded-[22px] px-4 py-3 text-sm font-semibold whitespace-nowrap ${current === "hot" ? "bg-red-500 text-white" : "bg-white/80 text-red-600"}`}
         >
           <Flame className="h-4 w-4" />
-          Срочно
+          {t("discover.tabs.urgent")}
         </button>
       </div>
     </div>

@@ -7,6 +7,10 @@ protocol TennisRepository {
     func clearAuthSession()
     func fetchCurrentUser() async throws -> UserProfile
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile
+    func updateLocaleOverride(_ locale: String?) async throws -> String?
+    func fetchLocationCountries(query: String?) async throws -> [GeoCountry]
+    func fetchLocationCities(countryCode: String, query: String, limit: Int) async throws -> [GeoPlace]
+    func reverseGeocodeLocation(latitude: Double, longitude: Double) async throws -> GeoPlace
     func deleteAccount() async throws
     func uploadAvatar(data: Data, fileName: String, mimeType: String) async throws -> String
     func uploadProfileMedia(data: Data, fileName: String, mimeType: String) async throws -> ProfileMediaUploadResult

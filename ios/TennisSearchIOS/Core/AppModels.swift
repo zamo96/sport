@@ -62,6 +62,67 @@ enum SupportedCity: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum LocationSource: String, Codable {
+    case manual
+    case geolocation
+    case legacy
+}
+
+struct GeoCountry: Codable, Identifiable, Equatable {
+    let code: String
+    let name: String
+
+    var id: String { code }
+
+    var flagEmoji: String {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let scalars = Array(normalized.unicodeScalars)
+        guard scalars.count == 2,
+              scalars.allSatisfy({ (65...90).contains($0.value) }),
+              let first = UnicodeScalar(0x1F1E6 + scalars[0].value - 65),
+              let second = UnicodeScalar(0x1F1E6 + scalars[1].value - 65) else {
+            return "🌐"
+        }
+        return String(first) + String(second)
+    }
+}
+
+struct LocationCoverage: Codable, Equatable {
+    let isSupported: Bool
+    let clubsEnabled: Bool
+    let districtsEnabled: Bool
+    let legacyCity: String?
+
+    static let unavailable = LocationCoverage(
+        isSupported: false,
+        clubsEnabled: false,
+        districtsEnabled: false,
+        legacyCity: nil
+    )
+}
+
+struct GeoPlace: Codable, Identifiable, Equatable {
+    let id: String
+    let provider: String
+    let countryCode: String
+    let countryName: String
+    let region: String?
+    let city: String
+    let latitude: Double
+    let longitude: Double
+    let coverage: LocationCoverage
+    var recommendedLocale: String? = nil
+
+    var displayTitle: String { city }
+
+    var displaySubtitle: String {
+        [region, countryName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.localizedCaseInsensitiveCompare(city) != .orderedSame }
+            .joined(separator: ", ")
+    }
+}
+
 private let districtDisplayNamesMap: [String: String] = [
     "admiralteysky": "Адмиралтейский",
     "vasileostrovsky": "Василеостровский",
@@ -211,11 +272,11 @@ enum Gender: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .male:
-            return "Мужчина"
+            return L10n.string("Man", "Мужчина")
         case .female:
-            return "Женщина"
+            return L10n.string("Woman", "Женщина")
         case .other:
-            return "Другое"
+            return L10n.string("Other", "Другое")
         }
     }
 }
@@ -253,29 +314,29 @@ enum Sport: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .tableTennis:
-            return "Настольный теннис"
+            return L10n.string("Table tennis", "Настольный теннис")
         case .tennis:
-            return "Теннис"
+            return L10n.string("Tennis", "Теннис")
         case .padel:
-            return "Падел"
+            return L10n.string("Padel", "Падел")
         case .squash:
-            return "Сквош"
+            return L10n.string("Squash", "Сквош")
         case .badminton:
-            return "Бадминтон"
+            return L10n.string("Badminton", "Бадминтон")
         case .volleyball:
-            return "Волейбол"
+            return L10n.string("Volleyball", "Волейбол")
         case .fitness:
-            return "Фитнес"
+            return L10n.string("Fitness", "Фитнес")
         case .boxing:
-            return "Бокс"
+            return L10n.string("Boxing", "Бокс")
         case .yoga:
-            return "Йога"
+            return L10n.string("Yoga", "Йога")
         case .football:
-            return "Футбол"
+            return L10n.string("Football", "Футбол")
         case .running:
-            return "Бег"
+            return L10n.string("Running", "Бег")
         case .supboard:
-            return "Сапборд"
+            return L10n.string("SUP", "Сапборд")
         }
     }
 }
@@ -375,17 +436,17 @@ extension Sport {
     var venueTitle: String {
         switch self {
         case .tennis, .padel, .badminton, .squash:
-            return "Корт"
+            return L10n.string("Court", "Корт")
         case .tableTennis:
-            return "Зал"
+            return L10n.string("Venue", "Зал")
         case .football, .volleyball:
-            return "Площадка"
+            return L10n.string("Field", "Площадка")
         case .fitness, .boxing:
-            return "Зал"
+            return L10n.string("Gym", "Зал")
         case .yoga:
-            return "Студия"
+            return L10n.string("Studio", "Студия")
         case .running, .supboard:
-            return "Маршрут"
+            return L10n.string("Route", "Маршрут")
         }
     }
 
@@ -398,7 +459,7 @@ extension Sport {
     }
 
     var routeDefaultTitle: String {
-        self == .supboard ? "Маршрут по воде" : "Маршрут бега"
+        self == .supboard ? L10n.string("Water route", "Маршрут по воде") : L10n.string("Running route", "Маршрут бега")
     }
 
     var venueFieldTitle: String {
@@ -423,6 +484,9 @@ extension Sport {
     }
 
     var venueBookedTitle: String {
+        if LocaleStore.currentEffectiveLocale == .en {
+            return "\(venueTitle) already booked"
+        }
         switch venueGender {
         case .feminine:
             return "\(venueTitle) уже забронирована"
@@ -434,15 +498,15 @@ extension Sport {
     }
 
     var venuePendingTitle: String {
-        "\(venueTitle) подбирается"
+        L10n.string("\(venueTitle) to be selected", "\(venueTitle) подбирается")
     }
 
     var venueUnspecifiedTitle: String {
-        "\(venueTitle) уточняется"
+        L10n.string("\(venueTitle) to be confirmed", "\(venueTitle) уточняется")
     }
 
     var venueExistsTitle: String {
-        "\(venueTitle) есть"
+        L10n.string("\(venueTitle) available", "\(venueTitle) есть")
     }
 
     private var isTeamSport: Bool {
@@ -451,31 +515,31 @@ extension Sport {
 
     func formatTitle(format: PlayFormat, playersNeeded: Int? = nil) -> String {
         if format == .both {
-            return "Любой"
+            return L10n.string("Any", "Любой")
         }
 
         let resolvedPlayersNeeded = playersNeeded ?? defaultPlayersNeeded(format: format)
         let isGroup = resolvedPlayersNeeded > 1
 
         if isTeamSport {
-            return "Командная"
+            return L10n.string("Team", "Командная")
         }
 
         switch self {
         case .fitness, .boxing, .yoga, .running, .supboard:
-            return isGroup ? "Групповая" : "Индивидуально"
+            return isGroup ? L10n.string("Group", "Групповая") : L10n.string("Individual", "Индивидуально")
         default:
             if isGroup, resolvedPlayersNeeded > 3 {
-                return "Групповая"
+                return L10n.string("Group", "Групповая")
             }
 
             switch format {
             case .singles:
-                return isGroup ? "Групповая" : "Одиночная"
+                return isGroup ? L10n.string("Group", "Групповая") : L10n.string("Singles", "Одиночная")
             case .doubles:
-                return resolvedPlayersNeeded > 3 ? "Групповая" : "Парная"
+                return resolvedPlayersNeeded > 3 ? L10n.string("Group", "Групповая") : L10n.string("Doubles", "Парная")
             case .both:
-                return "Любой"
+                return L10n.string("Any", "Любой")
             }
         }
     }
@@ -497,11 +561,11 @@ enum PlayFormat: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .singles:
-            return "Одиночный"
+            return L10n.string("Singles", "Одиночный")
         case .doubles:
-            return "Парный"
+            return L10n.string("Doubles", "Парный")
         case .both:
-            return "Любой"
+            return L10n.string("Any", "Любой")
         }
     }
 }
@@ -517,13 +581,13 @@ enum Surface: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .hard:
-            return "Хард"
+            return L10n.string("Hard", "Хард")
         case .clay:
-            return "Грунт"
+            return L10n.string("Clay", "Грунт")
         case .grass:
-            return "Трава"
+            return L10n.string("Grass", "Трава")
         case .any:
-            return "Любое"
+            return L10n.string("Any", "Любое")
         }
     }
 }
@@ -541,9 +605,9 @@ enum SearchType: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .regular:
-            return "Регулярный"
+            return L10n.string("Regular", "Регулярный")
         case .hot:
-            return "Срочный"
+            return L10n.string("Urgent", "Срочный")
         }
     }
 }
@@ -558,11 +622,11 @@ enum HotWindow: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today:
-            return "Сегодня"
+            return L10n.string("Today", "Сегодня")
         case .tomorrow:
-            return "Завтра"
+            return L10n.string("Tomorrow", "Завтра")
         case .dayAfterTomorrow:
-            return "Послезавтра"
+            return L10n.string("Day after tomorrow", "Послезавтра")
         }
     }
 }
@@ -577,11 +641,11 @@ enum TimeRange: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .morning:
-            return "Утро"
+            return L10n.string("Morning", "Утро")
         case .day:
-            return "День"
+            return L10n.string("Afternoon", "День")
         case .evening:
-            return "Вечер"
+            return L10n.string("Evening", "Вечер")
         }
     }
 }
@@ -606,11 +670,11 @@ func localizedTimePreferenceDetailTitle(_ value: String) -> String {
     if let range = TimeRange(rawValue: value) {
         switch range {
         case .morning:
-            return "Утро"
+            return L10n.string("Morning", "Утро")
         case .day:
-            return "День"
+            return L10n.string("Afternoon", "День")
         case .evening:
-            return "Вечер (после 18:00)"
+            return L10n.string("Evening (after 6:00 PM)", "Вечер (после 18:00)")
         }
     }
 
@@ -641,38 +705,38 @@ enum DayOfWeek: String, Codable, CaseIterable, Identifiable {
     var shortTitle: String {
         switch self {
         case .monday:
-            return "Пн"
+            return L10n.string("Mon", "Пн")
         case .tuesday:
-            return "Вт"
+            return L10n.string("Tue", "Вт")
         case .wednesday:
-            return "Ср"
+            return L10n.string("Wed", "Ср")
         case .thursday:
-            return "Чт"
+            return L10n.string("Thu", "Чт")
         case .friday:
-            return "Пт"
+            return L10n.string("Fri", "Пт")
         case .saturday:
-            return "Сб"
+            return L10n.string("Sat", "Сб")
         case .sunday:
-            return "Вс"
+            return L10n.string("Sun", "Вс")
         }
     }
 
     var title: String {
         switch self {
         case .monday:
-            return "Понедельник"
+            return L10n.string("Monday", "Понедельник")
         case .tuesday:
-            return "Вторник"
+            return L10n.string("Tuesday", "Вторник")
         case .wednesday:
-            return "Среда"
+            return L10n.string("Wednesday", "Среда")
         case .thursday:
-            return "Четверг"
+            return L10n.string("Thursday", "Четверг")
         case .friday:
-            return "Пятница"
+            return L10n.string("Friday", "Пятница")
         case .saturday:
-            return "Суббота"
+            return L10n.string("Saturday", "Суббота")
         case .sunday:
-            return "Воскресенье"
+            return L10n.string("Sunday", "Воскресенье")
         }
     }
 }
@@ -693,15 +757,15 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .upcoming:
-            return "Ближайшие игры"
+            return L10n.string("Upcoming games", "Ближайшие игры")
         case .swipe:
-            return "Похожие игроки"
+            return L10n.string("Similar players", "Похожие игроки")
         case .likes:
-            return "Хотят с тобой поиграть"
+            return L10n.string("Want to play with you", "Хотят с тобой поиграть")
         case .seeking:
-            return "Регулярно"
+            return L10n.string("Regular", "Регулярно")
         case .hot:
-            return "Поиски"
+            return L10n.string("Searches", "Поиски")
         }
     }
 
@@ -733,7 +797,12 @@ enum AuthStep: String, Identifiable {
 
 enum LegalDocuments {
     static let userAgreementVersion = "2026-08-24"
-    static let acceptanceError = "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных."
+    static var acceptanceError: String {
+        L10n.string(
+            "Accept the User Agreement and consent to personal data processing.",
+            "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных."
+        )
+    }
 
     static var userAgreementURL: URL? {
         if let baseURL = AppConfig.apiBaseURL {
@@ -772,13 +841,13 @@ enum UserSafetyReason: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .harassment: return "Оскорбления или травля"
-        case .hateSpeech: return "Язык ненависти"
-        case .sexualContent: return "Неприемлемый контент"
-        case .violence: return "Угрозы или насилие"
-        case .spam: return "Спам или мошенничество"
-        case .impersonation: return "Выдаёт себя за другого"
-        case .other: return "Другая причина"
+        case .harassment: return L10n.string("Harassment or bullying", "Оскорбления или травля")
+        case .hateSpeech: return L10n.string("Hate speech", "Язык ненависти")
+        case .sexualContent: return L10n.string("Inappropriate content", "Неприемлемый контент")
+        case .violence: return L10n.string("Threats or violence", "Угрозы или насилие")
+        case .spam: return L10n.string("Spam or fraud", "Спам или мошенничество")
+        case .impersonation: return L10n.string("Impersonation", "Выдаёт себя за другого")
+        case .other: return L10n.string("Other reason", "Другая причина")
         }
     }
 }
@@ -828,6 +897,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
     var age: Int
     var gender: Gender?
     var city: String
+    var location: GeoPlace?
+    var locationSource: LocationSource?
     var district: String?
     var preferredDistricts: [String]
     var preferredSports: [Sport]
@@ -846,6 +917,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
         age: Int,
         gender: Gender?,
         city: String,
+        location: GeoPlace? = nil,
+        locationSource: LocationSource? = nil,
         district: String?,
         preferredDistricts: [String],
         preferredSports: [Sport],
@@ -863,6 +936,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
         self.age = age
         self.gender = gender
         self.city = city
+        self.location = location
+        self.locationSource = locationSource
         self.district = district
         self.preferredDistricts = preferredDistricts
         self.preferredSports = preferredSports
@@ -882,6 +957,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
         age: 0,
         gender: nil,
         city: "",
+        location: nil,
+        locationSource: nil,
         district: nil,
         preferredDistricts: [],
         preferredSports: [],
@@ -905,6 +982,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
         case age
         case gender
         case city
+        case location
+        case locationSource
         case district
         case preferredDistricts
         case preferredSports
@@ -925,6 +1004,8 @@ struct GuestOnboardingDraft: Codable, Equatable {
         age = try container.decodeIfPresent(Int.self, forKey: .age) ?? 0
         gender = try container.decodeIfPresent(Gender.self, forKey: .gender)
         city = try container.decodeIfPresent(String.self, forKey: .city) ?? ""
+        location = try container.decodeIfPresent(GeoPlace.self, forKey: .location)
+        locationSource = try container.decodeIfPresent(LocationSource.self, forKey: .locationSource)
         district = try container.decodeIfPresent(String.self, forKey: .district)
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
@@ -947,6 +1028,9 @@ struct UserProfile: Codable, Identifiable {
     var age: Int?
     var gender: Gender?
     var city: String?
+    var location: GeoPlace?
+    var coverage: LocationCoverage
+    var locationSource: LocationSource?
     var district: String?
     var preferredDistricts: [String]
     var bio: String?
@@ -969,6 +1053,7 @@ struct UserProfile: Codable, Identifiable {
     var notificationMessages: Bool
     var notificationGames: Bool
     var notificationSound: Bool
+    var localeOverride: String?
 
     init(
         id: String,
@@ -977,6 +1062,9 @@ struct UserProfile: Codable, Identifiable {
         age: Int? = nil,
         gender: Gender? = nil,
         city: String? = nil,
+        location: GeoPlace? = nil,
+        coverage: LocationCoverage = .unavailable,
+        locationSource: LocationSource? = nil,
         district: String? = nil,
         preferredDistricts: [String] = [],
         bio: String? = nil,
@@ -998,7 +1086,8 @@ struct UserProfile: Codable, Identifiable {
         notificationMatches: Bool = true,
         notificationMessages: Bool = true,
         notificationGames: Bool = true,
-        notificationSound: Bool = true
+        notificationSound: Bool = true,
+        localeOverride: String? = nil
     ) {
         self.id = id
         self.email = email
@@ -1006,6 +1095,9 @@ struct UserProfile: Codable, Identifiable {
         self.age = age
         self.gender = gender
         self.city = city
+        self.location = location
+        self.coverage = location?.coverage ?? coverage
+        self.locationSource = locationSource
         self.district = district
         self.preferredDistricts = preferredDistricts
         self.bio = bio
@@ -1028,6 +1120,7 @@ struct UserProfile: Codable, Identifiable {
         self.notificationMessages = notificationMessages
         self.notificationGames = notificationGames
         self.notificationSound = notificationSound
+        self.localeOverride = localeOverride
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1037,6 +1130,9 @@ struct UserProfile: Codable, Identifiable {
         case age
         case gender
         case city
+        case location
+        case coverage
+        case locationSource
         case district
         case preferredDistricts
         case bio
@@ -1059,6 +1155,7 @@ struct UserProfile: Codable, Identifiable {
         case notificationMessages
         case notificationGames
         case notificationSound
+        case localeOverride
     }
 
     init(from decoder: Decoder) throws {
@@ -1069,6 +1166,11 @@ struct UserProfile: Codable, Identifiable {
         age = try container.decodeIfPresent(Int.self, forKey: .age)
         gender = try container.decodeIfPresent(Gender.self, forKey: .gender)
         city = try container.decodeIfPresent(String.self, forKey: .city)
+        location = try container.decodeIfPresent(GeoPlace.self, forKey: .location)
+        coverage = try container.decodeIfPresent(LocationCoverage.self, forKey: .coverage)
+            ?? location?.coverage
+            ?? .unavailable
+        locationSource = try container.decodeIfPresent(LocationSource.self, forKey: .locationSource)
         district = try container.decodeIfPresent(String.self, forKey: .district)
         preferredDistricts = try container.decodeIfPresent([String].self, forKey: .preferredDistricts) ?? []
         bio = try container.decodeIfPresent(String.self, forKey: .bio)
@@ -1091,6 +1193,7 @@ struct UserProfile: Codable, Identifiable {
         notificationMessages = try container.decodeIfPresent(Bool.self, forKey: .notificationMessages) ?? true
         notificationGames = try container.decodeIfPresent(Bool.self, forKey: .notificationGames) ?? true
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
+        localeOverride = try container.decodeIfPresent(String.self, forKey: .localeOverride)
     }
 }
 
@@ -1166,7 +1269,7 @@ struct DiscoverUser: Codable, Identifiable {
         preferredSurface = try container.decodeIfPresent(Surface.self, forKey: .preferredSurface) ?? .any
         availableDays = try container.decodeIfPresent([String].self, forKey: .availableDays) ?? []
         availableTimeRanges = try container.decodeIfPresent([String].self, forKey: .availableTimeRanges) ?? []
-        distanceLabel = try container.decodeIfPresent(String.self, forKey: .distanceLabel) ?? "Рядом"
+        distanceLabel = try container.decodeIfPresent(String.self, forKey: .distanceLabel) ?? L10n.string("Nearby", "Рядом")
         score = try container.decodeFlexibleDoubleIfPresent(forKey: .score)
         explainabilityReasons = try container.decodeIfPresent([String].self, forKey: .explainabilityReasons) ?? []
         gameSearches = try container.decodeIfPresent([GameSearch].self, forKey: .gameSearches) ?? []
@@ -1194,7 +1297,7 @@ extension DiscoverUser {
         preferredSurface = profile.preferredSurface
         availableDays = profile.availableDays
         availableTimeRanges = profile.availableTimeRanges
-        distanceLabel = localizedDistrictName(profile.district) ?? profile.city ?? "Локация не указана"
+        distanceLabel = localizedDistrictName(profile.district) ?? profile.city ?? L10n.string("Location not specified", "Локация не указана")
         score = nil
         explainabilityReasons = []
         gameSearches = []
@@ -1214,26 +1317,26 @@ extension DiscoverUser {
 
     var presenceLabel: String {
         guard let lastActiveDate else {
-            return "Был недавно"
+            return L10n.string("Active recently", "Был недавно")
         }
 
         if isOnline {
-            return "Онлайн"
+            return L10n.string("Online", "Онлайн")
         }
 
         let minutes = Int(Date().timeIntervalSince(lastActiveDate) / 60)
         if minutes < 60 {
-            return "Был \(max(minutes, 1)) мин назад"
+            return L10n.string("Active \(max(minutes, 1)) min ago", "Был \(max(minutes, 1)) мин назад")
         }
 
         if Calendar.current.isDateInToday(lastActiveDate) {
-            return "Был \(lastActiveDate.formattedHourMinute())"
+            return L10n.string("Active at \(lastActiveDate.formattedHourMinute())", "Был \(lastActiveDate.formattedHourMinute())")
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.setLocalizedDateFormatFromTemplate("d MMM")
-        return "Был \(formatter.string(from: lastActiveDate))"
+        return L10n.string("Active \(formatter.string(from: lastActiveDate))", "Был \(formatter.string(from: lastActiveDate))")
     }
 }
 
@@ -1731,11 +1834,11 @@ struct GameReport: Codable, Identifiable {
     var statusTitle: String {
         switch status.lowercased() {
         case "confirmed":
-            return "Фотоотчёт сохранён"
+            return L10n.string("Photo report saved", "Фотоотчёт сохранён")
         case "disputed":
-            return "Есть спор"
+            return L10n.string("Disputed", "Есть спор")
         default:
-            return "Фотоотчёт сохранён"
+            return L10n.string("Photo report saved", "Фотоотчёт сохранён")
         }
     }
 }
@@ -2571,7 +2674,7 @@ extension ActivitySummary {
 extension DiscoverUser {
     var displayName: String {
         guard let name, !name.isEmpty else {
-            return "Игрок"
+            return L10n.string("Player", "Игрок")
         }
         return name
     }
@@ -2589,7 +2692,7 @@ extension DiscoverUser {
 
     var districtDisplaySummary: String {
         let values = districtDisplayNames
-        return values.isEmpty ? "Районы не указаны" : values.prefix(3).joined(separator: ", ")
+        return values.isEmpty ? L10n.string("Areas not specified", "Районы не указаны") : values.prefix(3).joined(separator: ", ")
     }
 
     var sportChips: [String] {
@@ -2618,7 +2721,7 @@ extension UserProfile {
         if let name, !name.isEmpty {
             return name
         }
-        return email ?? "Профиль"
+        return email ?? L10n.string("Profile", "Профиль")
     }
 
     var profilePhotoPaths: [String] {
@@ -2646,7 +2749,7 @@ private func uniqueNonEmptyMediaPaths(_ paths: [String]) -> [String] {
 extension GuestOnboardingDraft {
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Твой профиль" : trimmed
+        return trimmed.isEmpty ? L10n.string("Your profile", "Твой профиль") : trimmed
     }
 }
 
@@ -2666,13 +2769,13 @@ extension GameSearch {
     var statusLabel: String {
         switch status.lowercased() {
         case "active":
-            return "Идет набор"
+            return L10n.string("Recruiting", "Идет набор")
         case "in_review":
-            return "Ожидает решения"
+            return L10n.string("Awaiting decision", "Ожидает решения")
         case "matched":
-            return "Игроки найдены"
+            return L10n.string("Players found", "Игроки найдены")
         case "closed":
-            return "Закрыт"
+            return L10n.string("Closed", "Закрыт")
         default:
             return status
         }
@@ -2713,18 +2816,18 @@ extension MatchGameRequest {
         let people = visibleParticipants(currentUserId: currentUserId)
 
         if people.count >= 3, let first = people.first {
-            return "\(first.displayName) и еще \(people.count - 1)"
+            return L10n.string("\(first.displayName) and \(people.count - 1) more", "\(first.displayName) и еще \(people.count - 1)")
         }
 
         if people.count == 2 {
-            return people.map(\.displayName).joined(separator: " и ")
+            return people.map(\.displayName).joined(separator: L10n.string(" and ", " и "))
         }
 
         if let first = people.first {
             return first.displayName
         }
 
-        return otherUser(currentUserId: currentUserId)?.name ?? "Игрок"
+        return otherUser(currentUserId: currentUserId)?.name ?? L10n.string("Player", "Игрок")
     }
 
     func upcomingAvatarURL(currentUserId: String?) -> String? {
@@ -2826,9 +2929,9 @@ extension MatchGameRequest {
     var outcomeLabel: String? {
         switch outcome {
         case "played":
-            return "Игра прошла"
+            return L10n.string("Game played", "Игра прошла")
         case "not_played":
-            return "Не сыграли"
+            return L10n.string("Not played", "Не сыграли")
         default:
             return nil
         }
@@ -2845,39 +2948,39 @@ extension MatchGameRequest {
 
         switch status.lowercased() {
         case "cancelled", "canceled", "declined", "rejected", "withdrawn":
-            return "Отменена"
+            return L10n.string("Canceled", "Отменена")
         case "pending", "proposed":
             if matchedUserId != nil {
-                return "Ждёт подтверждения"
+                return L10n.string("Awaiting confirmation", "Ждёт подтверждения")
             }
             if format == .doubles || format == .both {
-                return "Подбор игроков"
+                return L10n.string("Finding players", "Подбор игроков")
             }
-            return "Поиск"
+            return L10n.string("Search", "Поиск")
         case "accepted", "approved":
             guard let startDate else {
-                return "Игра подтверждена"
+                return L10n.string("Game confirmed", "Игра подтверждена")
             }
 
             let secondsUntilStart = startDate.timeIntervalSince(now)
             if secondsUntilStart <= 2 * 60 * 60, secondsUntilStart > 0 {
-                return "Скоро начнется"
+                return L10n.string("Starting soon", "Скоро начнется")
             }
 
             let secondsSinceStart = now.timeIntervalSince(startDate)
             if secondsSinceStart >= 0, secondsSinceStart <= 10 * 60 {
-                return "Игра началась"
+                return L10n.string("Game started", "Игра началась")
             }
             if secondsSinceStart > 10 * 60, secondsSinceStart < duration {
-                return "Игра идет"
+                return L10n.string("Game in progress", "Игра идет")
             }
             if secondsSinceStart >= duration {
-                return "Игра закончилась"
+                return L10n.string("Game ended", "Игра закончилась")
             }
 
-            return "Игра подтверждена"
+            return L10n.string("Game confirmed", "Игра подтверждена")
         default:
-            return "Поиск"
+            return L10n.string("Search", "Поиск")
         }
     }
 
@@ -2885,45 +2988,45 @@ extension MatchGameRequest {
         let rawStatus = status.lowercased()
 
         if isRegularOccurrence, rawStatus == "accepted" || rawStatus == "approved" {
-            return "Игра подтверждена. Если нужно поменять следующий слот, открой регулярную пару."
+            return L10n.string("The game is confirmed. Open the regular pair to change the next time slot.", "Игра подтверждена. Если нужно поменять следующий слот, открой регулярную пару.")
         }
 
         switch rawStatus {
         case "pending", "proposed":
             if matchedUserId != nil {
-                return "Предложение отправлено. Ждём подтверждение второго игрока."
+                return L10n.string("Proposal sent. Waiting for the other player's confirmation.", "Предложение отправлено. Ждём подтверждение второго игрока.")
             }
-            return "Нужно собрать состав и перевести поиск в конкретную игру."
+            return L10n.string("Gather the players and turn this search into a scheduled game.", "Нужно собрать состав и перевести поиск в конкретную игру.")
         case "accepted", "approved":
-            return "Игра подтверждена. Дальше открой чат и договорись только о последних нюансах."
+            return L10n.string("The game is confirmed. Open the chat to finalize the remaining details.", "Игра подтверждена. Дальше открой чат и договорись только о последних нюансах.")
         case "declined", "rejected", "withdrawn", "canceled", "cancelled":
-            return "Эта договоренность уже не активна. Если всё ещё хочешь сыграть, начни новую."
+            return L10n.string("This arrangement is no longer active. Start a new one if you still want to play.", "Эта договоренность уже не активна. Если всё ещё хочешь сыграть, начни новую.")
         default:
-            return "Открой детали и продолжай путь к следующей игре."
+            return L10n.string("Open the details and continue toward your next game.", "Открой детали и продолжай путь к следующей игре.")
         }
     }
 
     var statusTintColor: Color {
         switch statusLabel {
-        case "Поиск":
+        case "Поиск", "Search":
             return Color(red: 0.34, green: 0.47, blue: 0.68)
-        case "В процессе набора", "В процессе набора людей", "Подбор игроков":
+        case "В процессе набора", "В процессе набора людей", "Подбор игроков", "Recruiting", "Finding players":
             return Color(red: 0.72, green: 0.48, blue: 0.18)
-        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения", "Awaiting decision", "Awaiting confirmation":
             return Color(red: 0.49, green: 0.45, blue: 0.78)
-        case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
+        case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла", "Player found", "Players found", "Game confirmed", "Game played":
             return Color(red: 0.16, green: 0.58, blue: 0.33)
-        case "Скоро начнется":
+        case "Скоро начнется", "Starting soon":
             return Color(red: 0.78, green: 0.52, blue: 0.18)
-        case "Игра началась", "Игра идет":
+        case "Игра началась", "Игра идет", "Game started", "Game in progress":
             return Color(red: 0.17, green: 0.50, blue: 0.72)
-        case "Игра закончилась":
+        case "Игра закончилась", "Game ended":
             return Color(red: 0.33, green: 0.33, blue: 0.38)
-        case "Не сыграли":
+        case "Не сыграли", "Not played":
             return Color(red: 0.72, green: 0.22, blue: 0.20)
-        case "Подтверждена":
+        case "Подтверждена", "Confirmed":
             return Color(red: 0.16, green: 0.58, blue: 0.33)
-        case "Отменена":
+        case "Отменена", "Canceled":
             return Color(red: 0.72, green: 0.22, blue: 0.20)
         default:
             return AppTheme.court
@@ -2932,25 +3035,25 @@ extension MatchGameRequest {
 
     var statusSurfaceColor: Color {
         switch statusLabel {
-        case "Поиск":
+        case "Поиск", "Search":
             return Color(red: 0.88, green: 0.92, blue: 0.98)
-        case "В процессе набора", "В процессе набора людей", "Подбор игроков":
+        case "В процессе набора", "В процессе набора людей", "Подбор игроков", "Recruiting", "Finding players":
             return Color(red: 0.98, green: 0.93, blue: 0.84)
-        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения":
+        case "В ожидании принятия", "Ждём подтверждение", "Игра назначается", "Ждёт подтверждения", "Awaiting decision", "Awaiting confirmation":
             return Color(red: 0.91, green: 0.90, blue: 0.99)
-        case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла":
+        case "Игрок найден", "Игроки найдены", "Игра подтверждена", "Игра прошла", "Player found", "Players found", "Game confirmed", "Game played":
             return Color(red: 0.86, green: 0.95, blue: 0.89)
-        case "Скоро начнется":
+        case "Скоро начнется", "Starting soon":
             return Color(red: 0.99, green: 0.94, blue: 0.83)
-        case "Игра началась", "Игра идет":
+        case "Игра началась", "Игра идет", "Game started", "Game in progress":
             return Color(red: 0.86, green: 0.93, blue: 0.98)
-        case "Игра закончилась":
+        case "Игра закончилась", "Game ended":
             return Color(red: 0.90, green: 0.90, blue: 0.92)
-        case "Не сыграли":
+        case "Не сыграли", "Not played":
             return Color(red: 0.96, green: 0.88, blue: 0.88)
-        case "Подтверждена":
+        case "Подтверждена", "Confirmed":
             return Color(red: 0.86, green: 0.95, blue: 0.89)
-        case "Отменена":
+        case "Отменена", "Canceled":
             return Color(red: 0.96, green: 0.88, blue: 0.88)
         default:
             return AppTheme.mint.opacity(0.68)
@@ -2973,14 +3076,18 @@ extension MatchGameRequest {
         let minutes = totalMinutes % 60
 
         if days > 0 {
-            return hours > 0 ? "До игры \(days) д \(hours) ч" : "До игры \(days) д"
+            return hours > 0
+                ? L10n.string("Game in \(days)d \(hours)h", "До игры \(days) д \(hours) ч")
+                : L10n.string("Game in \(days)d", "До игры \(days) д")
         }
 
         if hours > 0 {
-            return minutes > 0 ? "До игры \(hours) ч \(minutes) мин" : "До игры \(hours) ч"
+            return minutes > 0
+                ? L10n.string("Game in \(hours)h \(minutes)min", "До игры \(hours) ч \(minutes) мин")
+                : L10n.string("Game in \(hours)h", "До игры \(hours) ч")
         }
 
-        return "До игры \(minutes) мин"
+        return L10n.string("Game in \(minutes) min", "До игры \(minutes) мин")
     }
 }
 
@@ -2988,15 +3095,15 @@ extension RegularPairOccurrence {
     var statusLabel: String {
         switch status.lowercased() {
         case "confirmed":
-            return "Подтверждено"
+            return L10n.string("Confirmed", "Подтверждено")
         case "declined":
-            return "Кто-то не может"
+            return L10n.string("Someone can't make it", "Кто-то не может")
         case "canceled", "cancelled":
-            return "Отменено"
+            return L10n.string("Canceled", "Отменено")
         case "expired":
-            return "Уже прошло"
+            return L10n.string("Already passed", "Уже прошло")
         default:
-            return "Ждёт подтверждения"
+            return L10n.string("Awaiting confirmation", "Ждёт подтверждения")
         }
     }
 
@@ -3031,13 +3138,13 @@ extension GameRequestInvitee {
     var statusLabel: String {
         switch status.lowercased() {
         case "accepted":
-            return "Принял"
+            return L10n.string("Accepted", "Принял")
         case "declined", "rejected":
-            return "Отклонил"
+            return L10n.string("Declined", "Отклонил")
         case "canceled", "cancelled", "withdrawn":
-            return "Отменено"
+            return L10n.string("Canceled", "Отменено")
         default:
-            return "Ожидаем ответ"
+            return L10n.string("Awaiting response", "Ожидаем ответ")
         }
     }
 
@@ -3078,7 +3185,7 @@ extension String {
         }
 
         let output = DateFormatter()
-        output.locale = Locale(identifier: "ru_RU")
+        output.locale = LocaleStore.currentEffectiveLocale.locale
         output.dateFormat = "d MMM, HH:mm"
         return output.string(from: date)
     }
@@ -3089,7 +3196,7 @@ extension String {
         }
 
         let output = DateFormatter()
-        output.locale = Locale(identifier: "ru_RU")
+        output.locale = LocaleStore.currentEffectiveLocale.locale
         output.dateFormat = "dd.MM.yyyy HH:mm"
         return output.string(from: date)
     }
@@ -3098,7 +3205,7 @@ extension String {
 extension Date {
     func formattedHourMinute() -> String {
         let output = DateFormatter()
-        output.locale = Locale(identifier: "ru_RU")
+        output.locale = LocaleStore.currentEffectiveLocale.locale
         output.dateFormat = "HH:mm"
         return output.string(from: self)
     }
@@ -3108,17 +3215,17 @@ extension UNAuthorizationStatus {
     var title: String {
         switch self {
         case .notDetermined:
-            return "Не запрошено"
+            return L10n.string("Not requested", "Не запрошено")
         case .denied:
-            return "Запрещено"
+            return L10n.string("Denied", "Запрещено")
         case .authorized:
-            return "Разрешено"
+            return L10n.string("Allowed", "Разрешено")
         case .provisional:
-            return "Временно разрешено"
+            return L10n.string("Provisionally allowed", "Временно разрешено")
         case .ephemeral:
             return "Ephemeral"
         @unknown default:
-            return "Неизвестно"
+            return L10n.string("Unknown", "Неизвестно")
         }
     }
 }

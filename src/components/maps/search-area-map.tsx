@@ -2,6 +2,7 @@
 
 import { getMapProvider } from "@/lib/maps/config";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { Panel } from "@/components/ui/panel";
 import { YandexSearchAreaMap } from "@/components/maps/yandex-search-area-map";
 
@@ -20,6 +21,7 @@ export function SearchAreaMap({
   isApproximate?: boolean;
   className?: string;
 }) {
+  const { t } = useLocale();
   const provider = getMapProvider();
 
   if (provider === "yandex") {
@@ -37,8 +39,7 @@ export function SearchAreaMap({
 
   return (
     <Panel className={cn("text-sm leading-6 text-ink/70", className)}>
-      Карта районов отключена. Укажи `NEXT_PUBLIC_MAP_PROVIDER=yandex` и `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`,
-      чтобы видеть удобные районы на карте.
+      {t("profile.map.disabled")}
     </Panel>
   );
 }

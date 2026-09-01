@@ -1,6 +1,5 @@
 import AuthenticationServices
 import CoreLocation
-import MapKit
 import SwiftUI
 
 private enum OnboardingProfileField: Hashable {
@@ -55,6 +54,25 @@ private func filteredOnboardingDistricts(_ districts: [String], cityName: String
         .uniqued()
 }
 
+private func localizedOnboardingSportTitle(_ sport: Sport) -> String {
+    let english: String
+    switch sport {
+    case .tennis: english = "Tennis"
+    case .padel: english = "Padel"
+    case .running: english = "Running"
+    case .supboard: english = "SUP boarding"
+    case .squash: english = "Squash"
+    case .badminton: english = "Badminton"
+    case .tableTennis: english = "Table tennis"
+    case .volleyball: english = "Volleyball"
+    case .fitness: english = "Fitness"
+    case .boxing: english = "Boxing"
+    case .yoga: english = "Yoga"
+    case .football: english = "Football"
+    }
+    return L10n.string(english, sport.title)
+}
+
 struct AuthView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
@@ -65,9 +83,11 @@ struct AuthView: View {
     @State private var appStats: AppStats?
     @State private var selectedLevelSport: Sport?
     @State private var selectedLocationChoice: OnboardingLocationChoice?
+    @State private var showsLocationPicker = false
+    @State private var locationPickerRequestsAutomatically = false
     @State private var showsDistrictPicker = false
-    @State private var detectedDistrictForConfirmation: String?
-    @State private var showsDetectedDistrictConfirmation = false
+    @State private var automaticallyDetectedDistrict: String?
+    @State private var acceptsDetectedLocationUpdates = false
     @State private var isDetectedDistrictConfirmed = false
     @State private var didAutoRequestAvailabilityLocation = false
     @State private var hasEditedAge = false
@@ -90,7 +110,7 @@ struct AuthView: View {
             .toolbar {
                 if !embedded && step != .email {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Закрыть") {
+                        Button(L10n.string("Close", "Закрыть")) {
                             appModel.dismissPresentedAuth()
                             dismiss()
                         }
@@ -99,13 +119,13 @@ struct AuthView: View {
 
                 if step == .profile && profileFocusedField != nil {
                     ToolbarItemGroup(placement: .keyboard) {
-                        Button("Скрыть") {
+                        Button(L10n.string("Hide", "Скрыть")) {
                             profileFocusedField = nil
                         }
 
                         Spacer()
 
-                        Button("Готово") {
+                        Button(L10n.string("Done", "Готово")) {
                             profileFocusedField = nil
                         }
                         .font(.headline.weight(.bold))
@@ -151,6 +171,16 @@ struct AuthView: View {
                 .presentationDetents([.height(455)])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showsLocationPicker) {
+                GlobalLocationPickerSheet(
+                    repository: appModel.repository,
+                    initialLocation: draft.location,
+                    automaticallyRequestsLocation: locationPickerRequestsAutomatically,
+                    onSelect: applySelectedLocation
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showsDistrictPicker, onDismiss: {
                 guard selectedLocationChoice != .nearby else {
                     return
@@ -160,11 +190,14 @@ struct AuthView: View {
                 OnboardingDistrictPickerSheet(
                     selectedCity: $draft.city,
                     selectedDistricts: $draft.preferredDistricts,
+                    automaticallyDetectedDistrict: automaticallyDetectedDistrict,
+                    startsWithDistricts: true,
                     onDetectAutomatically: {
                         showsDistrictPicker = false
                         selectedLocationChoice = .nearby
                         isDetectedDistrictConfirmed = false
-                        detectedDistrictForConfirmation = nil
+                        automaticallyDetectedDistrict = nil
+                        acceptsDetectedLocationUpdates = true
                         draft.city = ""
                         draft.preferredDistricts.removeAll()
                         draft.district = nil
@@ -173,74 +206,91 @@ struct AuthView: View {
                     },
                     onDone: {
                         draft.city = draft.city.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !isOnboardingCityAvailable(draft.city) {
-                            draft.city = ""
-                        }
                         draft.preferredDistricts = filteredOnboardingDistricts(draft.preferredDistricts, cityName: draft.city)
                         draft.district = draft.preferredDistricts.first
-                        selectedLocationChoice = draft.city.isEmpty && draft.preferredDistricts.isEmpty ? nil : .districts
+                        if let detectedDistrict = automaticallyDetectedDistrict {
+                            if let city = SupportedCity.resolve(draft.city) {
+                                if !districtBelongsToCity(detectedDistrict, city: city) {
+                                    automaticallyDetectedDistrict = nil
+                                }
+                            } else {
+                                automaticallyDetectedDistrict = nil
+                            }
+                        }
+                        selectedLocationChoice = draft.city.isEmpty && draft.preferredDistricts.isEmpty
+                            ? nil
+                            : (automaticallyDetectedDistrict == nil ? .districts : .nearby)
+                        isDetectedDistrictConfirmed = automaticallyDetectedDistrict != nil
+                        acceptsDetectedLocationUpdates = false
                         showsDistrictPicker = false
+                        persistDraft()
                     }
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showsDetectedDistrictConfirmation) {
-                if let district = detectedDistrictForConfirmation {
-                    OnboardingDetectedDistrictSheet(
-                        city: locationPermission.detectedCity ?? draft.city,
-                        districtID: district,
-                        userCoordinate: locationPermission.detectedCoordinate,
-                        onConfirm: confirmDetectedDistrict,
-                        onChooseDistrict: {
-                            isDetectedDistrictConfirmed = false
-                            selectedLocationChoice = .districts
-                            draft.city = locationPermission.detectedCity ?? draft.city
-                            draft.preferredDistricts.removeAll()
-                            draft.district = nil
-                            showsDetectedDistrictConfirmation = false
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                showsDistrictPicker = true
-                            }
-                            AppHaptics.selection()
-                        }
-                    )
-                    .presentationDetents([.height(520), .large])
-                    .presentationDragIndicator(.visible)
-                }
-            }
             .onChange(of: locationPermission.detectedDistrict) { district in
-                guard let district else {
+                guard acceptsDetectedLocationUpdates,
+                      let district,
+                      let detectedCityName = locationPermission.detectedCity,
+                      let detectedCity = SupportedCity.resolve(detectedCityName),
+                      onboardingAvailableCities.contains(detectedCity),
+                      districtBelongsToCity(district, city: detectedCity) else {
                     return
                 }
                 guard step == .availability else {
                     return
                 }
-                selectedLocationChoice = .nearby
-                draft.city = locationPermission.detectedCity ?? draft.city
-                detectedDistrictForConfirmation = district
-                isDetectedDistrictConfirmed = false
-                showsDetectedDistrictConfirmation = true
-                AppHaptics.notification(.success)
-            }
-            .onChange(of: locationPermission.detectedCity) { city in
-                guard let city, step == .availability else {
+
+                let currentCity = SupportedCity.resolve(draft.city)
+                guard draft.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || currentCity == detectedCity else {
                     return
                 }
 
-                draft.city = city
                 selectedLocationChoice = .nearby
-                if locationPermission.detectedDistrict == nil {
-                    detectedDistrictForConfirmation = nil
-                    isDetectedDistrictConfirmed = true
-                    showsDetectedDistrictConfirmation = false
-                    persistDraft()
+                draft.city = detectedCity.rawValue
+                draft.preferredDistricts = [district]
+                draft.district = district
+                automaticallyDetectedDistrict = district
+                isDetectedDistrictConfirmed = true
+                presentDetectedDistrictPicker()
+                AppHaptics.notification(.success)
+            }
+            .onChange(of: locationPermission.detectedCity) { city in
+                guard acceptsDetectedLocationUpdates,
+                      let city,
+                      let detectedCity = SupportedCity.resolve(city),
+                      onboardingAvailableCities.contains(detectedCity),
+                      step == .availability else {
+                    return
+                }
+
+                let currentCity = SupportedCity.resolve(draft.city)
+                guard draft.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || currentCity == detectedCity else {
+                    return
+                }
+
+                if currentCity != detectedCity {
+                    draft.preferredDistricts.removeAll()
+                    draft.district = nil
+                    automaticallyDetectedDistrict = nil
+                }
+                draft.city = detectedCity.rawValue
+                selectedLocationChoice = .nearby
+                isDetectedDistrictConfirmed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    guard acceptsDetectedLocationUpdates,
+                          step == .availability,
+                          locationPermission.detectedDistrict == nil else {
+                        return
+                    }
+                    presentDetectedDistrictPicker()
                 }
                 AppHaptics.notification(.success)
             }
             .onChange(of: step) { newValue in
                 if newValue != .availability {
-                    showsDetectedDistrictConfirmation = false
+                    acceptsDetectedLocationUpdates = false
                 } else {
                     requestAvailabilityLocationIfNeeded()
                 }
@@ -331,7 +381,7 @@ struct AuthView: View {
                         .frame(height: titleTopOffset)
 
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                        Text("Найди напарника")
+                        Text(L10n.string("Find a partner", "Найди напарника"))
                             .font(.system(size: titleFontSize, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
@@ -347,7 +397,7 @@ struct AuthView: View {
 
                     Spacer(minLength: isCompact ? 6 : 10)
 
-                    LiquidStartButton(title: "Начать поиск", subtitle: "Шаг 1 из 2") {
+                    LiquidStartButton(title: L10n.string("Start searching", "Начать поиск"), subtitle: L10n.string("Step 1 of 2", "Шаг 1 из 2")) {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.84)) {
                             step = .profile
                         }
@@ -411,7 +461,7 @@ struct AuthView: View {
                         .frame(width: 9, height: 9)
                         .shadow(color: OnboardingStepPalette.lime.opacity(0.7), radius: 6, x: 0, y: 0)
                 }
-                Text("Уже есть аккаунт? Войти")
+                Text(L10n.string("Already have an account? Sign in", "Уже есть аккаунт? Войти"))
                     .font(.system(size: 20, weight: .black, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
@@ -429,14 +479,14 @@ struct AuthView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Войти в существующий аккаунт")
+        .accessibilityLabel(L10n.string("Sign in to an existing account", "Войти в существующий аккаунт"))
     }
 
     private var introPrivacyNote: some View {
         HStack(spacing: 10) {
             Image(systemName: "lock")
                 .font(.system(size: 18, weight: .semibold))
-            Text("Мы не публикуем ваши данные и местоположение")
+            Text(L10n.string("We don't publish your data or location", "Мы не публикуем ваши данные и местоположение"))
                 .font(.system(size: 15, weight: .medium, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
@@ -466,18 +516,18 @@ struct AuthView: View {
             OnboardingMotionHero()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Найди напарника")
+                Text(L10n.string("Find a partner", "Найди напарника"))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 OnboardingTypewriterLine()
 
-                Text("Соберём быстрый профиль и откроем подбор игроков. Доступность можно оставить пустой и заполнить позже, а email понадобится только для защищённых действий: мэтчей, чатов, уведомлений и сохранения.")
+                Text(L10n.string("Create a quick profile and browse players. You can add availability later; email is only needed for protected actions such as matches, chats, notifications, and saved responses.", "Соберём быстрый профиль и откроем подбор игроков. Доступность можно оставить пустой и заполнить позже, а email понадобится только для защищённых действий: мэтчей, чатов, уведомлений и сохранения."))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.76))
                     .lineSpacing(3)
             }
 
-            LiquidStartButton(title: "Начать", subtitle: "Шаг 1 из 2") {
+            LiquidStartButton(title: L10n.string("Start", "Начать"), subtitle: L10n.string("Step 1 of 2", "Шаг 1 из 2")) {
                 withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
                     step = .profile
                 }
@@ -507,22 +557,22 @@ struct AuthView: View {
                             .padding(.top, topPadding)
 
                         VStack(alignment: .leading, spacing: isCompact ? 5 : 7) {
-                            Text("Шаг 1 из 2")
+                            Text(L10n.string("Step 1 of 2", "Шаг 1 из 2"))
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.white)
                                 .overlay(alignment: .leading) {
-                                    Text("Шаг 1")
+                                    Text(L10n.string("Step 1", "Шаг 1"))
                                         .font(.subheadline.weight(.bold))
                                         .foregroundStyle(OnboardingStepPalette.lime)
                                 }
 
-                            Text("Во что хочешь\nсыграть?")
+                            Text(L10n.string("What would you like\nto play?", "Во что хочешь\nсыграть?"))
                                 .font(.system(size: titleSize, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
                                 .lineSpacing(-5)
                                 .minimumScaleFactor(0.78)
 
-                            Text("Выбери виды спорта и укажи уровень — покажем подходящих игроков рядом.")
+                            Text(L10n.string("Choose sports and your level — we'll show suitable players nearby.", "Выбери виды спорта и укажи уровень — покажем подходящих игроков рядом."))
                                 .font(.system(size: subtitleSize, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.62))
                                 .lineSpacing(2)
@@ -530,7 +580,7 @@ struct AuthView: View {
                         }
 
                         VStack(alignment: .leading, spacing: isCompact ? 7 : 8) {
-                            Text("Виды спорта")
+                            Text(L10n.string("Sports", "Виды спорта"))
                                 .font(.headline.weight(.black))
                                 .foregroundStyle(.white)
 
@@ -549,7 +599,7 @@ struct AuthView: View {
                         }
 
                         VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                            Text("Имя и возраст")
+                            Text(L10n.string("Name and age", "Имя и возраст"))
                                 .font(.headline.weight(.black))
                                 .foregroundStyle(.white)
 
@@ -567,7 +617,7 @@ struct AuthView: View {
                                 }
                             )
 
-                            Text("Возраст обязателен: от 18 до 100 лет.")
+                            Text(L10n.string("Age is required: 18 to 100.", "Возраст обязателен: от 18 до 100 лет."))
                                 .font(.system(size: isCompact ? 12 : 13, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.54))
                                 .lineLimit(2)
@@ -582,7 +632,7 @@ struct AuthView: View {
                                         step = .intro
                                     }
                                 } label: {
-                                    Text("Назад")
+                                    Text(L10n.string("Back", "Назад"))
                                         .font(.headline.weight(.bold))
                                         .frame(maxWidth: .infinity)
                                         .frame(height: isCompact ? 54 : 60)
@@ -596,7 +646,7 @@ struct AuthView: View {
                                 advanceFromProfile()
                             } label: {
                                 HStack(spacing: 14) {
-                                    Text("Дальше")
+                                    Text(L10n.string("Next", "Дальше"))
                                     Image(systemName: "arrow.right")
                                 }
                                 .font(.system(size: isCompact ? 20 : 22, weight: .black, design: .rounded))
@@ -646,16 +696,16 @@ struct AuthView: View {
                             .padding(.top, topPadding)
 
                         VStack(alignment: .leading, spacing: isCompact ? 5 : 7) {
-                            Text("Шаг 2 из 2")
+                            Text(L10n.string("Step 2 of 2", "Шаг 2 из 2"))
                                 .font(.system(size: isCompact ? 22 : 24, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
                                 .overlay(alignment: .leading) {
-                                    Text("Шаг 2")
+                                    Text(L10n.string("Step 2", "Шаг 2"))
                                         .font(.system(size: isCompact ? 22 : 24, weight: .black, design: .rounded))
                                         .foregroundStyle(OnboardingStepPalette.lime)
                                 }
 
-                            Text("Когда тебе удобно играть. Можно оставить пустым и настроить позже.")
+                            Text(L10n.string("When are you available to play? You can leave this empty and set it later.", "Когда тебе удобно играть. Можно оставить пустым и настроить позже."))
                                 .font(.system(size: isCompact ? 13 : 14, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.62))
                                 .lineSpacing(2)
@@ -676,20 +726,18 @@ struct AuthView: View {
                             onNearby: {
                                 selectedLocationChoice = .nearby
                                 isDetectedDistrictConfirmed = false
-                                detectedDistrictForConfirmation = nil
-                                draft.city = ""
-                                draft.preferredDistricts.removeAll()
-                                draft.district = nil
-                                locationPermission.requestLocationAccess()
+                                automaticallyDetectedDistrict = nil
+                                acceptsDetectedLocationUpdates = false
+                                locationPickerRequestsAutomatically = true
+                                showsLocationPicker = true
                                 AppHaptics.selection()
-                            },
-                            onConfirmDetectedDistrict: {
-                                confirmDetectedDistrict()
                             },
                             onDistricts: {
                                 selectedLocationChoice = .districts
                                 isDetectedDistrictConfirmed = false
-                                showsDistrictPicker = true
+                                acceptsDetectedLocationUpdates = false
+                                locationPickerRequestsAutomatically = false
+                                showsLocationPicker = true
                                 AppHaptics.selection()
                             }
                         )
@@ -701,7 +749,7 @@ struct AuthView: View {
                                     step = .profile
                                 }
                             } label: {
-                                Text("Назад")
+                                Text(L10n.string("Back", "Назад"))
                                     .font(.system(size: isCompact ? 18 : 20, weight: .black, design: .rounded))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: actionHeight)
@@ -717,7 +765,7 @@ struct AuthView: View {
                             Button {
                                 finishGuestOnboarding()
                             } label: {
-                                Text(embedded ? "Смотреть игроков" : "Продолжить")
+                                Text(embedded ? L10n.string("Browse players", "Смотреть игроков") : L10n.string("Continue", "Продолжить"))
                                     .font(.system(size: isCompact ? 18 : 20, weight: .black, design: .rounded))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: actionHeight)
@@ -781,7 +829,7 @@ struct AuthView: View {
             },
             onHaveCode: {
                 guard !appModel.authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    appModel.errorMessage = "Сначала укажи email для входа."
+                    appModel.errorMessage = L10n.string("Enter your email first.", "Сначала укажи email для входа.")
                     return
                 }
 
@@ -800,11 +848,14 @@ struct AuthView: View {
 
     private var codeStep: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionCard(title: "Подтверждение", subtitle: "Введи 6 цифр из письма или логов. После проверки профиль будет сохранён в аккаунт.") {
+            SectionCard(
+                title: L10n.string("Verification", "Подтверждение"),
+                subtitle: L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
+            ) {
                 VStack(alignment: .leading, spacing: 12) {
                     OTPCodeField(code: $code)
 
-                    Button("Войти") {
+                    Button(L10n.string("Sign in", "Войти")) {
                         guard appModel.authUserAgreementAccepted else {
                             appModel.errorMessage = LegalDocuments.acceptanceError
                             return
@@ -820,7 +871,7 @@ struct AuthView: View {
             }
 
             HStack {
-                Button("Изменить email") {
+                Button(L10n.string("Change email", "Изменить email")) {
                     step = .email
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
@@ -843,12 +894,15 @@ struct AuthView: View {
     }
 
     private var canFinishAvailability: Bool {
-        isOnboardingCityAvailable(draft.city)
+        draft.location != nil || isOnboardingCityAvailable(draft.city)
     }
 
     private var seekingPlayersLine: String {
         let count = appStats?.registeredPlayersCount ?? 315
-        return "\(count.formatted(.number.grouping(.automatic))) игроков ищут игру рядом"
+        return L10n.string(
+            "\(count.formatted(.number.grouping(.automatic))) players are looking for a game nearby",
+            L10n.string("\(count.formatted(.number.grouping(.automatic))) players are looking for a game nearby", "\(count.formatted(.number.grouping(.automatic))) игроков ищут игру рядом")
+        )
     }
 
     private func loadAppStats() async {
@@ -870,15 +924,15 @@ struct AuthView: View {
         var completedDraft = normalizedDraft()
         guard completedDraft.hasProfileBasics else {
             draft = completedDraft
-            appModel.errorMessage = "Укажи имя, возраст от 18 до 100 и хотя бы один вид спорта."
+            appModel.errorMessage = L10n.string("Enter your name, an age from 18 to 100, and at least one sport.", "Укажи имя, возраст от 18 до 100 и хотя бы один вид спорта.")
             withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                 step = .profile
             }
             return
         }
-        guard isOnboardingCityAvailable(completedDraft.city) else {
+        guard completedDraft.location != nil || isOnboardingCityAvailable(completedDraft.city) else {
             draft = completedDraft
-            appModel.errorMessage = "Выбери Санкт-Петербург или Москву."
+            appModel.errorMessage = L10n.string("Choose a country and city.", "Выбери страну и город.")
             return
         }
         completedDraft.onboardingCompleted = true
@@ -889,23 +943,6 @@ struct AuthView: View {
         }
         appModel.dismissPresentedAuth()
         dismiss()
-    }
-
-    private func confirmDetectedDistrict() {
-        let district = detectedDistrictForConfirmation ?? draft.district ?? locationPermission.detectedDistrict
-
-        if let district {
-            draft.city = locationPermission.detectedCity ?? draft.city
-            draft.district = district
-            draft.preferredDistricts = [district]
-            detectedDistrictForConfirmation = district
-        }
-
-        selectedLocationChoice = .nearby
-        isDetectedDistrictConfirmed = true
-        showsDetectedDistrictConfirmation = false
-        persistDraft()
-        AppHaptics.notification(.success)
     }
 
     private func requestAvailabilityLocationIfNeeded() {
@@ -926,40 +963,48 @@ struct AuthView: View {
         didAutoRequestAvailabilityLocation = true
         selectedLocationChoice = .nearby
         isDetectedDistrictConfirmed = false
-        detectedDistrictForConfirmation = nil
-        draft.city = ""
-        draft.preferredDistricts.removeAll()
-        draft.district = nil
-        locationPermission.requestLocationAccess()
+        automaticallyDetectedDistrict = nil
+        acceptsDetectedLocationUpdates = false
+        locationPickerRequestsAutomatically = true
+        showsLocationPicker = true
+    }
+
+    private func presentDetectedDistrictPicker() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard acceptsDetectedLocationUpdates, step == .availability else {
+                return
+            }
+            showsDistrictPicker = true
+        }
     }
 
     private var currentStepLabel: String {
         switch step {
         case .intro:
-            return "Быстрый старт"
+            return L10n.string("Quick start", "Быстрый старт")
         case .profile:
-            return "Шаг 1 из 2"
+            return L10n.string("Step 1 of 2", "Шаг 1 из 2")
         case .availability:
-            return "Шаг 2 из 2"
+            return L10n.string("Step 2 of 2", "Шаг 2 из 2")
         case .email:
             return "Email"
         case .code:
-            return "Код"
+            return L10n.string("Code", "Код")
         }
     }
 
     private var currentStepSubtitle: String {
         switch step {
         case .intro:
-            return "Собери черновик профиля, посмотри подбор и подтверди email только когда нужно."
+            return L10n.string("Create a profile draft, browse matches, and verify your email only when needed.", "Собери черновик профиля, посмотри подбор и подтверди email только когда нужно.")
         case .profile:
-            return "Базовая карточка игрока: имя, возраст, спорт и уровень."
+            return L10n.string("Basic player card: name, age, sport, and level.", "Базовая карточка игрока: имя, возраст, спорт и уровень.")
         case .availability:
-            return "Дни недели и окна времени. Можно оставить пустым и заполнить позже."
+            return L10n.string("Weekdays and time windows. You can leave them empty and fill them in later.", "Дни недели и окна времени. Можно оставить пустым и заполнить позже.")
         case .email:
-            return "Email нужен только для защищённых действий: мэтчей, переписки, уведомлений и сохранения откликов."
+            return L10n.string("Email is only required for protected actions: matches, chats, notifications, and saved responses.", "Email нужен только для защищённых действий: мэтчей, переписки, уведомлений и сохранения откликов.")
         case .code:
-            return "Подтверждение кода и перенос черновика в полноценный аккаунт."
+            return L10n.string("Verify the code and move the draft to a full account.", "Подтверждение кода и перенос черновика в полноценный аккаунт.")
         }
     }
 
@@ -967,10 +1012,11 @@ struct AuthView: View {
         var next = source ?? draft
         next.name = next.name.trimmingCharacters(in: .whitespacesAndNewlines)
         next.city = next.city.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !isOnboardingCityAvailable(next.city) {
-            next.city = ""
+        if next.location?.coverage.districtsEnabled == true || next.location == nil {
+            next.preferredDistricts = filteredOnboardingDistricts(next.preferredDistricts, cityName: next.city)
+        } else {
+            next.preferredDistricts.removeAll()
         }
-        next.preferredDistricts = filteredOnboardingDistricts(next.preferredDistricts, cityName: next.city)
         if let district = next.district?.lowercased(),
            let city = SupportedCity.resolve(next.city),
            districtBelongsToCity(district, city: city) {
@@ -995,6 +1041,40 @@ struct AuthView: View {
         return next
     }
 
+    private func applySelectedLocation(_ place: GeoPlace, source: LocationSource) {
+        let previousPlaceID = draft.location?.id
+        draft.location = place
+        draft.locationSource = source
+        draft.city = place.coverage.legacyCity ?? place.city
+        selectedLocationChoice = source == .geolocation ? .nearby : .districts
+        isDetectedDistrictConfirmed = source != .geolocation
+        automaticallyDetectedDistrict = nil
+        acceptsDetectedLocationUpdates = source == .geolocation
+
+        if previousPlaceID != place.id {
+            draft.district = nil
+            draft.preferredDistricts.removeAll()
+        }
+
+        persistDraft()
+        appModel.considerLocaleRecommendation(for: place)
+
+        guard place.coverage.districtsEnabled,
+              SupportedCity.resolve(place.coverage.legacyCity ?? place.city) != nil else {
+            acceptsDetectedLocationUpdates = false
+            return
+        }
+
+        if source == .geolocation {
+            locationPermission.requestLocationAccess()
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showsDistrictPicker = true
+        }
+    }
+
     private func progressColor(for item: AuthStep) -> Color {
         let order: [AuthStep] = [.profile, .availability]
         let effectiveStep = step == .intro ? .profile : step
@@ -1007,13 +1087,13 @@ struct AuthView: View {
         switch result {
         case let .success(authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                appModel.errorMessage = "Не удалось получить данные Apple ID. Попробуй ещё раз или используй email."
+                appModel.errorMessage = L10n.string("Could not read your Apple ID details. Try again or use email.", "Не удалось получить данные Apple ID. Попробуй ещё раз или используй email.")
                 return
             }
 
             guard let identityTokenData = credential.identityToken,
                   let identityToken = String(data: identityTokenData, encoding: .utf8) else {
-                appModel.errorMessage = "Apple не передал identity token. Попробуй ещё раз."
+                appModel.errorMessage = L10n.string("Apple did not provide an identity token. Try again.", "Apple не передал identity token. Попробуй ещё раз.")
                 return
             }
             guard appModel.authUserAgreementAccepted else {
@@ -1039,12 +1119,12 @@ struct AuthView: View {
                 case .canceled:
                     appModel.errorMessage = nil
                 case .unknown:
-                    appModel.errorMessage = "Вход через Apple не завершён. Проверь, что для App ID shop.sportsearch.app включен Sign in with Apple, затем обнови профиль подписи в Xcode."
+                    appModel.errorMessage = L10n.string("Apple sign-in could not be completed. Check that Sign in with Apple is enabled for App ID shop.sportsearch.app, then refresh the signing profile in Xcode.", "Вход через Apple не завершён. Проверь, что для App ID shop.sportsearch.app включен Sign in with Apple, затем обнови профиль подписи в Xcode.")
                 default:
-                    appModel.errorMessage = "Вход через Apple не завершён: \(authorizationError.localizedDescription)"
+                    appModel.errorMessage = L10n.string("Apple sign-in could not be completed: \(authorizationError.localizedDescription)", "Вход через Apple не завершён: \(authorizationError.localizedDescription)")
                 }
             } else {
-                appModel.errorMessage = "Вход через Apple не завершён: \(error.localizedDescription)"
+                appModel.errorMessage = L10n.string("Apple sign-in could not be completed: \(error.localizedDescription)", "Вход через Apple не завершён: \(error.localizedDescription)")
             }
         }
     }
@@ -1060,7 +1140,7 @@ struct AuthView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.88))
         }
@@ -1084,7 +1164,7 @@ struct AuthView: View {
         titleForItem: KeyPath<Item, String>
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.ink.opacity(0.68))
                 .textCase(.uppercase)
@@ -1098,7 +1178,7 @@ struct AuthView: View {
                         }
                         AppHaptics.selection()
                     } label: {
-                        Text(item[keyPath: titleForItem])
+                        Text(LocalizedStringKey(item[keyPath: titleForItem]))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(selection.wrappedValue == item ? .white : AppTheme.ink)
                             .frame(maxWidth: .infinity)
@@ -1120,6 +1200,7 @@ struct AuthView: View {
 }
 
 private struct AuthSignInReferenceScreen: View {
+    @EnvironmentObject private var localeStore: LocaleStore
     @Binding var email: String
     @Binding var userAgreementAccepted: Bool
     let authMessage: String?
@@ -1149,7 +1230,7 @@ private struct AuthSignInReferenceScreen: View {
                     HStack {
                         Spacer()
                         if !embedded {
-                            Button("Закрыть", action: onClose)
+                            Button(L10n.string("Close", "Закрыть"), action: onClose)
                                 .font(.title3.weight(.medium))
                                 .foregroundStyle(.blue)
                         }
@@ -1163,7 +1244,7 @@ private struct AuthSignInReferenceScreen: View {
                             signInCard
 
                             Button(action: onBack) {
-                                Label("Назад", systemImage: "arrow.left")
+                                Label(L10n.string("Back", "Назад"), systemImage: "arrow.left")
                                     .font(.title3.weight(.semibold))
                                     .foregroundStyle(AppTheme.ink)
                                     .labelStyle(.titleAndIcon)
@@ -1213,16 +1294,16 @@ private struct AuthSignInReferenceScreen: View {
                     .frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(userAgreementAccepted ? "Согласие принято" : "Принять пользовательское соглашение")
+            .accessibilityLabel(userAgreementAccepted ? L10n.string("Agreement accepted", "Согласие принято") : L10n.string("Accept the User Agreement", "Принять пользовательское соглашение"))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Принимаю пользовательское соглашение и даю согласие на обработку персональных данных.")
+                Text(L10n.string("I accept the User Agreement and consent to the processing of my personal data.", "Принимаю пользовательское соглашение и даю согласие на обработку персональных данных."))
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(AppTheme.ink.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let url = LegalDocuments.userAgreementURL {
-                    Link("Открыть пользовательское соглашение", destination: url)
+                    Link(L10n.string("Open the User Agreement", "Открыть пользовательское соглашение"), destination: url)
                         .font(.footnote.weight(.bold))
                         .foregroundStyle(AppTheme.court)
                 }
@@ -1248,13 +1329,13 @@ private struct AuthSignInReferenceScreen: View {
     private var signInCard: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Вход в профиль")
+                Text(L10n.string("Sign in", "Вход в профиль"))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
-                Text("Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления.")
+                Text(L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .lineSpacing(4)
@@ -1271,6 +1352,8 @@ private struct AuthSignInReferenceScreen: View {
             ZStack {
                 SignInWithAppleButton(.continue, onRequest: onAppleRequest, onCompletion: onAppleCompletion)
                     .signInWithAppleButtonStyle(.black)
+                    .environment(\.locale, localeStore.effectiveLocale.locale)
+                    .id("apple-sign-in-\(localeStore.effectiveLocale.rawValue)")
                     .frame(height: 68)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
@@ -1283,12 +1366,12 @@ private struct AuthSignInReferenceScreen: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Сначала принять пользовательское соглашение")
+                    .accessibilityLabel(L10n.string("Accept the User Agreement first", "Сначала принять пользовательское соглашение"))
                 }
             }
 
             if isEmailLoginExpanded {
-                AuthDividerLabel(text: "или войти по Email")
+                AuthDividerLabel(text: L10n.string("or sign in with email", "или войти по Email"))
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Email")
@@ -1330,7 +1413,7 @@ private struct AuthSignInReferenceScreen: View {
                     }
                     onRequestCode()
                 } label: {
-                    Text("Получить код по email")
+                    Text(L10n.string("Get a code by email", "Получить код по email"))
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -1348,7 +1431,7 @@ private struct AuthSignInReferenceScreen: View {
                 .buttonStyle(AuthReferencePressStyle())
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Email-вход нужен, если ты уже регистрировался без Apple ID.")
+                    Text(L10n.string("Use email sign-in if you previously registered without Apple ID.", "Email-вход нужен, если ты уже регистрировался без Apple ID."))
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .lineSpacing(3)
@@ -1359,7 +1442,7 @@ private struct AuthSignInReferenceScreen: View {
                         }
                         onHaveCode()
                     } label: {
-                        Text("У меня уже есть код")
+                        Text(L10n.string("I already have a code", "У меня уже есть код"))
                             .font(.title3.weight(.medium))
                             .foregroundStyle(AppTheme.court)
                     }
@@ -1370,7 +1453,7 @@ private struct AuthSignInReferenceScreen: View {
                         isEmailLoginExpanded = true
                     }
                 } label: {
-                    Label("Войти по email", systemImage: "envelope")
+                    Label(L10n.string("Sign in with email", "Войти по email"), systemImage: "envelope")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                         .frame(maxWidth: .infinity)
@@ -1420,7 +1503,7 @@ private struct AuthSignInReferenceScreen: View {
 
     private func showAgreementPrompt() {
         agreementPromptTask?.cancel()
-        agreementPromptMessage = "Сначала примите пользовательское соглашение и согласие на обработку персональных данных."
+        agreementPromptMessage = L10n.string("Accept the User Agreement and consent to personal data processing first.", "Сначала примите пользовательское соглашение и согласие на обработку персональных данных.")
         AppHaptics.notification(.warning)
 
         withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
@@ -1489,7 +1572,7 @@ private struct AuthDividerLabel: View {
             Rectangle()
                 .fill(Color(.systemGray4))
                 .frame(height: 1)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1507,7 +1590,7 @@ private struct AuthInlineMessage: View {
     let icon: String
 
     var body: some View {
-        Label(text, systemImage: icon)
+        Label(LocalizedStringKey(text), systemImage: icon)
             .font(.footnote.weight(.medium))
             .foregroundStyle(tint)
             .padding(.horizontal, 12)
@@ -1529,12 +1612,14 @@ private struct AuthReferencePressStyle: ButtonStyle {
 private struct OnboardingTypewriterLine: View {
     var fontSize: CGFloat = 34
 
-    private let phrases = [
-        "в теннис",
-        "в футбол",
-        "в падел",
-        "в зал"
-    ]
+    private var phrases: [String] {
+        [
+            L10n.string("tennis", "в теннис"),
+            L10n.string("football", "в футбол"),
+            L10n.string("padel", "в падел"),
+            L10n.string("a workout", "в зал")
+        ]
+    }
 
     @State private var displayedPhrase = ""
     @State private var typingTask: Task<Void, Never>?
@@ -1544,7 +1629,7 @@ private struct OnboardingTypewriterLine: View {
             let cursorVisible = Int(timeline.date.timeIntervalSinceReferenceDate * 2).isMultiple(of: 2)
 
             HStack(spacing: 8) {
-                Text("для игры")
+                Text(L10n.string("Play", "для игры"))
                     .font(.system(size: fontSize, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -1650,17 +1735,19 @@ private struct OnboardingMotionHero: View {
 }
 
 private struct OnboardingLoopingCards: View {
-    private static let cards: [OnboardingPreviewCardData] = [
-        .init(name: "Максим, 27", sport: "Теннис", level: "Любитель", metaLeft: "До 5 км", metaRight: "Сегодня, 18:30", imageName: "hero-tennis"),
-        .init(name: "Елена, 26", sport: "Волейбол", level: "Средний", metaLeft: "До 4 км", metaRight: "Сегодня, 19:30", imageName: "OnboardingPlayerVolleyballWoman"),
-        .init(name: "Дмитрий, 29", sport: "Футбол", level: "Средний", metaLeft: "До 3 км", metaRight: "Сегодня, 19:00", imageName: "hero-football"),
-        .init(name: "Мария, 25", sport: "Сквош", level: "Любитель", metaLeft: "До 3 км", metaRight: "Завтра, 18:00", imageName: "OnboardingPlayerSquashWoman"),
-        .init(name: "Антон, 31", sport: "Зал", level: "Уверенный", metaLeft: "До 4 км", metaRight: "Завтра, 7:10", imageName: "hero-fitness"),
-        .init(name: "София, 29", sport: "Падел", level: "Средний", metaLeft: "До 5 км", metaRight: "Завтра, 20:00", imageName: "OnboardingPlayerPadelWoman"),
-        .init(name: "Никита, 28", sport: "Падел", level: "Любитель", metaLeft: "До 6 км", metaRight: "Сегодня, 20:00", imageName: "hero-padel")
-    ]
+    private var cards: [OnboardingPreviewCardData] {
+        [
+            .init(name: "Максим, 27", sport: L10n.string("Tennis", "Теннис"), level: L10n.string("Recreational", "Любитель"), metaLeft: L10n.string("Within 5 km", "До 5 км"), metaRight: L10n.string("Today, 18:30", "Сегодня, 18:30"), imageName: "hero-tennis"),
+            .init(name: "Елена, 26", sport: L10n.string("Volleyball", "Волейбол"), level: L10n.string("Intermediate", "Средний"), metaLeft: L10n.string("Within 4 km", "До 4 км"), metaRight: L10n.string("Today, 19:30", "Сегодня, 19:30"), imageName: "OnboardingPlayerVolleyballWoman"),
+            .init(name: "Дмитрий, 29", sport: L10n.string("Football", "Футбол"), level: L10n.string("Intermediate", "Средний"), metaLeft: L10n.string("Within 3 km", "До 3 км"), metaRight: L10n.string("Today, 19:00", "Сегодня, 19:00"), imageName: "hero-football"),
+            .init(name: "Мария, 25", sport: L10n.string("Squash", "Сквош"), level: L10n.string("Recreational", "Любитель"), metaLeft: L10n.string("Within 3 km", "До 3 км"), metaRight: L10n.string("Tomorrow, 18:00", "Завтра, 18:00"), imageName: "OnboardingPlayerSquashWoman"),
+            .init(name: "Антон, 31", sport: L10n.string("Fitness", "Зал"), level: L10n.string("Confident", "Уверенный"), metaLeft: L10n.string("Within 4 km", "До 4 км"), metaRight: L10n.string("Tomorrow, 7:10", "Завтра, 7:10"), imageName: "hero-fitness"),
+            .init(name: "София, 29", sport: L10n.string("Padel", "Падел"), level: L10n.string("Intermediate", "Средний"), metaLeft: L10n.string("Within 5 km", "До 5 км"), metaRight: L10n.string("Tomorrow, 20:00", "Завтра, 20:00"), imageName: "OnboardingPlayerPadelWoman"),
+            .init(name: "Никита, 28", sport: L10n.string("Padel", "Падел"), level: L10n.string("Recreational", "Любитель"), metaLeft: L10n.string("Within 6 km", "До 6 км"), metaRight: L10n.string("Today, 20:00", "Сегодня, 20:00"), imageName: "hero-padel")
+        ]
+    }
 
-    static var pageCount: Int { cards.count }
+    static let pageCount = 7
 
     let currentIndex: Int
 
@@ -1673,8 +1760,8 @@ private struct OnboardingLoopingCards: View {
             ZStack {
                 ForEach(-1 ... 1, id: \.self) { slot in
                     let rawIndex = currentIndex + slot
-                    let cardIndex = (rawIndex % Self.cards.count + Self.cards.count) % Self.cards.count
-                    let card = Self.cards[cardIndex]
+                    let cardIndex = (rawIndex % cards.count + cards.count) % cards.count
+                    let card = cards[cardIndex]
                     let isActive = slot == 0
                     let relativePosition = CGFloat(slot)
 
@@ -1801,7 +1888,7 @@ private struct OnboardingPreviewCard: View {
             Circle()
                 .fill(isHighlighted ? OnboardingStepPalette.lime : Color.white.opacity(0.68))
                 .frame(width: 7, height: 7)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .lineLimit(1)
         }
@@ -1816,7 +1903,7 @@ private struct OnboardingPreviewCard: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .bold))
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
@@ -1929,11 +2016,11 @@ private struct LiquidStartButton: View {
 
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(title)
+                            Text(LocalizedStringKey(title))
                                 .font(.system(size: 21, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
-                            Text(subtitle)
+                            Text(LocalizedStringKey(subtitle))
                                 .font(.system(size: 15, weight: .regular))
                                 .foregroundStyle(.white.opacity(0.82))
                                 .lineLimit(1)
@@ -2055,7 +2142,7 @@ private struct SportCardPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Виды спорта")
+            Text(L10n.string("Sports", "Виды спорта"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.ink.opacity(0.68))
                 .textCase(.uppercase)
@@ -2243,7 +2330,7 @@ private struct OnboardingSportTile: View {
             }
             .frame(maxWidth: .infinity)
 
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.system(size: height < 90 ? 12 : 13, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -2251,7 +2338,7 @@ private struct OnboardingSportTile: View {
 
             Button(action: onLevelTap) {
                 HStack(spacing: 3) {
-                    Text(isSelected ? levelTone : "Выбери уровень")
+                    Text(isSelected ? levelTone : L10n.string("Choose level", "Выбери уровень"))
                         .font(.system(size: height < 90 ? 10 : 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.62)
@@ -2296,21 +2383,21 @@ private struct OnboardingSportTile: View {
     }
 
     private var title: String {
-        sport == .tableTennis ? "Наст. теннис" : sport.title
+        localizedOnboardingSportTitle(sport)
     }
 
     private var levelTone: String {
         switch level {
         case 1 ... 2:
-            return "Новичок"
+            return L10n.string("Beginner", "Новичок")
         case 3 ... 4:
-            return "База"
+            return L10n.string("Basic", "База")
         case 5 ... 6:
-            return "Уверенный"
+            return L10n.string("Confident", "Уверенный")
         case 7 ... 8:
-            return "Сильный"
+            return L10n.string("Advanced", "Сильный")
         default:
-            return "Турнирный"
+            return L10n.string("Competitive", "Турнирный")
         }
     }
 }
@@ -2328,12 +2415,12 @@ private struct MoreSportsTile: View {
                 .frame(width: height < 90 ? 36 : 40, height: height < 90 ? 36 : 40)
                 .background(.white.opacity(0.08), in: Circle())
 
-            Text(isExpanded ? "Скрыть" : "Ещё виды")
+            Text(isExpanded ? L10n.string("Hide", "Скрыть") : L10n.string("More", "Ещё виды"))
                 .font(.system(size: height < 90 ? 12 : 13, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
             HStack(spacing: 5) {
-                Text(isExpanded ? "Свернуть" : "Открыть")
+                Text(isExpanded ? L10n.string("Collapse", "Свернуть") : L10n.string("Open", "Открыть"))
                     .font(.system(size: height < 90 ? 8 : 9, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -2401,7 +2488,7 @@ private struct OnboardingNameField: View {
 
             ZStack(alignment: .leading) {
                 if name.isEmpty {
-                    Text("Имя — так тебя увидят другие игроки")
+                    Text(L10n.string("Name — this is how other players will see you", "Имя — так тебя увидят другие игроки"))
                         .font(.system(size: isCompact ? 14 : 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.36))
                         .lineLimit(1)
@@ -2467,7 +2554,7 @@ private struct OnboardingAgeField: View {
                 .foregroundStyle(showsInvalidState ? Color.red.opacity(0.82) : .white.opacity(0.32))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Возраст")
+                Text(L10n.string("Age", "Возраст"))
                     .font(.system(size: isCompact ? 10 : 11, weight: .black, design: .rounded))
                     .foregroundStyle(.white.opacity(0.44))
 
@@ -2513,13 +2600,13 @@ private struct OnboardingVisibilityToggle: View {
                 .background(OnboardingStepPalette.lime.opacity(0.14), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
             VStack(alignment: .leading, spacing: isCompact ? 2 : 5) {
-                Text("Показывать меня в поиске")
+                Text(L10n.string("Show me in search", "Показывать меня в поиске"))
                     .font(.system(size: isCompact ? 14 : 15, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
 
-                Text("Другие игроки смогут найти тебя и предложить игру")
+                Text(L10n.string("Other players can find you and invite you to play", "Другие игроки смогут найти тебя и предложить игру"))
                     .font(.system(size: isCompact ? 11 : 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.58))
                     .lineLimit(2)
@@ -2572,10 +2659,10 @@ private struct OnboardingLevelPickerSheet: View {
                                     .background(value == level ? OnboardingStepPalette.lime : Color.white.opacity(0.10), in: Circle())
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(levelTone(value))
+                                    Text(LocalizedStringKey(levelTone(value)))
                                         .font(.subheadline.weight(.black))
                                         .foregroundStyle(.white)
-                                    Text(levelHint(value))
+                                    Text(LocalizedStringKey(levelHint(value)))
                                         .font(.caption2.weight(.medium))
                                         .foregroundStyle(.white.opacity(0.54))
                                         .lineLimit(1)
@@ -2606,30 +2693,30 @@ private struct OnboardingLevelPickerSheet: View {
     private func levelTone(_ value: Int) -> String {
         switch value {
         case 1 ... 2:
-            return "Новичок"
+            return L10n.string("Beginner", "Новичок")
         case 3 ... 4:
-            return "База"
+            return L10n.string("Basic", "База")
         case 5 ... 6:
-            return "Уверенный"
+            return L10n.string("Confident", "Уверенный")
         case 7 ... 8:
-            return "Сильный"
+            return L10n.string("Advanced", "Сильный")
         default:
-            return "Турнирный"
+            return L10n.string("Competitive", "Турнирный")
         }
     }
 
     private func levelHint(_ value: Int) -> String {
         switch value {
         case 1 ... 2:
-            return "только начинаю"
+            return L10n.string("just starting", "только начинаю")
         case 3 ... 4:
-            return "играю иногда"
+            return L10n.string("play occasionally", "играю иногда")
         case 5 ... 6:
-            return "стабильная база"
+            return L10n.string("solid fundamentals", "стабильная база")
         case 7 ... 8:
-            return "хороший темп"
+            return L10n.string("strong pace", "хороший темп")
         default:
-            return "соревновательный"
+            return L10n.string("competitive", "соревновательный")
         }
     }
 }
@@ -2663,7 +2750,6 @@ private struct OnboardingSearchLocationSection: View {
     let locationDetectionFailed: Bool
     let isDetectedDistrictConfirmed: Bool
     let onNearby: () -> Void
-    let onConfirmDetectedDistrict: () -> Void
     let onDistricts: () -> Void
 
     var body: some View {
@@ -2674,7 +2760,7 @@ private struct OnboardingSearchLocationSection: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Label {
-                    Text("Где искать игроков?")
+                    Text(L10n.string("Where should we look for players?", "Где искать игроков?"))
                         .font(.system(size: 18, weight: .black, design: .rounded))
                 } icon: {
                     Image(systemName: "mappin")
@@ -2683,7 +2769,7 @@ private struct OnboardingSearchLocationSection: View {
                 }
                 .foregroundStyle(.white)
 
-                Text("Сначала выбери город. Районы можно добавить сразу или позже.")
+                Text(L10n.string("Choose a city first. You can add districts now or later.", "Сначала выбери город. Районы можно добавить сразу или позже."))
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.56))
                     .fixedSize(horizontal: false, vertical: true)
@@ -2693,8 +2779,9 @@ private struct OnboardingSearchLocationSection: View {
 
             HStack(spacing: 10) {
                 OnboardingLocationChoiceCard(
-                    title: "Рядом со мной",
+                    title: L10n.string("Near me", "Рядом со мной"),
                     subtitle: nearbySubtitle,
+                    accessibilityValue: nearbyAccessibilityValue,
                     systemImage: "location.fill",
                     tint: OnboardingStepPalette.lime,
                     isSelected: selectedChoice == .nearby,
@@ -2702,8 +2789,9 @@ private struct OnboardingSearchLocationSection: View {
                 )
 
                 OnboardingLocationChoiceCard(
-                    title: "Выбрать город и районы",
+                    title: L10n.string("Choose city and districts", "Выбрать город и районы"),
                     subtitle: cityAndDistrictsSummary,
+                    accessibilityValue: cityAndDistrictsAccessibilityValue,
                     systemImage: "map",
                     tint: Color(red: 0.62, green: 0.34, blue: 1.0),
                     isSelected: selectedChoice == .districts,
@@ -2720,7 +2808,7 @@ private struct OnboardingSearchLocationSection: View {
     @ViewBuilder
     private var selectedCityPill: some View {
         if selectedCity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Label("Город не выбран", systemImage: "exclamationmark.circle.fill")
+            Label(L10n.string("City not selected", "Город не выбран"), systemImage: "exclamationmark.circle.fill")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.34))
                 .padding(.horizontal, 12)
@@ -2732,7 +2820,7 @@ private struct OnboardingSearchLocationSection: View {
                         .stroke(Color(red: 1.0, green: 0.78, blue: 0.34).opacity(0.22), lineWidth: 1)
                 )
         } else if !isOnboardingCityAvailable(selectedCity) {
-            Label("\(selectedCity) скоро: добавляем клубы", systemImage: "clock.badge.exclamationmark")
+            Label(L10n.string("\(selectedCity): clubs coming soon", "\(selectedCity) скоро: добавляем клубы"), systemImage: "clock.badge.exclamationmark")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.34))
                 .padding(.horizontal, 12)
@@ -2760,48 +2848,34 @@ private struct OnboardingSearchLocationSection: View {
 
     @ViewBuilder
     private var locationDetectionStatus: some View {
-        if let districtTitle = selectedDistrictTitle {
-            let cityDistrictTitle = [selectedCity, districtTitle]
+        if !selectedDistrictsSummary.isEmpty {
+            let cityDistrictTitle = [selectedCity, selectedDistrictsSummary]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
             VStack(alignment: .leading, spacing: 10) {
                 Label {
-                    Text(isDetectedDistrictConfirmed ? "Город и район подтверждены: \(cityDistrictTitle)" : "Ваш город и район — \(cityDistrictTitle)?")
+                    Text(L10n.string("Searching near \(cityDistrictTitle). You can change or add districts.", "Ищем рядом с \(cityDistrictTitle). Можно изменить или добавить районы."))
                         .font(.system(size: 12, weight: .bold, design: .rounded))
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
-                    Image(systemName: isDetectedDistrictConfirmed ? "checkmark.circle.fill" : "mappin.circle.fill")
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 13, weight: .bold))
                 }
 
-                HStack(spacing: 8) {
-                    if !isDetectedDistrictConfirmed {
-                        Button(action: onConfirmDetectedDistrict) {
-                            Text("Да")
-                                .font(.system(size: 13, weight: .black, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 38)
-                        }
-                        .foregroundStyle(Color.black.opacity(0.88))
-                        .background(OnboardingStepPalette.lime, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .buttonStyle(.plain)
-                    }
-
-                    Button(action: onDistricts) {
-                        Text(isDetectedDistrictConfirmed ? "Изменить город и районы" : "Выбрать город и районы")
-                            .font(.system(size: 13, weight: .black, design: .rounded))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 38)
-                    }
-                    .foregroundStyle(.white)
-                    .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-                    .buttonStyle(.plain)
+                Button(action: onDistricts) {
+                    Text(L10n.string("Change city and districts", "Изменить город и районы"))
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
                 }
+                .foregroundStyle(.white)
+                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
             }
             .foregroundStyle(OnboardingStepPalette.lime)
             .padding(.horizontal, 12)
@@ -2815,7 +2889,7 @@ private struct OnboardingSearchLocationSection: View {
         } else if selectedChoice == .nearby,
                   isDetectedDistrictConfirmed,
                   !selectedCity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Label("Город определён: \(selectedCity)", systemImage: "location.circle.fill")
+            Label(L10n.string("City detected: \(selectedCity)", "Город определён: \(selectedCity)"), systemImage: "location.circle.fill")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(OnboardingStepPalette.lime)
                 .padding(.horizontal, 12)
@@ -2828,7 +2902,7 @@ private struct OnboardingSearchLocationSection: View {
                 )
         } else if isDetectingLocation {
             Label {
-                Text("Определяем город и район по геолокации")
+                Text(L10n.string("Detecting your city and district from your location", "Определяем город и район по геолокации"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
             } icon: {
                 ProgressView()
@@ -2843,7 +2917,7 @@ private struct OnboardingSearchLocationSection: View {
         } else if locationDetectionFailed {
             VStack(alignment: .leading, spacing: 10) {
                 Label {
-                    Text("Не удалось определить город и район по гео. Выбери вручную.")
+                    Text(L10n.string("We couldn't detect your city and district. Choose them manually.", "Не удалось определить город и район по гео. Выбери вручную."))
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
@@ -2852,7 +2926,7 @@ private struct OnboardingSearchLocationSection: View {
                 }
 
                 Button(action: onDistricts) {
-                    Text("Выбрать город и районы")
+                    Text(L10n.string("Choose city and districts", "Выбрать город и районы"))
                         .font(.system(size: 13, weight: .black, design: .rounded))
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
@@ -2874,62 +2948,91 @@ private struct OnboardingSearchLocationSection: View {
     }
 
     private var selectedDistrictsSummary: String {
-        selectedDistricts
+        validSelectedDistricts
             .prefix(2)
-            .compactMap { localizedDistrictName($0) }
+            .map { localizedDistrictName($0) ?? $0 }
             .joined(separator: ", ")
-            .appending(selectedDistricts.count > 2 ? " +\(selectedDistricts.count - 2)" : "")
+            .appending(validSelectedDistricts.count > 2 ? " +\(validSelectedDistricts.count - 2)" : "")
+    }
+
+    private var validSelectedDistricts: [String] {
+        filteredOnboardingDistricts(selectedDistricts, cityName: selectedCity)
+    }
+
+    private var fullSelectedDistrictsSummary: String {
+        validSelectedDistricts
+            .map { localizedDistrictName($0) ?? $0 }
+            .joined(separator: ", ")
     }
 
     private var cityAndDistrictsSummary: String {
         let city = selectedCity.trimmingCharacters(in: .whitespacesAndNewlines)
         if city.isEmpty {
-            return "Открыть выбор города"
+            return L10n.string("Choose a city", "Открыть выбор города")
         }
 
         if !isOnboardingCityAvailable(city) {
-            return "\(city) · добавляем клубы"
+            return L10n.string("\(city) · clubs coming soon", "\(city) · добавляем клубы")
         }
 
-        guard !selectedDistricts.isEmpty else {
+        guard !validSelectedDistricts.isEmpty else {
             return city
         }
 
         return "\(city) · \(selectedDistrictsSummary)"
     }
 
-    private var selectedDistrictTitle: String? {
-        guard let district = selectedDistricts.first else {
-            return nil
-        }
-
-        return localizedDistrictName(district)
-    }
-
     private var nearbySubtitle: String {
         guard selectedChoice == .nearby else {
-            return "Определить город и район"
+            return L10n.string("Detect city and district", "Определить город и район")
         }
 
-        if let selectedDistrictTitle {
-            return "\(selectedCity.isEmpty ? onboardingDefaultCity : selectedCity) · \(selectedDistrictTitle)"
+        if !selectedDistrictsSummary.isEmpty {
+            return "\(selectedCity.isEmpty ? onboardingDefaultCity : selectedCity) · \(selectedDistrictsSummary)"
         }
 
         if locationDetectionFailed {
-            return selectedCity.isEmpty ? "Не удалось определить" : selectedCity
+            return selectedCity.isEmpty ? L10n.string("Could not detect", "Не удалось определить") : selectedCity
         }
 
         if isDetectedDistrictConfirmed, !selectedCity.isEmpty {
             return selectedCity
         }
 
-        return selectedCity.isEmpty ? "Определяем город" : "\(selectedCity) · определяем район"
+        return selectedCity.isEmpty
+            ? L10n.string("Detecting city", "Определяем город")
+            : L10n.string("\(selectedCity) · detecting district", "\(selectedCity) · определяем район")
+    }
+
+    private var nearbyAccessibilityValue: String {
+        let city = selectedCity.isEmpty ? onboardingDefaultCity : selectedCity
+        if selectedChoice == .nearby, !fullSelectedDistrictsSummary.isEmpty {
+            return L10n.string(
+                "Selected: \(city). Districts: \(fullSelectedDistrictsSummary)",
+                "Выбрано: \(city). Районы: \(fullSelectedDistrictsSummary)"
+            )
+        }
+
+        return nearbySubtitle
+    }
+
+    private var cityAndDistrictsAccessibilityValue: String {
+        let city = selectedCity.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !city.isEmpty, !fullSelectedDistrictsSummary.isEmpty else {
+            return cityAndDistrictsSummary
+        }
+
+        return L10n.string(
+            "Selected: \(city). Districts: \(fullSelectedDistrictsSummary)",
+            "Выбрано: \(city). Районы: \(fullSelectedDistrictsSummary)"
+        )
     }
 }
 
 private struct OnboardingLocationChoiceCard: View {
     let title: String
     let subtitle: String
+    let accessibilityValue: String
     let systemImage: String
     let tint: Color
     let isSelected: Bool
@@ -2946,7 +3049,7 @@ private struct OnboardingLocationChoiceCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text(title)
+                        Text(LocalizedStringKey(title))
                             .font(.system(size: 14, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
@@ -2959,7 +3062,7 @@ private struct OnboardingLocationChoiceCard: View {
                             .foregroundStyle(tint)
                     }
 
-                    Text(subtitle)
+                    Text(LocalizedStringKey(subtitle))
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(2)
@@ -2982,220 +3085,16 @@ private struct OnboardingLocationChoiceCard: View {
             .shadow(color: isSelected ? tint.opacity(0.14) : .black.opacity(0.18), radius: 18, x: 0, y: 10)
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct OnboardingDetectedDistrictSheet: View {
-    let city: String
-    let districtID: String
-    let userCoordinate: CLLocationCoordinate2D?
-    let onConfirm: () -> Void
-    let onChooseDistrict: () -> Void
-
-    private var districtTitle: String {
-        localizedDistrictName(districtID) ?? districtID
-    }
-
-    private var cityTitle: String {
-        city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? onboardingDefaultCity : city
-    }
-
-    var body: some View {
-        ZStack {
-            OnboardingDarkBackground()
-
-            VStack(alignment: .leading, spacing: 18) {
-                Capsule()
-                    .fill(Color.white.opacity(0.22))
-                    .frame(width: 42, height: 5)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Ваш город и район — \(cityTitle) · \(districtTitle)?")
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("Мы выделили район и точку на карте. Если всё верно, будем ранжировать игроков и клубы рядом с ним выше.")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.64))
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                OnboardingDetectedDistrictMap(city: cityTitle, districtID: districtID, userCoordinate: userCoordinate)
-                    .frame(height: 190)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(OnboardingStepPalette.lime.opacity(0.42), lineWidth: 1)
-                    )
-                    .shadow(color: OnboardingStepPalette.lime.opacity(0.12), radius: 18, x: 0, y: 12)
-
-                VStack(spacing: 10) {
-                    Button(action: onConfirm) {
-                        Text("Да")
-                            .font(.headline.weight(.black))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                    }
-                    .foregroundStyle(Color.black.opacity(0.9))
-                    .background(OnboardingStepPalette.lime, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .buttonStyle(.plain)
-
-                    Button(action: onChooseDistrict) {
-                        Text("Выбрать город и районы")
-                            .font(.headline.weight(.bold))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                    }
-                    .foregroundStyle(.white)
-                    .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-                    .buttonStyle(.plain)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-        }
-    }
-}
-
-private struct OnboardingDetectedDistrictMap: UIViewRepresentable {
-    let city: String
-    let districtID: String
-    let userCoordinate: CLLocationCoordinate2D?
-
-    func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView(frame: .zero)
-        mapView.delegate = context.coordinator
-        mapView.isPitchEnabled = false
-        mapView.isRotateEnabled = false
-        mapView.showsCompass = false
-        mapView.pointOfInterestFilter = .excludingAll
-
-        if #available(iOS 16.0, *) {
-            mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .flat)
-        }
-
-        return mapView
-    }
-
-    func updateUIView(_ mapView: MKMapView, context: Context) {
-        context.coordinator.update(mapView: mapView, city: city, districtID: districtID, userCoordinate: userCoordinate)
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    final class Coordinator: NSObject, MKMapViewDelegate {
-        private var renderedCity: String?
-        private var renderedDistrictID: String?
-        private var renderedCoordinate: CLLocationCoordinate2D?
-
-        func update(mapView: MKMapView, city: String, districtID: String, userCoordinate: CLLocationCoordinate2D?) {
-            guard renderedCity != city || renderedDistrictID != districtID || renderedCoordinate?.latitude != userCoordinate?.latitude || renderedCoordinate?.longitude != userCoordinate?.longitude else {
-                return
-            }
-
-            renderedCity = city
-            renderedDistrictID = districtID
-            renderedCoordinate = userCoordinate
-            mapView.removeOverlays(mapView.overlays)
-            mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-
-            guard let area = districtAreasByID[districtID] else {
-                let fallbackCity = SupportedCity.resolve(city) ?? .saintPetersburg
-                let fallbackCenter = userCoordinate ?? fallbackCity.mapCenter
-                if let userCoordinate {
-                    mapView.addAnnotation(OnboardingDetectedLocationAnnotation(coordinate: userCoordinate))
-                }
-                mapView.setRegion(
-                    MKCoordinateRegion(
-                        center: fallbackCenter,
-                        latitudinalMeters: min(fallbackCity.mapDiameterMeters, 30_000),
-                        longitudinalMeters: min(fallbackCity.mapDiameterMeters, 30_000)
-                    ),
-                    animated: false
-                )
-                return
-            }
-
-            let polygon = MKPolygon(coordinates: area.coordinates, count: area.coordinates.count)
-            mapView.addOverlay(polygon)
-            var targetRect = polygon.boundingMapRect
-
-            if let userCoordinate {
-                mapView.addAnnotation(OnboardingDetectedLocationAnnotation(coordinate: userCoordinate))
-                let pointRect = MKMapRect(origin: MKMapPoint(userCoordinate), size: MKMapSize(width: 0, height: 0))
-                targetRect = targetRect.union(pointRect)
-            }
-
-            mapView.setVisibleMapRect(targetRect, edgePadding: UIEdgeInsets(top: 28, left: 28, bottom: 28, right: 28), animated: false)
-        }
-
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            guard let polygon = overlay as? MKPolygon else {
-                return MKOverlayRenderer(overlay: overlay)
-            }
-
-            let renderer = MKPolygonRenderer(polygon: polygon)
-            renderer.fillColor = UIColor(red: 0.55, green: 0.95, blue: 0.30, alpha: 0.26)
-            renderer.strokeColor = UIColor(red: 0.55, green: 0.95, blue: 0.30, alpha: 0.92)
-            renderer.lineWidth = 3
-            return renderer
-        }
-
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            guard annotation is OnboardingDetectedLocationAnnotation else {
-                return nil
-            }
-
-            let reuseID = "OnboardingDetectedLocationAnnotation"
-            let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseID)
-                ?? MKAnnotationView(annotation: annotation, reuseIdentifier: reuseID)
-            view.annotation = annotation
-            view.image = onboardingLocationMarkerImage()
-            view.centerOffset = CGPoint(x: 0, y: -14)
-            return view
-        }
-    }
-}
-
-private final class OnboardingDetectedLocationAnnotation: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
-
-    init(coordinate: CLLocationCoordinate2D) {
-        self.coordinate = coordinate
-        super.init()
-    }
-}
-
-private func onboardingLocationMarkerImage() -> UIImage? {
-    let size = CGSize(width: 34, height: 34)
-    return UIGraphicsImageRenderer(size: size).image { _ in
-        let outer = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
-        UIColor.black.withAlphaComponent(0.58).setFill()
-        UIBezierPath(ovalIn: outer).fill()
-        UIColor(red: 0.55, green: 0.95, blue: 0.30, alpha: 1).setFill()
-        UIBezierPath(ovalIn: outer.insetBy(dx: 5, dy: 5)).fill()
-        UIColor.white.withAlphaComponent(0.92).setStroke()
-        let stroke = UIBezierPath(ovalIn: outer.insetBy(dx: 1, dy: 1))
-        stroke.lineWidth = 2
-        stroke.stroke()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(LocalizedStringKey(title)))
+        .accessibilityValue(Text(LocalizedStringKey(accessibilityValue)))
     }
 }
 
 private final class OnboardingLocationPermission: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let geocoder = CLGeocoder()
+    private var detectionGeneration = 0
     @Published var detectedCity: String?
     @Published var detectedDistrict: String?
     @Published var detectedCoordinate: CLLocationCoordinate2D?
@@ -3209,6 +3108,8 @@ private final class OnboardingLocationPermission: NSObject, ObservableObject, CL
     }
 
     func requestLocationAccess() {
+        detectionGeneration += 1
+        geocoder.cancelGeocode()
         detectedCity = nil
         detectedDistrict = nil
         detectedCoordinate = nil
@@ -3240,6 +3141,7 @@ private final class OnboardingLocationPermission: NSObject, ObservableObject, CL
             markDetectionFailed()
             return
         }
+        let generation = detectionGeneration
 
         DispatchQueue.main.async {
             self.detectedCoordinate = location.coordinate
@@ -3248,7 +3150,7 @@ private final class OnboardingLocationPermission: NSObject, ObservableObject, CL
         let nearestCity = Self.nearestSupportedCity(to: location.coordinate)
 
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, _ in
-            guard let self else {
+            guard let self, generation == self.detectionGeneration else {
                 return
             }
 
@@ -3397,6 +3299,7 @@ private struct OnboardingDistrictPickerSheet: View {
 
     @Binding var selectedCity: String
     @Binding var selectedDistricts: [String]
+    let automaticallyDetectedDistrict: String?
     let onDetectAutomatically: () -> Void
     let onDone: () -> Void
 
@@ -3407,18 +3310,21 @@ private struct OnboardingDistrictPickerSheet: View {
     init(
         selectedCity: Binding<String>,
         selectedDistricts: Binding<[String]>,
+        automaticallyDetectedDistrict: String? = nil,
+        startsWithDistricts: Bool = false,
         onDetectAutomatically: @escaping () -> Void,
         onDone: @escaping () -> Void
     ) {
         _selectedCity = selectedCity
         _selectedDistricts = selectedDistricts
+        self.automaticallyDetectedDistrict = automaticallyDetectedDistrict
         self.onDetectAutomatically = onDetectAutomatically
         self.onDone = onDone
 
         let initialCity = isOnboardingCityAvailable(selectedCity.wrappedValue)
             ? selectedCity.wrappedValue
             : (onboardingCityOptions.first ?? "")
-        _screen = State(initialValue: .city)
+        _screen = State(initialValue: startsWithDistricts && isOnboardingCityAvailable(initialCity) ? .districts : .city)
         _draftCity = State(initialValue: initialCity)
         _draftDistricts = State(
             initialValue: filteredOnboardingDistricts(
@@ -3484,7 +3390,7 @@ private struct OnboardingDistrictPickerSheet: View {
                             .background(Color.white.opacity(0.08), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Назад к выбору города")
+                    .accessibilityLabel(L10n.string("Back to city selection", "Назад к выбору города"))
                 }
 
                 Spacer()
@@ -3502,19 +3408,19 @@ private struct OnboardingDistrictPickerSheet: View {
                 }
             }
 
-            Text(screen == .city ? "Где вы будете играть?" : "Где вам удобно играть?")
+            Text(screen == .city ? L10n.string("Where will you play?", "Где вы будете играть?") : L10n.string("Where is it convenient for you to play?", "Где вам удобно играть?"))
                 .font(.system(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(screen == .city
-                 ? "Выберите город, чтобы мы показывали игры и клубы рядом."
-                 : "Выберите один или несколько районов. Этот шаг можно пропустить.")
+                 ? L10n.string("Choose a city so we can show nearby games and clubs.", "Выберите город, чтобы мы показывали игры и клубы рядом.")
+                 : L10n.string("Choose one or more districts. You can skip this step.", "Выберите один или несколько районов. Этот шаг можно пропустить."))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(screen == .city ? "1 из 2" : "2 из 2")
+            Text(screen == .city ? L10n.string("1 of 2", "1 из 2") : L10n.string("2 of 2", "2 из 2"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white.opacity(0.52))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -3538,11 +3444,11 @@ private struct OnboardingDistrictPickerSheet: View {
                         .background(OnboardingStepPalette.lime.opacity(0.12), in: Circle())
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Определить автоматически")
+                        Text(L10n.string("Detect automatically", "Определить автоматически"))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
 
-                        Text("Используем ваше текущее местоположение")
+                        Text(L10n.string("Use your current location", "Используем ваше текущее местоположение"))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white.opacity(0.56))
                     }
@@ -3562,10 +3468,10 @@ private struct OnboardingDistrictPickerSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Запросить доступ к геопозиции")
+            .accessibilityHint(L10n.string("Request location access", "Запросить доступ к геопозиции"))
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Доступные города")
+                Text(L10n.string("Available cities", "Доступные города"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.white.opacity(0.72))
 
@@ -3593,7 +3499,7 @@ private struct OnboardingDistrictPickerSheet: View {
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             if districtOptions.isEmpty {
-                Label("Для этого города районы пока не добавлены. Можно продолжить без них.", systemImage: "info.circle")
+                Label(L10n.string("Districts haven't been added for this city yet. You can continue without them.", "Для этого города районы пока не добавлены. Можно продолжить без них."), systemImage: "info.circle")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.68))
                     .padding(14)
@@ -3601,7 +3507,7 @@ private struct OnboardingDistrictPickerSheet: View {
                     .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Районы")
+                    Text(L10n.string("Districts", "Районы"))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white.opacity(0.72))
 
@@ -3615,7 +3521,7 @@ private struct OnboardingDistrictPickerSheet: View {
 
             if !draftDistricts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Выбранные места")
+                    Text(L10n.string("Selected places", "Выбранные места"))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white.opacity(0.72))
 
@@ -3640,7 +3546,7 @@ private struct OnboardingDistrictPickerSheet: View {
                                     .frame(width: 34, height: 34)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Удалить \(localizedDistrictName(district) ?? district)")
+                            .accessibilityLabel(L10n.string("Remove \(localizedDistrictName(district) ?? district)", "Удалить \(localizedDistrictName(district) ?? district)"))
                         }
                         .padding(.horizontal, 14)
                         .frame(minHeight: 52)
@@ -3666,7 +3572,7 @@ private struct OnboardingDistrictPickerSheet: View {
                 AppHaptics.notification(.success)
             }
         } label: {
-            Text(screen == .city ? "Продолжить" : "Готово")
+            Text(screen == .city ? L10n.string("Continue", "Продолжить") : L10n.string("Done", "Готово"))
                 .font(.headline.weight(.bold))
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
@@ -3720,12 +3626,13 @@ private struct OnboardingDistrictPickerSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(city)
-        .accessibilityValue(isSelected ? "Выбрано" : "Не выбрано")
+        .accessibilityValue(Text(isSelected ? L10n.string("Selected", "Выбрано") : L10n.string("Not selected", "Не выбрано")))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func districtButton(_ district: String) -> some View {
         let isSelected = draftDistricts.contains(district)
+        let isAutomaticallyDetected = district == automaticallyDetectedDistrict
         let title = localizedDistrictName(district) ?? district
 
         return Button {
@@ -3737,10 +3644,20 @@ private struct OnboardingDistrictPickerSheet: View {
             AppHaptics.selection()
         } label: {
             HStack(spacing: 12) {
-                Text(title)
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    if isAutomaticallyDetected {
+                        Text(L10n.string("Detected from your location", "Определено по геопозиции"))
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(isSelected ? Color.black.opacity(0.62) : OnboardingStepPalette.lime)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
 
                 Spacer(minLength: 0)
 
@@ -3758,7 +3675,7 @@ private struct OnboardingDistrictPickerSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
-        .accessibilityValue(isSelected ? "Выбрано" : "Не выбрано")
+        .accessibilityValue(Text(isSelected ? L10n.string("Selected", "Выбрано") : L10n.string("Not selected", "Не выбрано")))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -3778,7 +3695,7 @@ private struct OTPCodeField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Код подтверждения")
+            Text(L10n.string("Verification code", "Код подтверждения"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.ink.opacity(0.68))
                 .textCase(.uppercase)
@@ -3841,7 +3758,7 @@ private struct SportCard: View {
                         .frame(width: 30, height: 30)
                         .background(isSelected ? .white.opacity(0.16) : .white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                    Text(sport.title)
+                    Text(LocalizedStringKey(sport.title))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(isSelected ? .white : AppTheme.ink)
                         .multilineTextAlignment(.leading)
@@ -3852,11 +3769,11 @@ private struct SportCard: View {
                 if isSelected {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Уровень")
+                            Text(L10n.string("Level", "Уровень"))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.72))
                             Spacer()
-                            Text(levelTone)
+                            Text(LocalizedStringKey(levelTone))
                                 .font(.caption2.weight(.bold))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
@@ -3901,15 +3818,15 @@ private struct SportCard: View {
     private var levelTone: String {
         switch level {
         case 1 ... 2:
-            return "Новичок"
+            return L10n.string("Beginner", "Новичок")
         case 3 ... 4:
-            return "База"
+            return L10n.string("Basic", "База")
         case 5 ... 6:
-            return "Уверенный"
+            return L10n.string("Confident", "Уверенный")
         case 7 ... 8:
-            return "Сильный"
+            return L10n.string("Advanced", "Сильный")
         default:
-            return "Турнирный"
+            return L10n.string("Competitive", "Турнирный")
         }
     }
 
@@ -3938,7 +3855,7 @@ private struct DetailedAvailabilityEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Одна шкала недели. Выбери день и затем отметь удобные окна времени.")
+            Text(L10n.string("One weekly schedule. Choose a day, then select convenient time windows.", "Одна шкала недели. Выбери день и затем отметь удобные окна времени."))
                 .font(.caption)
                 .foregroundStyle(AppTheme.mutedInk)
 
@@ -3952,7 +3869,7 @@ private struct DetailedAvailabilityEditor: View {
                         AppHaptics.selection()
                     } label: {
                         VStack(spacing: 6) {
-                            Text(day.shortTitle)
+                            Text(LocalizedStringKey(day.shortTitle))
                                 .font(.subheadline.weight(.bold))
                             HStack(spacing: 3) {
                                 ForEach(TimeRange.allCases) { range in
@@ -3973,11 +3890,11 @@ private struct DetailedAvailabilityEditor: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(activeDay.title)
+                    Text(LocalizedStringKey(activeDay.title))
                         .font(.headline)
                     Spacer()
                     if !(availabilityByDay[activeDay.rawValue] ?? []).isEmpty {
-                        Button("Очистить") {
+                        Button(L10n.string("Clear", "Очистить")) {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
                                 availabilityByDay[activeDay.rawValue] = []
                             }
@@ -4001,13 +3918,13 @@ private struct DetailedAvailabilityEditor: View {
             }
 
             HStack(spacing: 8) {
-                presetButton("Будни утром") {
+                presetButton(L10n.string("Weekday mornings", "Будни утром")) {
                     applyPreset(days: [.monday, .tuesday, .wednesday, .thursday, .friday], ranges: [.morning])
                 }
-                presetButton("Будни вечером") {
+                presetButton(L10n.string("Weekday evenings", "Будни вечером")) {
                     applyPreset(days: [.monday, .tuesday, .wednesday, .thursday, .friday], ranges: [.evening])
                 }
-                presetButton("Выходные") {
+                presetButton(L10n.string("Weekends", "Выходные")) {
                     applyPreset(days: [.saturday, .sunday], ranges: TimeRange.allCases)
                 }
             }
@@ -4034,7 +3951,9 @@ private struct DetailedAvailabilityEditor: View {
     }
 
     private func presetButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
+        Button(action: action) {
+            Text(LocalizedStringKey(title))
+        }
             .buttonStyle(.plain)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 12)
@@ -4056,10 +3975,10 @@ private struct AvailabilityWindowCard: View {
                     .font(.system(size: 18, weight: .bold))
                     .frame(width: 36, height: 36)
                     .background(iconBackground, in: Circle())
-                Text(range.title)
+                Text(LocalizedStringKey(range.title))
                     .font(.caption.weight(.bold))
                 if isSelected {
-                    Text("Выбрано")
+                    Text(L10n.string("Selected", "Выбрано"))
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)

@@ -2,6 +2,7 @@
 
 import { type Sport } from "@prisma/client";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { SportLevelBadge } from "@/components/ui/sport-level-badge";
 
 type SportLevels = Partial<Record<Sport, number>>;
@@ -15,6 +16,8 @@ export function SportLevelsEditor({
   values: SportLevels;
   onChange: (sport: Sport, level: number) => void;
 }) {
+  const { t } = useLocale();
+
   if (sports.length === 0) {
     return null;
   }
@@ -44,8 +47,8 @@ export function SportLevelsEditor({
               className="mt-4 w-full accent-clay"
             />
             <div className="mt-2 flex items-center justify-between text-[11px] font-medium text-ink/45">
-              <span>Начинающий</span>
-              <span>Продвинутый</span>
+              <span>{t("profile.level.beginner")}</span>
+              <span>{t("profile.level.advanced")}</span>
             </div>
           </div>
         );

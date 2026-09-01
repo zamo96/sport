@@ -165,6 +165,12 @@ enum AccountStatus {
   deactivated
 }
 
+enum LocationSource {
+  legacy
+  manual
+  geolocation
+}
+
 enum AdminAuditAction {
   PROFILE_UPDATED
   ACCOUNT_DEACTIVATED
@@ -248,6 +254,8 @@ model User {
   age                                Int?
   gender                             Gender?
   city                               String?
+  locationPlaceId                    String?
+  locationSource                     LocationSource?
   district                           String?
   preferredDistricts                 Json?
   homeLat                            Float?
@@ -273,6 +281,7 @@ model User {
   notificationMessages               Boolean                             @default(true)
   notificationGames                  Boolean                             @default(true)
   notificationSound                  Boolean                             @default(true)
+  localeOverride                     String?
   accountStatus                      AccountStatus                       @default(active)
   deactivatedAt                      DateTime?
   deactivationReason                 String?
@@ -282,6 +291,7 @@ model User {
   createdAt                          DateTime                            @default(now())
   updatedAt                          DateTime                            @updatedAt
   districtRef                        District?                           @relation("UserDistrict", fields: [district], references: [code], onDelete: SetNull)
+  location                           GeoPlace?                           @relation(fields: [locationPlaceId], references: [id], onDelete: SetNull)
   swipesSent                         Swipe[]                             @relation("SwipeFromUser")
   swipesReceived                     Swipe[]                             @relation("SwipeToUser")
   matchesAsUser1                     Match[]                             @relation("MatchUser1")
@@ -312,6 +322,40 @@ model User {
   contentReportsReviewed             ContentReport[]                     @relation("ContentReportReviewer")
 
   @@index([accountStatus, createdAt])
+  @@index([locationPlaceId, accountStatus])
+}
+
+model GeoPlace {
+  id              String       @id
+  provider        String
+  providerPlaceId String
+  countryCode     String
+  countryName     String
+  region          String?
+  city            String
+  normalizedCity  String
+  latitude        Float
+  longitude       Float
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  users           User[]
+  gameSearches    GameSearch[]
+  serviceArea     ServiceArea?
+
+  @@unique([provider, providerPlaceId])
+  @@index([countryCode, normalizedCity])
+}
+
+model ServiceArea {
+  id               String   @id @default(cuid())
+  locationPlaceId  String   @unique
+  legacyCity       String?  @unique
+  isActive         Boolean  @default(true)
+  clubsEnabled     Boolean  @default(false)
+  districtsEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  location         GeoPlace @relation(fields: [locationPlaceId], references: [id], onDelete: Cascade)
 }
 
 model AdminAuditLog {
@@ -737,6 +781,9 @@ model GameSearch {
   id                       String                   @id @default(cuid())
   inviteSlug               String?                  @unique
   createdByUserId          String
+  locationPlaceId          String?
+  locationCountryCode      String?
+  locationCity             String?
   preferredCourtId         String?
   customVenueTitle         String?
   customVenueAddress       String?
@@ -766,6 +813,7 @@ model GameSearch {
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
   createdByUser            User                     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  location                 GeoPlace?                @relation(fields: [locationPlaceId], references: [id], onDelete: SetNull)
   preferredCourt           Court?                   @relation(fields: [preferredCourtId], references: [id], onDelete: SetNull)
   scheduledCourt           Court?                   @relation("GameSearchScheduledCourt", fields: [scheduledCourtId], references: [id], onDelete: SetNull)
   responses                GameSearchResponse[]
@@ -775,6 +823,7 @@ model GameSearch {
 
   @@index([createdByUserId, isActive])
   @@index([isActive, searchType, status])
+  @@index([locationPlaceId, isActive, searchType, status])
 }
 
 model GameSearchResponse {

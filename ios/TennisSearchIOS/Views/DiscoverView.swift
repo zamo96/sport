@@ -12,9 +12,9 @@ private enum CalendarExportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return "Разрешите доступ к календарю, чтобы добавлять игры."
+            return L10n.string("Allow calendar access to add games.", "Разрешите доступ к календарю, чтобы добавлять игры.")
         case .calendarUnavailable:
-            return "Не удалось найти календарь для новых событий."
+            return L10n.string("Could not find a calendar for new events.", "Не удалось найти календарь для новых событий.")
         }
     }
 }
@@ -165,15 +165,15 @@ struct DiscoverView: View {
     private var currentSelectionTitle: String {
         switch selectedTab {
         case .swipe:
-            return "Сейчас выбрано: можно поиграть"
+            return L10n.string("Selected: available to play", "Сейчас выбрано: можно поиграть")
         case .likes:
-            return "Сейчас выбрано: хотят с тобой поиграть"
+            return L10n.string("Selected: want to play with you", "Сейчас выбрано: хотят с тобой поиграть")
         case .seeking:
-            return "Сейчас выбрано: регулярно"
+            return L10n.string("Selected: regular", "Сейчас выбрано: регулярно")
         case .hot:
-            return "Сейчас выбрано: поиски"
+            return L10n.string("Selected: searches", "Сейчас выбрано: поиски")
         case .upcoming:
-            return "Сейчас выбрано: ближайшие игры"
+            return L10n.string("Selected: upcoming games", "Сейчас выбрано: ближайшие игры")
         }
     }
 
@@ -243,8 +243,10 @@ struct DiscoverView: View {
         if notificationManager.summary.incomingLikesCount > 0 {
             items.append(.init(
                 count: notificationManager.summary.incomingLikesCount,
-                title: notificationManager.summary.incomingLikesCount == 1 ? "хочет сыграть" : "хотят сыграть",
-                subtitle: "Хотят с тобой поиграть",
+                title: notificationManager.summary.incomingLikesCount == 1
+                    ? L10n.string("wants to play", "хочет сыграть")
+                    : L10n.string("want to play", "хотят сыграть"),
+                subtitle: L10n.string("Want to play with you", "Хотят с тобой поиграть"),
                 target: .discover(.likes)
             ))
         }
@@ -252,8 +254,10 @@ struct DiscoverView: View {
         if pendingConfirmationCount > 0 {
             items.append(.init(
                 count: pendingConfirmationCount,
-                title: pendingConfirmationCount == 1 ? "игра ждёт ответа" : "игры ждут ответа",
-                subtitle: "Подтвердить игру",
+                title: pendingConfirmationCount == 1
+                    ? L10n.string("game awaiting response", "игра ждёт ответа")
+                    : L10n.string("games awaiting response", "игры ждут ответа"),
+                subtitle: L10n.string("Confirm game", "Подтвердить игру"),
                 target: .discover(.upcoming)
             ))
         }
@@ -261,8 +265,8 @@ struct DiscoverView: View {
         if searchesNeedingSlotsCount > 0 {
             items.append(.init(
                 count: searchesNeedingSlotsCount,
-                title: searchesNeedingSlotsCount == 1 ? "нужно предложить слоты" : "нужно предложить слоты",
-                subtitle: "Предложить слоты",
+                title: L10n.string("time slots needed", "нужно предложить слоты"),
+                subtitle: L10n.string("Propose time slots", "Предложить слоты"),
                 target: .searches
             ))
         }
@@ -270,8 +274,10 @@ struct DiscoverView: View {
         if pendingSearchResponsesCount > 0 {
             items.append(.init(
                 count: pendingSearchResponsesCount,
-                title: pendingSearchResponsesCount == 1 ? "отклик на поиск" : "отклика на поиски",
-                subtitle: "Ответить на отклики",
+                title: pendingSearchResponsesCount == 1
+                    ? L10n.string("search response", "отклик на поиск")
+                    : L10n.string("search responses", "отклика на поиски"),
+                subtitle: L10n.string("Review responses", "Ответить на отклики"),
                 target: .searches
             ))
         }
@@ -279,8 +285,10 @@ struct DiscoverView: View {
         if notificationManager.summary.hotBadgeCount > 0 {
             items.append(.init(
                 count: notificationManager.summary.hotBadgeCount,
-                title: notificationManager.summary.hotBadgeCount == 1 ? "активный поиск" : "активных поиска",
-                subtitle: "Поиски",
+                title: notificationManager.summary.hotBadgeCount == 1
+                    ? L10n.string("active search", "активный поиск")
+                    : L10n.string("active searches", "активных поиска"),
+                subtitle: L10n.string("Searches", "Поиски"),
                 target: .discover(.hot)
             ))
         }
@@ -288,8 +296,10 @@ struct DiscoverView: View {
         if notificationManager.summary.inboxBadgeCount > 0 {
             items.append(.init(
                 count: notificationManager.summary.inboxBadgeCount,
-                title: notificationManager.summary.inboxBadgeCount == 1 ? "сообщение" : "сообщения",
-                subtitle: "Открыть мэтчи",
+                title: notificationManager.summary.inboxBadgeCount == 1
+                    ? L10n.string("message", "сообщение")
+                    : L10n.string("messages", "сообщения"),
+                subtitle: L10n.string("Open matches", "Открыть мэтчи"),
                 target: .matches
             ))
         }
@@ -306,8 +316,10 @@ struct DiscoverView: View {
         return [
             .init(
                 count: notificationManager.summary.discoverBadgeCount,
-                title: notificationManager.summary.discoverBadgeCount == 1 ? "уведомление" : "уведомления",
-                subtitle: "Открыть уведомления",
+                title: notificationManager.summary.discoverBadgeCount == 1
+                    ? L10n.string("notification", "уведомление")
+                    : L10n.string("notifications", "уведомления"),
+                subtitle: L10n.string("Open notifications", "Открыть уведомления"),
                 target: .discover(.swipe)
             )
         ]
@@ -330,7 +342,7 @@ struct DiscoverView: View {
 
     private func upcomingDisplayName(for request: MatchGameRequest, match: MatchSummary?) -> String {
         let requestName = request.upcomingDisplayName(currentUserId: appModel.currentUser?.id)
-        if requestName != "Игрок" {
+        if requestName != L10n.string("Player", "Игрок") {
             return requestName
         }
         return match?.otherUser.displayName ?? requestName
@@ -350,7 +362,7 @@ struct DiscoverView: View {
             let firstItem = items.first
             let title = attentionTitle(for: items)
             let subtitle = attentionSubtitle(for: items)
-            let routeHint = firstItem?.subtitle ?? "Открыть важное"
+            let routeHint = firstItem?.subtitle ?? L10n.string("Open important item", "Открыть важное")
             let upcomingContext = confirmedSoonRequests.first.map(summaryUpcomingContext)
             return .attention(
                 count: attentionCount,
@@ -524,7 +536,7 @@ struct DiscoverView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button("Войти") {
+                        Button(L10n.string("Sign in", "Войти")) {
                             appModel.presentAuth(step: .email)
                         }
                     }
@@ -571,7 +583,9 @@ struct DiscoverView: View {
                 isUpdating: updatingUpcomingRequestIDs.contains(request.id),
                 canEdit: canEditUpcomingRequest(request) && match != nil,
                 canCancel: canManageUpcomingRequest(request),
-                cancelTitle: request.createdByUserId == appModel.currentUser?.id ? "Отменить игру" : "Не смогу",
+                cancelTitle: request.createdByUserId == appModel.currentUser?.id
+                    ? L10n.string("Cancel game", "Отменить игру")
+                    : L10n.string("I can't make it", "Не смогу"),
                 onEdit: {
                     selectedUpcomingDetailsRequest = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -610,8 +624,8 @@ struct DiscoverView: View {
         .sheet(item: $selectedPhotoReportRequest) { request in
             GameReportComposerSheet(request: request) {
                 showActionCelebration(
-                    title: "Фотоотчёт загружен",
-                    subtitle: "Отчёт сохранён в игре",
+                    title: L10n.string("Photo report uploaded", "Фотоотчёт загружен"),
+                    subtitle: L10n.string("The report was saved to the game", "Отчёт сохранён в игре"),
                     icon: "📸"
                 )
                 await loadDiscover()
@@ -625,8 +639,8 @@ struct DiscoverView: View {
         .sheet(item: $selectedPersonalActivityReport) { activity in
             PersonalActivityReportComposerSheet(activity: activity) {
                 showActionCelebration(
-                    title: "Фотоотчёт загружен",
-                    subtitle: "Визит сохранён в профиле",
+                    title: L10n.string("Photo report uploaded", "Фотоотчёт загружен"),
+                    subtitle: L10n.string("The visit was saved to your profile", "Визит сохранён в профиле"),
                     icon: "📸"
                 )
                 await loadDiscover()
@@ -1000,14 +1014,16 @@ struct DiscoverView: View {
 
     private func attentionTitle(for items: [DiscoverSummaryAttentionItem]) -> String {
         guard let first = items.first else {
-            return "Требует внимания"
+            return L10n.string("Needs attention", "Требует внимания")
         }
 
         if items.count == 1 {
             return "\(first.count) \(first.title)"
         }
 
-        return attentionCount == 1 ? "1 требует действия" : "\(attentionCount) требуют действия"
+        return LocaleStore.currentEffectiveLocale == .en
+            ? (attentionCount == 1 ? "1 needs attention" : "\(attentionCount) need attention")
+            : (attentionCount == 1 ? "1 требует действия" : "\(attentionCount) требуют действия")
     }
 
     private func attentionSubtitle(for items: [DiscoverSummaryAttentionItem]) -> String {
@@ -1023,20 +1039,20 @@ struct DiscoverView: View {
 
     private func summaryUpcomingContext(for request: MatchGameRequest) -> String {
         guard let date = request.proposedDate else {
-            return "есть ближайшая игра"
+            return L10n.string("upcoming game", "есть ближайшая игра")
         }
 
         let calendar = Calendar.current
         let prefix: String
         if calendar.isDateInToday(date) {
-            prefix = "игра сегодня"
+            prefix = L10n.string("game today", "игра сегодня")
         } else if calendar.isDateInTomorrow(date) {
-            prefix = "игра завтра"
+            prefix = L10n.string("game tomorrow", "игра завтра")
         } else {
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "ru_RU")
+            formatter.locale = LocaleStore.currentEffectiveLocale.locale
             formatter.dateFormat = "d MMM"
-            prefix = "игра \(formatter.string(from: date))"
+            prefix = L10n.string("game \(formatter.string(from: date))", "игра \(formatter.string(from: date))")
         }
 
         return "\(prefix), \(date.formattedHourMinute())"
@@ -1096,7 +1112,9 @@ struct DiscoverView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(tab.title))
-                .accessibilityValue(Text(isSelected ? "Выбрано" : "Не выбрано"))
+                .accessibilityValue(Text(isSelected
+                    ? L10n.string("Selected", "Выбрано")
+                    : L10n.string("Not selected", "Не выбрано")))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .animation(.easeInOut(duration: 0.28), value: selectedTab)
             }
@@ -1157,10 +1175,10 @@ struct DiscoverView: View {
     @ViewBuilder
     private var upcomingContent: some View {
         if !appModel.isAuthenticated {
-            SectionCard(title: "Ближайшие игры", subtitle: "Этот раздел доступен после входа по email.") {
+            SectionCard(title: L10n.string("Upcoming games", "Ближайшие игры"), subtitle: L10n.string("This section is available after signing in with email.", "Этот раздел доступен после входа по email.")) {
                 AuthInlinePrompt(
-                    title: "Сохрани аккаунт, чтобы видеть ближайшие игры",
-                    subtitle: "После подтверждения email здесь появятся подтверждённые договорённости и предстоящие матчи."
+                    title: L10n.string("Save your account to see upcoming games", "Сохрани аккаунт, чтобы видеть ближайшие игры"),
+                    subtitle: L10n.string("Confirmed arrangements and upcoming matches will appear here after email verification.", "После подтверждения email здесь появятся подтверждённые договорённости и предстоящие матчи.")
                 ) {
                     appModel.presentAuth(step: .email)
                 }
@@ -1182,7 +1200,7 @@ struct DiscoverView: View {
                 if !activeUpcomingGameRequests.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Игры с игроками")
+                            Text(L10n.string("Games with players", "Игры с игроками"))
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(.white)
                             Spacer()
@@ -1326,7 +1344,7 @@ struct DiscoverView: View {
                 if !activePersonalActivities.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Личные визиты")
+                            Text(L10n.string("Personal visits", "Личные визиты"))
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(.white)
                             Spacer()
@@ -1374,7 +1392,12 @@ struct DiscoverView: View {
                             AppHaptics.selection()
                         } label: {
                             HStack {
-                                Label(isUpcomingHistoryExpanded ? "Скрыть историю" : "Показать историю", systemImage: "clock.arrow.circlepath")
+                                Label(
+                                    isUpcomingHistoryExpanded
+                                        ? L10n.string("Hide history", "Скрыть историю")
+                                        : L10n.string("Show history", "Показать историю"),
+                                    systemImage: "clock.arrow.circlepath"
+                                )
                                     .font(.caption.weight(.semibold))
                                     .textCase(.uppercase)
                                     .tracking(1.4)
@@ -1429,8 +1452,8 @@ struct DiscoverView: View {
                 .padding(.bottom, 4)
             if topStack.isEmpty, !isLoading {
                 EmptyStateView(
-                    title: "Карточки закончились",
-                    subtitle: "Обнови подбор позже или переключись на активные поиски.",
+                    title: L10n.string("No more cards", "Карточки закончились"),
+                    subtitle: L10n.string("Refresh recommendations later or switch to active searches.", "Обнови подбор позже или переключись на активные поиски."),
                     systemImage: "sparkles"
                 )
             } else {
@@ -1483,24 +1506,24 @@ struct DiscoverView: View {
     @ViewBuilder
     private var likesContent: some View {
         if !appModel.isAuthenticated {
-            SectionCard(title: "Хотят с тобой поиграть", subtitle: "Этот раздел доступен после входа по email.") {
+            SectionCard(title: L10n.string("Want to play with you", "Хотят с тобой поиграть"), subtitle: L10n.string("This section is available after signing in with email.", "Этот раздел доступен после входа по email.")) {
                 AuthInlinePrompt(
-                    title: "Войди, чтобы видеть входящие симпатии",
-                    subtitle: "После подтверждения email здесь появятся игроки, которые уже отметили интерес к тебе."
+                    title: L10n.string("Sign in to see incoming interest", "Войди, чтобы видеть входящие симпатии"),
+                    subtitle: L10n.string("Players who have already shown interest in you will appear here after email verification.", "После подтверждения email здесь появятся игроки, которые уже отметили интерес к тебе.")
                 ) {
                     appModel.presentAuth(step: .email)
                 }
             }
         } else {
             VStack(alignment: .leading, spacing: 14) {
-                SwipeHintBar(leftTitle: "Влево — отказать", rightTitle: "Вправо — можно сыграть")
+                SwipeHintBar(leftTitle: L10n.string("Left — decline", "Влево — отказать"), rightTitle: L10n.string("Right — ready to play", "Вправо — можно сыграть"))
                     .padding(.top, -8)
                     .padding(.bottom, 4)
 
                 if topStack.isEmpty, !isLoading {
                     EmptyStateView(
-                        title: "Пока никто не отметил интерес",
-                        subtitle: "Когда кто-то захочет сыграть с тобой, карточки появятся здесь.",
+                        title: L10n.string("No interest yet", "Пока никто не отметил интерес"),
+                        subtitle: L10n.string("Cards will appear here when someone wants to play with you.", "Когда кто-то захочет сыграть с тобой, карточки появятся здесь."),
                         systemImage: "heart.text.square"
                     )
                 } else {
@@ -1558,7 +1581,7 @@ struct DiscoverView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ActiveHotSearchSportChip(
-                            title: "Все виды",
+                            title: L10n.string("All sports", "Все виды"),
                             sport: nil,
                             isSelected: hotSearchSportFilter == nil
                         ) {
@@ -1711,12 +1734,10 @@ struct DiscoverView: View {
                 items: items,
                 selectedItemID: selectedItem?.id,
                 highlightedDistrictIDs: districtIDs,
-                viewerCity: selectedItem?.viewerCity
-                    ?? SupportedCity.resolve(appModel.currentUser?.city)
-                    ?? SupportedCity.resolve(appModel.guestDraft.city)
-                    ?? .saintPetersburg,
+                viewerMapCenter: selectedItem?.viewerMapCenter ?? activeHotSearchMapCenter,
+                viewerMapDiameterMeters: activeHotSearchMapDiameterMeters,
                 userCoordinate: hotSearchLocationProvider.coordinate,
-                userName: appModel.currentUser?.displayName ?? "Вы",
+                userName: appModel.currentUser?.displayName ?? L10n.string("You", "Вы"),
                 userAvatarPath: appModel.currentUser?.avatarUrl,
                 onSelect: { itemID in
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
@@ -1821,14 +1842,12 @@ struct DiscoverView: View {
         } else {
             baseUsers = users
         }
-        let viewerCity = SupportedCity.resolve(appModel.currentUser?.city)
-            ?? SupportedCity.resolve(appModel.guestDraft.city)
-            ?? .saintPetersburg
+        let viewerMapCenter = activeHotSearchMapCenter
 
         return baseUsers
             .flatMap { user in
                 user.gameSearches.map { search in
-                    ActiveHotSearchItem(user: user, search: search, viewerCity: viewerCity)
+                    ActiveHotSearchItem(user: user, search: search, viewerMapCenter: viewerMapCenter)
                 }
             }
             .filter { item in
@@ -1855,6 +1874,28 @@ struct DiscoverView: View {
             }
     }
 
+    private var activeHotSearchMapCenter: CLLocationCoordinate2D {
+        if let place = appModel.currentUser?.location ?? appModel.guestDraft.location {
+            return CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+        }
+
+        if let legacyCity = SupportedCity.resolve(appModel.currentUser?.city)
+            ?? SupportedCity.resolve(appModel.guestDraft.city) {
+            return legacyCity.mapCenter
+        }
+
+        // Neutral fallback for an old/incomplete profile without a confirmed place.
+        return CLLocationCoordinate2D(latitude: 0, longitude: 0)
+    }
+
+    private var activeHotSearchMapDiameterMeters: CLLocationDistance {
+        if appModel.currentUser?.location != nil || appModel.guestDraft.location != nil {
+            return 50_000
+        }
+        return (SupportedCity.resolve(appModel.currentUser?.city)
+            ?? SupportedCity.resolve(appModel.guestDraft.city))?.mapDiameterMeters ?? 20_000_000
+    }
+
     private var availableHotSearchSports: [Sport] {
         Array(Set(activeHotSearchItems.map(\.search.sport))).sorted { $0.title < $1.title }
     }
@@ -1869,7 +1910,7 @@ struct DiscoverView: View {
 
     private var activeHotSearchCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.locale = LocaleStore.currentEffectiveLocale.locale
         calendar.firstWeekday = 2
         return calendar
     }
@@ -1933,9 +1974,9 @@ struct DiscoverView: View {
                     AppHaptics.selection()
                 } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Все")
+                        Text(L10n.string("All", "Все"))
                             .font(.system(size: 15, weight: .bold))
-                        Text("поиски")
+                        Text(L10n.string("searches", "поиски"))
                             .font(.system(size: 12, weight: .bold))
                             .opacity(0.78)
                     }
@@ -1971,7 +2012,7 @@ struct DiscoverView: View {
     private func activeHotSearchDateChip(_ date: Date) -> some View {
         let isSelected = hotSearchFilter == .calendar && activeHotSearchCalendar.isDate(date, inSameDayAs: hotSearchCalendarDate)
         let count = activeHotSearchCount(on: date)
-        let dayTitle = activeHotSearchCalendar.isDateInToday(date) ? "Сегодня" : activeHotSearchWeekdayTitle(for: date)
+        let dayTitle = activeHotSearchCalendar.isDateInToday(date) ? L10n.string("Today", "Сегодня") : activeHotSearchWeekdayTitle(for: date)
 
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
@@ -2025,14 +2066,14 @@ struct DiscoverView: View {
 
     private func activeHotSearchDayNumber(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.dateFormat = "d"
         return formatter.string(from: date)
     }
 
     private func activeHotSearchWeekdayTitle(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.setLocalizedDateFormatFromTemplate("EEE")
         return formatter.string(from: date).capitalized
     }
@@ -2169,7 +2210,7 @@ struct DiscoverView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     filterChip(
-                        title: "Все виды",
+                        title: L10n.string("All sports", "Все виды"),
                         isSelected: regularSportFilter == nil
                     ) {
                         regularSportFilter = nil
@@ -2189,7 +2230,7 @@ struct DiscoverView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     filterChip(
-                        title: "Любой день",
+                        title: L10n.string("Any day", "Любой день"),
                         isSelected: regularDayFilter == nil
                     ) {
                         regularDayFilter = nil
@@ -2361,7 +2402,9 @@ struct DiscoverView: View {
     }
 
     private func prioritizingSearch(_ searchID: String, in source: [DiscoverUser]) -> [DiscoverUser] {
-        guard let index = source.firstIndex(where: { $0.gameSearches.contains(where: { $0.id == searchID }) }) else {
+        guard let index = source.firstIndex(where: {
+            $0.gameSearches.contains(where: { $0.id == searchID || $0.inviteSlug == searchID })
+        }) else {
             return source
         }
 
@@ -2401,7 +2444,7 @@ struct DiscoverView: View {
             return blockedMatchIDs.contains(matchId)
         }
         upcomingMatches.removeAll { $0.otherUser.id == userId }
-        responseMessage = "Пользователь заблокирован и удалён из ленты"
+        responseMessage = L10n.string("The user was blocked and removed from your feed", "Пользователь заблокирован и удалён из ленты")
         Task { await loadDiscover() }
     }
 
@@ -2505,7 +2548,7 @@ struct DiscoverView: View {
             updateSimilarPlayersBadgeIfNeeded()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             if createdMatchId != nil, action == .like {
-                showMatchToast("С \(activeUser.displayName) случился новый мэтч.")
+                showMatchToast(L10n.string("You matched with \(activeUser.displayName).", "С \(activeUser.displayName) случился новый мэтч."))
             }
             if action == .like || action == .superlike {
                 firstInterestHintPlayerName = swipedUserName
@@ -2537,7 +2580,7 @@ struct DiscoverView: View {
             localResponseStatuses[search.id] = response.status
             localResponseIDs[search.id] = response.id
             AppHaptics.notification(.success)
-            showResponseToast("Отклик отправлен. Дальше организатор увидит тебя в своих поисках.")
+            showResponseToast(L10n.string("Response sent. The organizer will now see you in their search.", "Отклик отправлен. Дальше организатор увидит тебя в своих поисках."))
             await loadDiscover()
         } catch {
             guard !error.isCancellationLike else {
@@ -2553,7 +2596,7 @@ struct DiscoverView: View {
             localResponseStatuses[searchId] = nil
             localResponseIDs[searchId] = nil
             AppHaptics.notification(.warning)
-            showResponseToast("Отклик отменён.")
+            showResponseToast(L10n.string("Response withdrawn.", "Отклик отменён."))
             await loadDiscover()
         } catch {
             guard !error.isCancellationLike else {
@@ -2705,7 +2748,7 @@ struct DiscoverView: View {
 
     private func addUpcomingRequestToCalendar(_ request: MatchGameRequest) async {
         guard let startDate = request.proposedDate else {
-            showResponseToast("У игры пока нет точного времени.")
+            showResponseToast(L10n.string("This game does not have an exact time yet.", "У игры пока нет точного времени."))
             return
         }
 
@@ -2715,7 +2758,7 @@ struct DiscoverView: View {
         do {
             try await saveCalendarEvent(for: request, startDate: startDate)
             AppHaptics.notification(.success)
-            showResponseToast("Игра добавлена в календарь.")
+            showResponseToast(L10n.string("Game added to your calendar.", "Игра добавлена в календарь."))
         } catch {
             AppHaptics.notification(.warning)
             appModel.present(error: error)
@@ -2799,9 +2842,9 @@ struct DiscoverView: View {
             _ = try await appModel.repository.updateGameRequestStatus(gameRequestId: request.id, status: "canceled")
             AppHaptics.notification(.warning)
             if request.createdByUserId == appModel.currentUser?.id {
-                showResponseToast("Игра отменена.")
+                showResponseToast(L10n.string("Game canceled.", "Игра отменена."))
             } else {
-                showResponseToast("Отправили, что не сможешь сыграть.")
+                showResponseToast(L10n.string("We let them know you cannot play.", "Отправили, что не сможешь сыграть."))
             }
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
@@ -2820,7 +2863,7 @@ struct DiscoverView: View {
         do {
             _ = try await appModel.repository.updateGameRequestStatus(gameRequestId: request.id, status: "accepted")
             AppHaptics.notification(.success)
-            showResponseToast("Игра подтверждена.")
+            showResponseToast(L10n.string("Game confirmed.", "Игра подтверждена."))
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {
@@ -2838,11 +2881,11 @@ struct DiscoverView: View {
         do {
             _ = try await appModel.repository.updateGameRequestOutcome(gameRequestId: request.id, outcome: outcome)
             showActionCelebration(
-                title: outcome == "played" ? "Ответ сохранён" : "Игра отмечена",
-                subtitle: outcome == "played" ? "Отметили, что игра прошла" : "Отметили, что сыграть не удалось",
+                title: outcome == "played" ? L10n.string("Response saved", "Ответ сохранён") : L10n.string("Game updated", "Игра отмечена"),
+                subtitle: outcome == "played" ? L10n.string("Marked as played", "Отметили, что игра прошла") : L10n.string("Marked as not played", "Отметили, что сыграть не удалось"),
                 icon: outcome == "played" ? "✅" : "✕"
             )
-            showResponseToast(outcome == "played" ? "Отметили, что игра прошла." : "Отметили, что сыграть не удалось.")
+            showResponseToast(outcome == "played" ? L10n.string("Marked as played.", "Отметили, что игра прошла.") : L10n.string("Marked as not played.", "Отметили, что сыграть не удалось."))
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {
@@ -2870,11 +2913,11 @@ struct DiscoverView: View {
                 )
             )
             showActionCelebration(
-                title: withPhoto ? "Фотоотчёт загружен" : "Визит завершён",
-                subtitle: withPhoto ? "Визит сохранён в профиле" : "Отметили личную тренировку",
+                title: withPhoto ? L10n.string("Photo report uploaded", "Фотоотчёт загружен") : L10n.string("Visit completed", "Визит завершён"),
+                subtitle: withPhoto ? L10n.string("The visit was saved to your profile", "Визит сохранён в профиле") : L10n.string("Personal practice recorded", "Отметили личную тренировку"),
                 icon: withPhoto ? "📸" : "✅"
             )
-            showResponseToast(withPhoto ? "Фотоотчёт сохранён." : "Визит завершён.")
+            showResponseToast(withPhoto ? L10n.string("Photo report saved.", "Фотоотчёт сохранён.") : L10n.string("Visit completed.", "Визит завершён."))
             await loadDiscover()
         } catch {
             guard !error.isCancellationLike else {
@@ -2901,7 +2944,7 @@ struct DiscoverView: View {
                 )
             )
             AppHaptics.notification(.warning)
-            showResponseToast("Визит отменён.")
+            showResponseToast(L10n.string("Visit canceled.", "Визит отменён."))
             await loadDiscover()
         } catch {
             guard !error.isCancellationLike else {
@@ -2918,7 +2961,7 @@ struct DiscoverView: View {
         do {
             _ = try await appModel.repository.updateGameReportConfirmation(gameRequestId: request.id, status: status)
             AppHaptics.notification(status == "confirmed" ? .success : .warning)
-            showResponseToast(status == "confirmed" ? "Фотоотчёт подтверждён." : "Фотоотчёт отмечен как спорный.")
+            showResponseToast(status == "confirmed" ? L10n.string("Photo report confirmed.", "Фотоотчёт подтверждён.") : L10n.string("Photo report marked as disputed.", "Фотоотчёт отмечен как спорный."))
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {
@@ -2944,7 +2987,7 @@ struct DiscoverView: View {
             )
             AppHaptics.notification(.success)
             selectedShareRequest = nil
-            showResponseToast(created.count == 1 ? "Приглашение отправлено" : "Приглашения отправлены")
+            showResponseToast(created.count == 1 ? L10n.string("Invitation sent", "Приглашение отправлено") : L10n.string("Invitations sent", "Приглашения отправлены"))
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {
@@ -3090,7 +3133,7 @@ struct DiscoverView: View {
 private struct ActiveHotSearchItem: Identifiable {
     let user: DiscoverUser
     let search: GameSearch
-    let viewerCity: SupportedCity
+    let viewerMapCenter: CLLocationCoordinate2D
 
     var id: String {
         "\(user.id)-\(search.id)"
@@ -3127,7 +3170,7 @@ private struct ActiveHotSearchItem: Identifiable {
             return area.centerCoordinate
         }
 
-        return viewerCity.mapCenter
+        return viewerMapCenter
     }
 
     var venueTitle: String {
@@ -3154,16 +3197,21 @@ private struct ActiveHotSearchItem: Identifiable {
             return title
         }
 
-        return search.sport.isRouteSport ? "Маршрут уточняется" : "Место уточняется"
+        return search.sport.isRouteSport
+            ? L10n.string("Route to be confirmed", "Маршрут уточняется")
+            : L10n.string("Place to be confirmed", "Место уточняется")
     }
 
     var timeTitle: String {
-        search.hotStartsAt?.formattedDateTime() ?? "Время уточняется"
+        search.hotStartsAt?.formattedDateTime() ?? L10n.string("Time to be confirmed", "Время уточняется")
     }
 
     var playersTitle: String {
         let approved = search.responses.filter { $0.status == "approved" }.count
-        return "\(approved) / \(max(search.playersNeeded, 1)) собрано"
+        return L10n.string(
+            "\(approved) / \(max(search.playersNeeded, 1)) joined",
+            L10n.string("\(approved) / \(max(search.playersNeeded, 1)) joined", "\(approved) / \(max(search.playersNeeded, 1)) собрано")
+        )
     }
 }
 
@@ -3176,9 +3224,9 @@ private enum ActiveHotSearchDisplayMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .list:
-            return "Список"
+            return L10n.string("List", "Список")
         case .map:
-            return "Карта"
+            return L10n.string("Map", "Карта")
         }
     }
 
@@ -3266,17 +3314,17 @@ private enum ActiveHotSearchFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all:
-            return "Все"
+            return L10n.string("All", "Все")
         case .today:
-            return "Сегодня"
+            return L10n.string("Today", "Сегодня")
         case .tomorrow:
-            return "Завтра"
+            return L10n.string("Tomorrow", "Завтра")
         case .calendar:
-            return "Календарь"
+            return L10n.string("Calendar", "Календарь")
         case .nearby:
-            return "Рядом"
+            return L10n.string("Nearby", "Рядом")
         case .level:
-            return "Мой уровень"
+            return L10n.string("My level", "Мой уровень")
         }
     }
 
@@ -3357,18 +3405,18 @@ private struct ActiveHotSearchClusterPickerSheet: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(item.user.displayName), \(item.search.sport.title), \(item.timeTitle), \(item.venueTitle)")
-                        .accessibilityHint("Показывает выбранный поиск на карте")
+                        .accessibilityHint(L10n.string("Shows the selected search on the map", "Показывает выбранный поиск на карте"))
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
             .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Поиски в этом месте")
+            .navigationTitle(L10n.string("Searches in this area", "Поиски в этом месте"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Закрыть") {
+                    Button(L10n.string("Close", "Закрыть")) {
                         dismiss()
                     }
                 }
@@ -3390,13 +3438,15 @@ private struct ActiveHotSearchMapCard: View {
     private var actionTitle: String {
         switch responseStatus {
         case "pending":
-            return "Отменить"
+            return L10n.string("Cancel", "Отменить")
         case "approved":
-            return canOpenApprovedChat ? "Открыть чат" : "Отклик принят"
+            return canOpenApprovedChat
+                ? L10n.string("Open chat", "Открыть чат")
+                : L10n.string("Response accepted", "Отклик принят")
         case "rejected":
-            return "Отклик отклонён"
+            return L10n.string("Response declined", "Отклик отклонён")
         default:
-            return "Откликнуться"
+            return L10n.string("Respond", "Откликнуться")
         }
     }
 
@@ -3497,7 +3547,8 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
     let items: [ActiveHotSearchItem]
     let selectedItemID: String?
     let highlightedDistrictIDs: [String]
-    let viewerCity: SupportedCity
+    let viewerMapCenter: CLLocationCoordinate2D
+    let viewerMapDiameterMeters: CLLocationDistance
     let userCoordinate: CLLocationCoordinate2D?
     let userName: String
     let userAvatarPath: String?
@@ -3529,7 +3580,8 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
             items: items,
             selectedItemID: selectedItemID,
             highlightedDistrictIDs: highlightedDistrictIDs,
-            viewerCity: viewerCity,
+            viewerMapCenter: viewerMapCenter,
+            viewerMapDiameterMeters: viewerMapDiameterMeters,
             userCoordinate: userCoordinate,
             userName: userName,
             userAvatarPath: userAvatarPath
@@ -3560,7 +3612,8 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
             items: [ActiveHotSearchItem],
             selectedItemID: String?,
             highlightedDistrictIDs: [String],
-            viewerCity: SupportedCity,
+            viewerMapCenter: CLLocationCoordinate2D,
+            viewerMapDiameterMeters: CLLocationDistance,
             userCoordinate: CLLocationCoordinate2D?,
             userName: String,
             userAvatarPath: String?
@@ -3603,9 +3656,9 @@ private struct ActiveHotSearchMapView: UIViewRepresentable {
             if targetRect.isNull || targetRect.isEmpty {
                 mapView.setRegion(
                     MKCoordinateRegion(
-                        center: viewerCity.mapCenter,
-                        latitudinalMeters: viewerCity.mapDiameterMeters,
-                        longitudinalMeters: viewerCity.mapDiameterMeters
+                        center: viewerMapCenter,
+                        latitudinalMeters: viewerMapDiameterMeters,
+                        longitudinalMeters: viewerMapDiameterMeters
                     ),
                     animated: false
                 )
@@ -3844,8 +3897,8 @@ private final class ActiveHotSearchClusterAnnotationView: MKAnnotationView {
         displayPriority = .required
         zPriority = .max
         isAccessibilityElement = true
-        accessibilityLabel = "\(count) поисков игры"
-        accessibilityHint = "Открывает поиски в этой точке или приближает карту"
+        accessibilityLabel = L10n.string("\(count) game searches", "\(count) поисков игры")
+        accessibilityHint = L10n.string("Opens searches at this location or zooms in on the map", "Открывает поиски в этой точке или приближает карту")
         accessibilityTraits = .button
     }
 }
@@ -3856,7 +3909,7 @@ private final class ActiveHotSearchUserLocationAnnotation: NSObject, MKAnnotatio
     let avatarPath: String?
 
     var title: String? {
-        "Вы"
+        L10n.string("You", "Вы")
     }
 
     init(coordinate: CLLocationCoordinate2D, name: String, avatarPath: String?) {
@@ -4021,7 +4074,7 @@ private func activeHotSearchInitials(from name: String) -> String {
         .map { String($0.prefix(1)).uppercased() }
         .joined()
 
-    return initials.isEmpty ? "ВЫ" : initials
+    return initials.isEmpty ? L10n.string("YOU", "ВЫ") : initials
 }
 
 private func activeHotSearchAspectFillRect(for imageSize: CGSize, in rect: CGRect) -> CGRect {
@@ -4116,7 +4169,7 @@ private struct ActiveHotSearchCalendarSheet: View {
 
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.locale = LocaleStore.currentEffectiveLocale.locale
         calendar.firstWeekday = 2
         return calendar
     }
@@ -4137,11 +4190,13 @@ private struct ActiveHotSearchCalendarSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Выберите дату")
+                        Text(L10n.string("Choose a date", "Выберите дату"))
                             .font(.system(size: 24, weight: .black))
                             .foregroundStyle(AppTheme.ink)
 
-                        Text("\(selectedCount) \(searchWord(selectedCount)) на выбранную дату")
+                        Text(LocaleStore.currentEffectiveLocale == .en
+                            ? "\(selectedCount) searches on the selected date"
+                            : "\(selectedCount) \(searchWord(selectedCount)) на выбранную дату")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.court)
                     }
@@ -4176,7 +4231,7 @@ private struct ActiveHotSearchCalendarSheet: View {
                     onApply()
                     dismiss()
                 } label: {
-                    Text("Показать поиски")
+                    Text(L10n.string("Show searches", "Показать поиски"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
@@ -4247,12 +4302,14 @@ private struct ActiveHotSearchCalendarSheet: View {
     }
 
     private var weekdayTitles: [String] {
-        ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        let symbols = calendar.shortStandaloneWeekdaySymbols
+        guard symbols.count == 7 else { return [] }
+        return Array(symbols[1...6]) + [symbols[0]]
     }
 
     private var monthTitle: String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.setLocalizedDateFormatFromTemplate("LLLL yyyy")
         let value = formatter.string(from: visibleMonthStart)
         return value.prefix(1).uppercased() + String(value.dropFirst())
@@ -4389,19 +4446,22 @@ private struct ActiveHotSearchCalendarSheet: View {
 
     private func dayTitle(for date: Date) -> String {
         if calendar.isDateInToday(date) {
-            return "Сегодня"
+            return L10n.string("Today", "Сегодня")
         }
         if calendar.isDateInTomorrow(date) {
-            return "Завтра"
+            return L10n.string("Tomorrow", "Завтра")
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.setLocalizedDateFormatFromTemplate("d MMM")
         return formatter.string(from: date)
     }
 
     private func searchWord(_ count: Int) -> String {
+        if LocaleStore.currentEffectiveLocale == .en {
+            return count == 1 ? "search" : "searches"
+        }
         let remainder10 = count % 10
         let remainder100 = count % 100
 
@@ -4466,10 +4526,10 @@ private struct UpcomingEmptyState: View {
                 .background(.white.opacity(0.08), in: Circle())
 
             VStack(spacing: 6) {
-                Text("Ближайших игр пока нет")
+                Text(L10n.string("No upcoming games yet", "Ближайших игр пока нет"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                Text("Создай срочный поиск, чтобы быстро собрать игру и увидеть её здесь после подтверждения.")
+                Text(L10n.string("Create an urgent search to quickly organize a game. It will appear here after confirmation.", "Создай срочный поиск, чтобы быстро собрать игру и увидеть её здесь после подтверждения."))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .multilineTextAlignment(.center)
@@ -4480,7 +4540,7 @@ private struct UpcomingEmptyState: View {
                 onCreateSearch()
                 AppHaptics.selection()
             } label: {
-                Label("Создать поиск", systemImage: "plus")
+                Label(L10n.string("Create search", "Создать поиск"), systemImage: "plus")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
@@ -4513,10 +4573,10 @@ private struct UrgentSearchEmptyState: View {
                 .background(AppTheme.court.opacity(0.12), in: Circle())
 
             VStack(spacing: 6) {
-                Text("Активных поисков пока нет")
+                Text(L10n.string("No active searches yet", "Активных поисков пока нет"))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("Создай поиск, чтобы быстро собрать игроков на ближайшее время.")
+                Text(L10n.string("Create a search to quickly find players for the near future.", "Создай поиск, чтобы быстро собрать игроков на ближайшее время."))
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.ink.opacity(0.62))
                     .multilineTextAlignment(.center)
@@ -4527,7 +4587,7 @@ private struct UrgentSearchEmptyState: View {
                 Button {
                     onCreateSearch()
                 } label: {
-                    Label("Создать поиск", systemImage: "plus")
+                    Label(L10n.string("Create search", "Создать поиск"), systemImage: "plus")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -4579,7 +4639,7 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
 
                 HStack(alignment: .top) {
                     TutorialSwipeActionCue(
-                        title: "не\nподходит",
+                        title: L10n.string("not a\nfit", "не\nподходит"),
                         systemImage: "xmark",
                         tint: Color(red: 1.0, green: 0.34, blue: 0.38),
                         textAlignment: .leading
@@ -4588,7 +4648,7 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                     Spacer(minLength: 0)
 
                     TutorialSwipeActionCue(
-                        title: "интересно\nсыграть",
+                        title: L10n.string("want to\nplay", "интересно\nсыграть"),
                         systemImage: "heart.fill",
                         tint: Color(red: 0.52, green: 0.92, blue: 0.38),
                         textAlignment: .trailing
@@ -4598,7 +4658,7 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                 .frame(width: geometry.size.width)
                 .position(x: geometry.size.width / 2, y: actionY)
 
-                Text("Смахивай карточки, чтобы выбирать игроков")
+                Text(L10n.string("Swipe cards to choose players", "Смахивай карточки, чтобы выбирать игроков"))
                     .font(.system(size: isCompact ? 17 : 19, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -4610,7 +4670,7 @@ private struct DiscoverSimilarPlayersHintOverlay: View {
                 VStack {
                     Spacer()
 
-                    Button("Понятно") {
+                    Button(L10n.string("Got it", "Понятно")) {
                         onDismiss()
                     }
                     .font(.headline.weight(.bold))
@@ -4651,7 +4711,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                 return trimmed
             }
         }
-        return "игроку"
+        return L10n.string("the player", "игроку")
     }
 
     var body: some View {
@@ -4698,7 +4758,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                         }
 
                         VStack(spacing: 8) {
-                            Text("Спортивный интерес\nотправлен")
+                            Text(L10n.string("Game interest\nsent", "Спортивный интерес\nотправлен"))
                                 .font(.system(size: isCompact ? 23 : 26, weight: .heavy, design: .rounded))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
@@ -4706,7 +4766,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                                 .minimumScaleFactor(0.78)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text("Мы покажем \(recipientText), что ты готов сыграть. Если интерес будет взаимным, вы сможете общаться в «Мэтчи».")
+                            Text(L10n.string("We'll let \(recipientText) know you're ready to play. If the interest is mutual, you can chat in Matches.", "Мы покажем \(recipientText), что ты готов сыграть. Если интерес будет взаимным, вы сможете общаться в «Мэтчи»."))
                                 .font(.system(size: isCompact ? 15 : 16, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.86))
                                 .multilineTextAlignment(.center)
@@ -4718,7 +4778,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                         HStack(alignment: .top, spacing: 8) {
                             InterestStepView(
                                 systemImage: "checkmark.circle.fill",
-                                title: "Отметил",
+                                title: L10n.string("You chose", "Отметил"),
                                 tint: Color(red: 0.58, green: 0.96, blue: 0.36)
                             )
 
@@ -4726,7 +4786,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
 
                             InterestStepView(
                                 systemImage: "paperplane.fill",
-                                title: "Ждем",
+                                title: L10n.string("Waiting", "Ждем"),
                                 tint: Color(red: 0.58, green: 0.96, blue: 0.36)
                             )
 
@@ -4734,7 +4794,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
 
                             InterestStepView(
                                 systemImage: "bell.fill",
-                                title: "Увидит",
+                                title: L10n.string("They'll see", "Увидит"),
                                 tint: Color(red: 0.58, green: 0.96, blue: 0.36)
                             )
                         }
@@ -4742,7 +4802,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
 
                         VStack(alignment: .leading, spacing: 10) {
                             Label {
-                                Text("Что дальше?")
+                                Text(L10n.string("What happens next?", "Что дальше?"))
                                     .font(.headline.weight(.bold))
                             } icon: {
                                 Image(systemName: "message.fill")
@@ -4751,7 +4811,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                             }
                             .foregroundStyle(.white)
 
-                            Text("Когда интерес станет взаимным, игрок появится в разделе «Мэтчи». Там можно обсудить спорт, удобное время и место.")
+                            Text(L10n.string("When the interest is mutual, the player will appear under Matches. You can discuss the sport, time, and place there.", "Когда интерес станет взаимным, игрок появится в разделе «Мэтчи». Там можно обсудить спорт, удобное время и место."))
                                 .font(.system(size: isCompact ? 14 : 15, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.82))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -4764,7 +4824,7 @@ private struct DiscoverFirstInterestHintOverlay: View {
                                 .stroke(Color(red: 0.58, green: 0.96, blue: 0.36).opacity(0.34), lineWidth: 1)
                         )
 
-                        Button("Понятно") {
+                        Button(L10n.string("Got it", "Понятно")) {
                             onDismiss()
                         }
                         .font(.headline.weight(.bold))
@@ -5225,11 +5285,11 @@ private struct DiscoverSummaryCard: View {
     private var eyebrow: String {
         switch state {
         case .upcoming:
-            return "Ближайшая игра"
+            return L10n.string("Upcoming game", "Ближайшая игра")
         case .attention:
-            return "Требует внимания"
+            return L10n.string("Needs attention", "Требует внимания")
         case .idle:
-            return "Всё спокойно"
+            return L10n.string("All quiet", "Всё спокойно")
         }
     }
 
@@ -5246,24 +5306,26 @@ private struct DiscoverSummaryCard: View {
         switch state {
         case .upcoming(let request):
             guard let date = request.proposedDate else {
-                return "Игра подтверждена"
+                return L10n.string("Game confirmed", "Игра подтверждена")
             }
             return relativeSummaryDate(for: date)
         case .attention(_, let title, _):
             return title
         case .idle:
-            return "Новых событий нет"
+            return L10n.string("No new events", "Новых событий нет")
         }
     }
 
     private var subtitle: String {
         switch state {
         case .upcoming(let request):
-            return request.proposedCourt?.name ?? request.otherUser(currentUserId: nil)?.name ?? "Открой ближайшие игры"
+            return request.proposedCourt?.name
+                ?? request.otherUser(currentUserId: nil)?.name
+                ?? L10n.string("Open upcoming games", "Открой ближайшие игры")
         case .attention(_, _, let subtitle):
             return subtitle
         case .idle:
-            return "Можно продолжить поиск"
+            return L10n.string("You can continue searching", "Можно продолжить поиск")
         }
     }
 
@@ -5352,12 +5414,12 @@ private struct DiscoverSummaryCard: View {
         let prefix: String
 
         if calendar.isDateInToday(date) {
-            prefix = "Сегодня"
+            prefix = L10n.string("Today", "Сегодня")
         } else if calendar.isDateInTomorrow(date) {
-            prefix = "Завтра"
+            prefix = L10n.string("Tomorrow", "Завтра")
         } else {
             let dateFormatter = DateFormatter()
-            dateFormatter.locale = Locale(identifier: "ru_RU")
+            dateFormatter.locale = LocaleStore.currentEffectiveLocale.locale
             dateFormatter.dateFormat = "d MMM"
             prefix = dateFormatter.string(from: date)
         }
@@ -5380,8 +5442,8 @@ private struct ElasticIslandButtonStyle: ButtonStyle {
 }
 
 private struct SwipeHintBar: View {
-    var leftTitle = "Влево — пропустить"
-    var rightTitle = "Вправо — можно сыграть"
+    var leftTitle = L10n.string("Left — skip", "Влево — пропустить")
+    var rightTitle = L10n.string("Right — ready to play", "Вправо — можно сыграть")
     var isHighlighted = false
 
     var body: some View {
@@ -5525,13 +5587,21 @@ private struct UpcomingWidgetPromptCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Виджет ближайших игр")
+                    Text(L10n.string("Upcoming games widget", "Виджет ближайших игр"))
                         .font(.system(size: 17, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
 
-                    Text(hasUpcomingGames ? "Покажем следующую игру прямо на главном экране iPhone." : "Добавь виджет сейчас, он заполнится после первой подтвержденной игры.")
+                    Text(hasUpcomingGames
+                         ? L10n.string(
+                            "Your next game will appear right on the iPhone Home Screen.",
+                            L10n.string("We'll show your next game right on the iPhone Home Screen.", "Покажем следующую игру прямо на главном экране iPhone.")
+                         )
+                         : L10n.string(
+                            "Add the widget now; it will populate after your first confirmed game.",
+                            L10n.string("Add the widget now; it will populate after your first confirmed game.", "Добавь виджет сейчас, он заполнится после первой подтвержденной игры.")
+                         ))
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
@@ -5585,10 +5655,10 @@ private struct UpcomingWidgetHelpSheet: View {
                         .background(Color.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Добавь виджет")
+                        Text(L10n.string("Add the widget", "Добавь виджет"))
                             .font(.system(size: 28, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
-                        Text("Ближайшая игра будет видна без открытия приложения.")
+                        Text(L10n.string("Your next game will be visible without opening the app.", "Ближайшая игра будет видна без открытия приложения."))
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white.opacity(0.62))
                             .fixedSize(horizontal: false, vertical: true)
@@ -5610,13 +5680,13 @@ private struct UpcomingWidgetHelpSheet: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Закрыть")
+                    .accessibilityLabel(L10n.string("Close", "Закрыть"))
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    WidgetInstructionRow(index: 1, text: "Зажми пустое место на главном экране iPhone.")
-                    WidgetInstructionRow(index: 2, text: "Нажми «+» и найди SportSearch.")
-                    WidgetInstructionRow(index: 3, text: "Выбери «Ближайшие игры» и добавь на экран.")
+                    WidgetInstructionRow(index: 1, text: L10n.string("Touch and hold an empty area on the iPhone Home Screen.", "Зажми пустое место на главном экране iPhone."))
+                    WidgetInstructionRow(index: 2, text: L10n.string("Tap “+” and find SportSearch.", "Нажми «+» и найди SportSearch."))
+                    WidgetInstructionRow(index: 3, text: L10n.string("Choose “Upcoming Games” and add it to the screen.", "Выбери «Ближайшие игры» и добавь на экран."))
                 }
                 .padding(16)
                 .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -5625,7 +5695,7 @@ private struct UpcomingWidgetHelpSheet: View {
                         .stroke(.white.opacity(0.1), lineWidth: 1)
                 )
 
-                Text("Данные обновляются после открытия раздела «Ближайшие игры» и после изменений в играх.")
+                Text(L10n.string("Data is refreshed when you open Upcoming Games and whenever a game changes.", "Данные обновляются после открытия раздела «Ближайшие игры» и после изменений в играх."))
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.52))
                     .fixedSize(horizontal: false, vertical: true)
@@ -5634,7 +5704,7 @@ private struct UpcomingWidgetHelpSheet: View {
                     onConfirm()
                     dismiss()
                 } label: {
-                    Text("Понятно")
+                    Text(L10n.string("Got it", "Понятно"))
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
@@ -5749,7 +5819,7 @@ private struct UpcomingGameDetailsSheet: View {
                                     icon: "sportscourt.fill",
                                     title: court.name,
                                     subtitle: court.address,
-                                    accessory: "Открыть клуб"
+                                    accessory: L10n.string("Open club", "Открыть клуб")
                                 )
                             }
                             .buttonStyle(.plain)
@@ -5774,7 +5844,7 @@ private struct UpcomingGameDetailsSheet: View {
 
                     if !participantRows.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Участники")
+                            Text(L10n.string("Participants", "Участники"))
                                 .font(.caption.weight(.bold))
                                 .textCase(.uppercase)
                                 .tracking(1.8)
@@ -5810,7 +5880,7 @@ private struct UpcomingGameDetailsSheet: View {
 
                     if let comment = request.comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Комментарий")
+                            Text(L10n.string("Comment", "Комментарий"))
                                 .font(.caption.weight(.bold))
                                 .textCase(.uppercase)
                                 .tracking(1.8)
@@ -5861,7 +5931,7 @@ private struct UpcomingGameDetailsSheet: View {
             HStack(spacing: 10) {
                 if canEdit, let onEdit {
                     Button(action: onEdit) {
-                        Label("Изменить игру", systemImage: "calendar.badge.clock")
+                        Label(L10n.string("Edit game", "Изменить игру"), systemImage: "calendar.badge.clock")
                             .font(.system(size: 15, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -5908,26 +5978,26 @@ private struct UpcomingGameDetailsSheet: View {
         }
 
         if participant.id == request.createdByUserId {
-            return GameParticipantStatus(label: "Организатор", tint: Color(red: 0.63, green: 0.93, blue: 0.75))
+            return GameParticipantStatus(label: L10n.string("Organizer", "Организатор"), tint: Color(red: 0.63, green: 0.93, blue: 0.75))
         }
 
         if participant.id == request.matchedUserId {
             return primaryRecipientStatus
         }
 
-        return GameParticipantStatus(label: "Участник", tint: .white.opacity(0.64))
+        return GameParticipantStatus(label: L10n.string("Participant", "Участник"), tint: .white.opacity(0.64))
     }
 
     private var primaryRecipientStatus: GameParticipantStatus {
         switch request.status.lowercased() {
         case "accepted", "approved":
-            return GameParticipantStatus(label: "Принял", tint: AppTheme.court)
+            return GameParticipantStatus(label: L10n.string("Accepted", "Принял"), tint: AppTheme.court)
         case "declined", "rejected":
-            return GameParticipantStatus(label: "Отклонил", tint: .red.opacity(0.88))
+            return GameParticipantStatus(label: L10n.string("Declined", "Отклонил"), tint: .red.opacity(0.88))
         case "canceled", "cancelled", "withdrawn":
-            return GameParticipantStatus(label: "Отменено", tint: .gray.opacity(0.82))
+            return GameParticipantStatus(label: L10n.string("Canceled", "Отменено"), tint: .gray.opacity(0.82))
         default:
-            return GameParticipantStatus(label: "Ожидаем ответ", tint: Color(red: 1.0, green: 0.70, blue: 0.30))
+            return GameParticipantStatus(label: L10n.string("Awaiting response", "Ожидаем ответ"), tint: Color(red: 1.0, green: 0.70, blue: 0.30))
         }
     }
 
@@ -6000,7 +6070,7 @@ private struct UpcomingGameDetailsSheet: View {
             HStack(spacing: 10) {
                 ProgressView()
                     .tint(AppTheme.court)
-                Text("Загружаем отклики")
+                Text(L10n.string("Loading responses", "Загружаем отклики"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -6013,13 +6083,13 @@ private struct UpcomingGameDetailsSheet: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Отклики на поиск")
+                    Text(L10n.string("Search responses", "Отклики на поиск"))
                         .font(.caption.weight(.bold))
                         .textCase(.uppercase)
                         .tracking(1.8)
                         .foregroundStyle(.white.opacity(0.58))
                     Spacer()
-                    Text("\(approved.count) в составе")
+                    Text(L10n.string("\(approved.count) joined", "\(approved.count) в составе"))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(AppTheme.court)
                 }
@@ -6047,7 +6117,9 @@ private struct UpcomingGameDetailsSheet: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
 
-                Text(response.status == "approved" ? "Уже в составе" : "Ждёт решения")
+                Text(response.status == "approved"
+                     ? L10n.string("Already in the group", "Уже в составе")
+                     : L10n.string("Awaiting decision", "Ждёт решения"))
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(response.status == "approved" ? AppTheme.court : Color(red: 1.0, green: 0.70, blue: 0.30))
             }
@@ -6221,10 +6293,10 @@ struct SwipeCard: View {
 
     private var centerSwipeText: String? {
         if leftSwipeProgress > 0.05 {
-            return "Пропустить"
+            return L10n.string("Skip", "Пропустить")
         }
         if rightSwipeProgress > 0.05 {
-            return "Можно сыграть"
+            return L10n.string("Available to play", "Можно сыграть")
         }
         return nil
     }
@@ -6463,39 +6535,41 @@ struct SwipeCard: View {
             Text(sport.title)
                 .foregroundStyle(AppTheme.mint)
         } else {
-            Text("Спорт не указан")
+            Text(L10n.string("Sport not specified", "Спорт не указан"))
         }
     }
 
     private var playerLocationText: String {
-        user.districtDisplayNames.first ?? user.city ?? "Город не указан"
+        user.districtDisplayNames.first ?? user.city ?? L10n.string("City not specified", "Город не указан")
     }
 
     private var primaryLevelText: String {
         guard let sport = user.preferredSports.first else {
-            return "уровень не указан"
+            return L10n.string("level not specified", "уровень не указан")
         }
         let level = user.sportLevels[sport.rawValue] ?? user.tennisLevel
         guard let level else {
-            return "уровень не указан"
+            return L10n.string("level not specified", "уровень не указан")
         }
-        return "уровень \(level)"
+        return L10n.string("level \(level)", "уровень \(level)")
     }
 
     private var playerFitPanel: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text(mode == .profilePreview ? "Что увидят игроки" : "Почему вы подходите")
+            Text(mode == .profilePreview
+                 ? L10n.string("What players will see", "Что увидят игроки")
+                 : L10n.string("Why you are a good match", "Почему вы подходите"))
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
 
             HStack(spacing: 0) {
-                fitMetric(icon: "tennis.racket", title: "Спорт", value: sportMetricValue)
+                fitMetric(icon: "tennis.racket", title: L10n.string("Sport", "Спорт"), value: sportMetricValue)
                 Divider().overlay(.white.opacity(0.08))
-                fitMetric(icon: "chart.bar.fill", title: "Уровень", value: primaryLevelText.replacingOccurrences(of: "уровень ", with: ""))
+                fitMetric(icon: "chart.bar.fill", title: L10n.string("Level", "Уровень"), value: primaryLevelText.replacingOccurrences(of: L10n.string("level ", "уровень "), with: ""))
                 Divider().overlay(.white.opacity(0.08))
                 fitMetric(
                     icon: "mappin.circle.fill",
-                    title: mode == .profilePreview ? "Локация" : "Район",
+                    title: mode == .profilePreview ? L10n.string("Location", "Локация") : L10n.string("District", "Район"),
                     value: mode == .profilePreview ? playerLocationText : (user.districtDisplayNames.first ?? user.distanceLabel)
                 )
             }
@@ -6524,15 +6598,15 @@ struct SwipeCard: View {
             return bio
         }
         return mode == .profilePreview
-            ? "Описание пока не заполнено"
-            : "Готов быстро договориться и выйти на игру без лишних шагов."
+            ? L10n.string("No description yet", "Описание пока не заполнено")
+            : L10n.string("Ready to quickly arrange and play without extra steps.", "Готов быстро договориться и выйти на игру без лишних шагов.")
     }
 
     private var sportMetricValue: String {
         if let sport = user.preferredSports.first {
             return sport.title
         }
-        return mode == .profilePreview ? "Не указан" : "Любой"
+        return mode == .profilePreview ? L10n.string("Not specified", "Не указан") : L10n.string("Any", "Любой")
     }
 
     private func fitMetric(icon: String, title: String, value: String) -> some View {
@@ -6561,7 +6635,7 @@ struct SwipeCard: View {
                         .foregroundStyle(.white)
                         .frame(width: 56, height: 56)
                         .background(.white.opacity(0.1), in: Circle())
-                    Text("Пропустить")
+                    Text(L10n.string("Skip", "Пропустить"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.7))
                 }
@@ -6580,7 +6654,7 @@ struct SwipeCard: View {
                     )
                         .frame(width: 72, height: 72)
                         .background(AppTheme.court, in: Circle())
-                    Text("Позвать на игру")
+                    Text(L10n.string("Invite to play", "Позвать на игру"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.78))
                 }
@@ -6609,10 +6683,10 @@ struct SwipeCard: View {
 
                 HStack(spacing: 8) {
                     if let age = user.age {
-                        Text("\(age) лет")
+                        Text(L10n.string("Age \(age)", "\(age) лет"))
                             .font(.subheadline.weight(.semibold))
                     }
-                    Text(user.city ?? "Город не указан")
+                    Text(user.city ?? L10n.string("City not provided", "Город не указан"))
                         .font(.subheadline)
                 }
                 .foregroundStyle(.white.opacity(0.8))
@@ -6648,7 +6722,10 @@ struct SwipeCard: View {
     }
 
     private var bioBlock: some View {
-        Text(user.bio ?? "Готов быстро договориться и выйти на игру без лишних шагов.")
+        Text(user.bio ?? L10n.string(
+            "Ready to arrange a game quickly without extra steps.",
+            L10n.string("Ready to quickly arrange and play without extra steps.", "Готов быстро договориться и выйти на игру без лишних шагов.")
+        ))
             .font(.body)
             .foregroundStyle(.white.opacity(0.84))
             .lineSpacing(2)
@@ -6657,7 +6734,7 @@ struct SwipeCard: View {
 
     private var reasonsBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Почему в подборе")
+            Text(L10n.string("Why this match", "Почему в подборе"))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white.opacity(0.72))
 
@@ -6714,9 +6791,9 @@ struct SwipeCard: View {
     private var decisionBadge: some View {
         switch decision {
         case .dislike:
-            GlassDecision(text: "Пропустить", tint: .white)
+            GlassDecision(text: L10n.string("Skip", "Пропустить"), tint: .white)
         case .like:
-            GlassDecision(text: "Можно сыграть", tint: Color(red: 0.83, green: 1, blue: 0.88))
+            GlassDecision(text: L10n.string("Ready to play", "Можно сыграть"), tint: Color(red: 0.83, green: 1, blue: 0.88))
         case .superlike:
             EmptyView()
         case nil:
@@ -7133,48 +7210,55 @@ private struct ActiveHotSearchCard: View {
 
     private var dayText: String {
         guard let startDate else {
-            return search.hotWindow?.title ?? "Сегодня"
+            return search.hotWindow?.title ?? L10n.string("Today", "Сегодня")
         }
 
         if Calendar.current.isDateInToday(startDate) {
-            return "Сегодня"
+            return L10n.string("Today", "Сегодня")
         }
 
         if Calendar.current.isDateInTomorrow(startDate) {
-            return "Завтра"
+            return L10n.string("Tomorrow", "Завтра")
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = LocaleStore.currentEffectiveLocale.locale
         formatter.setLocalizedDateFormatFromTemplate("d MMM")
         return formatter.string(from: startDate)
     }
 
     private var timeText: String {
-        startDate?.formattedHourMinute() ?? "Время"
+        startDate?.formattedHourMinute() ?? L10n.string("Time", "Время")
     }
 
     private var levelText: String {
         let minLevel = search.desiredLevelMin ?? search.selfLevel ?? 1
         let maxLevel = search.desiredLevelMax ?? search.selfLevel ?? 10
         if minLevel == maxLevel {
-            return "Уровень \(minLevel)"
+            return L10n.string("Level \(minLevel)", "Уровень \(minLevel)")
         }
-        return "Уровень \(minLevel)-\(maxLevel)"
+        return L10n.string("Level \(minLevel)-\(maxLevel)", "Уровень \(minLevel)-\(maxLevel)")
     }
 
     private var playersNeededText: String {
         if search.playersNeeded == 1 {
-            return "Нужен 1 игрок"
+            return L10n.string("1 player needed", "Нужен 1 игрок")
         }
-        return "Нужно \(search.playersNeeded) \(playerWord(search.playersNeeded))"
+        if LocaleStore.currentEffectiveLocale == .en {
+            return "\(search.playersNeeded) players needed"
+        }
+        return LocaleStore.currentEffectiveLocale == .en
+            ? "Need \(search.playersNeeded) \(search.playersNeeded == 1 ? "player" : "players")"
+            : "Нужно \(search.playersNeeded) \(playerWord(search.playersNeeded))"
     }
 
     private var courtName: String {
         search.preferredCourt?.name
             ?? search.customVenueAddress
             ?? search.customVenueTitle
-            ?? (search.sport.isRouteSport ? "Маршрут уточняется" : search.sport.venuePendingTitle)
+            ?? (search.sport.isRouteSport
+                ? L10n.string("Route to be confirmed", "Маршрут уточняется")
+                : search.sport.venuePendingTitle)
     }
 
     private var courtDetails: String {
@@ -7190,23 +7274,25 @@ private struct ActiveHotSearchCard: View {
                 return value
             }
 
-        return values.isEmpty ? "Место уточняется" : values.joined(separator: " · ")
+        return values.isEmpty ? L10n.string("Place to be confirmed", "Место уточняется") : values.joined(separator: " · ")
     }
 
     private var districtText: String {
-        user.districtLabel ?? localizedDistrictName(user.district) ?? user.city ?? "Район не указан"
+        user.districtLabel ?? localizedDistrictName(user.district) ?? user.city ?? L10n.string("Area not provided", "Район не указан")
     }
 
     private var actionTitle: String {
         switch responseStatus {
         case "pending":
-            return "Отменить"
+            return L10n.string("Cancel", "Отменить")
         case "approved":
-            return canOpenApprovedChat ? "Открыть чат" : "Отклик принят"
+            return canOpenApprovedChat
+                ? L10n.string("Open chat", "Открыть чат")
+                : L10n.string("Response accepted", "Отклик принят")
         case "rejected":
-            return "Отклик отклонён"
+            return L10n.string("Response declined", "Отклик отклонён")
         default:
-            return "Откликнуться"
+            return L10n.string("Respond", "Откликнуться")
         }
     }
 
@@ -7330,19 +7416,19 @@ private struct ActiveHotSearchCard: View {
             HStack(spacing: 10) {
                 ActiveHotSearchDetailTile(
                     systemImage: "calendar",
-                    title: "Дата",
+                    title: L10n.string("Date", "Дата"),
                     value: dayText
                 )
 
                 ActiveHotSearchDetailTile(
                     systemImage: "clock",
-                    title: "Время",
+                    title: L10n.string("Time", "Время"),
                     value: timeText
                 )
 
                 ActiveHotSearchDetailTile(
                     systemImage: "person.2.fill",
-                    title: "Ищем",
+                    title: L10n.string("Looking for", "Ищем"),
                     value: playersNeededText
                 )
             }
@@ -7361,7 +7447,7 @@ private struct ActiveHotSearchCard: View {
                                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
                         )
                         .overlay(alignment: .bottomTrailing) {
-                            Label("Открыть маршрут", systemImage: "arrow.up.left.and.arrow.down.right")
+                            Label(L10n.string("Open directions", "Открыть маршрут"), systemImage: "arrow.up.left.and.arrow.down.right")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10)
@@ -7561,9 +7647,14 @@ private struct SeekingSearchCard: View {
     private var rosterLabel: String {
         let approvedResponses = search.responses.filter { $0.status == "approved" }.count
         if search.playersNeeded > 1 {
-            return "Собрано \(approvedResponses) из \(search.playersNeeded)"
+            return L10n.string(
+                "\(approvedResponses) of \(search.playersNeeded) joined",
+                L10n.string("\(approvedResponses) of \(search.playersNeeded) joined", "Собрано \(approvedResponses) из \(search.playersNeeded)")
+            )
         }
-        return approvedResponses > 0 ? "Игрок уже подтверждён" : "Нужен 1 игрок"
+        return approvedResponses > 0
+            ? L10n.string("Player already confirmed", "Игрок уже подтверждён")
+            : L10n.string("1 player needed", "Нужен 1 игрок")
     }
 
     private var approvedResponsesCount: Int {
@@ -7572,9 +7663,11 @@ private struct SeekingSearchCard: View {
 
     private var detailsTitle: String {
         if search.searchType == .hot {
-            return search.hasCourtBooked ? "Нужен игрок на ближайшее время" : "Быстрая игра на ближайшее время"
+            return search.hasCourtBooked
+                ? L10n.string("Player needed soon", "Нужен игрок на ближайшее время")
+                : L10n.string("Quick game soon", "Быстрая игра на ближайшее время")
         }
-        return "Ищет партнёра по расписанию"
+        return L10n.string("Looking for a partner by schedule", "Ищет партнёра по расписанию")
     }
 
     private var detailText: String {
@@ -7584,7 +7677,10 @@ private struct SeekingSearchCard: View {
         if let bio = user.bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty {
             return bio
         }
-        return "Хочет быстро договориться и выйти на игру без долгой переписки."
+        return L10n.string(
+            "Wants to arrange a game quickly without a long chat.",
+            L10n.string("Wants to quickly arrange a game without a long chat.", "Хочет быстро договориться и выйти на игру без долгой переписки.")
+        )
     }
 
     private var searchStatusLabel: String {
@@ -7594,11 +7690,11 @@ private struct SeekingSearchCard: View {
     private var myResponseStatusLabel: String? {
         switch responseStatus {
         case "pending":
-            return "Мой отклик отправлен"
+            return L10n.string("My response was sent", "Мой отклик отправлен")
         case "approved":
-            return "Меня подтвердили"
+            return L10n.string("I was confirmed", "Меня подтвердили")
         case "rejected":
-            return "Отклик отклонён"
+            return L10n.string("Response declined", "Отклик отклонён")
         default:
             return nil
         }
@@ -7607,11 +7703,11 @@ private struct SeekingSearchCard: View {
     private var myResponseStatusCaption: String? {
         switch responseStatus {
         case "pending":
-            return "Ожидает решения организатора"
+            return L10n.string("Waiting for the organizer's decision", "Ожидает решения организатора")
         case "approved":
-            return "Можно договариваться об игре"
+            return L10n.string("You can arrange the game", "Можно договариваться об игре")
         case "rejected":
-            return "Не получится сыграть"
+            return L10n.string("The game will not happen", "Не получится сыграть")
         default:
             return nil
         }
@@ -7627,9 +7723,9 @@ private struct SeekingSearchCard: View {
             return [Color(red: 0.56, green: 0.37, blue: 0.11), AppTheme.ink]
         default:
             switch searchStatusLabel {
-            case "Игрок найден", "Игроки найдены":
+            case "Игрок найден", "Игроки найдены", "Player found", "Players found":
                 return [Color(red: 0.10, green: 0.45, blue: 0.24), AppTheme.ink]
-            case "Ожидает решения", "В процессе набора", "В процессе набора людей":
+            case "Ожидает решения", "В процессе набора", "В процессе набора людей", "Awaiting decision", "Recruiting":
                 return [Color(red: 0.56, green: 0.37, blue: 0.11), AppTheme.ink]
             default:
                 return search.searchType == .hot
@@ -7700,7 +7796,7 @@ private struct SeekingSearchCard: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Сейчас ищет")
+                        Text(L10n.string("Looking now", "Сейчас ищет"))
                             .font(.system(size: 11, weight: .semibold))
                             .textCase(.uppercase)
                             .tracking(1.6)
@@ -7715,17 +7811,17 @@ private struct SeekingSearchCard: View {
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        SearchInfoTile(systemImage: "clock", label: "Когда", value: search.scheduleLine)
+                        SearchInfoTile(systemImage: "clock", label: L10n.string("When", "Когда"), value: search.scheduleLine)
                         SearchInfoTile(
                             systemImage: "building.2",
                             label: search.sport.venueFieldTitle,
-                            value: search.preferredCourt?.name ?? (search.hasCourtBooked ? "Уже забронировано" : "Без привязки")
+                            value: search.preferredCourt?.name ?? (search.hasCourtBooked ? L10n.string("Already booked", "Уже забронировано") : L10n.string("No venue selected", "Без привязки"))
                         )
-                        SearchInfoTile(systemImage: "person.2", label: "Состав", value: rosterLabel)
+                        SearchInfoTile(systemImage: "person.2", label: L10n.string("Players", "Состав"), value: rosterLabel)
                         SearchInfoTile(
                             systemImage: "target",
-                            label: "Ищет",
-                            value: "Уровень \((search.desiredLevelMin ?? 1))-\((search.desiredLevelMax ?? 10))"
+                            label: L10n.string("Looking for", "Ищет"),
+                            value: L10n.string("Level \((search.desiredLevelMin ?? 1))-\((search.desiredLevelMax ?? 10))", "Уровень \((search.desiredLevelMin ?? 1))-\((search.desiredLevelMax ?? 10))")
                         )
                     }
 
@@ -7808,16 +7904,18 @@ private struct SeekingSearchCard: View {
     private var appModelButtonTitle: String {
         switch responseStatus {
         case "pending":
-            return "Отменить отклик"
+            return L10n.string("Cancel response", "Отменить отклик")
         case "approved":
             if search.playersNeeded > 1 {
-                return "Открыть чат состава"
+                return L10n.string("Open group chat", "Открыть чат состава")
             }
-            return canOpenApprovedPair ? "Открыть пару" : "Отклик принят"
+            return canOpenApprovedPair
+                ? L10n.string("Open pair", "Открыть пару")
+                : L10n.string("Response accepted", "Отклик принят")
         case "rejected":
-            return "Отклик отклонён"
+            return L10n.string("Response declined", "Отклик отклонён")
         default:
-            return "Откликнуться"
+            return L10n.string("Respond", "Откликнуться")
         }
     }
 
@@ -7855,7 +7953,7 @@ private struct SeekingSearchCard: View {
         ]
 
         if search.playersNeeded > 1 {
-            pills.append(.init(systemImage: "person.3.fill", text: "Нужно игроков: \(search.playersNeeded)", tint: .white.opacity(0.12)))
+            pills.append(.init(systemImage: "person.3.fill", text: L10n.string("Players needed: \(search.playersNeeded)", "Нужно игроков: \(search.playersNeeded)"), tint: .white.opacity(0.12)))
         }
 
         if let date = hotCountdownLabel, search.searchType == .hot {
@@ -7907,8 +8005,8 @@ private struct ShareExistingGameSheet: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
                         SectionCard(
-                            title: "Пригласить в игру",
-                            subtitle: "Выбери мэтчи, которым нужно отправить уже созданную договорённость."
+                            title: L10n.string("Invite to game", "Пригласить в игру"),
+                            subtitle: L10n.string("Choose matches to receive the game you already created.", "Выбери мэтчи, которым нужно отправить уже созданную договорённость.")
                         ) {
                             VStack(alignment: .leading, spacing: 8) {
                                 AppInlineChip(text: request.sport.title, tint: AppTheme.cream, foreground: AppTheme.ink)
@@ -7917,15 +8015,15 @@ private struct ShareExistingGameSheet: View {
                         }
 
                         if matches.isEmpty {
-                            SectionCard(title: "Нет доступных мэтчей", subtitle: "Сначала нужен ещё хотя бы один мэтч без активного приглашения.") {
+                            SectionCard(title: L10n.string("No available matches", "Нет доступных мэтчей"), subtitle: L10n.string("You need at least one more match without an active invitation.", "Сначала нужен ещё хотя бы один мэтч без активного приглашения.")) {
                                 EmptyStateView(
-                                    title: "Некого приглашать",
-                                    subtitle: "Как только появятся другие мэтчи, здесь можно будет быстро разослать эту игру нескольким людям.",
+                                    title: L10n.string("No one to invite", "Некого приглашать"),
+                                    subtitle: L10n.string("When more matches appear, you can quickly send this game to several people here.", "Как только появятся другие мэтчи, здесь можно будет быстро разослать эту игру нескольким людям."),
                                     systemImage: "person.3"
                                 )
                             }
                         } else {
-                            SectionCard(title: "Кому отправить", subtitle: "Можно отметить сразу нескольких игроков.") {
+                            SectionCard(title: L10n.string("Send to", "Кому отправить"), subtitle: L10n.string("You can select several players at once.", "Можно отметить сразу нескольких игроков.")) {
                                 VStack(spacing: 10) {
                                     ForEach(matches) { match in
                                         Button {
@@ -7967,11 +8065,11 @@ private struct ShareExistingGameSheet: View {
                     .padding(.bottom, 120)
                 }
             }
-            .navigationTitle("Приглашения")
+            .navigationTitle(L10n.string("Invitations", "Приглашения"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") {
+                    Button(L10n.string("Close", "Закрыть")) {
                         dismiss()
                     }
                 }
@@ -7988,7 +8086,7 @@ private struct ShareExistingGameSheet: View {
                             ProgressView()
                                 .tint(AppTheme.court)
                         } else {
-                            Text("Отправить")
+                            Text(L10n.string("Send", "Отправить"))
                         }
                     }
                     .disabled(selectedMatchIDs.isEmpty || isSubmitting)
@@ -8026,7 +8124,7 @@ private struct MatchSuccessToast: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Новый мэтч")
+                Text(L10n.string("New match", "Новый мэтч"))
                     .font(.caption.weight(.semibold))
                     .textCase(.uppercase)
                     .tracking(1.4)
@@ -8231,7 +8329,7 @@ private struct UpcomingGameCard: View {
     }
 
     private var cancelTitle: String {
-        request.createdByUserId == currentUserId ? "Отменить" : "Не смогу"
+        request.createdByUserId == currentUserId ? L10n.string("Cancel", "Отменить") : L10n.string("I can't make it", "Не смогу")
     }
 
     private var visibleParticipants: [DiscoverUser] {
@@ -8268,7 +8366,7 @@ private struct UpcomingGameCard: View {
                     )
                 } else if request.outcome != nil {
                     GameOutcomeSummary(
-                        label: request.outcomeLabel ?? "Итог сохранён",
+                        label: request.outcomeLabel ?? L10n.string("Result saved", "Итог сохранён"),
                         onProposeNext: onProposeNext
                     )
                 }
@@ -8442,7 +8540,7 @@ private struct UpcomingGameCard: View {
                     title: request.sport.venueFieldTitle,
                     subtitle: courtLabel
                 ) {
-                    Label("Открыть клуб", systemImage: "chevron.up.right")
+                    Label(L10n.string("Open club", "Открыть клуб"), systemImage: "chevron.up.right")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
                         .lineLimit(1)
@@ -8474,7 +8572,7 @@ private struct UpcomingGameCard: View {
                 .background(AppTheme.court, in: Capsule())
                 .foregroundStyle(.white)
                 .buttonStyle(.plain)
-                .accessibilityLabel("Открыть чат")
+                .accessibilityLabel(L10n.string("Open chat", "Открыть чат"))
             }
 
             if let onAccept {
@@ -8532,7 +8630,7 @@ private struct UpcomingGameCard: View {
                 .foregroundStyle(.white)
                 .buttonStyle(.plain)
                 .disabled(isAddingToCalendar)
-                .accessibilityLabel("Добавить в календарь")
+                .accessibilityLabel(L10n.string("Add to calendar", "Добавить в календарь"))
             }
 
             if let onOpenDetails {
@@ -8544,7 +8642,7 @@ private struct UpcomingGameCard: View {
                 .background(.white.opacity(0.08), in: Circle())
                 .foregroundStyle(.white)
                 .buttonStyle(.plain)
-                .accessibilityLabel("Детали игры")
+                .accessibilityLabel(L10n.string("Game details", "Детали игры"))
             }
         }
     }
@@ -8576,7 +8674,9 @@ private struct UpcomingGameCard: View {
                 }
             }
 
-            Text("\(request.participantCount) \(participantsCountWord(request.participantCount))")
+            Text(LocaleStore.currentEffectiveLocale == .en
+                ? "\(request.participantCount) \(request.participantCount == 1 ? "participant" : "participants")"
+                : "\(request.participantCount) \(participantsCountWord(request.participantCount))")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .lineLimit(1)
@@ -8711,7 +8811,7 @@ private struct UpcomingCourtDetailSheet: View {
                                 .foregroundStyle(.white)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Закрыть")
+                        .accessibilityLabel(L10n.string("Close", "Закрыть"))
                     }
 
                     CourtImageTile(court: court, size: imageSize)
@@ -8745,14 +8845,14 @@ private struct UpcomingCourtDetailSheet: View {
                     }
 
                     HStack(spacing: 10) {
-                        actionButton(title: "Маршрут", systemImage: "map", url: mapURL)
-                        actionButton(title: "Позвонить", systemImage: "phone", url: court.phoneURL)
+                        actionButton(title: L10n.string("Directions", "Маршрут"), systemImage: "map", url: mapURL)
+                        actionButton(title: L10n.string("Call", "Позвонить"), systemImage: "phone", url: court.phoneURL)
                     }
 
                     if court.bookingLinkURL != nil || court.websiteLinkURL != nil {
                         HStack(spacing: 10) {
-                            actionButton(title: "Бронь", systemImage: "calendar.badge.plus", url: court.bookingLinkURL)
-                            actionButton(title: "Сайт", systemImage: "safari", url: court.websiteLinkURL)
+                            actionButton(title: L10n.string("Book", "Бронь"), systemImage: "calendar.badge.plus", url: court.bookingLinkURL)
+                            actionButton(title: L10n.string("Website", "Сайт"), systemImage: "safari", url: court.websiteLinkURL)
                         }
                     }
                 }
@@ -8931,7 +9031,7 @@ private struct GameReportCompactSummary: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(report.status.lowercased() == "confirmed" ? AppTheme.court : Color.orange)
                 Spacer()
-                Text("\(report.photoUrls.count) фото")
+                Text(L10n.string("\(report.photoUrls.count) photos", "\(report.photoUrls.count) фото"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.58))
             }
@@ -8951,7 +9051,7 @@ private struct GameReportCompactSummary: View {
                     .lineLimit(2)
             }
 
-            Text("Отчёт сохранён без дополнительного подтверждения.")
+            Text(L10n.string("The report was saved without additional confirmation.", "Отчёт сохранён без дополнительного подтверждения."))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.56))
         }
@@ -8976,11 +9076,15 @@ private struct PersonalActivityUpcomingCard: View {
     private var statusTitle: String {
         switch activity.status.lowercased() {
         case "completed":
-            return activity.photoUrls.isEmpty ? "Завершено" : "Фотоотчёт сохранён"
+            return activity.photoUrls.isEmpty
+                ? L10n.string("Completed", "Завершено")
+                : L10n.string("Photo report saved", "Фотоотчёт сохранён")
         case "canceled":
-            return "Отменено"
+            return L10n.string("Canceled", "Отменено")
         default:
-            return activity.hasEnded ? "Визит завершён" : "Запланировано"
+            return activity.hasEnded
+                ? L10n.string("Visit completed", "Визит завершён")
+                : L10n.string("Scheduled", "Запланировано")
         }
     }
 
@@ -9012,7 +9116,7 @@ private struct PersonalActivityUpcomingCard: View {
                     Button {
                         onOpenCourt()
                     } label: {
-                        Label(activity.court?.name ?? "Клуб", systemImage: "mappin.and.ellipse")
+                        Label(activity.court?.name ?? L10n.string("Club", "Клуб"), systemImage: "mappin.and.ellipse")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.58))
                             .lineLimit(1)
@@ -9050,7 +9154,12 @@ private struct PersonalActivityUpcomingCard: View {
                     Button {
                         onAddPhotoReport()
                     } label: {
-                        Label(activity.photoUrls.isEmpty ? "Добавить фотоотчёт" : "Изменить отчёт", systemImage: "camera.fill")
+                        Label(
+                            activity.photoUrls.isEmpty
+                                ? L10n.string("Add photo report", "Добавить фотоотчёт")
+                                : L10n.string("Edit report", "Изменить отчёт"),
+                            systemImage: "camera.fill"
+                        )
                             .font(.system(size: 13, weight: .bold))
                             .frame(maxWidth: .infinity)
                     }
@@ -9066,7 +9175,7 @@ private struct PersonalActivityUpcomingCard: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("Без фото")
+                            Text(L10n.string("No photo", "Без фото"))
                                 .font(.system(size: 13, weight: .bold))
                                 .frame(maxWidth: .infinity)
                         }
@@ -9186,7 +9295,7 @@ private struct GameReportComposerSheet: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text("Добавить фотоотчёт")
+            Text(L10n.string("Add photo report", "Добавить фотоотчёт"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
             Spacer()
@@ -9196,7 +9305,7 @@ private struct GameReportComposerSheet: View {
 
     private var photoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Фото")
+            Text(L10n.string("Photo", "Фото"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
@@ -9255,7 +9364,7 @@ private struct GameReportComposerSheet: View {
 
     private var gameSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Игра")
+            Text(L10n.string("Game", "Игра"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white.opacity(0.5))
                 .textCase(.uppercase)
@@ -9263,7 +9372,7 @@ private struct GameReportComposerSheet: View {
             Text("\(request.sport.title) · \(request.proposedDatetime.formattedDateTime())")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-            Text("\(request.proposedCourt?.name ?? request.sport.venuePendingTitle) · \(request.durationMinutes ?? 90) мин")
+            Text(L10n.string("\(request.proposedCourt?.name ?? request.sport.venuePendingTitle) · \(request.durationMinutes ?? 90) min", "\(request.proposedCourt?.name ?? request.sport.venuePendingTitle) · \(request.durationMinutes ?? 90) мин"))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.62))
         }
@@ -9274,10 +9383,10 @@ private struct GameReportComposerSheet: View {
 
     private var commentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Комментарий")
+            Text(L10n.string("Comment", "Комментарий"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-            TextField("Хорошая игра, спасибо за матч!", text: $comment, axis: .vertical)
+            TextField(L10n.string("Great game, thanks for the match!", "Хорошая игра, спасибо за матч!"), text: $comment, axis: .vertical)
                 .lineLimit(3 ... 5)
                 .textInputAutocapitalization(.sentences)
                 .padding(14)
@@ -9288,14 +9397,14 @@ private struct GameReportComposerSheet: View {
 
     private var visibilitySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Кто видит отчёт")
+            Text(L10n.string("Who can see the report", "Кто видит отчёт"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             HStack(spacing: 8) {
-                visibilityButton(title: "В профиле", subtitle: "Все", value: "profile")
-                visibilityButton(title: "Участникам", subtitle: "Только игра", value: "participants")
-                visibilityButton(title: "Приватно", subtitle: "Без ленты", value: "private")
+                visibilityButton(title: L10n.string("On profile", "В профиле"), subtitle: L10n.string("Everyone", "Все"), value: "profile")
+                visibilityButton(title: L10n.string("Participants", "Участникам"), subtitle: L10n.string("Game only", "Только игра"), value: "participants")
+                visibilityButton(title: L10n.string("Private", "Приватно"), subtitle: L10n.string("Not in feed", "Без ленты"), value: "private")
             }
         }
     }
@@ -9309,7 +9418,9 @@ private struct GameReportComposerSheet: View {
                     ProgressView()
                         .tint(.white)
                 }
-                Text(isSubmitting ? "Отправляем..." : "Отправить партнёру")
+                Text(isSubmitting
+                     ? L10n.string("Sending...", "Отправляем...")
+                     : L10n.string("Send to partner", "Отправить партнёру"))
             }
             .frame(maxWidth: .infinity)
         }
@@ -9460,7 +9571,7 @@ private struct PersonalActivityReportComposerSheet: View {
             .buttonStyle(.plain)
 
             Spacer()
-            Text("Фотоотчёт визита")
+            Text(L10n.string("Visit photo report", "Фотоотчёт визита"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
             Spacer()
@@ -9470,7 +9581,7 @@ private struct PersonalActivityReportComposerSheet: View {
 
     private var photoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Фото")
+            Text(L10n.string("Photo", "Фото"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
@@ -9529,7 +9640,7 @@ private struct PersonalActivityReportComposerSheet: View {
 
     private var activitySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Визит")
+            Text(L10n.string("Visit", "Визит"))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white.opacity(0.5))
                 .textCase(.uppercase)
@@ -9537,7 +9648,10 @@ private struct PersonalActivityReportComposerSheet: View {
             Text("\(activity.sport.title) · \(activity.scheduledAt.formattedDateTime())")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-            Text("\(activity.court?.name ?? "Клуб") · \(activity.durationMinutes ?? activity.sport.defaultDurationMinutes) мин")
+            Text(L10n.string(
+                "\(activity.court?.name ?? L10n.string("Club", "Клуб")) · \(activity.durationMinutes ?? activity.sport.defaultDurationMinutes) min",
+                "\(activity.court?.name ?? L10n.string("Club", "Клуб")) · \(activity.durationMinutes ?? activity.sport.defaultDurationMinutes) мин"
+            ))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.62))
         }
@@ -9548,10 +9662,10 @@ private struct PersonalActivityReportComposerSheet: View {
 
     private var commentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Комментарий")
+            Text(L10n.string("Comment", "Комментарий"))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-            TextField("Что делали на тренировке?", text: $comment, axis: .vertical)
+            TextField(L10n.string("What did you do during practice?", "Что делали на тренировке?"), text: $comment, axis: .vertical)
                 .lineLimit(3 ... 5)
                 .textInputAutocapitalization(.sentences)
                 .padding(14)
@@ -9569,7 +9683,9 @@ private struct PersonalActivityReportComposerSheet: View {
                     ProgressView()
                         .tint(.white)
                 }
-                Text(isSubmitting ? "Сохраняем..." : "Сохранить в дневник")
+                Text(isSubmitting
+                     ? L10n.string("Saving...", "Сохраняем...")
+                     : L10n.string("Save to journal", "Сохранить в дневник"))
             }
             .frame(maxWidth: .infinity)
         }
@@ -9661,16 +9777,16 @@ private struct GameOutcomePrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Игра закончилась")
+                Text(L10n.string("The game has ended", "Игра закончилась"))
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
                     .textCase(.uppercase)
                     .tracking(1.4)
-                Text("Удалось сыграть?")
+                Text(L10n.string("Did you play?", "Удалось сыграть?"))
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 if onAddPhotoReport != nil {
-                    Text("Сохрани тренировку в профиль: добавь 1-5 фото и короткий комментарий.")
+                    Text(L10n.string("Save the session to your profile: add 1–5 photos and a short comment.", "Сохрани тренировку в профиль: добавь 1-5 фото и короткий комментарий."))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
@@ -9679,7 +9795,7 @@ private struct GameOutcomePrompt: View {
 
             if let onAddPhotoReport {
                 Button(action: onAddPhotoReport) {
-                    Label("Добавить фотоотчёт", systemImage: "plus")
+                    Label(L10n.string("Add photo report", "Добавить фотоотчёт"), systemImage: "plus")
                         .font(.system(size: 14, weight: .bold))
                         .frame(maxWidth: .infinity)
                 }
@@ -9689,20 +9805,20 @@ private struct GameOutcomePrompt: View {
 
             HStack(spacing: 10) {
                 outcomeButton(
-                    title: onAddPhotoReport == nil ? "Да, сыграли" : "Без фото",
+                    title: onAddPhotoReport == nil ? L10n.string("Yes, we played", "Да, сыграли") : L10n.string("No photo", "Без фото"),
                     systemImage: "checkmark.circle.fill",
                     tint: onAddPhotoReport == nil ? AppTheme.court : Color.white.opacity(0.10)
                 ) {
                     await onPlayed()
                 }
-                outcomeButton(title: "Не состоялась", systemImage: "xmark.circle.fill", tint: Color(red: 0.63, green: 0.22, blue: 0.20)) {
+                outcomeButton(title: L10n.string("Did not happen", "Не состоялась"), systemImage: "xmark.circle.fill", tint: Color(red: 0.63, green: 0.22, blue: 0.20)) {
                     await onMissed()
                 }
             }
 
             if let onProposeNext {
                 Button(action: onProposeNext) {
-                    Label("Назначить следующую", systemImage: "calendar.badge.plus")
+                    Label(L10n.string("Schedule another", "Назначить следующую"), systemImage: "calendar.badge.plus")
                         .font(.system(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
@@ -9766,7 +9882,7 @@ private struct GameOutcomeSummary: View {
                 .foregroundStyle(.white)
             Spacer(minLength: 8)
             if let onProposeNext {
-                Button("Следующая") {
+                Button(L10n.string("Next", "Следующая")) {
                     onProposeNext()
                 }
                 .font(.system(size: 13, weight: .semibold))
@@ -9800,13 +9916,13 @@ struct DiscoverParticipantSheet: View {
 
     private var sportsSummary: String {
         let titles = user.preferredSports.prefix(3).map(\.title)
-        return titles.isEmpty ? "Спорт уточняется" : titles.joined(separator: " · ")
+        return titles.isEmpty ? L10n.string("Sport to be confirmed", "Спорт уточняется") : titles.joined(separator: " · ")
     }
 
     private var levelSummary: String {
         let level = user.sportLevels[primarySport.rawValue] ?? user.tennisLevel
         guard let level else {
-            return "Уровень не указан"
+            return L10n.string("Level not specified", "Уровень не указан")
         }
         return "\(level)/10"
     }
@@ -9814,7 +9930,7 @@ struct DiscoverParticipantSheet: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                SectionCard(title: user.displayName, subtitle: user.bio ?? "Профиль участника игры.") {
+                SectionCard(title: user.displayName, subtitle: user.bio ?? L10n.string("Game participant profile.", "Профиль участника игры.")) {
                     HStack(alignment: .top, spacing: 14) {
                         RemoteAvatarView(name: user.displayName, path: user.profileHeroImagePath, size: 92)
 
@@ -9830,7 +9946,7 @@ struct DiscoverParticipantSheet: View {
                             }
 
                             if let age = user.age, let city = user.city {
-                                Text("\(age) лет, \(city)")
+                                Text(L10n.string("Age \(age), \(city)", "\(age) лет, \(city)"))
                                     .font(.subheadline)
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                             }
@@ -9848,7 +9964,7 @@ struct DiscoverParticipantSheet: View {
                 }
 
                 if !user.playerCardMediaItems.isEmpty {
-                    SectionCard(title: "Фото и видео", subtitle: "Медиа из карточки игрока.") {
+                    SectionCard(title: L10n.string("Photos and videos", "Фото и видео"), subtitle: L10n.string("Media from the player's profile.", "Медиа из карточки игрока.")) {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 ForEach(user.playerCardMediaItems) { item in
@@ -9863,24 +9979,24 @@ struct DiscoverParticipantSheet: View {
                 }
 
                 SectionCard(
-                    title: "Почему вам стоит сыграть",
+                    title: L10n.string("Why you should play", "Почему вам стоит сыграть"),
                     subtitle: user.explainabilityReasons.isEmpty
-                        ? "Пока это базовые причины: районы для игры, спорт и уровень."
-                        : "2–4 причины релевантности из подбора."
+                        ? L10n.string("For now these are the basic reasons: play areas, sport, and level.", "Пока это базовые причины: районы для игры, спорт и уровень.")
+                        : L10n.string("2–4 recommendation reasons.", "2–4 причины релевантности из подбора.")
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         if user.explainabilityReasons.isEmpty {
                             DiscoverReasonRow(
                                 systemImage: "location.fill",
-                                text: "Удобные районы: \(user.districtDisplaySummary)"
+                                text: L10n.string("Preferred areas: \(user.districtDisplaySummary)", "Удобные районы: \(user.districtDisplaySummary)")
                             )
                             DiscoverReasonRow(
                                 systemImage: "sportscourt",
-                                text: "Спорт: \(sportsSummary)"
+                                text: L10n.string("Sport: \(sportsSummary)", "Спорт: \(sportsSummary)")
                             )
                             DiscoverReasonRow(
                                 systemImage: "chart.bar.fill",
-                                text: "Уровень в \(primarySport.title): \(levelSummary)"
+                                text: L10n.string("\(primarySport.title) level: \(levelSummary)", "Уровень в \(primarySport.title): \(levelSummary)")
                             )
                         } else {
                             ForEach(user.explainabilityReasons.prefix(4), id: \.self) { reason in
@@ -9895,18 +10011,18 @@ struct DiscoverParticipantSheet: View {
                 }
 
                 if !appModel.isAuthenticated {
-                    SectionCard(title: "Что дальше", subtitle: "Вход нужен, чтобы переписываться, сохранять и получать уведомления.") {
+                    SectionCard(title: L10n.string("What's next", "Что дальше"), subtitle: L10n.string("Sign in to chat, save items, and receive notifications.", "Вход нужен, чтобы переписываться, сохранять и получать уведомления.")) {
                         AuthInlinePrompt(
-                            title: "Войти, чтобы продолжить",
-                            subtitle: "Подтверди email — и сможешь писать, предлагать игры и видеть историю."
+                            title: L10n.string("Sign in to continue", "Войти, чтобы продолжить"),
+                            subtitle: L10n.string("Verify your email to chat, invite people to games, and see your history.", "Подтверди email — и сможешь писать, предлагать игры и видеть историю.")
                         ) {
                             appModel.presentAuth(step: .email)
                         }
                     }
                 } else {
                     SectionCard(
-                        title: "Что дальше",
-                        subtitle: "Самый быстрый шаг — написать. В чате удобно предложить 2–3 времени или уточнить \(primarySport.venueFieldTitle.lowercased())."
+                        title: L10n.string("What's next", "Что дальше"),
+                        subtitle: L10n.string("The fastest next step is to send a message. Use the chat to suggest 2–3 times or confirm the venue.", "Самый быстрый шаг — написать. В чате удобно предложить 2–3 времени или уточнить \(primarySport.venueFieldTitle.lowercased()).")
                     ) {
                         VStack(spacing: 12) {
                             if let onOpenChat {
@@ -9914,16 +10030,16 @@ struct DiscoverParticipantSheet: View {
                                     dismiss()
                                     onOpenChat()
                                 } label: {
-                                    Label("Открыть чат", systemImage: "message.fill")
+                                    Label(L10n.string("Open chat", "Открыть чат"), systemImage: "message.fill")
                                 }
                                 .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
                             } else {
-                                Text("Открой чат из карточки игры — там проще договориться о времени и формате.")
+                                Text(L10n.string("Open the chat from the game card to arrange the time and format.", "Открой чат из карточки игры — там проще договориться о времени и формате."))
                                     .font(.subheadline)
                                     .foregroundStyle(AppTheme.ink.opacity(0.68))
                             }
 
-                            Button("Закрыть карточку") {
+                            Button(L10n.string("Close card", "Закрыть карточку")) {
                                 dismiss()
                             }
                             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.court))
@@ -9931,7 +10047,7 @@ struct DiscoverParticipantSheet: View {
                     }
                 }
 
-                SectionCard(title: "Безопасность", subtitle: "Жалобы проверяет модератор. Заблокированный пользователь сразу исчезнет из вашей ленты.") {
+                SectionCard(title: L10n.string("Safety", "Безопасность"), subtitle: L10n.string("Reports are reviewed by a moderator. A blocked user disappears from your feed immediately.", "Жалобы проверяет модератор. Заблокированный пользователь сразу исчезнет из вашей ленты.")) {
                     UserSafetyActions(
                         userId: user.id,
                         displayName: user.displayName,
@@ -9987,7 +10103,7 @@ private struct AuthInlinePrompt: View {
             Text(subtitle)
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.ink.opacity(0.68))
-            Button("Продолжить с email", action: action)
+            Button(L10n.string("Continue with email", "Продолжить с email"), action: action)
                 .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
         }
     }

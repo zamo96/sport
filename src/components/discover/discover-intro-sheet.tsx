@@ -7,6 +7,8 @@ import { PENDING_GUEST_ACTION_KEY } from "@/lib/pending-guest-action";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { useLockBodyScroll } from "@/components/ui/use-lock-body-scroll";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { translateDiscover } from "@/lib/i18n/web/discover";
 
 const DISCOVER_INTRO_STORAGE_KEY = "discover_intro_seen_v1";
 
@@ -18,6 +20,9 @@ export function DiscoverIntroSheet({
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const { locale } = useLocale();
+  const t = (key: Parameters<typeof translateDiscover>[1], values?: Parameters<typeof translateDiscover>[2]) =>
+    translateDiscover(locale, key, values);
 
   useLockBodyScroll(open);
 
@@ -73,13 +78,13 @@ export function DiscoverIntroSheet({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
               <Search className="h-3.5 w-3.5" />
-              Как устроен поиск
+              {t("discover.intro.badge")}
             </div>
             <div id={titleId} className="text-2xl font-bold text-ink">
-              Сначала смотри игроков, потом выбирай сценарий
+              {t("discover.intro.title")}
             </div>
             <div className="text-sm leading-6 text-ink/65">
-              Здесь поиск разделён на несколько простых режимов, чтобы быстро понять, с кем можно сыграть уже сейчас или договориться заранее.
+              {t("discover.intro.text")}
             </div>
           </div>
           <button
@@ -87,7 +92,7 @@ export function DiscoverIntroSheet({
             onClick={closeSheet}
             ref={closeButtonRef}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink/60"
-            aria-label="Закрыть"
+            aria-label={t("discover.common.close")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -97,35 +102,35 @@ export function DiscoverIntroSheet({
           <IntroRow
             icon={Search}
             iconClassName="bg-mint text-court"
-            title="Похожие игроки"
-            text="Карточки уже отсортированы по спорту, уровню, доступности и расстоянию. На карточке есть следующий шаг и причины подбора."
+            title={t("discover.intro.similar.title")}
+            text={t("discover.intro.similar.text")}
           />
           <IntroRow
             icon={CalendarDays}
             iconClassName="bg-orange-50 text-orange-600"
-            title="Регулярно"
-            text="Игроки заранее ищут партнёра по дням и времени. Подходит, если хочешь договориться спокойно."
+            title={t("discover.intro.regular.title")}
+            text={t("discover.intro.regular.text")}
           />
           <IntroRow
             icon={Flame}
             iconClassName="bg-red-50 text-red-600"
-            title="Срочно"
-            text="Здесь события на сегодня и завтра, когда человек ищет партнёра на ближайшее время."
+            title={t("discover.intro.urgent.title")}
+            text={t("discover.intro.urgent.text")}
           />
           <IntroRow
             icon={HeartHandshake}
             iconClassName="bg-rose-50 text-rose-600"
-            title="Хотят с тобой сыграть"
+            title={t("discover.intro.likes.title")}
             text={
               incomingLikesCount > 0
-                ? `Сейчас тебя уже ждут ${incomingLikesCount} входящих лайков. Ответный лайк сразу открывает чат.`
-                : "Эта вкладка появится, когда кто-то сам захочет сыграть именно с тобой."
+                ? t("discover.intro.likes.withCount", { count: incomingLikesCount })
+                : t("discover.intro.likes.empty")
             }
           />
         </div>
 
         <Button type="button" fullWidth onClick={closeSheet}>
-          Понятно
+          {t("discover.common.gotIt")}
         </Button>
       </Panel>
     </div>

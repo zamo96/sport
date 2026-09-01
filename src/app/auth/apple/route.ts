@@ -7,17 +7,26 @@ import {
   signInWithAppleIdentityToken
 } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
+import {
+  resolveLocalizedAppleAuthError,
+  type AppleAuthPhase
+} from "@/lib/i18n/server/auth-errors";
+import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
 import { prisma } from "@/lib/prisma";
 import { appleAuthSchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
+  const locale = getServerRequestLocale(request);
+  let phase: AppleAuthPhase = "request";
   try {
     const body = appleAuthSchema.parse(await request.json());
+    phase = "apple";
     const user = await signInWithAppleIdentityToken(body.identityToken, {
       email: body.email,
       givenName: body.givenName,
       familyName: body.familyName
     });
+    phase = "session";
 
     const userWithAgreement = await recordUserAgreementAcceptance(
       user.id,
@@ -45,6 +54,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = getErrorMessage(error);
     console.warn("[auth/apple] rejected Apple sign-in:", message);
-    return fail(message === "ACCOUNT_DEACTIVATED" ? "Аккаунт деактивирован" : message, message === "ACCOUNT_DEACTIVATED" ? 403 : 401);
+    const localizedError = resolveLocalizedAppleAuthError(error, locale, phase);
+    return fail(localizedError.message, localizedError.status, localizedError.errorCode);
   }
 }

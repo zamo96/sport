@@ -1,6 +1,7 @@
 import type {
   Court,
   CourtMetro,
+  GeoPlace,
   GameReport,
   GameReportConfirmation,
   GameReportPhoto,
@@ -9,15 +10,37 @@ import type {
   Metro,
   PersonalActivity,
   PersonalActivityPhoto,
+  ServiceArea,
   User,
   UserCourt
 } from "@prisma/client";
 
 import { getDistrictLabel } from "@/lib/constants";
+import { DEFAULT_LOCALE, type SupportedLocale } from "@/lib/locales";
 import { formatDistanceKm } from "@/lib/utils";
+import { emptyCoverage, serializeLocationRelation } from "@/server/locations";
+
+export function serializeMe<
+  T extends {
+    localeOverride?: string | null;
+    location?: Parameters<typeof serializeLocationRelation>[0];
+  }
+>(user: T, requestLocale: SupportedLocale = DEFAULT_LOCALE) {
+  const { location, ...legacyUser } = user;
+  const serializedLocation = serializeLocationRelation(location);
+  const localeOverride = user.localeOverride === "en" || user.localeOverride === "ru" ? user.localeOverride : null;
+  return {
+    ...legacyUser,
+    localeOverride,
+    effectiveLocale: localeOverride ?? requestLocale,
+    location: serializedLocation,
+    coverage: serializedLocation?.coverage ?? emptyCoverage()
+  };
+}
 
 export function serializeUserPreview(
   user: Partial<User> & {
+    location?: (GeoPlace & { serviceArea: ServiceArea | null }) | null;
     distanceKm?: number | null;
     score?: number | null;
     explainabilityReasons?: string[] | null;
@@ -28,6 +51,12 @@ export function serializeUserPreview(
     name: user.name,
     age: user.age,
     city: user.city,
+    locationPlaceId: user.locationPlaceId,
+    location: "location" in user ? serializeLocationRelation(user.location) : null,
+    coverage:
+      "location" in user
+        ? serializeLocationRelation(user.location)?.coverage ?? emptyCoverage()
+        : emptyCoverage(),
     district: "district" in user ? (user as Partial<User> & { district?: string | null }).district ?? null : null,
     districtLabel:
       "district" in user

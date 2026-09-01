@@ -48,7 +48,7 @@ struct ContentView: View {
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
         }
-        .alert("Ошибка", isPresented: Binding(
+        .alert(L10n.string("Error", "Ошибка"), isPresented: Binding(
             get: { appModel.errorMessage != nil },
             set: { newValue in
                 if !newValue {
@@ -60,7 +60,7 @@ struct ContentView: View {
                 appModel.errorMessage = nil
             }
         } message: {
-            Text(appModel.errorMessage ?? "")
+            Text(LocalizedStringKey(appModel.errorMessage ?? ""))
         }
         .onChange(of: appModel.serverRecoveryNotice?.id) { value in
             guard value != nil else {
@@ -92,18 +92,18 @@ private enum MainTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(locale: AppLocale) -> String {
         switch self {
         case .discover:
-            return "Главная"
+            return L10n.string("Home", "Главная", locale: locale)
         case .matches:
-            return "Мэтчи"
+            return L10n.string("Matches", "Мэтчи", locale: locale)
         case .searches:
-            return "Мои поиски"
+            return L10n.string("Searches", "Мои поиски", locale: locale)
         case .courts:
-            return "Центры"
+            return L10n.string("Courts", "Центры", locale: locale)
         case .profile:
-            return "Профиль"
+            return L10n.string("Profile", "Профиль", locale: locale)
         }
     }
 
@@ -122,18 +122,18 @@ private enum MainTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var loadingTitle: String {
+    func loadingTitle(locale: AppLocale) -> String {
         switch self {
         case .discover:
-            return "Обновляем игроков"
+            return L10n.string("Refreshing players", "Обновляем игроков", locale: locale)
         case .matches:
-            return "Загружаем мэтчи"
+            return L10n.string("Loading matches", "Загружаем мэтчи", locale: locale)
         case .searches:
-            return "Загружаем поиски"
+            return L10n.string("Loading searches", "Загружаем поиски", locale: locale)
         case .courts:
-            return "Загружаем центры"
+            return L10n.string("Loading courts", "Загружаем центры", locale: locale)
         case .profile:
-            return "Загружаем профиль"
+            return L10n.string("Loading profile", "Загружаем профиль", locale: locale)
         }
     }
 }
@@ -141,6 +141,7 @@ private enum MainTab: String, CaseIterable, Identifiable {
 private struct MainTabView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
+    @EnvironmentObject private var localeStore: LocaleStore
     @State private var selectedTab: MainTab = .discover
     @State private var discoverStackID = UUID()
     @State private var matchesStackID = UUID()
@@ -165,7 +166,7 @@ private struct MainTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if shouldShowTabLoading {
-                MenuTabLoadingOverlay(title: selectedTab.loadingTitle)
+                MenuTabLoadingOverlay(title: selectedTab.loadingTitle(locale: localeStore.effectiveLocale))
                     .transition(.opacity)
             }
         }
@@ -225,9 +226,9 @@ private struct MainTabView: View {
                     MatchesView()
                 } else {
                     AuthGateView(
-                        title: "Мэтчи откроются после email",
-                        subtitle: "Сначала подтверди почту, чтобы создавать мэтчи, переписываться и получать уведомления.",
-                        buttonTitle: "Продолжить",
+                        title: L10n.string("Matches are available after email verification", "Мэтчи откроются после email"),
+                        subtitle: L10n.string("Verify your email first to create matches, chat, and receive notifications.", "Сначала подтверди почту, чтобы создавать мэтчи, переписываться и получать уведомления."),
+                        buttonTitle: L10n.string("Continue", "Продолжить"),
                         startStep: .email
                     )
                 }
@@ -238,9 +239,9 @@ private struct MainTabView: View {
                     SearchesView()
                 } else {
                     AuthGateView(
-                        title: "Поиски сохраняются в аккаунте",
-                        subtitle: "Сейчас можно смотреть игроков в гостевом режиме. Чтобы публиковать свои поиски, нужен email.",
-                        buttonTitle: "Подтвердить email",
+                        title: L10n.string("Searches are saved to your account", "Поиски сохраняются в аккаунте"),
+                        subtitle: L10n.string("You can browse players as a guest. Verify your email to publish searches.", "Сейчас можно смотреть игроков в гостевом режиме. Чтобы публиковать свои поиски, нужен email."),
+                        buttonTitle: L10n.string("Verify email", "Подтвердить email"),
                         startStep: .email
                     )
                 }
@@ -319,7 +320,7 @@ private struct MainTabView: View {
                             }
                             .frame(height: 24)
 
-                            Text(tab.title)
+                            Text(tab.title(locale: localeStore.effectiveLocale))
                                 .font(.system(size: 11, weight: displayedTab == tab ? .semibold : .medium))
                                 .lineLimit(1)
                         }
@@ -599,6 +600,6 @@ private struct AuthGateView: View {
             Spacer()
         }
         .padding(24)
-        .navigationTitle("Требуется вход")
+        .navigationTitle(L10n.string("Sign-in required", "Требуется вход"))
     }
 }

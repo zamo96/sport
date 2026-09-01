@@ -15,6 +15,12 @@ final class AppModel: ObservableObject {
         let message: String
     }
 
+    struct LocaleRecommendation: Identifiable, Equatable {
+        let locale: AppLocale
+
+        var id: String { locale.rawValue }
+    }
+
     @Published var currentUser: UserProfile?
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
@@ -36,17 +42,20 @@ final class AppModel: ObservableObject {
     @Published var lastSelectedDiscoverTab: DiscoverTab = .swipe
     @Published var hasActiveUpcomingGameRequests = false
     @Published var serverRecoveryNotice: ServerRecoveryNotice?
+    @Published var pendingLocaleRecommendation: LocaleRecommendation?
     @Published private(set) var tabContentLoadingKeys: Set<String> = []
 
     let repository: TennisRepository
     let isUsingMockData: Bool
     let notificationManager = NotificationManager()
+    let localeStore: LocaleStore
 
     private let guestDraftStore = GuestDraftStore()
     private let discoverHintStore = DiscoverHintStore()
     private var guestDraftSaveTask: Task<Void, Never>?
 
-    init() {
+    init(localeStore: LocaleStore = LocaleStore()) {
+        self.localeStore = localeStore
         let useMock = AppConfig.useMockData
         isUsingMockData = useMock
         guestDraft = guestDraftStore.load()
@@ -58,10 +67,42 @@ final class AppModel: ObservableObject {
         } else if let url = AppConfig.apiBaseURL {
             repository = LiveTennisRepository(
                 baseURL: url,
-                allowDebugServerTrustOverride: AppConfig.allowDebugServerTrust
+                allowDebugServerTrustOverride: AppConfig.allowDebugServerTrust,
+                localeProvider: { [weak localeStore] in
+                    localeStore?.effectiveLocale.rawValue ?? AppLocale.en.rawValue
+                }
             )
         } else {
             repository = MockRepository()
+        }
+    }
+
+    func considerLocaleRecommendation(for place: GeoPlace) {
+        guard !localeStore.hasManualOverride,
+              let rawRecommendation = place.recommendedLocale?.lowercased(),
+              let recommendation = AppLocale(rawValue: rawRecommendation),
+              recommendation != localeStore.effectiveLocale else {
+            return
+        }
+
+        pendingLocaleRecommendation = LocaleRecommendation(locale: recommendation)
+    }
+
+    func acceptLocaleRecommendation() {
+        guard let recommendation = pendingLocaleRecommendation else { return }
+        setManualLocale(recommendation.locale)
+        pendingLocaleRecommendation = nil
+    }
+
+    func dismissLocaleRecommendation() {
+        pendingLocaleRecommendation = nil
+    }
+
+    func setManualLocale(_ locale: AppLocale) {
+        localeStore.setManualOverride(locale)
+        if currentUser != nil {
+            currentUser?.localeOverride = locale.rawValue
+            Task { try? await repository.updateLocaleOverride(locale.rawValue) }
         }
     }
 
@@ -81,7 +122,7 @@ final class AppModel: ObservableObject {
         }
 
         do {
-            currentUser = try await repository.fetchCurrentUser()
+            currentUser = await reconcileLocalePreference(try await repository.fetchCurrentUser())
             notificationManager.startMonitoring(repository: repository)
         } catch {
             currentUser = nil
@@ -166,7 +207,7 @@ final class AppModel: ObservableObject {
                 userAgreementAccepted: userAgreementAccepted,
                 userAgreementVersion: userAgreementVersion
             )
-            var user = try await repository.fetchCurrentUser()
+            var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
 
             if !session.onboardingCompleted && guestDraft.hasProfileBasics {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(userId: user.id, email: user.email))
@@ -214,7 +255,7 @@ final class AppModel: ObservableObject {
                 userAgreementAccepted: userAgreementAccepted,
                 userAgreementVersion: userAgreementVersion
             )
-            var user = try await repository.fetchCurrentUser()
+            var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
 
             if !session.onboardingCompleted && guestDraft.hasProfileBasics {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(userId: user.id, email: user.email))
@@ -286,6 +327,21 @@ final class AppModel: ObservableObject {
 
         serverRecoveryNotice = nil
         errorMessage = error.detailedMessage
+    }
+
+    private func reconcileLocalePreference(_ user: UserProfile) async -> UserProfile {
+        var resolvedUser = user
+        if let accountLocale = user.localeOverride.flatMap(AppLocale.init(rawValue:)) {
+            localeStore.setManualOverride(accountLocale)
+            return resolvedUser
+        }
+
+        if let localLocale = localeStore.manualOverride {
+            if (try? await repository.updateLocaleOverride(localLocale.rawValue)) != nil {
+                resolvedUser.localeOverride = localLocale.rawValue
+            }
+        }
+        return resolvedUser
     }
 
     func dismissServerRecoveryNotice() {
@@ -361,6 +417,16 @@ final class AppModel: ObservableObject {
         pendingNavigationTarget = target
     }
 
+    @discardableResult
+    func handleIncomingURL(_ url: URL) -> Bool {
+        guard let target = AppNavigationTarget(deepLinkURL: url) else {
+            return false
+        }
+
+        navigate(to: target)
+        return true
+    }
+
     func clearPendingNavigation() {
         pendingNavigationTarget = nil
         pendingHighlightedDiscoverUserID = nil
@@ -376,6 +442,9 @@ final class AppModel: ObservableObject {
             age: guestDraft.age,
             gender: guestDraft.gender,
             city: guestDraft.city,
+            location: guestDraft.location,
+            coverage: guestDraft.location?.coverage ?? .unavailable,
+            locationSource: guestDraft.locationSource,
             district: guestDraft.preferredDistricts.first ?? guestDraft.district,
             preferredDistricts: guestDraft.preferredDistricts,
             bio: nil,
@@ -410,6 +479,67 @@ enum AppNavigationTarget: Equatable {
 }
 
 extension AppNavigationTarget {
+    init?(deepLinkURL url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.user == nil,
+              components.password == nil,
+              components.port == nil else {
+            return nil
+        }
+
+        let scheme = components.scheme?.lowercased()
+        let host = components.host?.lowercased()
+
+        switch scheme {
+        case "https":
+            guard host == "sportsearch.shop",
+                  let pathSegments = Self.validDeepLinkPathSegments(components.percentEncodedPath) else {
+                return nil
+            }
+
+            if pathSegments.count == 2, pathSegments[0] == "users" {
+                self = .discover(.swipe, highlightedUserID: pathSegments[1])
+            } else if pathSegments.count == 4,
+                      pathSegments[0] == "play",
+                      pathSegments[1] == "searches",
+                      pathSegments[2] == "invite" {
+                self = .discover(.hot, highlightedSearchID: pathSegments[3])
+            } else {
+                return nil
+            }
+
+        case "sportsearch":
+            guard let host else {
+                return nil
+            }
+
+            let pathSegments: [String]
+            if components.percentEncodedPath.isEmpty {
+                pathSegments = []
+            } else if let parsedSegments = Self.validDeepLinkPathSegments(components.percentEncodedPath) {
+                pathSegments = parsedSegments
+            } else {
+                return nil
+            }
+
+            switch host {
+            case "upcoming" where pathSegments.isEmpty:
+                self = .discover(.upcoming)
+            case "matches" where pathSegments.isEmpty:
+                self = .matches
+            case "profile" where pathSegments.count == 1:
+                self = .discover(.swipe, highlightedUserID: pathSegments[0])
+            case "invite" where pathSegments.count == 1:
+                self = .discover(.hot, highlightedSearchID: pathSegments[0])
+            default:
+                return nil
+            }
+
+        default:
+            return nil
+        }
+    }
+
     init?(notificationHref href: String) {
         guard let components = URLComponents(string: href) else {
             return nil
@@ -463,9 +593,49 @@ extension AppNavigationTarget {
 
         return nil
     }
+
+    private static func validDeepLinkPathSegments(_ percentEncodedPath: String) -> [String]? {
+        guard percentEncodedPath.first == "/", percentEncodedPath.count > 1 else {
+            return nil
+        }
+
+        let encodedSegments = percentEncodedPath
+            .dropFirst()
+            .split(separator: "/", omittingEmptySubsequences: false)
+
+        var segments: [String] = []
+        segments.reserveCapacity(encodedSegments.count)
+
+        for encodedSegment in encodedSegments {
+            guard !encodedSegment.isEmpty,
+                  let segment = String(encodedSegment).removingPercentEncoding,
+                  Self.isValidDeepLinkSegment(segment) else {
+                return nil
+            }
+            segments.append(segment)
+        }
+
+        return segments
+    }
+
+    private static func isValidDeepLinkSegment(_ segment: String) -> Bool {
+        guard !segment.isEmpty, segment.utf8.count <= 200 else {
+            return false
+        }
+
+        return segment.utf8.allSatisfy { byte in
+            (byte >= 48 && byte <= 57)
+                || (byte >= 65 && byte <= 90)
+                || (byte >= 97 && byte <= 122)
+                || byte == 45
+                || byte == 95
+        }
+    }
 }
 
 enum AppConfig {
+    static let publicWebBaseURL = URL(string: "https://sportsearch.shop")!
+
     static var apiBaseURL: URL? {
         guard
             let value = Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String,
@@ -520,15 +690,17 @@ enum AppConfig {
     }
 
     static func searchInviteURL(searchId: String) -> URL? {
-        guard let baseURL = apiBaseURL else {
-            return nil
-        }
-
-        return baseURL
+        publicWebBaseURL
             .appendingPathComponent("play")
             .appendingPathComponent("searches")
             .appendingPathComponent("invite")
             .appendingPathComponent(searchId)
+    }
+
+    static func profileURL(userID: String) -> URL {
+        publicWebBaseURL
+            .appendingPathComponent("users")
+            .appendingPathComponent(userID)
     }
 }
 

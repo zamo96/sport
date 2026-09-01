@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { translateDiscover } from "@/lib/i18n/web/discover";
 
 type TourView = "swipe" | "seeking" | "hot";
 
@@ -19,6 +21,9 @@ export function DiscoverGuidedTour() {
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [viewportWidth, setViewportWidth] = useState(390);
+  const { locale } = useLocale();
+  const t = (key: Parameters<typeof translateDiscover>[1], values?: Parameters<typeof translateDiscover>[2]) =>
+    translateDiscover(locale, key, values);
 
   const steps = useMemo(
     () =>
@@ -26,23 +31,23 @@ export function DiscoverGuidedTour() {
         {
           view: "swipe" as const,
           icon: Search,
-          title: "Здесь подбираются похожие игроки",
-          text: "Карточки уже отсортированы по спорту, уровню, расстоянию и доступности. Здесь можно быстро решить, с кем хочется сыграть."
+          title: translateDiscover(locale, "discover.tour.similar.title"),
+          text: translateDiscover(locale, "discover.tour.similar.text")
         },
         {
           view: "seeking" as const,
           icon: CalendarDays,
-          title: "Тут игроки ищут игру заранее",
-          text: "Это регулярные поиски по дням и времени. Удобно выбирать спокойный сценарий без спешки."
+          title: translateDiscover(locale, "discover.tour.regular.title"),
+          text: translateDiscover(locale, "discover.tour.regular.text")
         },
         {
           view: "hot" as const,
           icon: Flame,
-          title: "Здесь собраны срочные события",
-          text: "Игры на сегодня и завтра, когда нужно быстро найти партнёра. Самые быстрые договорённости начинаются отсюда."
+          title: translateDiscover(locale, "discover.tour.urgent.title"),
+          text: translateDiscover(locale, "discover.tour.urgent.text")
         }
       ] satisfies Array<{ view: TourView; icon: typeof Search; title: string; text: string }>,
-    []
+    [locale]
   );
 
   useEffect(() => {
@@ -167,7 +172,7 @@ export function DiscoverGuidedTour() {
             </div>
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court/90">
-                Подсказка {stepIndex + 1} из {steps.length}
+                {t("discover.tour.progress", { step: stepIndex + 1, count: steps.length })}
               </div>
               <div className="mt-1 text-base font-semibold leading-6 text-ink">{step.title}</div>
             </div>
@@ -176,7 +181,7 @@ export function DiscoverGuidedTour() {
             type="button"
             onClick={completeTour}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-ink/60 shadow-[0_10px_24px_rgba(17,38,29,0.08)]"
-            aria-label="Закрыть подсказку"
+            aria-label={t("discover.tour.close")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -195,10 +200,10 @@ export function DiscoverGuidedTour() {
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={completeTour}>
-              Пропустить
+              {t("discover.common.skip")}
             </Button>
             <Button type="button" onClick={goNext}>
-              {stepIndex === steps.length - 1 ? "Понятно" : "Дальше"}
+              {stepIndex === steps.length - 1 ? t("discover.common.gotIt") : t("discover.common.next")}
             </Button>
           </div>
         </div>

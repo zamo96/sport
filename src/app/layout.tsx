@@ -3,6 +3,8 @@ import { Manrope, Space_Grotesk } from "next/font/google";
 
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SWRegister } from "@/components/layout/sw-register";
+import { LocaleProvider } from "@/components/i18n/locale-provider";
+import { getWebRequestLocale } from "@/lib/i18n/web/request-locale";
 
 import "./globals.css";
 
@@ -17,8 +19,8 @@ const headingFont = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Поиск партнера для игры",
-  description: "Быстрый поиск партнера по спорту, мэтчинг, выбор площадки и договоренность об игре.",
+  title: "SportSearch",
+  description: "Find sports partners, choose a court, and arrange a game.",
   manifest: "/manifest.webmanifest"
 };
 
@@ -34,12 +36,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialLocale = getWebRequestLocale();
+
   return (
-    <html lang="ru">
+    <html lang={initialLocale}>
       <body className={`${bodyFont.variable} ${headingFont.variable} font-sans`}>
-        <SWRegister />
-        {children}
-        <BottomNav />
+        <LocaleProvider initialLocale={initialLocale}>
+          <SWRegister />
+          {children}
+          <BottomNav />
+        </LocaleProvider>
       </body>
     </html>
   );

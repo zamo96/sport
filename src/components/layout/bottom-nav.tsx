@@ -6,20 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { Compass, MessageCircle, Settings2, Trophy, User2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { buildGuestAuthHref, loadGuestOnboardingDraft, guestDraftHasProfileBasics } from "@/lib/guest-draft";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { href: "/discover", label: "Поиск", icon: Compass },
-  { href: "/inbox", label: "Мэтчи", icon: MessageCircle },
-  { href: "/play/courts", label: "Центры", icon: Trophy },
-  { href: "/profile", label: "Профиль", icon: User2 },
-  { href: "/settings", label: "Ещё", icon: Settings2 }
-];
-
-const hiddenRoutes = ["/admin", "/auth", "/onboarding", "/offline", "/legal", "/support"];
+const hiddenRoutes = ["/admin", "/auth", "/onboarding", "/offline", "/legal", "/support", "/users"];
 
 export function BottomNav() {
+  const { t } = useLocale();
   const pathname = usePathname();
   const [hasGuestDraft, setHasGuestDraft] = useState(false);
   const [inboxBadgeCount, setInboxBadgeCount] = useState(0);
@@ -126,6 +120,14 @@ export function BottomNav() {
   if (isHidden) {
     return null;
   }
+
+  const items = [
+    { href: "/discover", label: t("nav.discover"), icon: Compass },
+    { href: "/inbox", label: t("nav.matches"), icon: MessageCircle },
+    { href: "/play/courts", label: t("nav.courts"), icon: Trophy },
+    { href: "/profile", label: t("nav.profile"), icon: User2 },
+    { href: "/settings", label: t("nav.more"), icon: Settings2 }
+  ];
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md border-t border-white/60 bg-white/90 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur">

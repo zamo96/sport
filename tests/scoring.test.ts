@@ -26,6 +26,34 @@ const viewer = {
 };
 
 describe("scoring", () => {
+  it("uses stable place ids to separate same-named cities", () => {
+    const ranked = scoreCandidates(
+      { ...viewer, city: "Springfield", locationPlaceId: "place:us-il-springfield" },
+      [
+        { ...viewer, id: "same-place", city: "Springfield", locationPlaceId: "place:us-il-springfield" },
+        { ...viewer, id: "different-place", city: "Springfield", locationPlaceId: "place:us-ma-springfield" }
+      ]
+    );
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["same-place"]);
+  });
+
+  it("does not match a global place id to an untrusted raw city", () => {
+    const ranked = scoreCandidates(
+      { ...viewer, city: "Berlin", locationPlaceId: "nominatim:relation:62422" },
+      [{ ...viewer, id: "raw-berlin", city: "Berlin", locationPlaceId: null }]
+    );
+    expect(ranked).toEqual([]);
+  });
+
+  it("keeps migrated legacy place ids compatible with old raw city profiles", () => {
+    const ranked = scoreCandidates(
+      { ...viewer, city: "Москва", locationPlaceId: "legacy:ru:moscow" },
+      [{ ...viewer, id: "old-moscow", city: "Moscow", locationPlaceId: null }]
+    );
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["old-moscow"]);
+  });
+
   it("ranks closer and better-matched players first", () => {
     const candidates = [
       {

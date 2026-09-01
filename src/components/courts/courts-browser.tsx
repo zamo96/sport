@@ -2,16 +2,20 @@
 
 import Link from "next/link";
 import { ArrowUp, Building2, ChevronDown, ChevronUp, MapPinned, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Sport } from "@prisma/client";
 
-import {
-  DEFAULT_CITY,
-  getDistrictLabel,
-  SPORT_LABELS,
-  SPORT_OPTIONS
-} from "@/lib/constants";
+import { DEFAULT_CITY, getDistrictLabel, SPORT_OPTIONS } from "@/lib/constants";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { normalizeCourtSports } from "@/lib/courts";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
+import {
+  formatCourtsDistance,
+  formatCourtsRadius,
+  formatCourtsVenueCount,
+  translateCourts,
+  type CourtsMessageKey
+} from "@/lib/i18n/web/courts";
 import { buildCourtSearchTerms, matchesSearchTerms, normalizeSearchText } from "@/lib/search-text";
 import { cn } from "@/lib/utils";
 import { CourtsMap } from "@/components/maps/courts-map";
@@ -39,7 +43,6 @@ type Court = {
   photoUrl?: string | null;
   priceRange: string;
   rating: number | null;
-  distanceLabel: string;
   distanceKm: number | null;
   locationLat: number;
   locationLng: number;
@@ -75,6 +78,11 @@ export function CourtsBrowser({
   initialQuery = "",
   initialSport = null
 }: CourtsBrowserProps) {
+  const { locale } = useLocale();
+  const t = useCallback(
+    (key: CourtsMessageKey, values?: Parameters<typeof translateCourts>[2]) => translateCourts(locale, key, values),
+    [locale]
+  );
   const [searchInput, setSearchInput] = useState(initialQuery);
   const [selectedSport, setSelectedSport] = useState<Sport | null>(initialSport ?? null);
   const [showSuggestions, setShowSuggestions] = useState(Boolean(initialQuery));
@@ -118,7 +126,7 @@ export function CourtsBrowser({
         value: court.name,
         center: { lat: court.locationLat, lng: court.locationLng },
         district: court.district ?? null,
-        meta: [courtMetroLabel(court), getDistrictLabel(court.district), normalizeCourtSports(court.supportedSports).slice(0, 2).map((sport) => SPORT_LABELS[sport]).join(" · ")]
+        meta: [courtMetroLabel(court), getDistrictLabel(court.district), normalizeCourtSports(court.supportedSports).slice(0, 2).map((sport) => getAuthSportLabel(locale, sport)).join(" · ")]
           .filter(Boolean)
           .join(" · ")
       }));
@@ -150,7 +158,7 @@ export function CourtsBrowser({
         value: metroName,
         center: { lat: court.locationLat, lng: court.locationLng },
         district: court.district ?? null,
-        meta: getDistrictLabel(court.district) ?? "Метро"
+        meta: getDistrictLabel(court.district) ?? t("courts.suggestion.type.metro")
       }));
 
     const districtSuggestions = Array.from(
@@ -184,14 +192,14 @@ export function CourtsBrowser({
             lng: districtCourts.reduce((sum, court) => sum + court.locationLng, 0) / districtCourts.length
           };
         })(),
-        meta: "Район"
+        meta: t("courts.suggestion.type.district")
       }));
 
     const sportSuggestions = visibleSports
       .filter((sport) =>
         matchesSearchTerms(
           buildCourtSearchTerms({
-            name: SPORT_LABELS[sport],
+            name: getAuthSportLabel(locale, sport),
             address: "",
             district: null,
             nearestMetroName: null,
@@ -205,14 +213,17 @@ export function CourtsBrowser({
       .map((sport) => ({
         id: `sport-${sport}`,
         type: "sport" as const,
-        label: SPORT_LABELS[sport],
-        value: SPORT_LABELS[sport],
+        label: getAuthSportLabel(locale, sport),
+        value: getAuthSportLabel(locale, sport),
         sport,
-        meta: `${courts.filter((court) => normalizeCourtSports(court.supportedSports).includes(sport)).length} центров`
+        meta: formatCourtsVenueCount(
+          locale,
+          courts.filter((court) => normalizeCourtSports(court.supportedSports).includes(sport)).length
+        )
       }));
 
     return [...clubSuggestions, ...metroSuggestions, ...districtSuggestions, ...sportSuggestions].slice(0, 8);
-  }, [courts, searchInput, visibleSports]);
+  }, [courts, locale, searchInput, t, visibleSports]);
 
   const filteredCourts = useMemo(() => {
     const normalizedQuery = normalizeSearchText(searchInput);
@@ -239,10 +250,12 @@ export function CourtsBrowser({
   const courtSections = useMemo(() => {
     const sections: Array<{ letter: string; courts: Court[] }> = [];
     const sectionByLetter = new Map<string, Court[]>();
-    const alphabetizedCourts = [...filteredCourts].sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
+    const alphabetizedCourts = [...filteredCourts].sort((left, right) =>
+      left.name.localeCompare(right.name, locale === "ru" ? "ru-RU" : "en-US")
+    );
 
     for (const court of alphabetizedCourts) {
-      const letter = getCourtLetter(court.name);
+      const letter = getCourtLetter(court.name, locale);
       const section = sectionByLetter.get(letter) ?? [];
       section.push(court);
       sectionByLetter.set(letter, section);
@@ -253,7 +266,7 @@ export function CourtsBrowser({
     }
 
     return sections;
-  }, [filteredCourts]);
+  }, [filteredCourts, locale]);
 
   const alphabetLetters = courtSections.map((section) => section.letter);
 
@@ -321,17 +334,19 @@ export function CourtsBrowser({
       <Panel className="space-y-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Спортивные центры</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
+              {t("courts.browser.eyebrow")}
+            </div>
             <div className="mt-1 text-sm leading-6 text-ink/72">
-              Собственная база клубов и площадок в {DEFAULT_CITY}. Карта видна сразу, а поиск подсказывает варианты по мере ввода.
+              {t("courts.browser.description")}
             </div>
             <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">
-              Найдено: {filteredCourts.length}
+              {t("courts.browser.found", { count: filteredCourts.length })}
             </div>
           </div>
           <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-court">Радиус</div>
-            <div className="mt-1 font-bold text-ink">{searchRadiusKm} км</div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-court">{t("courts.browser.radius")}</div>
+            <div className="mt-1 font-bold text-ink">{formatCourtsRadius(locale, searchRadiusKm)}</div>
           </div>
         </div>
 
@@ -349,6 +364,8 @@ export function CourtsBrowser({
               onBlur={() => {
                 window.setTimeout(() => setShowSuggestions(false), 120);
               }}
+              placeholder={t("courts.search.placeholder")}
+              aria-label={t("courts.search.placeholder")}
               className="input pl-11"
             />
           </div>
@@ -356,11 +373,13 @@ export function CourtsBrowser({
           {searchInput && showSuggestions ? (
             <div className="rounded-[24px] border border-line bg-white/90 p-2 shadow-card">
               <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-ink/45">
-                Подсказки
+                {t("courts.suggestions.title")}
               </div>
               <div className="space-y-1">
                 {searchSuggestions.length === 0 ? (
-                  <div className="rounded-2xl px-3 py-2 text-sm text-ink/55">Ничего не подсказали, попробуй район или название клуба.</div>
+                  <div className="rounded-2xl px-3 py-2 text-sm text-ink/55">
+                    {t("courts.suggestions.empty")}
+                  </div>
                 ) : (
                   searchSuggestions.map((suggestion) => (
                     <button
@@ -378,13 +397,7 @@ export function CourtsBrowser({
                         {suggestion.meta ? <span className="block truncate text-xs font-medium text-ink/55">{suggestion.meta}</span> : null}
                       </span>
                       <span className="shrink-0 rounded-full bg-cream px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink/55">
-                        {suggestion.type === "club"
-                          ? "Клуб"
-                          : suggestion.type === "metro"
-                            ? "Метро"
-                            : suggestion.type === "district"
-                              ? "Район"
-                              : "Спорт"}
+                        {t(`courts.suggestion.type.${suggestion.type}` as CourtsMessageKey)}
                       </span>
                     </button>
                   ))
@@ -406,6 +419,7 @@ export function CourtsBrowser({
                   setSelectedSport(active ? null : sport);
                   setMapFocus(null);
                 }}
+                aria-pressed={active}
                 className={cn(
                   "rounded-full border px-1.5 py-1 transition",
                   active ? "border-ink bg-ink" : "border-white/60 bg-white/85"
@@ -465,7 +479,7 @@ export function CourtsBrowser({
               type="button"
               onClick={() => scrollToLetter(letter)}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-court transition hover:bg-mint"
-              aria-label={`Перейти к клубам на ${letter}`}
+              aria-label={t("courts.alphabet.jump", { letter })}
             >
               {letter}
             </button>
@@ -476,9 +490,9 @@ export function CourtsBrowser({
       <div className="space-y-3">
         {filteredCourts.length === 0 ? (
           <Panel className="text-center">
-            <div className="text-xl font-bold text-ink">Подходящих центров пока нет</div>
+            <div className="text-xl font-bold text-ink">{t("courts.empty.title")}</div>
             <div className="mt-2 text-sm leading-6 text-ink/65">
-              Попробуй убрать текст запроса или сменить вид спорта.
+              {t("courts.empty.body")}
             </div>
           </Panel>
         ) : null}
@@ -508,12 +522,14 @@ export function CourtsBrowser({
                       <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
                       <div className="mt-1 text-sm leading-6 text-ink/65">{courtDisplayAddress(court)}</div>
                       {courtMetroLabel(court) ? (
-                        <div className="mt-1 text-xs font-medium text-ink/55">Метро: {courtMetroLabel(court)}</div>
+                        <div className="mt-1 text-xs font-medium text-ink/55">
+                          {t("courts.card.metro")}: {courtMetroLabel(court)}
+                        </div>
                       ) : null}
                     </div>
                     <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-court">Расстояние</div>
-                      <div className="mt-1 font-bold text-ink">{court.distanceLabel}</div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-court">{t("courts.card.distance")}</div>
+                      <div className="mt-1 font-bold text-ink">{formatCourtsDistance(locale, court.distanceKm)}</div>
                     </div>
                   </div>
 
@@ -524,7 +540,12 @@ export function CourtsBrowser({
                     <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">{court.priceRange}</span>
                     {court.rating ? (
                       <span className="rounded-full bg-cream px-3 py-2 text-xs font-semibold text-ink">
-                        Рейтинг {court.rating.toFixed(1)}
+                        {t("courts.card.rating", {
+                          rating: new Intl.NumberFormat(locale, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1
+                          }).format(court.rating)
+                        })}
                       </span>
                     ) : null}
                   </div>
@@ -533,27 +554,29 @@ export function CourtsBrowser({
                     <div className="space-y-3 rounded-[20px] bg-cream/80 p-3 text-sm leading-6 text-ink/70">
                       {court.about ? (
                         <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/45">О клубе</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/45">
+                            {t("courts.card.about")}
+                          </div>
                           <div className="mt-1 text-ink/75">{court.about}</div>
                         </div>
                       ) : null}
 
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {court.workingHours ? <div>Часы: <span className="font-semibold text-ink">{court.workingHours}</span></div> : null}
-                        {court.phone ? <div>Телефон: <span className="font-semibold text-ink">{court.phone}</span></div> : null}
+                        {court.workingHours ? <div>{t("courts.card.hours")}: <span className="font-semibold text-ink">{court.workingHours}</span></div> : null}
+                        {court.phone ? <div>{t("courts.card.phone")}: <span className="font-semibold text-ink">{court.phone}</span></div> : null}
                         {court.websiteUrl ? (
                           <a href={court.websiteUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
-                            Сайт клуба
+                            {t("courts.card.website")}
                           </a>
                         ) : null}
                         {court.bookingUrl ? (
                           <a href={court.bookingUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
-                            Бронирование
+                            {t("courts.card.booking")}
                           </a>
                         ) : null}
                         {court.messengerUrl ? (
                           <a href={court.messengerUrl} target="_blank" rel="noreferrer" className="font-semibold text-court">
-                            {messengerLabel(court.messengerType)}
+                            {messengerLabel(locale, court.messengerType)}
                           </a>
                         ) : null}
                       </div>
@@ -577,11 +600,11 @@ export function CourtsBrowser({
                       className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/85 px-4 text-sm font-semibold text-ink shadow-[0_8px_20px_rgba(17,38,29,0.06)] transition hover:bg-white"
                     >
                       <MapPinned className="h-4 w-4 text-court" />
-                      На карте
+                      {t("courts.card.map")}
                     </button>
                     <Link href={buildProposalHref(court, selectedSport)} className="sm:col-span-2">
                       <div className="flex min-h-12 items-center justify-center rounded-2xl bg-ink px-4 text-center text-sm font-semibold text-white">
-                        Предложить игру здесь
+                        {t("courts.card.propose")}
                       </div>
                     </Link>
                   </div>
@@ -592,7 +615,7 @@ export function CourtsBrowser({
                     className="inline-flex items-center gap-2 text-sm font-semibold text-court"
                   >
                     {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    {expanded ? "Скрыть детали" : "Подробнее о клубе"}
+                    {expanded ? t("courts.card.hideDetails") : t("courts.card.showDetails")}
                   </button>
                 </Panel>
               );
@@ -606,7 +629,7 @@ export function CourtsBrowser({
           type="button"
           onClick={scrollToTop}
           className="fixed bottom-24 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white shadow-card transition hover:scale-105"
-          aria-label="Вернуться наверх"
+          aria-label={t("courts.backToTop")}
         >
           <ArrowUp className="h-5 w-5" />
         </button>
@@ -647,21 +670,21 @@ function courtMetroLabel(court: Court) {
   return names.length > 0 ? names.join(" · ") : null;
 }
 
-function messengerLabel(type?: string | null) {
+function messengerLabel(locale: "en" | "ru", type?: string | null) {
   switch (type?.toLowerCase()) {
     case "telegram":
     case "tg":
       return "Telegram";
     case "max":
-      return "МАКС";
+      return translateCourts(locale, "courts.card.messenger.max");
     default:
-      return "Мессенджер";
+      return translateCourts(locale, "courts.card.messenger");
   }
 }
 
-function getCourtLetter(name: string) {
+function getCourtLetter(name: string, locale: "en" | "ru") {
   const normalized = name.trim().normalize("NFKD").replace(/^[^\p{L}\p{N}]+/u, "");
-  const first = normalized[0]?.toLocaleUpperCase("ru-RU") ?? "#";
+  const first = normalized[0]?.toLocaleUpperCase(locale === "ru" ? "ru-RU" : "en-US") ?? "#";
 
   if (first === "Ё") {
     return "Е";

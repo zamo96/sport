@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { DISTRICT_MAP_AREAS } from "@/lib/constants";
 import { getYandexMapsApiKey } from "@/lib/maps/config";
 import { loadYandexMaps } from "@/lib/maps/yandex";
@@ -38,14 +39,14 @@ const demoPlayers = [
   {
     name: "Максим",
     initials: "МК",
-    hint: "удобен Tennis Club",
+    hintKey: "authMap.player.maximHint",
     lat: 59.9294,
     lng: 30.3172
   },
   {
     name: "Дарья",
     initials: "ДК",
-    hint: "удобен Padel Club",
+    hintKey: "authMap.player.dariaHint",
     lat: 59.9876,
     lng: 30.2642
   }
@@ -59,6 +60,7 @@ const districtOvalSizes = {
 } as const;
 
 export function YandexAuthDemoMap() {
+  const { locale, t } = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const apiKey = getYandexMapsApiKey();
@@ -66,6 +68,7 @@ export function YandexAuthDemoMap() {
   useEffect(() => {
     let mapInstance: { destroy: () => void } | null = null;
     let cancelled = false;
+    const requestedMapLocale = locale === "ru" ? "ru_RU" : "en_US";
 
     async function initMap() {
       if (!containerRef.current) {
@@ -73,12 +76,24 @@ export function YandexAuthDemoMap() {
       }
 
       if (!apiKey) {
-        setError("Добавь `NEXT_PUBLIC_YANDEX_MAPS_API_KEY`, чтобы включить demo-карту на первом экране.");
+        setError(t("authMap.apiKeyError"));
+        return;
+      }
+
+      const loadedMapScript = document.querySelector<HTMLScriptElement>('script[data-map-provider="yandex"]');
+      if (
+        window.ymaps3 &&
+        loadedMapScript?.dataset.mapLanguage &&
+        loadedMapScript.dataset.mapLanguage !== requestedMapLocale
+      ) {
+        // The Yandex v3 language is fixed when its script loads. A one-time document reload
+        // prevents stale base-map labels after changing the app language in the SPA.
+        window.location.reload();
         return;
       }
 
       try {
-        const ymaps3 = await loadYandexMaps(apiKey, "ru_RU");
+        const ymaps3 = await loadYandexMaps(apiKey, requestedMapLocale);
         if (cancelled || !containerRef.current) {
           return;
         }
@@ -122,7 +137,7 @@ export function YandexAuthDemoMap() {
           labelElement.className = "flex -translate-x-1/2 -translate-y-1/2";
           labelElement.innerHTML = `
             <span style="border-radius:999px;background:${hexToRgba(area.color, 0.12)};padding:5px 10px;font-size:10px;font-weight:700;color:#142F26;border:1px solid ${hexToRgba(area.color, 0.2)};backdrop-filter:blur(10px);white-space:nowrap">
-              ${escapeHtml(area.label)}
+              ${escapeHtml(t(`authMap.district.${districtKey}`))}
             </span>
           `;
 
@@ -168,7 +183,7 @@ export function YandexAuthDemoMap() {
               </span>
               <span style="display:flex;flex-direction:column;min-width:0">
                 <span style="font-size:9px;font-weight:700;color:#142F26;line-height:1.2">${escapeHtml(player.name)}</span>
-                <span style="font-size:8px;color:rgba(20,47,38,0.62);line-height:1.3;white-space:nowrap">${escapeHtml(player.hint)}</span>
+                <span style="font-size:8px;color:rgba(20,47,38,0.62);line-height:1.3;white-space:nowrap">${escapeHtml(t(player.hintKey))}</span>
               </span>
             </div>
           `;
@@ -185,9 +200,9 @@ export function YandexAuthDemoMap() {
 
         mapInstance = map;
         setError(null);
-      } catch (mapError) {
+      } catch {
         if (!cancelled) {
-          setError(mapError instanceof Error ? mapError.message : "Не удалось загрузить demo-карту.");
+          setError(t("authMap.loadError"));
         }
       }
     }
@@ -198,7 +213,7 @@ export function YandexAuthDemoMap() {
       cancelled = true;
       mapInstance?.destroy();
     };
-  }, [apiKey]);
+  }, [apiKey, locale, t]);
 
   if (error) {
     return <Panel className="text-sm leading-6 text-ink/70">{error}</Panel>;
@@ -208,7 +223,7 @@ export function YandexAuthDemoMap() {
     <div className="relative max-w-full overflow-hidden [contain:layout_paint]">
       <div ref={containerRef} className="h-[216px] w-full max-w-full overflow-hidden rounded-[24px]" />
       <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink/65 shadow-[0_8px_18px_rgba(17,38,29,0.1)] backdrop-blur">
-        Санкт-Петербург
+        {t("authMap.city")}
       </div>
     </div>
   );

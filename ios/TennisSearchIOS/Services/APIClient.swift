@@ -75,6 +75,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let encoder: JSONEncoder
     private let allowDebugServerTrustOverride: Bool
     private let trustedHost: String?
+    private let localeProvider: () -> String
     private var sessionToken: String?
 
     private lazy var session: URLSession = {
@@ -91,9 +92,14 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         return URLSession(configuration: streamConfiguration, delegate: self, delegateQueue: nil)
     }()
 
-    init(baseURL: URL, allowDebugServerTrustOverride: Bool = false) {
+    init(
+        baseURL: URL,
+        allowDebugServerTrustOverride: Bool = false,
+        localeProvider: @escaping () -> String = { AppLocale.en.rawValue }
+    ) {
         self.baseURL = baseURL
         self.allowDebugServerTrustOverride = allowDebugServerTrustOverride
+        self.localeProvider = localeProvider
         trustedHost = baseURL.host
         configuration = URLSessionConfiguration.default
         configuration.httpCookieAcceptPolicy = .always
@@ -105,6 +111,10 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         encoder = JSONEncoder()
         sessionToken = UserDefaults.standard.string(forKey: Self.sessionTokenKey)
             ?? UserDefaults(suiteName: Self.appGroupIdentifier)?.string(forKey: Self.sessionTokenKey)
+    }
+
+    var effectiveLocaleIdentifier: String {
+        AppLocale(rawValue: localeProvider().lowercased())?.rawValue ?? AppLocale.en.rawValue
     }
 
     func setSessionToken(_ token: String?) {
@@ -162,9 +172,10 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     }
 
     func download(path: String) async throws -> Data {
-        let request: URLRequest
+        var request: URLRequest
         if let absoluteURL = URL(string: path), absoluteURL.scheme != nil {
             request = URLRequest(url: absoluteURL)
+            request.setValue(effectiveLocaleIdentifier, forHTTPHeaderField: "Accept-Language")
         } else {
             let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
             request = makeRequest(path: relativePath, method: "GET", queryItems: [])
@@ -285,6 +296,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        request.setValue(effectiveLocaleIdentifier, forHTTPHeaderField: "Accept-Language")
         if let sessionToken, !sessionToken.isEmpty {
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
@@ -421,10 +433,15 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
 final class LiveTennisRepository: TennisRepository {
     private let client: APIClient
 
-    init(baseURL: URL, allowDebugServerTrustOverride: Bool = false) {
+    init(
+        baseURL: URL,
+        allowDebugServerTrustOverride: Bool = false,
+        localeProvider: @escaping () -> String = { AppLocale.en.rawValue }
+    ) {
         client = APIClient(
             baseURL: baseURL,
-            allowDebugServerTrustOverride: allowDebugServerTrustOverride
+            allowDebugServerTrustOverride: allowDebugServerTrustOverride,
+            localeProvider: localeProvider
         )
     }
 
@@ -492,6 +509,53 @@ final class LiveTennisRepository: TennisRepository {
         let body = UpdateProfileRequest(profile: profile)
         let response: MeEnvelope = try await client.request(path: "me", method: "PATCH", body: body)
         return response.user
+    }
+
+    func updateLocaleOverride(_ locale: String?) async throws -> String? {
+        let response: LocaleOverrideEnvelope = try await client.request(
+            path: "me/locale",
+            method: "PATCH",
+            body: LocaleOverrideRequest(localeOverride: locale)
+        )
+        return response.localeOverride
+    }
+
+    func fetchLocationCountries(query: String?) async throws -> [GeoCountry] {
+        var queryItems = [URLQueryItem(name: "locale", value: client.effectiveLocaleIdentifier)]
+        if let query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "q", value: query))
+        }
+        let response: LocationCountriesEnvelope = try await client.request(
+            path: "locations/countries",
+            queryItems: queryItems
+        )
+        return response.countries
+    }
+
+    func fetchLocationCities(countryCode: String, query: String, limit: Int = 20) async throws -> [GeoPlace] {
+        let response: LocationCitiesEnvelope = try await client.request(
+            path: "locations/cities",
+            queryItems: [
+                URLQueryItem(name: "countryCode", value: countryCode),
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "locale", value: client.effectiveLocaleIdentifier),
+                URLQueryItem(name: "limit", value: String(limit))
+            ]
+        )
+        return response.places
+    }
+
+    func reverseGeocodeLocation(latitude: Double, longitude: Double) async throws -> GeoPlace {
+        let response: ReverseLocationEnvelope = try await client.request(
+            path: "locations/reverse",
+            method: "POST",
+            body: ReverseLocationRequest(
+                latitude: latitude,
+                longitude: longitude,
+                locale: client.effectiveLocaleIdentifier
+            )
+        )
+        return response.place
     }
 
     func deleteAccount() async throws {
@@ -1242,6 +1306,8 @@ private struct UpdateProfileRequest: Encodable {
     let age: Int?
     let gender: String?
     let city: String?
+    let locationPlaceId: String?
+    let locationSource: String?
     let district: String?
     let preferredDistricts: [String]
     let bio: String?
@@ -1268,6 +1334,8 @@ private struct UpdateProfileRequest: Encodable {
         age = profile.age
         gender = profile.gender?.rawValue
         city = profile.city
+        locationPlaceId = profile.location?.id
+        locationSource = profile.locationSource == .legacy ? nil : profile.locationSource?.rawValue
         district = profile.district
         preferredDistricts = profile.preferredDistricts
         bio = profile.bio
@@ -1312,6 +1380,8 @@ private struct GuestDraftPayload: Encodable {
     let age: Int
     let gender: String?
     let city: String
+    let locationPlaceId: String?
+    let locationSource: String?
     let district: String?
     let preferredDistricts: [String]
     let preferredSports: [String]
@@ -1329,6 +1399,8 @@ private struct GuestDraftPayload: Encodable {
         age = draft.age
         gender = draft.gender?.rawValue
         city = draft.city
+        locationPlaceId = draft.location?.id
+        locationSource = draft.locationSource == .legacy ? nil : draft.locationSource?.rawValue
         district = draft.district
         preferredDistricts = draft.preferredDistricts
         preferredSports = draft.preferredSports.map(\.rawValue)
@@ -1361,6 +1433,33 @@ private struct VerifyEnvelope: Decodable {
 
 private struct MeEnvelope: Decodable {
     let user: UserProfile
+}
+
+private struct LocaleOverrideEnvelope: Decodable {
+    let localeOverride: String?
+    let effectiveLocale: String
+}
+
+private struct LocaleOverrideRequest: Encodable {
+    let localeOverride: String?
+}
+
+private struct LocationCountriesEnvelope: Decodable {
+    let countries: [GeoCountry]
+}
+
+private struct LocationCitiesEnvelope: Decodable {
+    let places: [GeoPlace]
+}
+
+private struct ReverseLocationEnvelope: Decodable {
+    let place: GeoPlace
+}
+
+private struct ReverseLocationRequest: Encodable {
+    let latitude: Double
+    let longitude: Double
+    let locale: String
 }
 
 private struct AvatarUploadEnvelope: Decodable {

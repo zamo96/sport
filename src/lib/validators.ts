@@ -120,7 +120,9 @@ export const updateMeSchema = z.object({
   name: publicText(40).min(2),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  city: cityEnum,
+  city: z.string().trim().min(1).max(100).optional(),
+  locationPlaceId: z.string().trim().min(3).max(180).optional(),
+  locationSource: z.enum(["manual", "geolocation"]).optional(),
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
   tennisLevel: z.number().int().min(1).max(10).optional(),
@@ -158,6 +160,9 @@ export const updateMeSchema = z.object({
   notificationMessages: z.boolean().optional(),
   notificationGames: z.boolean().optional(),
   notificationSound: z.boolean().optional()
+}).refine((value) => Boolean(value.locationPlaceId || value.city), {
+  message: "Выберите город",
+  path: ["locationPlaceId"]
 });
 
 export const adminPlayersQuerySchema = z.object({
@@ -302,7 +307,8 @@ export const guestOnboardingDraftSchema = z.object({
   name: publicText(40).min(2),
   age: z.number().int().min(18).max(100),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  city: cityEnum,
+  city: z.string().trim().min(1).max(100),
+  locationPlaceId: z.string().trim().min(3).max(180).nullable().optional(),
   district: z.enum(DISTRICT_OPTIONS).nullable().optional(),
   preferredDistricts: z.preprocess((value) => parseMultiValue(value), z.array(z.enum(DISTRICT_OPTIONS)).default([])),
   preferredSports: z.array(z.enum(SPORT_OPTIONS)).min(1),
@@ -331,7 +337,13 @@ export const guestOnboardingDraftSchema = z.object({
       "Некорректные дни в доступности"
     )
     .default({})
-});
+}).refine(
+  (value) => Boolean(value.locationPlaceId || AVAILABLE_CITIES.includes(value.city as (typeof AVAILABLE_CITIES)[number])),
+  {
+    message: "Выберите город",
+    path: ["locationPlaceId"]
+  }
+);
 
 export const discoverFiltersSchema = z.object({
   levelMin: z.coerce.number().int().min(1).max(10).optional(),

@@ -9,9 +9,12 @@ import { DAY_OPTIONS, DEFAULT_CITY, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { LocaleSelector } from "@/components/i18n/locale-selector";
+import { useLocale } from "@/components/i18n/locale-provider";
 
 export function SettingsForm({ user }: { user: User }) {
   const router = useRouter();
+  const { t } = useLocale();
   const [loading, setLoading] = useState(false);
   const [values, setValues] = useState({
     notificationMatches: user.notificationMatches,
@@ -30,7 +33,9 @@ export function SettingsForm({ user }: { user: User }) {
         name: user.name,
         age: user.age,
         gender: user.gender,
-        city: DEFAULT_CITY,
+        city: user.city ?? DEFAULT_CITY,
+        locationPlaceId: user.locationPlaceId,
+        locationSource: user.locationSource === "legacy" ? undefined : user.locationSource,
         district: user.district ?? null,
         preferredDistricts: Array.isArray((user as User & { preferredDistricts?: unknown }).preferredDistricts)
           ? (user as User & { preferredDistricts?: string[] }).preferredDistricts
@@ -72,34 +77,37 @@ export function SettingsForm({ user }: { user: User }) {
 
   return (
     <div className="space-y-4">
+      <Panel>
+        <LocaleSelector />
+      </Panel>
       <Panel className="space-y-3">
         <Switch
-          title="Уведомления о мэтчах"
+          title={t("settings.notifications.matches")}
           checked={values.notificationMatches}
           onChange={(checked) => setValues((current) => ({ ...current, notificationMatches: checked }))}
         />
         <Switch
-          title="Уведомления о сообщениях"
+          title={t("settings.notifications.messages")}
           checked={values.notificationMessages}
           onChange={(checked) => setValues((current) => ({ ...current, notificationMessages: checked }))}
         />
         <Switch
-          title="Уведомления о предложениях"
+          title={t("settings.notifications.games")}
           checked={values.notificationGames}
           onChange={(checked) => setValues((current) => ({ ...current, notificationGames: checked }))}
         />
         <Switch
-          title="Звук уведомлений"
+          title={t("settings.notifications.sound")}
           checked={values.notificationSound}
           onChange={(checked) => setValues((current) => ({ ...current, notificationSound: checked }))}
         />
       </Panel>
 
       <Button fullWidth onClick={saveSettings} disabled={loading}>
-        {loading ? "Сохраняем..." : "Сохранить настройки"}
+        {loading ? t("settings.saving") : t("settings.save")}
       </Button>
       <Button fullWidth variant="ghost" onClick={logout}>
-        Выйти
+        {t("settings.logout")}
       </Button>
     </div>
   );

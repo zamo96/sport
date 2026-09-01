@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { CalendarDays, Flame } from "lucide-react";
 
 import { getSessionUser } from "@/lib/auth";
+import { translateDiscover } from "@/lib/i18n/web/discover";
+import { getWebRequestLocale } from "@/lib/i18n/web/request-locale";
 import { discoverFiltersSchema } from "@/lib/validators";
 import { PageShell } from "@/components/layout/page-shell";
 import { FiltersBar } from "@/components/discover/filters-bar";
@@ -31,7 +33,8 @@ import { serializeUserPreview } from "@/server/serializers";
 
 function buildUpcomingOpponentLabel(
   game: Awaited<ReturnType<typeof getUpcomingGamesForUser>>[number],
-  currentUserId: string
+  currentUserId: string,
+  locale: "en" | "ru"
 ) {
   const participants =
     "participants" in game && Array.isArray(game.participants)
@@ -39,15 +42,20 @@ function buildUpcomingOpponentLabel(
       : [];
 
   if (participants.length >= 3) {
-    return `${participants[0]?.name ?? "Игрок"} и еще ${participants.length - 1}`;
+    return translateDiscover(locale, "discover.common.andMore", {
+      name: participants[0]?.name ?? translateDiscover(locale, "discover.common.player"),
+      count: participants.length - 1
+    });
   }
 
   if (participants.length === 2) {
-    return participants.map((participant) => participant.name ?? "Игрок").join(" и ");
+    return participants
+      .map((participant) => participant.name ?? translateDiscover(locale, "discover.common.player"))
+      .join(` ${translateDiscover(locale, "discover.common.and")} `);
   }
 
   if (participants.length === 1) {
-    return participants[0]?.name ?? "Игрок";
+    return participants[0]?.name ?? translateDiscover(locale, "discover.common.player");
   }
 
   return game.createdByUserId === currentUserId ? game.matchedUser.name : game.createdByUser.name;
@@ -58,6 +66,9 @@ export default async function DiscoverPage({
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  const locale = getWebRequestLocale();
+  const t = (key: Parameters<typeof translateDiscover>[1], values?: Parameters<typeof translateDiscover>[2]) =>
+    translateDiscover(locale, key, values);
   const user = await getSessionUser();
 
   if (!user) {
@@ -108,7 +119,7 @@ export default async function DiscoverPage({
   ]);
   const upcomingGameCards = upcomingGames.map((game) => ({
     id: game.id,
-    opponentName: buildUpcomingOpponentLabel(game, user.id),
+    opponentName: buildUpcomingOpponentLabel(game, user.id, locale),
     matchId: game.matchId,
     searchLobbyId: "searchLobbyId" in game ? game.searchLobbyId ?? null : null,
     sourceType:
@@ -161,14 +172,14 @@ export default async function DiscoverPage({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 px-1">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">Поиск</div>
-            <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">Игроки рядом</h1>
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-court">{t("discover.page.eyebrow")}</div>
+            <h1 className="mt-1 text-[1.65rem] font-bold leading-none text-ink">{t("discover.page.title")}</h1>
           </div>
           <div className="flex items-center gap-2">
             <a href="/discover?view=hot" className="shrink-0">
               <div className="inline-flex min-h-11 items-center gap-2 rounded-[20px] bg-white/85 px-3 text-sm font-semibold text-ink shadow-card">
                 <Flame className="h-4 w-4 text-orange-500" />
-                <span>Срочно</span>
+                <span>{t("discover.page.urgent")}</span>
                 <span
                   className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${
                     hotCount > 0 ? "bg-red-500 text-white" : "bg-line text-ink/60"
@@ -198,7 +209,7 @@ export default async function DiscoverPage({
               }`}
             >
               {isHotView ? <Flame className="h-4 w-4 text-orange-200" /> : <CalendarDays className="h-4 w-4 text-court" />}
-              {isHotView ? `Создать быструю игру · сейчас ищут ${hotCount}` : "Создать регулярный поиск"}
+              {isHotView ? t("discover.page.createHot", { count: hotCount }) : t("discover.page.createRegular")}
             </div>
           </a>
         ) : null}
@@ -208,9 +219,9 @@ export default async function DiscoverPage({
             <UpcomingGames currentUserId={user.id} games={upcomingGameCards} />
           ) : (
             <div className="rounded-[28px] border border-white/70 bg-white/84 px-5 py-10 text-center shadow-card">
-              <div className="text-xl font-bold text-ink">Ближайших игр пока нет</div>
+              <div className="text-xl font-bold text-ink">{t("discover.page.upcomingEmptyTitle")}</div>
               <div className="mt-2 text-sm leading-6 text-ink/62">
-                Как только кто-то подтвердит игру или ты договоришься в чате, она появится здесь.
+                {t("discover.page.upcomingEmptyText")}
               </div>
             </div>
           )

@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { translateDiscover } from "@/lib/i18n/web/discover";
 
 export function NotificationCenterButton({
   count,
@@ -13,11 +15,12 @@ export function NotificationCenterButton({
   href?: string;
 }) {
   const router = useRouter();
+  const { locale } = useLocale();
 
   return (
     <button
       type="button"
-      aria-label="Открыть центр уведомлений"
+      aria-label={translateDiscover(locale, "discover.notifications.open")}
       onClick={() => {
         router.push(href);
       }}

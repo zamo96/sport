@@ -2,17 +2,21 @@ import { NextRequest } from "next/server";
 
 import { createAuthCode, isAppReviewDemoEmail } from "@/lib/auth";
 import { sendOtpEmail } from "@/lib/email";
-import { fail, getErrorMessage, ok } from "@/lib/http";
+import { fail, ok } from "@/lib/http";
+import { resolveLocalizedAuthError } from "@/lib/i18n/server/auth-errors";
+import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
+import { translateServer } from "@/lib/i18n/server";
 import { prisma } from "@/lib/prisma";
 import { requestLinkSchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
+  const locale = getServerRequestLocale(request);
   try {
     const body = requestLinkSchema.parse(await request.json());
     if (isAppReviewDemoEmail(body.email)) {
       return ok({
         ok: true,
-        message: "Для проверки Apple используйте demo-код из App Review Information."
+        message: translateServer(locale, "auth.request.demo")
       });
     }
 
@@ -21,14 +25,15 @@ export async function POST(request: NextRequest) {
     });
     const code = await createAuthCode(body.email, existingUser?.id);
 
-    await sendOtpEmail({ to: body.email, code });
+    await sendOtpEmail({ to: body.email, code, locale });
 
     return ok({
       ok: true,
-      message: "Код подтверждения отправлен",
+      message: translateServer(locale, "auth.request.sent"),
       debugCode: process.env.NODE_ENV !== "production" ? code : undefined
     });
   } catch (error) {
-    return fail(getErrorMessage(error));
+    const localizedError = resolveLocalizedAuthError(error, locale);
+    return fail(localizedError.message, localizedError.status, localizedError.errorCode);
   }
 }

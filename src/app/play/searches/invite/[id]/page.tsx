@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { getSessionUser } from "@/lib/auth";
 import { buildGuestAuthHref } from "@/lib/guest-draft";
@@ -11,8 +14,28 @@ import { SportBadge } from "@/components/ui/sport-badge";
 import { Button } from "@/components/ui/button";
 import { RespondToSearchButton } from "@/components/discover/respond-to-search-button";
 import { DiscoverPendingActionRunner } from "@/components/discover/discover-pending-action-runner";
+import { APP_STORE_URL, shouldRedirectDeepLinkToAppStore } from "@/lib/deep-links";
+
+export const metadata: Metadata = {
+  title: "Приглашение в игру · SportSearch",
+  robots: {
+    index: false,
+    follow: false
+  }
+};
 
 export default async function SearchInvitePage({ params }: { params: { id: string } }) {
+  const pathname = `/play/searches/invite/${encodeURIComponent(params.id)}`;
+
+  if (
+    shouldRedirectDeepLinkToAppStore({
+      pathname,
+      userAgent: headers().get("user-agent")
+    })
+  ) {
+    redirect(APP_STORE_URL);
+  }
+
   const user = await getSessionUser();
 
   const gameSearch = await prisma.gameSearch.findFirst({

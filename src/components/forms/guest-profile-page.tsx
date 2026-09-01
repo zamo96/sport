@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import {
   buildGuestAuthHref,
   guestDraftHasProfileBasics,
@@ -15,6 +16,7 @@ import { SectionTitle } from "@/components/ui/section-title";
 
 export function GuestProfilePage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [draft, setDraft] = useState<GuestOnboardingDraft | null>(null);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function GuestProfilePage() {
   if (!draft) {
     return (
       <Panel className="py-8 text-center text-sm text-ink/60">
-        Подготавливаем твой профиль…
+        {t("profile.guest.loading")}
       </Panel>
     );
   }
@@ -39,9 +41,9 @@ export function GuestProfilePage() {
   return (
     <div className="space-y-4">
       <SectionTitle
-        eyebrow="Профиль"
-        title="Черновик профиля уже заполнен."
-        subtitle="Можно изменить спорт, районы и доступность. Когда захочешь сохранить всё в аккаунт и получать отклики, подтверди email."
+        eyebrow={t("profile.guest.eyebrow")}
+        title={t("profile.guest.title")}
+        subtitle={t("profile.guest.subtitle")}
       />
       <ProfileForm user={draft} mode="guest" authRequiredHref={buildGuestAuthHref("/profile")} />
     </div>

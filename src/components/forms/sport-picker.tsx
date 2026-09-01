@@ -3,17 +3,19 @@
 import { type Sport } from "@prisma/client";
 import { ChevronLeft, ChevronRight, HelpCircle, Hand } from "lucide-react";
 
-import { SPORT_LABELS, SPORT_OPTIONS } from "@/lib/constants";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { SPORT_OPTIONS } from "@/lib/constants";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
 import { type SportLevelValue } from "@/lib/sport-levels";
 import { cn } from "@/lib/utils";
 import { SportIcon } from "@/components/ui/sport-icon";
 
 const LEVEL_TONES = [
-  { min: 1, max: 2, label: "Новичок" },
-  { min: 3, max: 4, label: "База" },
-  { min: 5, max: 6, label: "Уверенный" },
-  { min: 7, max: 8, label: "Сильный" },
-  { min: 9, max: 10, label: "Турнирный" }
+  { min: 1, max: 2, key: "sportPicker.tone.beginner" },
+  { min: 3, max: 4, key: "sportPicker.tone.basics" },
+  { min: 5, max: 6, key: "sportPicker.tone.confident" },
+  { min: 7, max: 8, key: "sportPicker.tone.strong" },
+  { min: 9, max: 10, key: "sportPicker.tone.tournament" }
 ] as const;
 
 export function SportPicker({
@@ -37,6 +39,8 @@ export function SportPicker({
   showLevelHint?: boolean;
   showCarouselHint?: boolean;
 }) {
+  const { locale, t } = useLocale();
+
   function toggle(sport: Sport) {
     if (multiple) {
       onChange(value.includes(sport) ? value.filter((item) => item !== sport) : [...value, sport]);
@@ -60,7 +64,9 @@ export function SportPicker({
           const levelValue = levels?.[sport];
           const isUnknownLevel = levelValue === null;
           const level = typeof levelValue === "number" ? levelValue : 5;
-          const levelVisual = getLevelVisual(level);
+          const levelToneKey = LEVEL_TONES.find((tone) => level >= tone.min && level <= tone.max)?.key
+            ?? "sportPicker.tone.confident";
+          const levelVisual = getLevelVisual(level, t(levelToneKey));
           return (
             <div
               key={sport}
@@ -91,10 +97,10 @@ export function SportPicker({
                   >
                     <SportIcon sport={sport} className="h-4 w-4" />
                   </span>
-                  <span className="leading-5">{SPORT_LABELS[sport]}</span>
+                  <span className="leading-5">{getAuthSportLabel(locale, sport)}</span>
                 </div>
                 <div className={cn("mt-1 text-[11px] leading-[1.1rem]", active ? "text-white/78" : "text-ink/60")}>
-                  {multiple ? "Добавь в свои виды спорта" : "Выбери спорт для этой игры"}
+                  {multiple ? t("sportPicker.addMultiple") : t("sportPicker.chooseOne")}
                 </div>
               </div>
 
@@ -113,14 +119,14 @@ export function SportPicker({
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">Уровень</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">{t("sportPicker.level")}</span>
                         <span
                           className={cn(
                             "rounded-full px-2 py-1 text-[11px] font-semibold",
                             isUnknownLevel ? "bg-white/16 text-white/90" : levelVisual.badgeClassName
                           )}
                         >
-                          {isUnknownLevel ? "Не знаю" : levelVisual.label}
+                          {isUnknownLevel ? t("sportPicker.unknown") : levelVisual.label}
                         </span>
                       </div>
 
@@ -138,7 +144,7 @@ export function SportPicker({
                               !isUnknownLevel ? "bg-white text-ink shadow-[0_8px_16px_rgba(17,38,29,0.12)]" : "text-white/82 hover:bg-white/8"
                             )}
                           >
-                            По шкале
+                            {t("sportPicker.scale")}
                           </button>
                           <button
                             type="button"
@@ -153,11 +159,11 @@ export function SportPicker({
                             )}
                           >
                             <HelpCircle className="h-3.5 w-3.5" />
-                            Не знаю
+                            {t("sportPicker.unknown")}
                           </button>
                         </div>
                         {showLevelHint ? (
-                          <span className="block text-[10px] leading-4 text-white/72">Уровень можно выбрать позже.</span>
+                          <span className="block text-[10px] leading-4 text-white/72">{t("sportPicker.levelLater")}</span>
                         ) : null}
                       </div>
 
@@ -168,7 +174,7 @@ export function SportPicker({
                             isUnknownLevel ? "translate-y-0 opacity-100" : "pointer-events-none absolute inset-0 opacity-0"
                           )}
                         >
-                          Уровень можно выбрать позже в профиле или перед поиском игры.
+                          {t("sportPicker.levelLaterLong")}
                         </div>
 
                         <div
@@ -179,7 +185,7 @@ export function SportPicker({
                         >
                           <div className="flex min-h-[4.75rem] items-center gap-2">
                             <LevelStepButton
-                              label="Уменьшить"
+                              label={t("sportPicker.decrease")}
                               className={levelVisual.stepClassName}
                               onClick={() => onLevelChange(sport, Math.max(1, level - 1))}
                             >
@@ -208,7 +214,7 @@ export function SportPicker({
                               </div>
                             </div>
                             <LevelStepButton
-                              label="Увеличить"
+                              label={t("sportPicker.increase")}
                               className={levelVisual.stepClassName}
                               onClick={() => onLevelChange(sport, Math.min(10, level + 1))}
                             >
@@ -232,7 +238,7 @@ export function SportPicker({
           <span className="relative inline-flex h-6 w-6 items-center justify-center">
             <Hand className="h-4 w-4 animate-[swipe-hand_1.8s_ease-in-out_infinite] text-ink/42" />
           </span>
-          <span>Листай, чтобы увидеть все виды спорта</span>
+          <span>{t("sportPicker.carouselHint")}</span>
           <ChevronRight className="h-3.5 w-3.5 opacity-60" />
         </div>
       ) : null}
@@ -270,9 +276,7 @@ function LevelStepButton({
   );
 }
 
-function getLevelVisual(level: number) {
-  const label = LEVEL_TONES.find((tone) => level >= tone.min && level <= tone.max)?.label ?? "Уверенный";
-
+function getLevelVisual(level: number, label: string) {
   if (level <= 2) {
     return {
       label,

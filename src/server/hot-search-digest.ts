@@ -64,6 +64,8 @@ export async function runHotSearchDigestMaintenance(now = new Date()) {
     },
     select: {
       id: true,
+      city: true,
+      locationPlaceId: true,
       preferredSports: true,
       notificationSound: true
     },
@@ -73,7 +75,10 @@ export async function runHotSearchDigestMaintenance(now = new Date()) {
   let sent = 0;
 
   for (const user of users) {
-    const searches = await getDigestSearchesForUser(user.id, user.preferredSports, slot, now);
+    const searches = await getDigestSearchesForUser(user.id, user.preferredSports, slot, now, {
+      city: user.city,
+      locationPlaceId: user.locationPlaceId
+    });
 
     if (searches.length === 0) {
       continue;
@@ -103,7 +108,8 @@ async function getDigestSearchesForUser(
   userId: string,
   preferredSports: unknown,
   slot: HotDigestSlot,
-  now: Date
+  now: Date,
+  location: { city: string | null; locationPlaceId: string | null }
 ) {
   const sports = normalizeSports(preferredSports);
 
@@ -131,6 +137,11 @@ async function getDigestSearchesForUser(
       createdByUserId: {
         not: userId
       },
+      ...(location.locationPlaceId
+        ? { locationPlaceId: location.locationPlaceId }
+        : location.city
+          ? { createdByUser: { city: location.city } }
+          : { id: "__no_location__" }),
       responses: {
         none: {
           responderUserId: userId

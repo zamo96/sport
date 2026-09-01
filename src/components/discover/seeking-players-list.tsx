@@ -4,10 +4,19 @@ import { useEffect } from "react";
 import { CalendarDays, Clock3, Flame, MapPin, Target, Trophy, Users2 } from "lucide-react";
 import type { Sport } from "@prisma/client";
 
-import { DAY_LABELS, GAME_SEARCH_TYPE_LABELS, HOT_SEARCH_WINDOW_LABELS, SPORT_SEARCH_LABELS, getTimePreferenceLabel } from "@/lib/constants";
-import { formatTimeUntilHotSearch, resolveSearchLifecycleStatus } from "@/lib/game-search";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { resolveSearchLifecycleStatus } from "@/lib/game-search";
+import {
+  formatDiscoverHotCountdown,
+  getDiscoverDayLabel,
+  getDiscoverFormatLabel,
+  getDiscoverHotWindowLabel,
+  getDiscoverTimeLabel,
+  translateDiscover,
+  translateDiscoverLifecycleStatus,
+  translateDiscoverReason
+} from "@/lib/i18n/web/discover";
 import { getSportLevel, getSportLevelEntries } from "@/lib/sport-levels";
-import { getSportPlayFormatLabelRu } from "@/components/sport-semantics";
 import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
@@ -74,6 +83,7 @@ export function SeekingPlayersList({
   highlightSearchId?: string;
   authRequiredHref?: string;
 }) {
+  const { locale, t } = useLocale();
   useEffect(() => {
     if (!highlightSearchId) {
       return;
@@ -93,12 +103,12 @@ export function SeekingPlayersList({
     return (
       <Panel className="text-center">
         <div className="text-xl font-bold text-ink">
-          {variant === "hot" ? "Сейчас нет срочных поисков" : "Сейчас никто не ищет игру"}
+          {variant === "hot" ? t("discover.seeking.hotEmptyTitle") : t("discover.seeking.emptyTitle")}
         </div>
         <div className="mt-2 text-sm leading-6 text-ink/65">
           {variant === "hot"
-            ? "Когда у кого-то срывается игрок на сегодня или завтра, горячий поиск появится здесь."
-            : "Попроси игроков включить статус поиска игры или зайди позже."}
+            ? t("discover.seeking.hotEmptyText")
+            : t("discover.seeking.emptyText")}
         </div>
       </Panel>
     );
@@ -110,21 +120,20 @@ export function SeekingPlayersList({
         const days = Array.isArray(user.availableDays) ? user.availableDays : [];
         const timeRanges = Array.isArray(user.availableTimeRanges) ? user.availableTimeRanges : [];
         const latestSearch = Array.isArray(user.gameSearches) ? user.gameSearches[0] : null;
-        const searchLabels = latestSearch ? SPORT_SEARCH_LABELS[latestSearch.sport] : null;
         const searchDays = latestSearch && Array.isArray(latestSearch.preferredDays) ? latestSearch.preferredDays : [];
         const searchTimeRanges =
           latestSearch && Array.isArray(latestSearch.preferredTimeRanges) ? latestSearch.preferredTimeRanges : [];
         const hotScheduleLabel =
           latestSearch?.searchType === "hot" && latestSearch.hotStartsAt
-            ? `${new Date(latestSearch.hotStartsAt).toLocaleString("ru-RU", {
+            ? `${new Date(latestSearch.hotStartsAt).toLocaleString(locale, {
                 day: "2-digit",
                 month: "2-digit",
                 hour: "2-digit",
                 minute: "2-digit"
-              })}${latestSearch.durationMinutes ? ` · ${latestSearch.durationMinutes} мин` : ""}`
+              })}${latestSearch.durationMinutes ? ` · ${t("discover.seeking.duration", { minutes: latestSearch.durationMinutes })}` : ""}`
             : null;
         const hotCountdownLabel =
-          latestSearch?.searchType === "hot" ? formatTimeUntilHotSearch(latestSearch.hotStartsAt) : null;
+          latestSearch?.searchType === "hot" ? formatDiscoverHotCountdown(locale, latestSearch.hotStartsAt) : null;
         const myResponse = currentUserId
           ? latestSearch?.responses?.find((response) => response.responderUserId === currentUserId)
           : undefined;
@@ -136,9 +145,10 @@ export function SeekingPlayersList({
               hotWindow: latestSearch.hotWindow,
               hotScheduleLabel,
               preferredDays: searchDays,
-              preferredTimeRanges: searchTimeRanges
+              preferredTimeRanges: searchTimeRanges,
+              locale
             })
-          : buildAvailabilityLabel(days, timeRanges);
+          : buildAvailabilityLabel(days, timeRanges, locale);
         const approvedResponses = latestSearch?.responses?.filter((response) => response.status === "approved").length ?? 0;
         const playersNeeded = Math.max(latestSearch?.playersNeeded ?? 1, 1);
         const lifecycleStatus = latestSearch
@@ -149,19 +159,24 @@ export function SeekingPlayersList({
               startAt: latestSearch.hotStartsAt,
               durationMinutes: latestSearch.durationMinutes
             })
-          : "Поиск";
+          : t("discover.seeking.search");
+        const localizedLifecycleStatus = translateDiscoverLifecycleStatus(locale, lifecycleStatus);
         const rosterLabel =
-          playersNeeded > 1 ? `Собрано ${approvedResponses} из ${playersNeeded}` : approvedResponses > 0 ? "Игрок уже подтверждён" : "Нужен 1 игрок";
+          playersNeeded > 1
+            ? t("discover.seeking.rosterMany", { approved: approvedResponses, needed: playersNeeded })
+            : approvedResponses > 0
+              ? t("discover.seeking.rosterConfirmed")
+              : t("discover.seeking.rosterOne");
         const detailsTitle =
           latestSearch?.searchType === "hot"
             ? latestSearch.hasCourtBooked
-              ? "Нужен игрок на ближайшее время"
-              : "Быстрая игра на ближайшее время"
-            : "Ищет партнёра по расписанию";
+              ? t("discover.seeking.hotBookedTitle")
+              : t("discover.seeking.hotTitle")
+            : t("discover.seeking.regularTitle");
         const detailText =
           latestSearch?.comment?.trim() ||
           user.bio?.trim() ||
-          "Хочет быстро договориться и выйти на игру без долгой переписки.";
+          t("discover.seeking.bioFallback");
         const primarySport = latestSearch?.sport ?? sports[0]?.sport ?? null;
         const primaryLevel =
           primarySport && latestSearch
@@ -186,7 +201,7 @@ export function SeekingPlayersList({
 
               <div className="relative flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
-                  <Avatar src={user.avatarUrl} alt={user.name ?? "Игрок"} size="md" className="shrink-0 ring-4 ring-white/12" />
+                  <Avatar src={user.avatarUrl} alt={user.name ?? t("discover.common.player")} size="md" className="shrink-0 ring-4 ring-white/12" />
                   <div className="min-w-0">
                     <div className="text-[1.05rem] font-bold leading-5 text-white">
                       {user.name} {user.age ? `, ${user.age}` : ""}
@@ -194,14 +209,14 @@ export function SeekingPlayersList({
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <SearchPill
                         icon={MapPin}
-                        label={`${user.city ?? "Город"}${user.districtLabel ? ` · ${user.districtLabel}` : ""}`}
+                        label={`${user.city ?? t("discover.common.city")}${user.districtLabel ? ` · ${user.districtLabel}` : ""}`}
                         className="max-w-full bg-white/12 text-white/82"
                       />
                       {latestSearch ? (
                         <>
                           <SearchPill
                             icon={latestSearch.searchType === "hot" ? Flame : CalendarDays}
-                            label={lifecycleStatus}
+                            label={localizedLifecycleStatus}
                             className={latestSearch.searchType === "hot" ? "bg-red-500/90 text-white" : "bg-white/14 text-white"}
                           />
                           {primarySport ? <SportBadge sport={primarySport} className="bg-white/14 text-white" /> : null}
@@ -215,73 +230,71 @@ export function SeekingPlayersList({
 
                 <div className="shrink-0 rounded-[16px] bg-white/14 px-2 py-1.5 text-right backdrop-blur">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">
-                    {latestSearch?.searchType === "hot" ? "Старт" : "Совпадение"}
+                    {latestSearch?.searchType === "hot" ? t("discover.seeking.start") : t("discover.seeking.match")}
                   </div>
                   <div className="mt-0.5 text-[12px] font-bold leading-4 text-white">
-                    {latestSearch?.searchType === "hot" ? hotCountdownLabel ?? "Скоро" : user.score ?? 0}
+                    {latestSearch?.searchType === "hot" ? hotCountdownLabel ?? t("discover.common.soon") : user.score ?? 0}
                   </div>
                 </div>
               </div>
 
               <div className="relative mt-3 space-y-2.5">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/62">Сейчас ищет</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/62">{t("discover.seeking.lookingFor")}</div>
                   <div className="mt-1 text-[1rem] font-bold leading-5 text-white">{detailsTitle}</div>
                   <div className="mt-1 text-[13px] leading-5 text-white/78 line-clamp-2">{detailText}</div>
                 </div>
 
                 {explainabilityReasons.length > 0 ? (
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/62">Почему в подборе</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/62">{t("discover.seeking.why")}</div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {explainabilityReasons.slice(0, 2).map((reason) => (
-                        <SearchPill key={reason} label={reason} className="max-w-full bg-white/12 text-white/82" />
+                        <SearchPill key={reason} label={translateDiscoverReason(locale, reason)} className="max-w-full bg-white/12 text-white/82" />
                       ))}
                     </div>
                   </div>
                 ) : null}
 
                 <div className="grid grid-cols-2 gap-2">
-                  <InfoCard icon={Clock3} label="Когда" value={scheduleLabel} />
+                  <InfoCard icon={Clock3} label={t("discover.seeking.when")} value={scheduleLabel} />
                   <InfoCard
                     icon={Trophy}
-                    label={searchLabels?.centerLabel ?? "Место"}
+                    label={t("discover.seeking.place")}
                     value={
                       latestSearch?.preferredCourt?.name
                         ? latestSearch.preferredCourt.name
                         : latestSearch?.hasCourtBooked
-                          ? searchLabels?.bookedTitle ?? "Место уже выбрано"
-                          : "Место подберут позже"
+                          ? t("discover.seeking.placeBooked")
+                          : t("discover.seeking.placeLater")
                     }
                   />
-                  <InfoCard icon={Users2} label="Состав" value={rosterLabel} />
+                  <InfoCard icon={Users2} label={t("discover.seeking.roster")} value={rosterLabel} />
                   <InfoCard
                     icon={Target}
-                    label="Ищет"
-                    value={`Уровень ${latestSearch?.desiredLevelMin ?? 1}–${latestSearch?.desiredLevelMax ?? 10}`}
+                    label={t("discover.seeking.target")}
+                    value={t("discover.common.level", { level: `${latestSearch?.desiredLevelMin ?? 1}–${latestSearch?.desiredLevelMax ?? 10}` })}
                   />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
                   <SearchPill
-                    label={getSportPlayFormatLabelRu(latestSearch?.sport, latestSearch?.format ?? user.preferredPlayFormat, {
-                      playersNeeded: latestSearch?.playersNeeded ?? null
-                    })}
+                    label={getDiscoverFormatLabel(locale, latestSearch?.format ?? user.preferredPlayFormat)}
                   />
                   {latestSearch && primarySport ? (
                     <SearchPill
-                      label={primaryLevel === null ? "Свой уровень: не знаю" : `Свой уровень: ${primaryLevel}`}
+                      label={primaryLevel === null ? t("discover.seeking.ownLevelUnknown") : t("discover.seeking.ownLevel", { level: primaryLevel })}
                     />
                   ) : null}
                   {latestSearch?.hotWindow ? (
                     <SearchPill
                       icon={Flame}
-                      label={HOT_SEARCH_WINDOW_LABELS[latestSearch.hotWindow]}
+                      label={getDiscoverHotWindowLabel(locale, latestSearch.hotWindow)}
                       className="bg-red-500/90 text-white"
                     />
                   ) : null}
                   {latestSearch?.playersNeeded && latestSearch.playersNeeded > 1 ? (
-                    <SearchPill label={`Нужно игроков: ${latestSearch.playersNeeded}`} />
+                    <SearchPill label={t("discover.seeking.playersNeeded", { count: latestSearch.playersNeeded })} />
                   ) : null}
                   {hotScheduleLabel && latestSearch?.searchType === "hot" ? <SearchPill label={hotScheduleLabel} /> : null}
                   {hotCountdownLabel && latestSearch?.searchType === "hot" ? (
@@ -325,21 +338,21 @@ export function SeekingPlayersList({
   );
 }
 
-function buildAvailabilityLabel(days: unknown[], timeRanges: unknown[]) {
+function buildAvailabilityLabel(days: unknown[], timeRanges: unknown[], locale: "en" | "ru") {
   const dayLabel = days
     .slice(0, 3)
-    .map((day) => DAY_LABELS[day as keyof typeof DAY_LABELS])
+    .map((day) => getDiscoverDayLabel(locale, String(day)))
     .join(", ");
   const timeLabel = timeRanges
     .slice(0, 2)
-    .map((timeRange) => getTimePreferenceLabel(String(timeRange)))
+    .map((timeRange) => getDiscoverTimeLabel(locale, String(timeRange)))
     .join(", ");
 
   if (dayLabel && timeLabel) {
     return `${dayLabel} · ${timeLabel}`;
   }
 
-  return dayLabel || timeLabel || "Время уточнит в чате";
+  return dayLabel || timeLabel || translateDiscover(locale, "discover.seeking.timeInChat");
 }
 
 function buildScheduleLabel({
@@ -347,20 +360,24 @@ function buildScheduleLabel({
   hotWindow,
   hotScheduleLabel,
   preferredDays,
-  preferredTimeRanges
+  preferredTimeRanges,
+  locale
 }: {
   type: "regular" | "hot";
   hotWindow: "today" | "tomorrow" | "day_after_tomorrow" | null;
   hotScheduleLabel: string | null;
   preferredDays: unknown[];
   preferredTimeRanges: unknown[];
+  locale: "en" | "ru";
 }) {
   if (type === "hot") {
-    const hotLabel = hotWindow ? HOT_SEARCH_WINDOW_LABELS[hotWindow] : "Скоро";
+    const hotLabel = hotWindow
+      ? getDiscoverHotWindowLabel(locale, hotWindow)
+      : translateDiscover(locale, "discover.common.soon");
     return hotScheduleLabel ? `${hotLabel} · ${hotScheduleLabel}` : hotLabel;
   }
 
-  return buildAvailabilityLabel(preferredDays, preferredTimeRanges);
+  return buildAvailabilityLabel(preferredDays, preferredTimeRanges, locale);
 }
 
 function InfoCard({

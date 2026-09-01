@@ -26,6 +26,7 @@ export type CandidateUser = Pick<
   | "searchRadiusKm"
   | "isLookingForGame"
 > & {
+  locationPlaceId?: User["locationPlaceId"] | null;
   district?: User["district"] | null;
   preferredDistricts?: User["preferredDistricts"] | null;
   lastActiveAt?: User["lastActiveAt"] | null;
@@ -133,10 +134,36 @@ function isSameCanonicalCity(left?: string | null, right?: string | null) {
   return leftCity.length > 0 && leftCity === canonicalCity(right);
 }
 
+function isSameLocation(left: CandidateUser, right: CandidateUser) {
+  return isLocationIdentityCompatible(left.city, left.locationPlaceId, right.city, right.locationPlaceId);
+}
+
+function isLocationIdentityCompatible(
+  leftCity?: string | null,
+  leftLocationPlaceId?: string | null,
+  rightCity?: string | null,
+  rightLocationPlaceId?: string | null
+) {
+  if (leftLocationPlaceId && rightLocationPlaceId) return leftLocationPlaceId === rightLocationPlaceId;
+  if (leftLocationPlaceId || rightLocationPlaceId) {
+    const trustedLegacyId = leftLocationPlaceId ?? rightLocationPlaceId;
+    const cityWithoutId = leftLocationPlaceId ? rightCity : leftCity;
+    const legacyCityById: Record<string, string> = {
+      "legacy:ru:saint-petersburg": "saint-petersburg",
+      "legacy:ru:moscow": "moscow",
+      "legacy:ru:kazan": "kazan"
+    };
+    return Boolean(trustedLegacyId && legacyCityById[trustedLegacyId] === canonicalCity(cityWithoutId));
+  }
+  return isSameCanonicalCity(leftCity, rightCity);
+}
+
 function isCityEligible(
   viewerCity: string | null | undefined,
   candidateCity: string | null | undefined,
-  filters: DiscoverFilters
+  filters: DiscoverFilters,
+  viewerLocationPlaceId?: string | null,
+  candidateLocationPlaceId?: string | null
 ) {
   const candidateCanonicalCity = canonicalCity(candidateCity);
 
@@ -154,7 +181,11 @@ function isCityEligible(
     filters.view === "seeking";
   const viewerCanonicalCity = canonicalCity(viewerCity);
 
-  return !isolatesViewerCity || !viewerCanonicalCity || candidateCanonicalCity === viewerCanonicalCity;
+  if (!isolatesViewerCity) return true;
+  if (viewerLocationPlaceId || candidateLocationPlaceId) {
+    return isLocationIdentityCompatible(viewerCity, viewerLocationPlaceId, candidateCity, candidateLocationPlaceId);
+  }
+  return !viewerCanonicalCity || candidateCanonicalCity === viewerCanonicalCity;
 }
 
 function ageCompatibilityScore(viewerAge?: number | null, candidateAge?: number | null) {
@@ -179,7 +210,15 @@ function ageCompatibilityScore(viewerAge?: number | null, candidateAge?: number 
   return { score: 1, gap };
 }
 
-function cityCompatibilityScore(viewerCity?: string | null, candidateCity?: string | null) {
+function cityCompatibilityScore(
+  viewerCity?: string | null,
+  candidateCity?: string | null,
+  viewerLocationPlaceId?: string | null,
+  candidateLocationPlaceId?: string | null
+) {
+  if (viewerLocationPlaceId || candidateLocationPlaceId) {
+    return isLocationIdentityCompatible(viewerCity, viewerLocationPlaceId, candidateCity, candidateLocationPlaceId) ? 10 : -18;
+  }
   const viewerNormalizedCity = canonicalCity(viewerCity);
   const candidateNormalizedCity = canonicalCity(candidateCity);
 
@@ -231,7 +270,7 @@ export function buildDiscoverExplainabilityReasons<T extends CandidateUser>(
   const maxLevel = Math.max(viewerLevel, candidateLevel);
   reasons.push(`Уровень рядом: ${minLevel === maxLevel ? `${minLevel}` : `${minLevel}–${maxLevel}`}`);
 
-  const sameCity = isSameCanonicalCity(viewer.city, candidate.city);
+  const sameCity = isSameLocation(viewer, candidate);
   const viewerDistricts = sameCity ? resolveUserDistricts(viewer.preferredDistricts, viewer.district) : [];
   const candidateDistricts = sameCity ? resolveUserDistricts(candidate.preferredDistricts, candidate.district) : [];
   const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;
@@ -274,7 +313,7 @@ export function scoreCandidate<T extends CandidateUser>(
   candidate: T,
   filters: DiscoverFilters = {}
 ) {
-  if (!isCityEligible(viewer.city, candidate.city, filters)) {
+  if (!isCityEligible(viewer.city, candidate.city, filters, viewer.locationPlaceId, candidate.locationPlaceId)) {
     return null;
   }
 
@@ -365,8 +404,8 @@ export function scoreCandidate<T extends CandidateUser>(
   const sportScore = Math.min(24, sportsOverlapCount * 12);
   const levelScore = Math.max(0, 28 - levelGap * 7);
   const { score: ageScore, gap: ageGap } = ageCompatibilityScore(viewer.age, candidate.age);
-  const cityScore = cityCompatibilityScore(viewer.city, candidate.city);
-  const sameCity = isSameCanonicalCity(viewer.city, candidate.city);
+  const cityScore = cityCompatibilityScore(viewer.city, candidate.city, viewer.locationPlaceId, candidate.locationPlaceId);
+  const sameCity = isSameLocation(viewer, candidate);
   const viewerDistricts = sameCity ? resolveUserDistricts(viewer.preferredDistricts, viewer.district) : [];
   const candidateDistricts = sameCity ? resolveUserDistricts(candidate.preferredDistricts, candidate.district) : [];
   const districtOverlapCount = viewerDistricts.filter((district) => candidateDistricts.includes(district)).length;

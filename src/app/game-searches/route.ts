@@ -14,6 +14,9 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireSessionUser();
     const body = createGameSearchSchema.parse(await request.json());
+    const userPlace = user.locationPlaceId
+      ? await prisma.geoPlace.findUnique({ where: { id: user.locationPlaceId }, select: { countryCode: true, city: true } })
+      : null;
 
     const hasSportProfile = hasExplicitSportProfile(user.preferredSports, user.sportLevels, body.sport);
 
@@ -57,6 +60,9 @@ export async function POST(request: NextRequest) {
         data: {
           inviteSlug: body.inviteSlug ?? null,
           createdByUserId: user.id,
+          locationPlaceId: user.locationPlaceId,
+          locationCountryCode: userPlace?.countryCode ?? null,
+          locationCity: userPlace?.city ?? user.city,
           preferredCourtId: body.preferredCourtId ?? null,
           customVenueTitle: body.preferredCourtId ? null : customVenueTitle,
           customVenueAddress: body.preferredCourtId ? null : customVenueAddress,

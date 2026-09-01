@@ -1410,6 +1410,7 @@ function getDiscoverCandidatesFromUsers(
     age: number | null;
     gender: import("@prisma/client").Gender | null;
     city: string | null;
+    locationPlaceId?: string | null;
     bio: string | null;
     avatarUrl: string | null;
     homeLat: number | null;
@@ -1438,6 +1439,7 @@ function getDiscoverCandidatesFromUsers(
     age: viewer.age,
     gender: viewer.gender,
     city: viewer.city,
+    locationPlaceId: viewer.locationPlaceId,
     district: viewer.district,
     preferredDistricts: viewer.preferredDistricts,
     bio: viewer.bio,

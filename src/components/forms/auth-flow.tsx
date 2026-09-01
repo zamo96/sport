@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type Gender, type Sport } from "@prisma/client";
 import { ShieldCheck, Sparkles, Users } from "lucide-react";
 
+import { useLocale } from "@/components/i18n/locale-provider";
 import { apiFetch } from "@/lib/client-api";
-import { DAY_LABELS, TIME_RANGE_LABELS } from "@/lib/constants";
 import {
   clearGuestOnboardingDraft,
   createDefaultGuestOnboardingDraft,
@@ -16,7 +16,7 @@ import {
   saveGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
-import { buildLatestUserAgreementPayload, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
+import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { getPrimarySportLevel, type SportLevelValue } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
@@ -33,9 +33,16 @@ type AuthFlowProps = {
 
 type DraftProfile = GuestOnboardingDraft;
 
-const ROTATING_SPORT_TEXTS = ["теннису", "футболу", "паделу", "волейболу", "боксу"] as const;
+const ROTATING_SPORT_KEYS = [
+  "auth.intro.sport.tennis",
+  "auth.intro.sport.football",
+  "auth.intro.sport.padel",
+  "auth.intro.sport.volleyball",
+  "auth.intro.sport.boxing"
+] as const;
 
 export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlowProps) {
+  const { locale, t } = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState<"intro" | "profile" | "availability" | "email" | "code">(initialStep);
@@ -55,7 +62,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const continueHref = searchParams.get("continue") || "/discover";
 
   useEffect(() => {
-    const currentText = ROTATING_SPORT_TEXTS[activeSportIndex];
+    const currentText = t(ROTATING_SPORT_KEYS[activeSportIndex]);
     const finishedTyping = typedSport === currentText;
     const finishedDeleting = typedSport.length === 0;
     const delay = isDeletingSport ? 45 : finishedTyping ? 1200 : 90;
@@ -77,11 +84,16 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
       }
 
       setIsDeletingSport(false);
-      setActiveSportIndex((current) => (current + 1) % ROTATING_SPORT_TEXTS.length);
+      setActiveSportIndex((current) => (current + 1) % ROTATING_SPORT_KEYS.length);
     }, delay);
 
     return () => window.clearTimeout(timeout);
-  }, [activeSportIndex, isDeletingSport, typedSport]);
+  }, [activeSportIndex, isDeletingSport, locale, t, typedSport]);
+
+  useEffect(() => {
+    setTypedSport("");
+    setIsDeletingSport(false);
+  }, [locale]);
 
   useEffect(() => {
     const savedDraft = loadGuestOnboardingDraft();
@@ -171,7 +183,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   async function requestCode(event: FormEvent) {
     event.preventDefault();
     if (!userAgreementAccepted) {
-      setError(LEGAL_ACCEPTANCE_ERROR);
+      setError(t("auth.error.acceptTerms"));
       return;
     }
 
@@ -189,7 +201,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
       setDebugCode(data.debugCode ?? null);
       setStep("code");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось отправить код");
+      setError(requestError instanceof Error ? requestError.message : t("auth.error.requestCode"));
     } finally {
       setLoading(false);
     }
@@ -198,7 +210,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   async function verify(event: FormEvent) {
     event.preventDefault();
     if (!userAgreementAccepted) {
-      setError(LEGAL_ACCEPTANCE_ERROR);
+      setError(t("auth.error.acceptTerms"));
       return;
     }
 
@@ -249,7 +261,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
       router.push(continueHref);
       router.refresh();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось завершить вход");
+      setError(requestError instanceof Error ? requestError.message : t("auth.error.verify"));
     } finally {
       setLoading(false);
     }
@@ -268,14 +280,14 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             <div className="relative space-y-2">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/65 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ink/80">
                 <Sparkles className="h-3 w-3 text-clay" />
-                Быстрый старт
+                {t("auth.intro.badge")}
               </div>
 
               <div>
                 <div className="max-w-[15rem] font-[var(--font-heading)] text-[1.72rem] font-bold leading-[0.98] text-ink">
-                  <span className="block">Найди партнёра</span>
+                  <span className="block">{t("auth.intro.title")}</span>
                   <span className="mt-1 block">
-                    по{" "}
+                    {t("auth.intro.preposition")}{" "}
                     <span className="inline-flex min-h-[1.2em] w-[11ch] max-w-full items-center rounded-[16px] bg-white/72 px-2.5 py-0.5 text-clay shadow-[0_10px_24px_rgba(17,38,29,0.08)]">
                       <span className="inline-flex max-w-full items-center overflow-hidden whitespace-nowrap">
                         <span className="text-left">{typedSport || "\u00A0"}</span>
@@ -285,7 +297,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   </span>
                 </div>
                 <p className="mt-1.5 max-w-sm text-[12px] leading-5 text-ink/70">
-                  Подбор по спорту, уровню, району и времени. Срочные события, готовые поиски и быстрый выход в чат без лишних шагов.
+                  {t("auth.intro.description")}
                 </p>
               </div>
 
@@ -296,11 +308,11 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    Сейчас в приложении
+                    {t("auth.intro.activeNow")}
                   </div>
                   <div className="mt-0.5 flex items-baseline gap-1.5">
                     <span className="text-[1.05rem] font-bold text-ink">{activePlayersCount}</span>
-                    <span className="text-[11px] text-ink/60">игроков ищут игру</span>
+                    <span className="text-[11px] text-ink/60">{t("auth.intro.playersLooking")}</span>
                   </div>
                 </div>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px] bg-white/90 shadow-[0_10px_22px_rgba(17,38,29,0.08)]">
@@ -313,13 +325,13 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           </section>
 
           <Panel className="border-white/70 bg-white/56 p-2.5 backdrop-blur-2xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">Следующий шаг</div>
-              <div className="mt-0.5 text-[15px] font-bold text-ink">Сначала соберём твой игровой профиль</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">{t("auth.intro.nextStep")}</div>
+              <div className="mt-0.5 text-[15px] font-bold text-ink">{t("auth.intro.profileTitle")}</div>
               <div className="mt-1 text-[12px] leading-[1.15rem] text-ink/65">
-              Ты укажешь вид спорта, уровень и удобное время. Email понадобится только когда захочешь реально связаться с другим игроком.
+              {t("auth.intro.profileDescription")}
               </div>
               <Button type="button" fullWidth className="mt-2 min-h-10 rounded-[22px] text-[14px]" onClick={() => setStep("profile")}>
-              Собрать профиль игрока
+              {t("auth.intro.profileAction")}
             </Button>
           </Panel>
         </div>
@@ -329,33 +341,33 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
         <>
           <Panel className="space-y-3 border-white/70 bg-white/56 p-3 backdrop-blur-2xl">
             <StepHeader
-              step="Шаг 1 из 2"
-              title="Соберём профиль игрока"
-              subtitle="Начнём с базового профиля. Район и игровые детали можно спокойно настроить позже."
+              step={t("auth.profile.step")}
+              title={t("auth.profile.title")}
+              subtitle={t("auth.profile.subtitle")}
             />
 
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Имя">
+              <Field label={t("auth.profile.name")}>
                 <input
                   required
                   value={draft.name}
                   onChange={(event) => setDraftField("name", event.target.value)}
                   className="input border-white/80 bg-white/78"
-                  placeholder="Анна"
+                  placeholder={t("auth.profile.namePlaceholder")}
                 />
               </Field>
-              <Field label="Пол">
+              <Field label={t("auth.profile.gender")}>
                 <select
                   value={draft.gender ?? ""}
                   onChange={(event) => setDraftField("gender", (event.target.value || null) as Gender | null)}
                   className="input border-white/80 bg-white/78"
                 >
-                  <option value="">Не указывать</option>
-                  <option value="male">Мужской</option>
-                  <option value="female">Женский</option>
+                  <option value="">{t("auth.profile.gender.unspecified")}</option>
+                  <option value="male">{t("auth.profile.gender.male")}</option>
+                  <option value="female">{t("auth.profile.gender.female")}</option>
                 </select>
               </Field>
-              <Field label="Возраст" className="col-span-2">
+              <Field label={t("auth.profile.age")} className="col-span-2">
                 <AgeRibbonPicker
                   value={draft.age}
                   onChange={(age) => setDraftField("age", age)}
@@ -364,14 +376,14 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             </div>
 
             <Field
-              label="Виды спорта"
+              label={t("auth.profile.sports")}
               action={
                 <button
                   type="button"
                   onClick={() => setLevelGuideOpen(true)}
                   className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold text-court shadow-[0_8px_20px_rgba(17,38,29,0.06)] transition hover:bg-white"
                 >
-                  Как понять уровень?
+                  {t("auth.profile.levelHelp")}
                 </button>
               }
             >
@@ -390,8 +402,8 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             <div className="rounded-[20px] bg-white/72 p-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-ink">Ищу игру сейчас</div>
-                  <div className="mt-1 text-[11px] leading-[1.1rem] text-ink/60">Показывать меня в активном поиске.</div>
+                  <div className="text-sm font-semibold text-ink">{t("auth.profile.lookingNow")}</div>
+                  <div className="mt-1 text-[11px] leading-[1.1rem] text-ink/60">{t("auth.profile.lookingNowHint")}</div>
                 </div>
                 <button
                   type="button"
@@ -408,10 +420,10 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
           <div className="flex gap-3">
             <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("intro")}>
-              Назад
+              {t("auth.action.back")}
             </Button>
             <Button type="button" fullWidth className="min-h-10 rounded-[20px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
-              Дальше
+              {t("auth.action.next")}
             </Button>
           </div>
         </>
@@ -427,12 +439,12 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
         <>
           <Panel className="space-y-3 border-white/70 bg-white/56 p-3 backdrop-blur-2xl">
             <StepHeader
-              step="Шаг 2 из 2"
-              title="Когда тебе удобно играть"
-              subtitle="Это можно указать сразу, чтобы подбор был точнее. Если не знаешь точно, этот шаг необязательный."
+              step={t("auth.availability.step")}
+              title={t("auth.availability.title")}
+              subtitle={t("auth.availability.subtitle")}
             />
 
-            <Field label="Доступность">
+            <Field label={t("auth.availability.field")}>
               <AvailabilityPicker
                 availabilityByDay={draft.availabilityByDay}
                 onAvailabilityByDayChange={setAvailabilityByDay}
@@ -441,19 +453,19 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
             <div className="rounded-[20px] bg-white/72 p-2.5">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-                {hasAvailability ? "Выбрано" : "Можно заполнить позже"}
+                {hasAvailability ? t("auth.availability.selected") : t("auth.availability.optional")}
               </div>
               <div className="mt-1.5 flex flex-wrap gap-2 text-[11px]">
                 {hasAvailability ? (
                   Object.entries(draft.availabilityByDay).map(([day, ranges]) => (
                     <span key={day} className="rounded-full bg-cream px-2.5 py-1.5 font-semibold text-ink">
-                      {DAY_LABELS[day as keyof typeof DAY_LABELS]} · {(ranges ?? [])
-                        .map((range) => TIME_RANGE_LABELS[range as keyof typeof TIME_RANGE_LABELS])
+                      {t(`availability.day.${day}` as Parameters<typeof t>[0])} · {(ranges ?? [])
+                        .map((range) => t(`availability.time.${range}` as Parameters<typeof t>[0]))
                         .join(", ")}
                     </span>
                   ))
                 ) : (
-                  <span className="rounded-full bg-cream px-2.5 py-1.5 font-semibold text-ink">Укажешь позже в профиле</span>
+                  <span className="rounded-full bg-cream px-2.5 py-1.5 font-semibold text-ink">{t("auth.availability.laterProfile")}</span>
                 )}
               </div>
             </div>
@@ -461,7 +473,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
           <div className="flex gap-3">
             <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("profile")}>
-              Назад
+              {t("auth.action.back")}
             </Button>
             <Button
               type="button"
@@ -472,11 +484,11 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                 router.push("/discover");
               }}
             >
-              Смотреть игроков
+              {t("auth.availability.viewPlayers")}
             </Button>
           </div>
           <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("email")}>
-            Подтвердить email сейчас
+            {t("auth.availability.verifyNow")}
           </Button>
         </>
       ) : null}
@@ -486,25 +498,25 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-                {step === "email" ? "Подтверждение почты" : "Подтверждение"}
+                {step === "email" ? t("auth.email.eyebrow") : t("auth.code.eyebrow")}
               </div>
               <div className="mt-1 text-xl font-bold text-ink">
-                {step === "email" ? "Осталось только подтвердить email" : "Введи код из письма"}
+                {step === "email" ? t("auth.email.title") : t("auth.code.title")}
               </div>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/60">
               <ShieldCheck className="h-3.5 w-3.5 text-court" />
-              Без пароля
+              {t("auth.passwordless")}
             </div>
           </div>
 
           {step === "email" ? (
             <form className="space-y-4" onSubmit={requestCode}>
               <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">
-                Профиль уже собран. После подтверждения почты мы сразу сохраним его и вернём тебя к действию без повторного онбординга.
+                {t("auth.email.description")}
               </div>
               <label className="block">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">Почта</div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.email.label")}</div>
                 <input
                   required
                   type="email"
@@ -520,21 +532,21 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
-                  Позже
+                  {t("auth.email.later")}
                 </Button>
                 <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || !userAgreementAccepted}>
-                  {loading ? "Отправляем..." : "Получить код"}
+                  {loading ? t("auth.email.sending") : t("auth.email.getCode")}
                 </Button>
               </div>
             </form>
           ) : (
             <form className="space-y-4" onSubmit={verify}>
               <div className="rounded-[24px] border border-white/80 bg-white/72 px-4 py-3 text-sm text-ink/72">
-                Код отправлен на <span className="font-semibold text-ink">{email}</span>
-                {debugCode ? <div className="mt-2 font-semibold text-clay">Демо-код: {debugCode}</div> : null}
+                {t("auth.code.sent", { email })}
+                {debugCode ? <div className="mt-2 font-semibold text-clay">{t("auth.code.demo", { code: debugCode })}</div> : null}
               </div>
               <label className="block">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">Код подтверждения</div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.code.label")}</div>
                 <input
                   required
                   inputMode="numeric"
@@ -551,10 +563,10 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
-                  Изменить почту
+                  {t("auth.code.changeEmail")}
                 </Button>
                 <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6 || !userAgreementAccepted}>
-                  {loading ? "Сохраняем..." : "Войти и открыть поиск"}
+                  {loading ? t("auth.code.saving") : t("auth.code.submit")}
                 </Button>
               </div>
             </form>
@@ -574,6 +586,8 @@ function LegalAcceptanceField({
   accepted: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { t } = useLocale();
+
   return (
     <div className="rounded-[20px] border border-white/75 bg-white/72 px-3 py-3">
       <label htmlFor="user-agreement-accepted" className="flex items-start gap-3 text-[12px] leading-5 text-ink/70">
@@ -585,11 +599,11 @@ function LegalAcceptanceField({
           className="mt-0.5 h-4 w-4 shrink-0 accent-court"
         />
         <span>
-          Принимаю{" "}
+          {t("auth.legal.prefix")}{" "}
           <Link href="/legal/terms" target="_blank" className="font-semibold text-court underline underline-offset-2">
-            пользовательское соглашение
+            {t("auth.legal.link")}
           </Link>{" "}
-          и даю согласие на обработку персональных данных.
+          {t("auth.legal.suffix")}
         </span>
       </label>
     </div>

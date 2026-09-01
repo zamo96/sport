@@ -4,8 +4,10 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { type Sport } from "@prisma/client";
 import { Info, X } from "lucide-react";
 
-import { SPORT_LABELS } from "@/lib/constants";
-import { getSportLevelGuideSports, SPORT_LEVEL_GUIDES } from "@/lib/sport-level-guides";
+import { useLocale } from "@/components/i18n/locale-provider";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
+import { getLocalizedSportLevelGuide } from "@/lib/i18n/web/sport-level-guide-content";
+import { getSportLevelGuideSports } from "@/lib/sport-level-guides";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -21,6 +23,7 @@ export function SportLevelGuideSheet({
   sports: Sport[];
   onClose: () => void;
 }) {
+  const { locale, t } = useLocale();
   const availableSports = useMemo(() => getSportLevelGuideSports(sports), [sports]);
   const [activeSport, setActiveSport] = useState<Sport>(availableSports[0] ?? "tennis");
   const titleId = useId();
@@ -45,7 +48,7 @@ export function SportLevelGuideSheet({
     return null;
   }
 
-  const guide = SPORT_LEVEL_GUIDES[activeSport];
+  const guide = getLocalizedSportLevelGuide(locale, activeSport);
 
   return (
     <div
@@ -66,14 +69,13 @@ export function SportLevelGuideSheet({
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
                 <Info className="h-3.5 w-3.5" />
-                Подсказка по уровням
+                {t("levelGuide.badge")}
               </div>
               <div id={titleId} className="text-xl font-bold text-ink">
-                Как выбрать уровень
+                {t("levelGuide.title")}
               </div>
               <div className="text-sm leading-6 text-ink/65">
-                Выбери вид спорта и ориентируйся по ближайшему описанию. Если сомневаешься, можно оставить вариант
-                `Не знаю`.
+                {t("levelGuide.subtitle")}
               </div>
             </div>
             <button
@@ -81,7 +83,7 @@ export function SportLevelGuideSheet({
               onClick={onClose}
               ref={closeButtonRef}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink/60"
-              aria-label="Закрыть"
+              aria-label={t("levelGuide.close")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -101,7 +103,7 @@ export function SportLevelGuideSheet({
                   )}
                 >
                   <SportIcon sport={sport} className="h-4 w-4" />
-                  {SPORT_LABELS[sport]}
+                  {getAuthSportLabel(locale, sport)}
                 </button>
               );
             })}
@@ -109,25 +111,29 @@ export function SportLevelGuideSheet({
         </div>
 
         <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
-          {guide.map((entry) => (
-            <div
-              key={`${activeSport}-${entry.level}`}
-              className="rounded-[22px] border border-white/70 bg-white/76 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-base font-bold text-ink">
-                  {entry.level}. {entry.title}
+          {guide.map((entry) => {
+            return (
+              <div
+                key={`${activeSport}-${entry.level}`}
+                className="rounded-[22px] border border-white/70 bg-white/76 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-base font-bold text-ink">
+                    {entry.level}. {entry.title}
+                  </div>
+                  <div className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-court">
+                    {t("levelGuide.level", { level: entry.level })}
+                  </div>
                 </div>
-                <div className="rounded-full bg-cream px-3 py-1 text-xs font-semibold text-court">Уровень {entry.level}</div>
+                <div className="mt-1.5 text-sm leading-6 text-ink/68">{entry.description}</div>
               </div>
-              <div className="mt-1.5 text-sm leading-6 text-ink/68">{entry.description}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="border-t border-line/80 px-4 py-3">
           <Button type="button" fullWidth onClick={onClose}>
-            Понятно
+            {t("levelGuide.done")}
           </Button>
         </div>
       </Panel>

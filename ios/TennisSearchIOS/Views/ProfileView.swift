@@ -6,11 +6,18 @@ import UniformTypeIdentifiers
 import AVFoundation
 import AVKit
 
-private enum ProfileScreenMode: String, CaseIterable, Identifiable {
-    case editing = "Редактирование"
-    case preview = "Как видят другие"
+private enum ProfileScreenMode: CaseIterable, Identifiable {
+    case editing
+    case preview
 
-    var id: String { rawValue }
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .editing: return L10n.string("Editing", "Редактирование")
+        case .preview: return L10n.string("Public preview", "Как видят другие")
+        }
+    }
 
     var icon: String {
         switch self {
@@ -95,8 +102,8 @@ struct ProfileView: View {
         .overlay {
             if isPreparingProfileVideo {
                 ProfileMediaProgressOverlay(
-                    title: "Видео загружается",
-                    subtitle: "Открываем ролик и готовим редактор обрезки."
+                    title: L10n.string("Uploading video", "Видео загружается"),
+                    subtitle: L10n.string("Opening the video and preparing the trim editor.", "Открываем ролик и готовим редактор обрезки.")
                 )
                 .transition(.opacity)
             }
@@ -158,19 +165,19 @@ struct ProfileView: View {
             }
         }
         .confirmationDialog(
-            "Удалить профиль?",
+            L10n.string("Delete profile?", "Удалить профиль?"),
             isPresented: $isDeleteConfirmationPresented,
             titleVisibility: .visible
         ) {
-            Button("Удалить профиль", role: .destructive) {
+            Button(L10n.string("Delete profile", "Удалить профиль"), role: .destructive) {
                 Task { await deleteProfile() }
             }
-            Button("Отмена", role: .cancel) {}
+            Button(L10n.string("Cancel", "Отмена"), role: .cancel) {}
         } message: {
-            Text("Это действие необратимо. Аккаунт, поиски, мэтчи и история будут удалены.")
+            Text(L10n.string("This action cannot be undone. Your account, searches, matches, and history will be deleted.", "Это действие необратимо. Аккаунт, поиски, мэтчи и история будут удалены."))
         }
         .confirmationDialog(
-            "Удалить видео из карточки?",
+            L10n.string("Remove video from your profile?", "Удалить видео из карточки?"),
             isPresented: Binding(
                 get: { pendingProfileVideoRemoval != nil },
                 set: { isPresented in
@@ -181,17 +188,17 @@ struct ProfileView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Удалить видео", role: .destructive) {
+            Button(L10n.string("Remove video", "Удалить видео"), role: .destructive) {
                 if let item = pendingProfileVideoRemoval {
                     removeProfileMediaPersistently(item)
                 }
                 pendingProfileVideoRemoval = nil
             }
-            Button("Отмена", role: .cancel) {
+            Button(L10n.string("Cancel", "Отмена"), role: .cancel) {
                 pendingProfileVideoRemoval = nil
             }
         } message: {
-            Text("Видео исчезнет из карточки профиля. Остальные фото и данные профиля останутся.")
+            Text(L10n.string("The video will be removed from your profile. Your other photos and profile data will remain.", "Видео исчезнет из карточки профиля. Остальные фото и данные профиля останутся."))
         }
     }
 
@@ -236,7 +243,7 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "tennis.racket",
                             tint: AppTheme.court,
-                            title: "Спортивный профиль",
+                            title: L10n.string("Sports profile", "Спортивный профиль"),
                             subtitle: sportsSummary(for: profile)
                         )
                     }
@@ -248,7 +255,7 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "clock",
                             tint: .green,
-                            title: "Доступность",
+                            title: L10n.string("Availability", "Доступность"),
                             subtitle: availabilityHeadline(for: profile.availabilityByDay)
                         )
                     }
@@ -260,7 +267,7 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "mappin.and.ellipse",
                             tint: .green,
-                            title: "Где удобно играть",
+                            title: L10n.string("Preferred locations", "Где удобно играть"),
                             subtitle: playLocationSummary(for: profile)
                         )
                     }
@@ -274,7 +281,7 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "eye.fill",
                             tint: .yellow,
-                            title: "Посмотреть карточку",
+                            title: L10n.string("Preview profile", "Посмотреть карточку"),
                             subtitle: activitySummary(for: profile)
                         )
                     }
@@ -283,12 +290,24 @@ struct ProfileView: View {
 
                 ProfileMenuGroup {
                     NavigationLink {
+                        ProfileLanguageSettingsScreen()
+                    } label: {
+                        ProfileMenuRow(
+                            icon: "globe",
+                            tint: .white.opacity(0.82),
+                            title: "Language / Язык",
+                            subtitle: appModel.localeStore.effectiveLocale.displayName
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
                         notificationProfileEditor(for: draftBinding)
                     } label: {
                         ProfileMenuRow(
                             icon: "bell",
                             tint: .white.opacity(0.82),
-                            title: "Уведомления",
+                            title: L10n.string("Notifications", "Уведомления"),
                             subtitle: notificationsSummary(for: profile)
                         )
                     }
@@ -300,7 +319,7 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "lock",
                             tint: .white.opacity(0.82),
-                            title: "Приватность",
+                            title: L10n.string("Privacy", "Приватность"),
                             subtitle: visibilityMode.title
                         )
                     }
@@ -317,8 +336,8 @@ struct ProfileView: View {
                         ProfileMenuRow(
                             icon: "person",
                             tint: .white.opacity(0.82),
-                            title: "Аккаунт",
-                            subtitle: profile.email ?? "Почта, телефон, безопасность"
+                            title: L10n.string("Account", "Аккаунт"),
+                            subtitle: profile.email ?? L10n.string("Email, phone, security", "Почта, телефон, безопасность")
                         )
                     }
                     .buttonStyle(.plain)
@@ -328,7 +347,7 @@ struct ProfileView: View {
             }
         } else {
             ProfileDarkPanel {
-                ProgressView("Загружаем профиль")
+                ProgressView(L10n.string("Loading profile", "Загружаем профиль"))
                     .tint(.white)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -339,7 +358,7 @@ struct ProfileView: View {
 
     private var profileHeader: some View {
         HStack(alignment: .center) {
-            Text("Профиль")
+            Text(L10n.string("Profile", "Профиль"))
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(.white)
 
@@ -360,7 +379,7 @@ struct ProfileView: View {
     private var guestContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Профиль")
+                Text(L10n.string("Profile", "Профиль"))
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -373,42 +392,42 @@ struct ProfileView: View {
                         Text(guestDraft.displayName)
                             .font(.title3.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("Гостевой режим")
+                        Text(L10n.string("Guest mode", "Гостевой режим"))
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.58))
-                        ProfileCapsule(text: "Черновик профиля", tint: AppTheme.court)
+                        ProfileCapsule(text: L10n.string("Profile draft", "Черновик профиля"), tint: AppTheme.court)
                     }
                     Spacer()
                 }
             }
 
-            SectionCard(title: "Черновик профиля", subtitle: "Можно подготовить карточку до подтверждения email.") {
+            SectionCard(title: L10n.string("Profile draft", "Черновик профиля"), subtitle: L10n.string("Prepare your profile before verifying your email.", "Можно подготовить карточку до подтверждения email.")) {
                 guestBasicsSection
                 guestPreferencesSection
             }
 
-            SectionCard(title: "Виды спорта", subtitle: "Выбери спорт и уровень.") {
+            SectionCard(title: L10n.string("Sports", "Виды спорта"), subtitle: L10n.string("Choose a sport and level.", "Выбери спорт и уровень.")) {
                 AppSportSelectionGrid(
-                    title: "Спортивный профиль",
+                    title: L10n.string("Sports profile", "Спортивный профиль"),
                     sports: Sport.allCases,
                     selectedSports: $guestDraft.preferredSports,
                     levels: $guestDraft.sportLevels
                 )
             }
 
-            SectionCard(title: "Доступность", subtitle: "Эти слоты сохранятся в черновике.") {
+            SectionCard(title: L10n.string("Availability", "Доступность"), subtitle: L10n.string("These time slots will be saved in your draft.", "Эти слоты сохранятся в черновике.")) {
                 AppAvailabilityWeekEditor(availabilityByDay: $guestDraft.availabilityByDay)
                 availabilitySummary(for: guestDraft.availabilityByDay)
             }
 
             HStack(spacing: 12) {
-                Button("Сохранить") {
+                Button(L10n.string("Save", "Сохранить")) {
                     persistGuestDraft()
-                    showSaveToast("Черновик сохранён")
+                    showSaveToast(L10n.string("Draft saved", "Черновик сохранён"))
                 }
                 .buttonStyle(SecondaryActionButtonStyle(tint: .white))
 
-                Button("К email") {
+                Button(L10n.string("Continue to email", "К email")) {
                     persistGuestDraft()
                     appModel.presentAuth(step: .email)
                 }
@@ -423,8 +442,8 @@ struct ProfileView: View {
 
     private func sportsProfileEditor(for profile: Binding<UserProfile>) -> some View {
         ProfileEditorScreen(
-            title: "Спортивный профиль",
-            subtitle: "Настрой виды спорта и уровень.",
+            title: L10n.string("Sports profile", "Спортивный профиль"),
+            subtitle: L10n.string("Choose your sports and level.", "Настрой виды спорта и уровень."),
             systemImage: "tennis.racket",
             tint: AppTheme.court,
             onSave: { await save() }
@@ -432,21 +451,21 @@ struct ProfileView: View {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     ProfileEditorMetricStrip(items: [
-                        .init(title: "Спортов", value: "\(profile.wrappedValue.preferredSports.count)", icon: "figure.tennis"),
-                        .init(title: "Поиск", value: profile.wrappedValue.isLookingForGame ? "Активен" : "Скрыт", icon: "eye")
+                        .init(title: L10n.string("Sports", "Спортов"), value: "\(profile.wrappedValue.preferredSports.count)", icon: "figure.tennis"),
+                        .init(title: L10n.string("Search", "Поиск"), value: profile.wrappedValue.isLookingForGame ? L10n.string("Active", "Активен") : L10n.string("Hidden", "Скрыт"), icon: "eye")
                     ])
 
-                    ProfileEmbeddedLightCard(title: "Виды спорта", subtitle: "Выбери всё, во что готов играть, и выставь уровень.") {
+                    ProfileEmbeddedLightCard(title: L10n.string("Sports", "Виды спорта"), subtitle: L10n.string("Choose everything you're ready to play and set your level.", "Выбери всё, во что готов играть, и выставь уровень.")) {
                         AppSportSelectionGrid(
-                            title: "Спортивный профиль",
+                            title: L10n.string("Sports profile", "Спортивный профиль"),
                             sports: Sport.allCases,
                             selectedSports: profile.preferredSports,
                             levels: profile.sportLevels
                         )
                     }
 
-                    ProfileEmbeddedLightCard(title: "Видимость", subtitle: "Можно временно скрыться из активной подборки игроков.") {
-                        ToggleCard(title: "Ищу игру сейчас", subtitle: "Показывать тебя в активной подборке игроков.", isOn: profile.isLookingForGame)
+                    ProfileEmbeddedLightCard(title: L10n.string("Visibility", "Видимость"), subtitle: L10n.string("You can temporarily hide from active player recommendations.", "Можно временно скрыться из активной подборки игроков.")) {
+                        ToggleCard(title: L10n.string("Looking for a game now", "Ищу игру сейчас"), subtitle: L10n.string("Show you in active player recommendations.", "Показывать тебя в активной подборке игроков."), isOn: profile.isLookingForGame)
                     }
                 }
             }
@@ -455,8 +474,8 @@ struct ProfileView: View {
 
     private func availabilityProfileEditor(for profile: Binding<UserProfile>) -> some View {
         ProfileEditorScreen(
-            title: "Доступность",
-            subtitle: "Отметь дни и окна времени, когда реально удобно играть.",
+            title: L10n.string("Availability", "Доступность"),
+            subtitle: L10n.string("Select the days and times when you can actually play.", "Отметь дни и окна времени, когда реально удобно играть."),
             systemImage: "clock.badge.checkmark",
             tint: Color.green,
             onSave: { await save() }
@@ -465,7 +484,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     ProfileEditorMetricStrip(items: availabilityMetricItems(for: profile.wrappedValue.availabilityByDay))
 
-                    ProfileEmbeddedLightCard(title: "Неделя", subtitle: "Можно быстро выбрать пресеты или собрать расписание вручную.") {
+                    ProfileEmbeddedLightCard(title: L10n.string("Week", "Неделя"), subtitle: L10n.string("Use a preset or build your schedule manually.", "Можно быстро выбрать пресеты или собрать расписание вручную.")) {
                         AppAvailabilityWeekEditor(availabilityByDay: profile.availabilityByDay)
                     }
 
@@ -477,8 +496,8 @@ struct ProfileView: View {
 
     private func locationProfileEditor(for profile: Binding<UserProfile>) -> some View {
         ProfileEditorScreen(
-            title: "Где удобно играть",
-            subtitle: "Районы используются в подборе игроков и центров.",
+            title: L10n.string("Preferred locations", "Где удобно играть"),
+            subtitle: L10n.string("Districts are used to recommend players and venues.", "Районы используются в подборе игроков и центров."),
             systemImage: "mappin.and.ellipse",
             tint: Color.green,
             onSave: { await save() }
@@ -486,43 +505,35 @@ struct ProfileView: View {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     ProfileEditorMetricStrip(items: [
-                        .init(title: "Районов", value: "\(activeProfileDistricts(for: profile.wrappedValue).count)", icon: "map"),
-                        .init(title: "Радиус", value: "\(profile.wrappedValue.searchRadiusKm) км", icon: "scope"),
-                        .init(title: "Город", value: profile.wrappedValue.city ?? "СПб", icon: "building.2")
+                        .init(title: L10n.string("Districts", "Районов"), value: "\(activeProfileDistricts(for: profile.wrappedValue).count)", icon: "map"),
+                        .init(title: L10n.string("Radius", "Радиус"), value: L10n.string("\(profile.wrappedValue.searchRadiusKm) km", "\(profile.wrappedValue.searchRadiusKm) км"), icon: "scope"),
+                        .init(title: L10n.string("City", "Город"), value: profile.wrappedValue.city ?? L10n.string("Not selected", "Не выбран"), icon: "building.2")
                     ])
 
-                    ProfileEmbeddedLightCard(title: "Город", subtitle: "Клубы и игроки подбираются внутри выбранного города.") {
-                        Picker("Город", selection: supportedCityBinding(for: profile)) {
-                            ForEach(SupportedCity.selectableCases) { city in
-                                Text(city.rawValue).tag(city)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(AppTheme.court)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ProfileEmbeddedLightCard(title: L10n.string("City", "Город"), subtitle: L10n.string("Clubs and players are selected within the chosen city.", "Клубы и игроки подбираются внутри выбранного города.")) {
+                        profileLocationButton(profile.wrappedValue)
                     }
 
-                    if supportedCityBinding(for: profile).wrappedValue.supportsDistrictSelection {
+                    if profileDistrictsEnabled(profile.wrappedValue),
+                       let coveredCity = SupportedCity.resolve(profile.wrappedValue.city) {
                         ProfileDistrictPickerCard(
                             selectedDistricts: profile.preferredDistricts,
                             primaryDistrict: profile.district,
-                            districts: profileDistrictOptions(
-                                for: supportedCityBinding(for: profile).wrappedValue
-                            )
+                            districts: profileDistrictOptions(for: coveredCity)
                         )
                     } else {
                         ProfileEmbeddedLightCard(
-                            title: "Районы",
-                            subtitle: "Для \(supportedCityBinding(for: profile).wrappedValue.rawValue) пока используем выбранный радиус и расстояние до места."
+                            title: L10n.string("Districts", "Районы"),
+                            subtitle: L10n.string("For \(profile.wrappedValue.city ?? "this city"), we'll use the selected radius and distance for now.", "Для \(profile.wrappedValue.city ?? "этого города") пока используем выбранный радиус и расстояние до места.")
                         ) {
-                            Label("Районы города добавим постепенно", systemImage: "map")
+                            Label(L10n.string("City districts will be added gradually", "Районы города добавим постепенно"), systemImage: "map")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(AppTheme.ink.opacity(0.62))
                         }
                     }
 
-                    ProfileEmbeddedLightCard(title: "Радиус поиска", subtitle: "Если районов нет, расстояние станет главным сигналом.") {
-                        FieldShell(title: "\(profile.wrappedValue.searchRadiusKm) км") {
+                    ProfileEmbeddedLightCard(title: L10n.string("Search radius", "Радиус поиска"), subtitle: L10n.string("If districts are unavailable, distance becomes the main signal.", "Если районов нет, расстояние станет главным сигналом.")) {
+                        FieldShell(title: L10n.string("\(profile.wrappedValue.searchRadiusKm) km", "\(profile.wrappedValue.searchRadiusKm) км")) {
                             Slider(
                                 value: Binding(
                                     get: { Double(profile.wrappedValue.searchRadiusKm) },
@@ -541,20 +552,20 @@ struct ProfileView: View {
 
     private func notificationProfileEditor(for profile: Binding<UserProfile>) -> some View {
         ProfileEditorScreen(
-            title: "Уведомления",
-            subtitle: "Оставляем только события, где тебе нужно увидеть действие или ответ.",
+            title: L10n.string("Notifications", "Уведомления"),
+            subtitle: L10n.string("Only events that require your attention or response.", "Оставляем только события, где тебе нужно увидеть действие или ответ."),
             systemImage: "bell.badge",
             tint: Color.yellow,
-            onSave: { await save(successMessage: "Настройки уведомлений сохранены") }
+            onSave: { await save(successMessage: L10n.string("Notification settings saved", "Настройки уведомлений сохранены")) }
         ) {
             ProfileDarkPanel {
                 VStack(alignment: .leading, spacing: 16) {
                     ProfileEditorMetricStrip(items: [
                         .init(title: "Push", value: notificationManager.authorizationStatus.title, icon: "bell.badge"),
-                        .init(title: "Событий", value: "\(enabledNotificationCount(for: profile.wrappedValue))/3", icon: "checklist")
+                        .init(title: L10n.string("Events", "Событий"), value: "\(enabledNotificationCount(for: profile.wrappedValue))/3", icon: "checklist")
                     ])
 
-                    ProfileEmbeddedLightCard(title: "Системный доступ", subtitle: "Без разрешения iOS уведомления не появятся на заблокированном экране.") {
+                    ProfileEmbeddedLightCard(title: L10n.string("System access", "Системный доступ"), subtitle: L10n.string("Without iOS permission, notifications won't appear on the Lock Screen.", "Без разрешения iOS уведомления не появятся на заблокированном экране.")) {
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {
                                 AppInlineChip(
@@ -574,14 +585,14 @@ struct ProfileView: View {
                         }
                     }
 
-                    ProfileEmbeddedLightCard(title: "События", subtitle: "Здесь только реальные уведомления, а не настройки профиля.") {
-                        ToggleCard(title: "Новые мэтчи", subtitle: "Сообщать, когда появляется взаимный интерес.", isOn: profile.notificationMatches)
-                        ToggleCard(title: "Сообщения", subtitle: "Показывать новые сообщения и ответы в чате.", isOn: profile.notificationMessages)
-                        ToggleCard(title: "Игры и предложения", subtitle: "Отклики, подтверждения, отмены и изменения игр.", isOn: profile.notificationGames)
+                    ProfileEmbeddedLightCard(title: L10n.string("Events", "События"), subtitle: L10n.string("Actual notifications only, not profile settings.", "Здесь только реальные уведомления, а не настройки профиля.")) {
+                        ToggleCard(title: L10n.string("New matches", "Новые мэтчи"), subtitle: L10n.string("Notify me when there is mutual interest.", "Сообщать, когда появляется взаимный интерес."), isOn: profile.notificationMatches)
+                        ToggleCard(title: L10n.string("Messages", "Сообщения"), subtitle: L10n.string("Show new chat messages and replies.", "Показывать новые сообщения и ответы в чате."), isOn: profile.notificationMessages)
+                        ToggleCard(title: L10n.string("Games and invitations", "Игры и предложения"), subtitle: L10n.string("Responses, confirmations, cancellations, and game updates.", "Отклики, подтверждения, отмены и изменения игр."), isOn: profile.notificationGames)
                     }
 
-                    ProfileEmbeddedLightCard(title: "Звук", subtitle: "Отдельно регулирует звуковой сигнал внутри приложения.") {
-                        ToggleCard(title: "Звуковые сигналы", subtitle: "Воспроизводить звук системного уведомления.", isOn: profile.notificationSound)
+                    ProfileEmbeddedLightCard(title: L10n.string("Sound", "Звук"), subtitle: L10n.string("Controls notification sounds separately.", "Отдельно регулирует звуковой сигнал внутри приложения.")) {
+                        ToggleCard(title: L10n.string("Notification sounds", "Звуковые сигналы"), subtitle: L10n.string("Play the system notification sound.", "Воспроизводить звук системного уведомления."), isOn: profile.notificationSound)
                     }
                 }
             }
@@ -591,7 +602,7 @@ struct ProfileView: View {
         }
     }
 
-    private func profileEditor(for profile: Binding<UserProfile>, initialTitle: String = "Редактировать профиль") -> some View {
+    private func profileEditor(for profile: Binding<UserProfile>, initialTitle: String = L10n.string("Edit profile", "Редактировать профиль")) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -602,27 +613,27 @@ struct ProfileView: View {
                         .foregroundStyle(.white)
                         .padding(.top, 12)
 
-                    SectionCard(title: "Карточка игрока", subtitle: "Основные данные, которые видят другие игроки.") {
+                    SectionCard(title: L10n.string("Player profile", "Карточка игрока"), subtitle: L10n.string("Basic information visible to other players.", "Основные данные, которые видят другие игроки.")) {
                         basicsSection(for: profile)
                         profileVisibilitySection(for: profile)
                     }
 
-                    SectionCard(title: "Виды спорта", subtitle: "Выбери спорт и сразу настрой уровень.") {
+                    SectionCard(title: L10n.string("Sports", "Виды спорта"), subtitle: L10n.string("Choose a sport and set your level.", "Выбери спорт и сразу настрой уровень.")) {
                         AppSportSelectionGrid(
-                            title: "Спортивный профиль",
+                            title: L10n.string("Sports profile", "Спортивный профиль"),
                             sports: Sport.allCases,
                             selectedSports: profile.preferredSports,
                             levels: profile.sportLevels
                         )
                     }
 
-                    SectionCard(title: "Доступность", subtitle: "Дни и окна времени, когда удобно играть.") {
+                    SectionCard(title: L10n.string("Availability", "Доступность"), subtitle: L10n.string("Days and times when you can play.", "Дни и окна времени, когда удобно играть.")) {
                         AppAvailabilityWeekEditor(availabilityByDay: profile.availabilityByDay)
                         availabilitySummary(for: profile.wrappedValue.availabilityByDay)
                     }
 
                     HStack(spacing: 12) {
-                        Button("Сохранить профиль") {
+                        Button(L10n.string("Save profile", "Сохранить профиль")) {
                             Task {
                                 if await save() {
                                     isEditorPresented = false
@@ -631,7 +642,7 @@ struct ProfileView: View {
                         }
                         .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
 
-                        Button("Выйти") {
+                        Button(L10n.string("Sign out", "Выйти")) {
                             appModel.logout()
                         }
                         .buttonStyle(SecondaryActionButtonStyle(tint: .red))
@@ -656,13 +667,13 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func basicsSection(for profile: Binding<UserProfile>) -> some View {
-        FieldShell(title: "Имя") {
-            TextField("Анна", text: profile.name.orEmpty)
+        FieldShell(title: L10n.string("Name", "Имя")) {
+            TextField(L10n.string("Anna", "Анна"), text: profile.name.orEmpty)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
         }
 
-        FieldShell(title: "Возраст") {
+        FieldShell(title: L10n.string("Age", "Возраст")) {
             Stepper(value: Binding(
                 get: { profile.age.wrappedValue ?? 25 },
                 set: { profile.age.wrappedValue = $0 }
@@ -672,9 +683,9 @@ struct ProfileView: View {
             }
         }
 
-        FieldShell(title: "Пол") {
-            Picker("Пол", selection: profile.gender) {
-                Text("Не указывать").tag(Optional<Gender>.none)
+        FieldShell(title: L10n.string("Gender", "Пол")) {
+            Picker(L10n.string("Gender", "Пол"), selection: profile.gender) {
+                Text(L10n.string("Prefer not to say", "Не указывать")).tag(Optional<Gender>.none)
                 ForEach(Gender.allCases) { gender in
                     Text(gender.title).tag(Optional(gender))
                 }
@@ -682,26 +693,21 @@ struct ProfileView: View {
             .pickerStyle(.menu)
         }
 
-        FieldShell(title: "Город") {
-            Picker("Город", selection: supportedCityBinding(for: profile)) {
-                ForEach(SupportedCity.selectableCases) { city in
-                    Text(city.rawValue).tag(city)
-                }
-            }
-            .pickerStyle(.menu)
+        FieldShell(title: L10n.string("City", "Город")) {
+            profileLocationButton(profile.wrappedValue)
         }
 
-        if supportedCityBinding(for: profile).wrappedValue.supportsDistrictSelection {
-            FieldShell(title: "Район") {
-                TextField("Например: Приморский", text: profile.district.orEmpty)
+        if profileDistrictsEnabled(profile.wrappedValue) {
+            FieldShell(title: L10n.string("District", "Район")) {
+                TextField(L10n.string("For example: Central", "Например: Приморский"), text: profile.district.orEmpty)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
             }
         }
 
-        FieldShell(title: "О себе", caption: "Коротко опиши себя или с кем хочешь играть.") {
+        FieldShell(title: L10n.string("About me", "О себе"), caption: L10n.string("Briefly describe yourself or who you'd like to play with.", "Коротко опиши себя или с кем хочешь играть.")) {
             TextField(
-                "Люблю интенсивные розыгрыши и вечерние тренировки.",
+                L10n.string("I enjoy intense rallies and evening practice.", "Люблю интенсивные розыгрыши и вечерние тренировки."),
                 text: profile.bio.orEmpty,
                 axis: .vertical
             )
@@ -713,25 +719,25 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func profileVisibilitySection(for profile: Binding<UserProfile>) -> some View {
-        ToggleCard(title: "Ищу игру сейчас", subtitle: "Показывать тебя в активной подборке игроков.", isOn: profile.isLookingForGame)
+        ToggleCard(title: L10n.string("Looking for a game now", "Ищу игру сейчас"), subtitle: L10n.string("Show you in active player recommendations.", "Показывать тебя в активной подборке игроков."), isOn: profile.isLookingForGame)
     }
 
     @ViewBuilder
     private var notificationAuthorizationButton: some View {
         switch notificationManager.authorizationStatus {
         case .notDetermined:
-            Button("Разрешить") {
+            Button(L10n.string("Allow", "Разрешить")) {
                 Task { await notificationManager.requestAuthorization() }
             }
             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
         case .denied:
-            Button("Настройки") {
+            Button(L10n.string("Settings", "Настройки")) {
                 guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
                 openURL(settingsURL)
             }
             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
         default:
-            Button("Проверить") {
+            Button(L10n.string("Check", "Проверить")) {
                 Task { await notificationManager.refreshAuthorizationStatus() }
             }
             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
@@ -741,13 +747,13 @@ struct ProfileView: View {
     private var notificationAuthorizationHint: String {
         switch notificationManager.authorizationStatus {
         case .notDetermined:
-            return "Разреши push-уведомления, чтобы получать сообщения и действия по играм вне приложения."
+            return L10n.string("Allow push notifications to receive messages and game updates outside the app.", "Разреши push-уведомления, чтобы получать сообщения и действия по играм вне приложения.")
         case .denied:
-            return "Уведомления отключены в настройках iOS. Их нужно включить вручную."
+            return L10n.string("Notifications are disabled in iOS Settings. Enable them manually.", "Уведомления отключены в настройках iOS. Их нужно включить вручную.")
         case .authorized, .provisional, .ephemeral:
-            return "Системный доступ включён. Типы событий можно настроить ниже."
+            return L10n.string("System access is enabled. Configure event types below.", "Системный доступ включён. Типы событий можно настроить ниже.")
         @unknown default:
-            return "Не удалось точно определить статус доступа. Проверь настройки iOS."
+            return L10n.string("We couldn't determine the permission status. Check iOS Settings.", "Не удалось точно определить статус доступа. Проверь настройки iOS.")
         }
     }
 
@@ -775,22 +781,22 @@ struct ProfileView: View {
 
     private var guestBasicsSection: some View {
         Group {
-            FieldShell(title: "Имя") {
-                TextField("Анна", text: $guestDraft.name)
+            FieldShell(title: L10n.string("Name", "Имя")) {
+                TextField(L10n.string("Anna", "Анна"), text: $guestDraft.name)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
             }
 
-            FieldShell(title: "Возраст") {
+            FieldShell(title: L10n.string("Age", "Возраст")) {
                 Stepper(value: $guestDraft.age, in: 18 ... 100) {
                     Text("\(guestDraft.age)")
                         .font(.headline)
                 }
             }
 
-            FieldShell(title: "Пол") {
-                Picker("Пол", selection: $guestDraft.gender) {
-                    Text("Не указывать").tag(Optional<Gender>.none)
+            FieldShell(title: L10n.string("Gender", "Пол")) {
+                Picker(L10n.string("Gender", "Пол"), selection: $guestDraft.gender) {
+                    Text(L10n.string("Prefer not to say", "Не указывать")).tag(Optional<Gender>.none)
                     ForEach(Gender.allCases) { gender in
                         Text(gender.title).tag(Optional(gender))
                     }
@@ -802,7 +808,7 @@ struct ProfileView: View {
 
     private var guestPreferencesSection: some View {
         Group {
-            FieldShell(title: "Радиус поиска", caption: "\(guestDraft.searchRadiusKm) км") {
+            FieldShell(title: L10n.string("Search radius", "Радиус поиска"), caption: L10n.string("\(guestDraft.searchRadiusKm) km", "\(guestDraft.searchRadiusKm) км")) {
                 Slider(
                     value: Binding(
                         get: { Double(guestDraft.searchRadiusKm) },
@@ -814,21 +820,21 @@ struct ProfileView: View {
                 .tint(AppTheme.court)
             }
 
-            ToggleCard(title: "Ищу игру сейчас", subtitle: "Показывать черновик в гостевой подборке.", isOn: $guestDraft.isLookingForGame)
+            ToggleCard(title: L10n.string("Looking for a game now", "Ищу игру сейчас"), subtitle: L10n.string("Show this draft in guest recommendations.", "Показывать черновик в гостевой подборке."), isOn: $guestDraft.isLookingForGame)
         }
     }
 
     @ViewBuilder
     private func availabilitySummary(for availabilityByDay: [String: [String]]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Итог")
+            Text(L10n.string("Summary", "Итог"))
                 .font(.caption.weight(.semibold))
                 .textCase(.uppercase)
                 .tracking(1.8)
                 .foregroundStyle(AppTheme.court)
 
             if availabilityByDay.isEmpty {
-                AppInlineChip(text: "Пока не указано", tint: AppTheme.cream, foreground: AppTheme.ink)
+                AppInlineChip(text: L10n.string("Not set yet", "Пока не указано"), tint: AppTheme.cream, foreground: AppTheme.ink)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(DayOfWeek.allCases) { day in
@@ -902,7 +908,7 @@ struct ProfileView: View {
     }
 
     @discardableResult
-    private func save(successMessage: String = "Профиль сохранён") async -> Bool {
+    private func save(successMessage: String = L10n.string("Profile saved", "Профиль сохранён")) async -> Bool {
         guard let draft else { return false }
 
         let didSave = await appModel.saveProfile(draft)
@@ -928,13 +934,13 @@ struct ProfileView: View {
         guard !isUploadingAvatar else { return }
 
         guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
-            appModel.errorMessage = "Не удалось прочитать выбранное фото"
+            appModel.errorMessage = L10n.string("Could not read the selected photo", "Не удалось прочитать выбранное фото")
             selectedAvatarItem = nil
             return
         }
 
         guard let jpegData = image.jpegData(compressionQuality: 0.88) else {
-            appModel.errorMessage = "Не удалось подготовить фото к загрузке"
+            appModel.errorMessage = L10n.string("Could not prepare the photo for upload", "Не удалось подготовить фото к загрузке")
             selectedAvatarItem = nil
             return
         }
@@ -959,7 +965,7 @@ struct ProfileView: View {
             }
 
             AppHaptics.notification(.success)
-            showSaveToast("Фото обновлено")
+            showSaveToast(L10n.string("Photo updated", "Фото обновлено"))
         } catch {
             appModel.present(error: error)
         }
@@ -984,7 +990,7 @@ struct ProfileView: View {
             }
 
             AppHaptics.notification(.success)
-            showSaveToast(preferredKind == .video ? "Видео добавлено" : "Фото добавлено")
+            showSaveToast(preferredKind == .video ? L10n.string("Video added", "Видео добавлено") : L10n.string("Photo added", "Фото добавлено"))
         } catch {
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
@@ -1002,7 +1008,7 @@ struct ProfileView: View {
 
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
-                throw APIError.invalidPayload("Не удалось прочитать выбранное видео")
+                throw APIError.invalidPayload(L10n.string("Could not read the selected video", "Не удалось прочитать выбранное видео"))
             }
 
             let contentType = item.supportedContentTypes.first
@@ -1017,7 +1023,7 @@ struct ProfileView: View {
             let duration = CMTimeGetSeconds(asset.duration)
 
             guard duration.isFinite, duration > 0 else {
-                throw APIError.invalidPayload("Не удалось определить длительность видео")
+                throw APIError.invalidPayload(L10n.string("Could not determine the video duration", "Не удалось определить длительность видео"))
             }
 
             pendingVideoTrimDraft = ProfileVideoTrimDraft(
@@ -1057,7 +1063,7 @@ struct ProfileView: View {
             pendingVideoTrimDraft = nil
 
             AppHaptics.notification(.success)
-            showSaveToast("Видео добавлено")
+            showSaveToast(L10n.string("Video added", "Видео добавлено"))
             await prepareNextVideoTrimDraft()
         } catch {
             guard !error.isCancellationLike else { return }
@@ -1071,7 +1077,7 @@ struct ProfileView: View {
     ) async throws -> ProfileTrimmedVideoPayload {
         let asset = AVURLAsset(url: trimDraft.sourceURL)
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetMediumQuality) else {
-            throw APIError.invalidPayload("Не удалось подготовить видео к обрезке")
+            throw APIError.invalidPayload(L10n.string("Could not prepare the video for trimming", "Не удалось подготовить видео к обрезке"))
         }
 
         let outputType: AVFileType = exportSession.supportedFileTypes.contains(.mp4) ? .mp4 : .mov
@@ -1105,9 +1111,9 @@ struct ProfileView: View {
                         continuation.resume(throwing: error)
                     }
                 case .failed, .cancelled:
-                    continuation.resume(throwing: exportSession.error ?? APIError.invalidPayload("Не удалось обрезать видео"))
+                    continuation.resume(throwing: exportSession.error ?? APIError.invalidPayload(L10n.string("Could not trim the video", "Не удалось обрезать видео")))
                 default:
-                    continuation.resume(throwing: APIError.invalidPayload("Не удалось обрезать видео"))
+                    continuation.resume(throwing: APIError.invalidPayload(L10n.string("Could not trim the video", "Не удалось обрезать видео")))
                 }
             }
         }
@@ -1119,7 +1125,7 @@ struct ProfileView: View {
         index: Int
     ) async throws -> (data: Data, fileName: String, mimeType: String) {
         guard let data = try await item.loadTransferable(type: Data.self) else {
-            throw APIError.invalidPayload("Не удалось прочитать выбранный файл")
+            throw APIError.invalidPayload(L10n.string("Could not read the selected file", "Не удалось прочитать выбранный файл"))
         }
 
         let contentType = item.supportedContentTypes.first
@@ -1176,7 +1182,7 @@ struct ProfileView: View {
                 let result = try await appModel.repository.removeProfileMedia(mediaUrl: item.path)
                 applyProfileMediaUpload(result)
                 AppHaptics.notification(.success)
-                showSaveToast(item.kind == .video ? "Видео удалено" : "Фото удалено")
+                showSaveToast(item.kind == .video ? L10n.string("Video removed", "Видео удалено") : L10n.string("Photo removed", "Фото удалено"))
             } catch {
                 draft = snapshot
                 appModel.currentUser = snapshot
@@ -1227,7 +1233,9 @@ struct ProfileView: View {
     }
 
     private func profileCompletionStatus(for profile: UserProfile) -> ProfileCompletionStatus {
-        let city = SupportedCity.resolve(profile.city)
+        let coveredCity = SupportedCity.resolve(profile.city)
+        let hasConfirmedCity = profile.location != nil
+            || coveredCity.map(SupportedCity.selectableCases.contains) == true
         let hasDistrict = profile.district?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             || !profile.preferredDistricts.isEmpty
         let hasLevels = !profile.preferredSports.isEmpty && profile.preferredSports.allSatisfy { sport in
@@ -1238,18 +1246,18 @@ struct ProfileView: View {
             || !profile.profilePhotoUrls.isEmpty
 
         var requirements: [(isComplete: Bool, step: String)] = [
-            (profile.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, "Добавьте имя"),
-            (profile.age != nil, "Укажите возраст"),
-            (city != nil, "Выберите город"),
-            (hasPhoto, "Добавьте основное фото"),
-            (!profile.preferredSports.isEmpty, "Выберите хотя бы один вид спорта"),
-            (hasLevels, "Укажите уровень для выбранных видов спорта"),
-            (hasAvailability, "Отметьте удобные дни и время"),
-            (profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, "Расскажите о себе")
+            (profile.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, L10n.string("Add your name", "Добавьте имя")),
+            (profile.age != nil, L10n.string("Add your age", "Укажите возраст")),
+            (hasConfirmedCity, L10n.string("Choose a city", "Выберите город")),
+            (hasPhoto, L10n.string("Add a main photo", "Добавьте основное фото")),
+            (!profile.preferredSports.isEmpty, L10n.string("Choose at least one sport", "Выберите хотя бы один вид спорта")),
+            (hasLevels, L10n.string("Set a level for your selected sports", "Укажите уровень для выбранных видов спорта")),
+            (hasAvailability, L10n.string("Add convenient days and times", "Отметьте удобные дни и время")),
+            (profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, L10n.string("Tell others about yourself", "Расскажите о себе"))
         ]
 
-        if city == .saintPetersburg {
-            requirements.append((hasDistrict, "Выберите район Санкт-Петербурга"))
+        if profileDistrictsEnabled(profile), coveredCity == .saintPetersburg {
+            requirements.append((hasDistrict, L10n.string("Choose a district", "Выберите район Санкт-Петербурга")))
         }
 
         let completedCount = requirements.filter(\.isComplete).count
@@ -1261,24 +1269,24 @@ struct ProfileView: View {
     }
 
     private func sportsSummary(for profile: UserProfile) -> String {
-        guard !profile.preferredSports.isEmpty else { return "Виды спорта ещё не выбраны" }
-        return "\(profile.preferredSports.count) вида спорта и уровни"
+        guard !profile.preferredSports.isEmpty else { return L10n.string("No sports selected yet", "Виды спорта ещё не выбраны") }
+        return L10n.string("\(profile.preferredSports.count) sports and levels", "\(profile.preferredSports.count) вида спорта и уровни")
     }
 
     private func playLocationSummary(for profile: UserProfile) -> String {
         let districts = profile.preferredDistricts.isEmpty ? [profile.district].compactMap { $0 } : profile.preferredDistricts
-        guard !districts.isEmpty else { return "Районы и любимые клубы не указаны" }
-        return "\(districts.count) района, любимые клубы"
+        guard !districts.isEmpty else { return L10n.string("Districts and favorite clubs are not set", "Районы и любимые клубы не указаны") }
+        return L10n.string("\(districts.count) districts, favorite clubs", "\(districts.count) района, любимые клубы")
     }
 
     private func activitySummary(for profile: UserProfile) -> String {
-        profile.isLookingForGame ? "Ищешь игру сейчас" : "Активных поисков нет"
+        profile.isLookingForGame ? L10n.string("Looking for a game now", "Ищешь игру сейчас") : L10n.string("No active searches", "Активных поисков нет")
     }
 
     private func notificationsSummary(for profile: UserProfile) -> String {
         let enabled = enabledNotificationCount(for: profile)
-        guard enabled > 0 else { return "Все события выключены" }
-        return "\(enabled) из 3 событий, звук \(profile.notificationSound ? "включён" : "выключен")"
+        guard enabled > 0 else { return L10n.string("All events are disabled", "Все события выключены") }
+        return L10n.string("\(enabled) of 3 events, sound \(profile.notificationSound ? "on" : "off")", "\(enabled) из 3 событий, звук \(profile.notificationSound ? "включён" : "выключен")")
     }
 
     private func enabledNotificationCount(for profile: UserProfile) -> Int {
@@ -1286,10 +1294,10 @@ struct ProfileView: View {
     }
 
     private func availabilityHeadline(for availabilityByDay: [String: [String]]) -> String {
-        guard !availabilityByDay.isEmpty else { return "Время игры не указано" }
+        guard !availabilityByDay.isEmpty else { return L10n.string("Play time is not set", "Время игры не указано") }
         let ranges = Set(availabilityByDay.values.flatMap { $0 }).compactMap { TimeRange(rawValue: $0)?.title.lowercased() }
         let daysCount = availabilityByDay.filter { !$0.value.isEmpty }.count
-        return "\(daysCount) дней, \(ranges.sorted().joined(separator: ", "))"
+        return L10n.string("\(daysCount) days, \(ranges.sorted().joined(separator: ", "))", "\(daysCount) дней, \(ranges.sorted().joined(separator: ", "))")
     }
 
     private func profileDistrictOptions(for city: SupportedCity) -> [String] {
@@ -1299,22 +1307,60 @@ struct ProfileView: View {
             .map(\.id)
     }
 
-    private func supportedCityBinding(for profile: Binding<UserProfile>) -> Binding<SupportedCity> {
-        Binding(
-            get: {
-                SupportedCity.resolve(profile.wrappedValue.city) ?? .saintPetersburg
-            },
-            set: { city in
-                let previousCity = SupportedCity.resolve(profile.wrappedValue.city)
-                profile.wrappedValue.city = city.rawValue
-                guard previousCity != city else {
-                    return
-                }
+    private func profileDistrictsEnabled(_ profile: UserProfile) -> Bool {
+        if profile.location != nil {
+            return profile.coverage.districtsEnabled
+        }
+        guard let city = SupportedCity.resolve(profile.city) else { return false }
+        return SupportedCity.selectableCases.contains(city)
+    }
 
-                profile.wrappedValue.district = nil
-                profile.wrappedValue.preferredDistricts.removeAll()
+    private func applyProfileLocation(_ place: GeoPlace, source: LocationSource) {
+        guard var current = draft else { return }
+        let didChangePlace = current.location?.id != place.id
+            || (current.location == nil && current.city?.localizedCaseInsensitiveCompare(place.city) != .orderedSame)
+        current.location = place
+        current.coverage = place.coverage
+        current.locationSource = source
+        current.city = place.coverage.legacyCity ?? place.city
+        if didChangePlace {
+            current.district = nil
+            current.preferredDistricts.removeAll()
+        }
+        draft = current
+        appModel.considerLocaleRecommendation(for: place)
+    }
+
+    private func profileLocationButton(_ profile: UserProfile) -> some View {
+        NavigationLink {
+            GlobalLocationPickerSheet(
+                repository: appModel.repository,
+                initialLocation: profile.location,
+                automaticallyRequestsLocation: false,
+                onSelect: applyProfileLocation
+            )
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "globe.europe.africa.fill")
+                    .foregroundStyle(AppTheme.court)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(profile.location?.city ?? profile.city ?? L10n.string("Choose country and city", "Выбрать страну и город"))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    if let country = profile.location?.countryName {
+                        Text(country)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.ink.opacity(0.56))
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.ink.opacity(0.42))
             }
-        )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
     }
 
     private func activeProfileDistricts(for profile: UserProfile) -> [String] {
@@ -1334,9 +1380,9 @@ struct ProfileView: View {
             .joined(separator: ", ")
 
         return [
-            .init(title: "Дней", value: "\(selectedDays)", icon: "calendar"),
-            .init(title: "Окна", value: windows.isEmpty ? "Пусто" : windows, icon: "clock"),
-            .init(title: "Слотов", value: "\(availabilityByDay.values.reduce(0) { $0 + $1.count })", icon: "checklist")
+            .init(title: L10n.string("Days", "Дней"), value: "\(selectedDays)", icon: "calendar"),
+            .init(title: L10n.string("Windows", "Окна"), value: windows.isEmpty ? L10n.string("Empty", "Пусто") : windows, icon: "clock"),
+            .init(title: L10n.string("Slots", "Слотов"), value: "\(availabilityByDay.values.reduce(0) { $0 + $1.count })", icon: "checklist")
         ]
     }
 }
@@ -1389,7 +1435,7 @@ private struct ProfileEditorScreen<Content: View>: View {
                                 .tint(.white)
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text("Сохранить")
+                            Text(L10n.string("Save", "Сохранить"))
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -1428,6 +1474,62 @@ private struct ProfileEditorScreen<Content: View>: View {
     }
 }
 
+private struct ProfileLanguageSettingsScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var localeStore: LocaleStore
+
+    private var isRussian: Bool { localeStore.effectiveLocale == .ru }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                ProfileSubscreenHeader(title: "Language / Язык", onBack: { dismiss() })
+
+                Text(isRussian
+                     ? "Язык интерфейса можно выбрать независимо от страны и города."
+                     : "You can choose the interface language independently of your country and city.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.62))
+
+                ProfileDarkPanel {
+                    VStack(spacing: 10) {
+                        ForEach(AppLocale.allCases) { locale in
+                            Button {
+                                appModel.setManualLocale(locale)
+                                AppHaptics.selection()
+                            } label: {
+                                HStack {
+                                    Text(locale.displayName)
+                                        .font(.headline.weight(.bold))
+                                    Spacer()
+                                    if localeStore.effectiveLocale == locale {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(AppTheme.court)
+                                    }
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 52)
+                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .profileBackSwipe { dismiss() }
+    }
+}
+
 private struct ProfileAccountScreen: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -1441,21 +1543,21 @@ private struct ProfileAccountScreen: View {
             Color.black.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 18) {
-                ProfileSubscreenHeader(title: "Аккаунт", onBack: { dismiss() })
+                ProfileSubscreenHeader(title: L10n.string("Account", "Аккаунт"), onBack: { dismiss() })
 
                 ProfileDarkPanel {
                     VStack(spacing: 0) {
-                        ProfileInfoLine(title: "Почта", value: email ?? "Не указана")
-                        ProfileInfoLine(title: "Статус", value: isVerified ? "Подтверждён" : "Не подтверждён")
+                        ProfileInfoLine(title: L10n.string("Email", "Почта"), value: email ?? L10n.string("Not provided", "Не указана"))
+                        ProfileInfoLine(title: L10n.string("Status", "Статус"), value: isVerified ? L10n.string("Verified", "Подтверждён") : L10n.string("Not verified", "Не подтверждён"))
                     }
                 }
 
-                Button("Выйти") {
+                Button(L10n.string("Sign out", "Выйти")) {
                     onLogout()
                 }
                 .buttonStyle(SecondaryActionButtonStyle(tint: .white))
 
-                Button("Удалить профиль") {
+                Button(L10n.string("Delete profile", "Удалить профиль")) {
                     onDelete()
                 }
                 .buttonStyle(SecondaryActionButtonStyle(tint: .red))
@@ -1622,12 +1724,12 @@ private struct ProfileAvailabilityDarkSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Итог расписания", systemImage: "calendar.badge.checkmark")
+            Label(L10n.string("Schedule summary", "Итог расписания"), systemImage: "calendar.badge.checkmark")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
 
             if availabilityByDay.isEmpty {
-                Text("Доступность пока не указана. Подбор будет меньше учитывать расписание.")
+                Text(L10n.string("Availability is not set yet. Recommendations will rely less on your schedule.", "Доступность пока не указана. Подбор будет меньше учитывать расписание."))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .fixedSize(horizontal: false, vertical: true)
@@ -1661,7 +1763,7 @@ private struct ProfileDistrictPickerCard: View {
     private let columns = [GridItem(.adaptive(minimum: 130), spacing: 8)]
 
     var body: some View {
-        ProfileEmbeddedLightCard(title: "Предпочтительные районы", subtitle: "Первый выбранный район станет основным для профиля.") {
+        ProfileEmbeddedLightCard(title: L10n.string("Preferred districts", "Предпочтительные районы"), subtitle: L10n.string("The first selected district becomes your primary district.", "Первый выбранный район станет основным для профиля.")) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(districts, id: \.self) { district in
                     districtChip(district)
@@ -1674,7 +1776,7 @@ private struct ProfileDistrictPickerCard: View {
                     selectedDistricts.removeAll()
                     primaryDistrict = nil
                 } label: {
-                    Label("Сбросить районы", systemImage: "xmark.circle")
+                    Label(L10n.string("Clear districts", "Сбросить районы"), systemImage: "xmark.circle")
                         .font(.subheadline.weight(.bold))
                         .frame(maxWidth: .infinity)
                 }
@@ -1804,10 +1906,10 @@ private struct ProfileVideoTrimEditorSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Обрезать видео")
+                        Text(L10n.string("Trim video", "Обрезать видео"))
                             .font(.title2.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("Выберите фрагмент до 10 секунд")
+                        Text(L10n.string("Choose a clip up to 10 seconds", "Выберите фрагмент до 10 секунд"))
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white.opacity(0.58))
                     }
@@ -1839,7 +1941,7 @@ private struct ProfileVideoTrimEditorSheet: View {
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
                         Spacer()
-                        Text("\(Int(ceil(selectedDuration))) сек")
+                        Text(L10n.string("\(Int(ceil(selectedDuration))) sec", "\(Int(ceil(selectedDuration))) сек"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.mint)
                             .padding(.horizontal, 10)
@@ -1856,7 +1958,7 @@ private struct ProfileVideoTrimEditorSheet: View {
                             seekPlayer(to: newValue)
                         }
 
-                    Text(maxStartTime <= 0 ? "Видео короче 10 секунд, можно загрузить целиком." : "Передвиньте шкалу, чтобы выбрать начало 10-секундного фрагмента.")
+                    Text(maxStartTime <= 0 ? L10n.string("The video is under 10 seconds and can be uploaded in full.", "Видео короче 10 секунд, можно загрузить целиком.") : L10n.string("Move the slider to choose the start of the 10-second clip.", "Передвиньте шкалу, чтобы выбрать начало 10-секундного фрагмента."))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.white.opacity(0.56))
                 }
@@ -1874,7 +1976,7 @@ private struct ProfileVideoTrimEditorSheet: View {
                             ProgressView()
                                 .tint(.white)
                         }
-                        Text(isProcessing ? "Готовим видео..." : "Использовать фрагмент")
+                        Text(isProcessing ? L10n.string("Preparing video...", "Готовим видео...") : L10n.string("Use clip", "Использовать фрагмент"))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -1889,8 +1991,8 @@ private struct ProfileVideoTrimEditorSheet: View {
 
             if isProcessing {
                 ProfileMediaProgressOverlay(
-                    title: "Видео загружается",
-                    subtitle: "Сохраняем выбранный фрагмент в карточку."
+                    title: L10n.string("Uploading video", "Видео загружается"),
+                    subtitle: L10n.string("Saving the selected clip to your profile.", "Сохраняем выбранный фрагмент в карточку.")
                 )
                 .transition(.opacity)
             }
@@ -1958,7 +2060,7 @@ private struct ProfileScreenModePicker: View {
                     VStack(spacing: 4) {
                         Image(systemName: mode.icon)
                             .font(.caption.weight(.bold))
-                        Text(mode.rawValue)
+                        Text(mode.title)
                             .font(.caption.weight(.semibold))
                     }
                         .foregroundStyle(selection == mode ? .black : .white.opacity(0.68))
@@ -1992,10 +2094,10 @@ private struct ProfileSwipeCardPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Карточка в «Похожих игроках»")
+                Text(L10n.string("Profile in Similar players", "Карточка в «Похожих игроках»"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                Text("Показаны только данные из вашего профиля")
+                Text(L10n.string("Only information from your profile is shown", "Показаны только данные из вашего профиля"))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.58))
             }
@@ -2012,7 +2114,7 @@ private struct ProfileSwipeCardPreview: View {
             )
             .frame(height: 520)
 
-            Label("Предпросмотр: свайпы и действия отключены", systemImage: "eye.fill")
+            Label(L10n.string("Preview: swipes and actions are disabled", "Предпросмотр: свайпы и действия отключены"), systemImage: "eye.fill")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.56))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -2058,7 +2160,7 @@ private struct ProfileOverviewCard: View {
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
                             if profile.isLookingForGame {
-                                ProfileCapsule(text: "Ищу игру", tint: AppTheme.court)
+                                ProfileCapsule(text: L10n.string("Looking for a game", "Ищу игру"), tint: AppTheme.court)
                             }
                         }
 
@@ -2074,7 +2176,7 @@ private struct ProfileOverviewCard: View {
                                 .foregroundStyle(.white.opacity(0.72))
                         }
 
-                        Text(profile.bio ?? "Добавь пару строк о себе и короткие видео с тренировок.")
+                        Text(profile.bio ?? L10n.string("Add a few lines about yourself and short practice videos.", "Добавь пару строк о себе и короткие видео с тренировок."))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white.opacity(0.58))
                             .lineLimit(2)
@@ -2092,7 +2194,7 @@ private struct ProfileOverviewCard: View {
                 NavigationLink {
                     QRProfileView(profile: profile, visibilityMode: .publicProfile)
                 } label: {
-                    Label("QR-профиль", systemImage: "qrcode")
+                    Label(L10n.string("QR profile", "QR-профиль"), systemImage: "qrcode")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(ProfileSoftButtonStyle())
@@ -2103,9 +2205,9 @@ private struct ProfileOverviewCard: View {
     private func profileAgeCityLine(_ profile: UserProfile) -> String {
         var parts: [String] = []
         if let age = profile.age {
-            parts.append("\(age) лет")
+            parts.append(L10n.string("\(age) years old", "\(age) лет"))
         }
-        parts.append(profile.city ?? "Санкт-Петербург")
+        parts.append(profile.city ?? L10n.string("City not selected", "Город не выбран"))
         return parts.joined(separator: " · ")
     }
 }
@@ -2138,10 +2240,10 @@ private struct ProfileSelectionMediaCard: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Ваш профиль")
+                        Text(L10n.string("Your profile", "Ваш профиль"))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("Основные данные и медиа")
+                        Text(L10n.string("Basic information and media", "Основные данные и медиа"))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white.opacity(0.58))
                     }
@@ -2161,7 +2263,7 @@ private struct ProfileSelectionMediaCard: View {
                             .background(.white.opacity(0.09), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Редактировать профиль")
+                    .accessibilityLabel(L10n.string("Edit profile", "Редактировать профиль"))
                 }
 
                 PhotosPicker(selection: $selectedAvatarItem, matching: .images, photoLibrary: .shared()) {
@@ -2172,7 +2274,7 @@ private struct ProfileSelectionMediaCard: View {
                             height: 264
                         )
 
-                        Label("Основное фото", systemImage: "camera.fill")
+                        Label(L10n.string("Main photo", "Основное фото"), systemImage: "camera.fill")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
@@ -2212,7 +2314,7 @@ private struct ProfileSelectionMediaCard: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if profile.preferredSports.isEmpty {
-                        Text("Виды спорта пока не выбраны")
+                        Text(L10n.string("No sports selected yet", "Виды спорта пока не выбраны"))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.52))
                     } else {
@@ -2238,18 +2340,7 @@ private struct ProfileSelectionMediaCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack {
-                            mediaTitle
-                            Spacer()
-                            videoBonusLabel
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            mediaTitle
-                            videoBonusLabel
-                        }
-                    }
+                    mediaHeader
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
@@ -2270,7 +2361,7 @@ private struct ProfileSelectionMediaCard: View {
                                     matching: .images,
                                     photoLibrary: .shared()
                                 ) {
-                                    ProfileAddMediaTile(title: "Фото", systemImage: "camera.fill")
+                                    ProfileAddMediaTile(title: L10n.string("Photo", "Фото"), systemImage: "camera.fill")
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(isUploading || isUploadingAvatar)
@@ -2283,7 +2374,7 @@ private struct ProfileSelectionMediaCard: View {
                                     matching: .videos,
                                     photoLibrary: .shared()
                                 ) {
-                                    ProfileAddMediaTile(title: "Видео до 10 сек", systemImage: "play.rectangle.fill")
+                                    ProfileAddMediaTile(title: L10n.string("Video up to 10 sec", "Видео до 10 сек"), systemImage: "play.rectangle.fill")
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(isUploading || isUploadingAvatar)
@@ -2309,7 +2400,7 @@ private struct ProfileSelectionMediaCard: View {
     @ViewBuilder
     private var lookingForGameBadge: some View {
         if profile.isLookingForGame {
-            ProfileCapsule(text: "Ищу игру", tint: AppTheme.court)
+            ProfileCapsule(text: L10n.string("Looking for a game", "Ищу игру"), tint: AppTheme.court)
         }
     }
 
@@ -2324,29 +2415,46 @@ private struct ProfileSelectionMediaCard: View {
         if let district = districts.compactMap(localizedDistrictName).first {
             parts.append(district)
         }
-        return parts.isEmpty ? "Город и район не указаны" : parts.joined(separator: " · ")
+        return parts.isEmpty ? L10n.string("City and district are not set", "Город и район не указаны") : parts.joined(separator: " · ")
     }
 
     private var profileBioText: String {
         guard let bio = profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty else {
-            return "Описание пока не заполнено"
+            return L10n.string("Description is not filled in yet", "Описание пока не заполнено")
         }
         return bio
     }
 
     private var mediaTitle: some View {
-        Text("Фото и видео")
+        Text(L10n.string("Photos and videos", "Фото и видео"))
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.white)
     }
 
-    private var videoBonusLabel: some View {
-        Label(
-            profile.profileVideoUrls.isEmpty ? "Видео: необязательный бонус" : "Видео добавлено",
-            systemImage: profile.profileVideoUrls.isEmpty ? "sparkles" : "checkmark.circle.fill"
-        )
+    @ViewBuilder
+    private var mediaHeader: some View {
+        if profile.profileVideoUrls.isEmpty {
+            mediaTitle
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    mediaTitle
+                    Spacer()
+                    videoAddedLabel
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    mediaTitle
+                    videoAddedLabel
+                }
+            }
+        }
+    }
+
+    private var videoAddedLabel: some View {
+        Label(L10n.string("Video added", "Видео добавлено"), systemImage: "checkmark.circle.fill")
         .font(.caption.weight(.semibold))
-        .foregroundStyle(profile.profileVideoUrls.isEmpty ? .white.opacity(0.58) : AppTheme.mint)
+        .foregroundStyle(AppTheme.mint)
     }
 }
 
@@ -2440,7 +2548,7 @@ private struct ProfileMediaTile: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!isEnabled)
-                .accessibilityLabel(item.kind == .video ? "Удалить видео" : "Удалить фото")
+                .accessibilityLabel(item.kind == .video ? L10n.string("Remove video", "Удалить видео") : L10n.string("Remove photo", "Удалить фото"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(6)
             }
@@ -2516,7 +2624,7 @@ private struct ProfileMediaAdviceRow: View {
             Image(systemName: "info.circle.fill")
                 .foregroundStyle(AppTheme.court)
                 .padding(.top, 1)
-            Text("Добавьте фото в хорошем освещении и короткие видео с игры или тренировки.")
+            Text(L10n.string("Add well-lit photos and short videos from games or practice.", "Добавьте фото в хорошем освещении и короткие видео с игры или тренировки."))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.64))
                 .fixedSize(horizontal: false, vertical: true)
@@ -2536,7 +2644,7 @@ private struct ProfileCompletenessCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Заполненность профиля")
+                        Text(L10n.string("Profile completion", "Заполненность профиля"))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
                         Text(completionSubtitle)
@@ -2562,7 +2670,7 @@ private struct ProfileCompletenessCard: View {
                 .frame(height: 7)
 
                 if missingSteps.isEmpty {
-                    Label("Все обязательные шаги выполнены", systemImage: "checkmark.circle.fill")
+                    Label(L10n.string("All required steps are complete", "Все обязательные шаги выполнены"), systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.mint)
                 } else {
@@ -2583,7 +2691,7 @@ private struct ProfileCompletenessCard: View {
                 }
 
                 Label(
-                    hasVideoBonus ? "Видео добавлено как бонус к карточке" : "Видео: бонус, который не влияет на заполненность",
+                    hasVideoBonus ? L10n.string("Video added as a profile bonus", "Видео добавлено как бонус к карточке") : L10n.string("Video is a bonus and does not affect completion", "Видео: бонус, который не влияет на заполненность"),
                     systemImage: hasVideoBonus ? "play.circle.fill" : "sparkles"
                 )
                 .font(.caption.weight(.medium))
@@ -2595,9 +2703,9 @@ private struct ProfileCompletenessCard: View {
 
     private var completionSubtitle: String {
         if missingSteps.isEmpty {
-            return "Профиль готов к показу"
+            return L10n.string("Profile is ready to be shown", "Профиль готов к показу")
         }
-        return "Осталось шагов: \(missingSteps.count)"
+        return L10n.string("Steps remaining: \(missingSteps.count)", "Осталось шагов: \(missingSteps.count)")
     }
 }
 
@@ -2612,7 +2720,7 @@ private struct ProfileGameFeedSection: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Лента игр")
+                        Text(L10n.string("Game feed", "Лента игр"))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
                         Text(feedSubtitle)
@@ -2634,7 +2742,7 @@ private struct ProfileGameFeedSection: View {
                 }
 
                 if requests.isEmpty && !isLoading {
-                    Text("После завершённой игры добавь фотоотчёт — она появится здесь.")
+                    Text(L10n.string("Add a photo report after a completed game and it will appear here.", "После завершённой игры добавь фотоотчёт — она появится здесь."))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
@@ -2661,10 +2769,10 @@ private struct ProfileGameFeedSection: View {
 
     private var feedSubtitle: String {
         if requests.isEmpty {
-            return "Фотоотчёты и подтверждённые тренировки"
+            return L10n.string("Photo reports and confirmed sessions", "Фотоотчёты и подтверждённые тренировки")
         }
         let reportCount = requests.filter { $0.report != nil }.count
-        return "\(requests.count) игр · \(reportCount) фотоотчётов"
+        return L10n.string("\(requests.count) games · \(reportCount) photo reports", "\(requests.count) игр · \(reportCount) фотоотчётов")
     }
 }
 
@@ -2699,7 +2807,7 @@ private struct ProfileGameFeedRow: View {
                             .foregroundStyle(report.status.lowercased() == "confirmed" ? AppTheme.court : Color.orange)
 
                         if !report.photoUrls.isEmpty {
-                            Label("\(report.photoUrls.count) фото", systemImage: "photo.stack")
+                            Label(L10n.string("\(report.photoUrls.count) photos", "\(report.photoUrls.count) фото"), systemImage: "photo.stack")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
@@ -2878,7 +2986,7 @@ private struct GameReportPhotoGallerySheet: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Фотоотчёт")
+                Text(L10n.string("Photo report", "Фотоотчёт"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
                 Text(report.statusTitle)
@@ -2933,7 +3041,7 @@ private struct GameReportPhotoGallerySheet: View {
         VStack(spacing: 12) {
             Image(systemName: "photo")
                 .font(.system(size: 44, weight: .semibold))
-            Text("Фото недоступны")
+            Text(L10n.string("Photos unavailable", "Фото недоступны"))
                 .font(.headline.weight(.bold))
         }
         .foregroundStyle(.white.opacity(0.74))
@@ -2976,10 +3084,7 @@ private struct QRProfileView: View {
     @State private var toast: String?
 
     private var profileURL: String {
-        if let baseURL = AppConfig.apiBaseURL {
-            return baseURL.appendingPathComponent("users").appendingPathComponent(profile.id).absoluteString
-        }
-        return "tennissearch://profile/\(profile.id)"
+        AppConfig.profileURL(userID: profile.id).absoluteString
     }
 
     var body: some View {
@@ -2988,11 +3093,11 @@ private struct QRProfileView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
-                    ProfileSubscreenHeader(title: "QR-профиль", onBack: { dismiss() })
+                    ProfileSubscreenHeader(title: L10n.string("QR profile", "QR-профиль"), onBack: { dismiss() })
 
                     ProfileDarkPanel {
                         VStack(spacing: 20) {
-                            Text("Покажи этот код, чтобы поделиться своим профилем")
+                            Text(L10n.string("Show this code to share your profile", "Покажи этот код, чтобы поделиться своим профилем"))
                                 .font(.title3.weight(.medium))
                                 .foregroundStyle(.white.opacity(0.7))
                                 .multilineTextAlignment(.center)
@@ -3011,7 +3116,7 @@ private struct QRProfileView: View {
 
                             ProfileSmallPublicCard(profile: profile)
 
-                            Label("По QR откроется только публичная карточка. Личные данные не показываются.", systemImage: "checkmark.shield")
+                            Label(L10n.string("The QR code opens only your public profile. Personal data is not shown.", "По QR откроется только публичная карточка. Личные данные не показываются."), systemImage: "checkmark.shield")
                                 .font(.footnote)
                                 .foregroundStyle(.white.opacity(0.7))
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -3019,26 +3124,26 @@ private struct QRProfileView: View {
                     }
 
                     ProfileMenuGroup {
-                        ProfileActionRow(icon: "link", title: "Поделиться ссылкой") {
+                        ProfileActionRow(icon: "link", title: L10n.string("Share link", "Поделиться ссылкой")) {
                             UIPasteboard.general.string = profileURL
                             AppHaptics.notification(.success)
-                            showToast("Ссылка скопирована")
+                            showToast(L10n.string("Link copied", "Ссылка скопирована"))
                         }
 
-                        ProfileActionRow(icon: "square.and.arrow.down", title: "Сохранить QR") {
+                        ProfileActionRow(icon: "square.and.arrow.down", title: L10n.string("Save QR", "Сохранить QR")) {
                             AppHaptics.selection()
-                            showToast("QR готов к сохранению")
+                            showToast(L10n.string("QR is ready to save", "QR готов к сохранению"))
                         }
 
                         ShareLink(item: profileURL) {
-                            ProfileMenuRow(icon: "square.and.arrow.up", tint: .white.opacity(0.72), title: "Поделиться", subtitle: nil)
+                            ProfileMenuRow(icon: "square.and.arrow.up", tint: .white.opacity(0.72), title: L10n.string("Share", "Поделиться"), subtitle: nil)
                         }
                         .buttonStyle(.plain)
 
                         NavigationLink {
                             VisibilitySettingsView(selectionRaw: .constant(visibilityMode.rawValue))
                         } label: {
-                            ProfileMenuRow(icon: "eye", tint: .white.opacity(0.72), title: "Настроить видимость", subtitle: visibilityMode.title)
+                            ProfileMenuRow(icon: "eye", tint: .white.opacity(0.72), title: L10n.string("Visibility settings", "Настроить видимость"), subtitle: visibilityMode.title)
                         }
                         .buttonStyle(.plain)
                     }
@@ -3083,9 +3188,9 @@ private struct VisibilitySettingsView: View {
             Color.black.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 20) {
-                ProfileSubscreenHeader(title: "Настройки видимости", onBack: { dismiss() })
+                ProfileSubscreenHeader(title: L10n.string("Visibility settings", "Настройки видимости"), onBack: { dismiss() })
 
-                Text("Выбери, что будет видно в твоём публичном профиле")
+                Text(L10n.string("Choose what is visible in your public profile", "Выбери, что будет видно в твоём публичном профиле"))
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.72))
 
@@ -3102,7 +3207,7 @@ private struct VisibilitySettingsView: View {
                 )
 
                 ProfileDarkPanel {
-                    Label("В любой момент можно изменить настройки видимости.", systemImage: "info.circle")
+                    Label(L10n.string("You can change visibility settings at any time.", "В любой момент можно изменить настройки видимости."), systemImage: "info.circle")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.72))
                 }
@@ -3384,7 +3489,7 @@ private struct ProfileSmallPublicCard: View {
                 Text(profile.displayName)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
-                Text(profile.age.map { "\($0) лет · \(profile.city ?? "Санкт-Петербург")" } ?? (profile.city ?? "Санкт-Петербург"))
+                Text(profile.age.map { L10n.string("\($0) years old · \(profile.city ?? "City not selected")", "\($0) лет · \(profile.city ?? "Город не выбран")") } ?? (profile.city ?? L10n.string("City not selected", "Город не выбран")))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.6))
                 Text(profile.preferredSports.prefix(2).map(\.title).joined(separator: " · "))
@@ -3522,18 +3627,18 @@ private enum ProfileVisibilityMode: String {
     var title: String {
         switch self {
         case .publicProfile:
-            return "Публичный профиль"
+            return L10n.string("Public profile", "Публичный профиль")
         case .limitedProfile:
-            return "Ограниченный профиль"
+            return L10n.string("Limited profile", "Ограниченный профиль")
         }
     }
 
     var description: String {
         switch self {
         case .publicProfile:
-            return "Показывать фото, спорт, уровень, район и описание. Подходит для поиска новых игроков."
+            return L10n.string("Show photos, sport, level, district, and bio. Best for finding new players.", "Показывать фото, спорт, уровень, район и описание. Подходит для поиска новых игроков.")
         case .limitedProfile:
-            return "Показывать только имя, спорт и город. Больше приватности — меньше деталей."
+            return L10n.string("Show only name, sport, and city. More privacy with fewer details.", "Показывать только имя, спорт и город. Больше приватности — меньше деталей.")
         }
     }
 
@@ -3551,7 +3656,7 @@ private extension Sport {
     var shortTitle: String {
         switch self {
         case .tableTennis:
-            return "Наст. теннис"
+            return L10n.string("Table tennis", "Наст. теннис")
         default:
             return title
         }
@@ -3610,7 +3715,7 @@ private struct ProfileSaveSuccessToast: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Успешно сохранено")
+                Text(L10n.string("Saved successfully", "Успешно сохранено"))
                     .font(.caption.weight(.semibold))
                     .textCase(.uppercase)
                     .tracking(1.3)

@@ -1,17 +1,21 @@
 import { NextRequest } from "next/server";
 
 import { createSession, getLegalAcceptanceRequestMeta, recordUserAgreementAcceptance, verifyAuthCode } from "@/lib/auth";
-import { fail, getErrorMessage, ok } from "@/lib/http";
+import { fail, ok } from "@/lib/http";
+import { resolveLocalizedAuthError } from "@/lib/i18n/server/auth-errors";
+import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
+import { translateServer } from "@/lib/i18n/server";
 import { prisma } from "@/lib/prisma";
 import { verifySchema } from "@/lib/validators";
 
 export async function POST(request: NextRequest) {
+  const locale = getServerRequestLocale(request);
   try {
     const body = verifySchema.parse(await request.json());
     const user = await verifyAuthCode(body.email, body.code);
 
     if (!user) {
-      return fail("Неверный или просроченный код", 401);
+      return fail(translateServer(locale, "auth.error.invalidCode"), 401, "AUTH_INVALID_CODE");
     }
 
     const userWithAgreement = await recordUserAgreementAcceptance(
@@ -38,7 +42,7 @@ export async function POST(request: NextRequest) {
       sessionToken
     });
   } catch (error) {
-    const message = getErrorMessage(error);
-    return message === "ACCOUNT_DEACTIVATED" ? fail("Аккаунт деактивирован", 403) : fail(message);
+    const localizedError = resolveLocalizedAuthError(error, locale);
+    return fail(localizedError.message, localizedError.status, localizedError.errorCode);
   }
 }

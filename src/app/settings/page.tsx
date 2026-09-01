@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { SettingsForm } from "@/components/forms/settings-form";
+import { LocalizedSettingsTitle } from "@/components/i18n/localized-settings-title";
+import { LocaleRecommendation } from "@/components/i18n/locale-recommendation";
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionTitle } from "@/components/ui/section-title";
+import { getLocationPlace } from "@/server/locations";
 
 export default async function SettingsPage() {
   const user = await getSessionUser();
@@ -13,13 +15,14 @@ export default async function SettingsPage() {
     redirect(buildGuestAuthHref("/settings"));
   }
 
+  const confirmedLocation = user.locationPlaceId ? await getLocationPlace(user.locationPlaceId) : null;
+
   return (
     <PageShell>
-      <SectionTitle
-        eyebrow="Настройки"
-        title="Уведомления и управление сессией."
-        subtitle="Позже сюда можно будет добавить установку PWA и push-уведомления без изменения базовой модели."
-      />
+      <LocalizedSettingsTitle />
+      {user.localeOverride ? null : (
+        <LocaleRecommendation confirmedCountryCode={confirmedLocation?.countryCode} />
+      )}
       <SettingsForm user={user} />
     </PageShell>
   );
