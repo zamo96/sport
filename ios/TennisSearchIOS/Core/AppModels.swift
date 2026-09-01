@@ -115,8 +115,15 @@ struct GeoPlace: Codable, Identifiable, Equatable {
 
     var displayTitle: String { city }
 
+    // The catalog stores country names in English, so the display name comes from the country code
+    // in the language the app is currently showing. The backend only ever sends codes it validated
+    // against the ISO list, and the stored name stays as the fallback.
+    var localizedCountryName: String {
+        LocaleStore.currentEffectiveLocale.locale.localizedString(forRegionCode: countryCode) ?? countryName
+    }
+
     var displaySubtitle: String {
-        [region, countryName]
+        [region, localizedCountryName]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && $0.localizedCaseInsensitiveCompare(city) != .orderedSame }
             .joined(separator: ", ")

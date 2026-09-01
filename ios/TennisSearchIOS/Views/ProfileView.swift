@@ -1347,7 +1347,7 @@ struct ProfileView: View {
                     Text(profile.location?.city ?? profile.city ?? L10n.string("Choose country and city", "Выбрать страну и город"))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    if let country = profile.location?.countryName {
+                    if let country = profile.location?.localizedCountryName {
                         Text(country)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(AppTheme.ink.opacity(0.56))
