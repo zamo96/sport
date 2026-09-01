@@ -282,6 +282,8 @@ model User {
   notificationGames                  Boolean                             @default(true)
   notificationSound                  Boolean                             @default(true)
   localeOverride                     String?
+  timezone                           String?
+  notificationDigest                 Boolean                             @default(true)
   accountStatus                      AccountStatus                       @default(active)
   deactivatedAt                      DateTime?
   deactivationReason                 String?
@@ -317,6 +319,8 @@ model User {
   courtMemberships                   UserCourt[]
   blockedUsers                       Block[]                             @relation("BlockerUser")
   blockingUsers                      Block[]                             @relation("BlockedUser")
+  events                             UserEvent[]
+  notificationDeliveries             NotificationDelivery[]
   contentReportsMade                 ContentReport[]                     @relation("ContentReportReporter")
   contentReportsReceived             ContentReport[]                     @relation("ContentReportTarget")
   contentReportsReviewed             ContentReport[]                     @relation("ContentReportReviewer")
@@ -400,6 +404,42 @@ model HotSearchDigestDelivery {
 
   @@unique([userId, slotKey])
   @@index([createdAt])
+}
+
+model UserEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String
+  entityType String?
+  entityId   String?
+  context    Json?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+model NotificationDelivery {
+  id          String    @id @default(cuid())
+  userId      String
+  campaignKey String
+  dedupeKey   String    @unique
+  variant     String    @default("treatment")
+  title       String
+  body        String
+  href        String
+  context     Json?
+  sentAt      DateTime?
+  openedAt    DateTime?
+  convertedAt DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, campaignKey, createdAt])
+  @@index([campaignKey, createdAt])
+  @@index([userId, createdAt])
 }
 
 model Court {
