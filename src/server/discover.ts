@@ -283,6 +283,42 @@ async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string 
   }));
 }
 
+/**
+ * Сколько кандидатов игрок увидел бы в поиске — всего и появившихся недавно.
+ * Намеренно не идёт через `getDiscoverCandidates`: тот пишет
+ * `DiscoverImpression`, а показа здесь нет — это проверка перед отправкой пуша,
+ * и фальшивые показы испортили бы разметку.
+ */
+export async function summarizeDiscoverCandidates(
+  userId: string,
+  options: { filters?: DiscoverFilters; newerThan?: Date | null } = {}
+) {
+  const filters = options.filters ?? {};
+  const viewer = await prisma.user.findUnique({
+    where: { id: userId }
+  });
+
+  if (!viewer) {
+    return { total: 0, fresh: 0 };
+  }
+
+  const pool = await fetchCandidatePool(userId, filters);
+  const filtered = filterCandidatesForView(viewer, pool, filters);
+  const scored = scoreCandidates(toCandidateViewer(viewer), filtered, filters);
+  const newerThan = options.newerThan;
+
+  return {
+    total: scored.length,
+    fresh: newerThan
+      ? scored.filter((candidate) => candidate.createdAt != null && candidate.createdAt > newerThan).length
+      : 0
+  };
+}
+
+export async function countDiscoverCandidates(userId: string, filters: DiscoverFilters = {}) {
+  return (await summarizeDiscoverCandidates(userId, { filters })).total;
+}
+
 export async function getDiscoverCandidates(userId: string, filters: DiscoverFilters = {}) {
   const viewer = await prisma.user.findUnique({
     where: { id: userId }

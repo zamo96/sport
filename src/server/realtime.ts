@@ -18,6 +18,7 @@ export type RealtimeEventPayload = {
   searchId?: string | null;
   messageId?: string | null;
   gameRequestId?: string | null;
+  deliveryId?: string | null;
   status?: string | null;
 };
 

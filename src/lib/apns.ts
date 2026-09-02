@@ -12,6 +12,7 @@ type PushPayload = {
   body: string;
   href: string;
   sound?: boolean;
+  deliveryId?: string;
 };
 
 type APNSConfig = {
@@ -189,7 +190,8 @@ async function deliverAPNSToDevice(
         },
         sound: payload.sound === false ? undefined : "default"
       },
-      href: payload.href
+      href: payload.href,
+      deliveryId: payload.deliveryId
     });
 
     let responseBody = "";
@@ -236,7 +238,8 @@ export async function sendPushToUser(payload: PushPayload) {
     type: "notification",
     title: payload.title,
     body: payload.body,
-    href: payload.href
+    href: payload.href,
+    deliveryId: payload.deliveryId
   });
 
   const devices = await prisma.pushDevice.findMany({

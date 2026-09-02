@@ -1,7 +1,7 @@
 import { CourtStatus, type GameSearchType, type Sport } from "@prisma/client";
 
 import { getSessionUser } from "@/lib/auth";
-import { DEFAULT_CITY, SPORT_OPTIONS } from "@/lib/constants";
+import { DAY_OPTIONS, DEFAULT_CITY, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { GuestGameSearchPage } from "@/components/forms/guest-game-search-page";
 import { PageShell } from "@/components/layout/page-shell";
@@ -12,10 +12,15 @@ import { getCourtsForUser } from "@/server/app-data";
 export default async function NewGameSearchPage({
   searchParams
 }: {
-  searchParams?: { mode?: string };
+  searchParams?: { mode?: string; sport?: string; day?: string; time?: string };
 }) {
   const user = await getSessionUser();
   const initialMode = searchParams?.mode === "hot" ? "hot" : "regular";
+  // Ссылка из пуша «сходить на тренировку» приносит готовый слот.
+  const presetSport = SPORT_OPTIONS.find((option) => option === searchParams?.sport);
+  const presetDay = DAY_OPTIONS.find((option) => option === searchParams?.day);
+  const presetTime = TIME_RANGE_OPTIONS.find((option) => option === searchParams?.time);
+  const presetAvailability = presetDay && presetTime ? { [presetDay]: [presetTime] } : undefined;
   const courts = user
     ? await getCourtsForUser(user.id)
     : await prisma.court.findMany({
@@ -51,6 +56,8 @@ export default async function NewGameSearchPage({
       {user ? (
         <GameSearchForm
           initialMode={initialMode as GameSearchType}
+          presetSport={presetSport}
+          presetAvailability={presetAvailability}
           availableSports={[...SPORT_OPTIONS] as Sport[]}
           profileSports={
             Array.isArray(user.preferredSports)

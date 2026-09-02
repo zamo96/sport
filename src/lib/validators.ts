@@ -24,6 +24,7 @@ import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RA
 import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
 import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
+import { CLIENT_REPORTABLE_EVENT_TYPES } from "@/lib/user-events";
 
 const dayEnum = z.enum(DAY_OPTIONS);
 const cityEnum = z.enum(AVAILABLE_CITIES);
@@ -159,6 +160,7 @@ export const updateMeSchema = z.object({
   notificationMatches: z.boolean().optional(),
   notificationMessages: z.boolean().optional(),
   notificationGames: z.boolean().optional(),
+  notificationDigest: z.boolean().optional(),
   notificationSound: z.boolean().optional()
 }).refine((value) => Boolean(value.locationPlaceId || value.city), {
   message: "Выберите город",
@@ -774,3 +776,17 @@ export const resolveContentReportSchema = z.object({
 export type CreateContentReportInput = z.infer<typeof createContentReportSchema>;
 export type AdminContentReportsQuery = z.infer<typeof adminContentReportsQuerySchema>;
 export type ResolveContentReportInput = z.infer<typeof resolveContentReportSchema>;
+
+export const userEventSchema = z.object({
+  type: z.enum(CLIENT_REPORTABLE_EVENT_TYPES),
+  entityType: z.string().trim().max(60).optional(),
+  entityId: z.string().trim().max(200).optional(),
+  deliveryId: z.string().trim().max(200).optional(),
+  context: z.record(z.string().max(60), z.union([z.string().max(200), z.number(), z.boolean()])).optional()
+}).strict();
+
+export const userEventsSchema = z.object({
+  events: z.array(userEventSchema).min(1).max(20)
+}).strict();
+
+export type UserEventPayload = z.infer<typeof userEventSchema>;

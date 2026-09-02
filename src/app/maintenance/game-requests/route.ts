@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { fail, ok } from "@/lib/http";
 import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { runHotSearchDigestMaintenance } from "@/server/hot-search-digest";
+import { runLifecycleCampaigns } from "@/server/lifecycle-campaigns";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,10 +31,11 @@ async function handleMaintenance(request: NextRequest) {
     return fail("Нет доступа", 403);
   }
 
-  const [gameRequests, hotSearchDigest] = await Promise.all([
-    runGameRequestMaintenance(),
-    runHotSearchDigestMaintenance()
-  ]);
+  // Дайджест и кампании делят один дневной лимит на игрока, поэтому идут
+  // последовательно: параллельно оба прошли бы проверку до записи доставки.
+  const gameRequests = await runGameRequestMaintenance();
+  const hotSearchDigest = await runHotSearchDigestMaintenance();
+  const lifecycleCampaigns = await runLifecycleCampaigns();
 
-  return ok({ success: true, gameRequests, hotSearchDigest });
+  return ok({ success: true, gameRequests, hotSearchDigest, lifecycleCampaigns });
 }

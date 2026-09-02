@@ -394,18 +394,6 @@ model DiscoverImpression {
   @@index([source, createdAt])
 }
 
-model HotSearchDigestDelivery {
-  id             String   @id @default(cuid())
-  userId         String
-  slotKey        String
-  searchIds      Json
-  deliveredCount Int      @default(0)
-  createdAt      DateTime @default(now())
-
-  @@unique([userId, slotKey])
-  @@index([createdAt])
-}
-
 model UserEvent {
   id         String   @id @default(cuid())
   userId     String

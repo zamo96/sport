@@ -1,12 +1,22 @@
 import { Prisma } from "@prisma/client";
 
-import { sendPushToUser } from "@/lib/apns";
-import { SPORT_LABELS } from "@/lib/constants";
+import { translateServer } from "@/lib/i18n/server";
+import { pluralKeySuffix } from "@/lib/i18n/server/notifications";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
+import type { SupportedLocale } from "@/lib/locales";
 import { prisma } from "@/lib/prisma";
 import { normalizeSports } from "@/lib/sport-levels";
+import { DEFAULT_TIMEZONE, getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
+import { sendCampaignPush, type CampaignSendStatus } from "@/server/notification-campaigns";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SEARCHES_PER_DIGEST = 5;
+const USER_BATCH_SIZE = 500;
+
+const MIDDAY_HOUR = 12;
+const EVENING_HOUR = 18;
+/** Ширина окна в часах: джоба должна успеть попасть в него даже при почасовом cron. */
+const WINDOW_HOURS = 3;
 
 type HotDigestSlot = {
   slotKey: string;
@@ -15,25 +25,27 @@ type HotDigestSlot = {
   label: "midday" | "evening";
 };
 
-export function resolveHotDigestSlot(now = new Date()): HotDigestSlot | null {
-  const parts = getMoscowDateParts(now);
-  const hour = Number(parts.hour);
-  const todayNoon = moscowDateToUtc(parts.year, parts.month, parts.day, 12);
-  const todayEvening = moscowDateToUtc(parts.year, parts.month, parts.day, 18);
-  const dateKey = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+/**
+ * Слот считается в локальной зоне игрока: после выхода на глобальные локации
+ * общий московский слот отправлял бы дайджест в случайное время суток.
+ */
+export function resolveHotDigestSlot(now = new Date(), timezone: string | null = DEFAULT_TIMEZONE): HotDigestSlot | null {
+  const parts = getLocalDateParts(timezone, now);
+  const todayNoon = localDateTimeToUtc(timezone, parts.year, parts.month, parts.day, MIDDAY_HOUR);
+  const todayEvening = localDateTimeToUtc(timezone, parts.year, parts.month, parts.day, EVENING_HOUR);
 
-  if (hour >= 12 && hour < 15) {
+  if (parts.hour >= MIDDAY_HOUR && parts.hour < MIDDAY_HOUR + WINDOW_HOURS) {
     return {
-      slotKey: `${dateKey}:midday`,
+      slotKey: `${parts.dateKey}:midday`,
       since: new Date(todayEvening.getTime() - DAY_MS),
       until: now,
       label: "midday"
     };
   }
 
-  if (hour >= 18 && hour < 21) {
+  if (parts.hour >= EVENING_HOUR && parts.hour < EVENING_HOUR + WINDOW_HOURS) {
     return {
-      slotKey: `${dateKey}:evening`,
+      slotKey: `${parts.dateKey}:evening`,
       since: todayNoon,
       until: now,
       label: "evening"
@@ -43,65 +55,154 @@ export function resolveHotDigestSlot(now = new Date()): HotDigestSlot | null {
   return null;
 }
 
-export async function runHotSearchDigestMaintenance(now = new Date()) {
-  const slot = resolveHotDigestSlot(now);
+const DIGEST_AUDIENCE = {
+  onboardingCompleted: true,
+  isVerified: true,
+  notificationGames: true,
+  pushDevices: {
+    some: {
+      platform: "ios",
+      isActive: true
+    }
+  }
+} satisfies Prisma.UserWhereInput;
 
-  if (!slot) {
-    return { sent: 0, skipped: true };
+/**
+ * Cron ходит раз в 5 минут, а окна теперь локальные, поэтому сначала дешёвым
+ * группирующим запросом выясняем, открыто ли окно хоть в одной зоне: в
+ * большинстве запусков дальше идти не нужно.
+ */
+async function resolveActiveZoneFilter(now: Date): Promise<Prisma.UserWhereInput | null> {
+  const zones = await prisma.user.groupBy({
+    by: ["timezone"],
+    where: DIGEST_AUDIENCE
+  });
+  const activeZones = zones
+    .map((zone) => zone.timezone)
+    .filter((timezone) => resolveHotDigestSlot(now, timezone) !== null);
+
+  if (activeZones.length === 0) {
+    return null;
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      onboardingCompleted: true,
-      isVerified: true,
-      notificationGames: true,
-      pushDevices: {
-        some: {
-          platform: "ios",
-          isActive: true
-        }
+  const namedZones = activeZones.filter((timezone): timezone is string => timezone !== null);
+  const includesFallbackZone = activeZones.length > namedZones.length;
+
+  if (!includesFallbackZone) {
+    return { timezone: { in: namedZones } };
+  }
+
+  return { OR: [{ timezone: { in: namedZones } }, { timezone: null }] };
+}
+
+export async function runHotSearchDigestMaintenance(now = new Date()) {
+  const stats: Record<CampaignSendStatus, number> = {
+    sent: 0,
+    holdout: 0,
+    duplicate: 0,
+    skipped: 0,
+    failed: 0
+  };
+  let scanned = 0;
+  let cursor: string | null = null;
+
+  const zoneFilter = await resolveActiveZoneFilter(now);
+
+  if (!zoneFilter) {
+    return { ...stats, scanned };
+  }
+
+  for (;;) {
+    const page: { cursor?: { id: string }; skip?: number } = cursor
+      ? { cursor: { id: cursor }, skip: 1 }
+      : {};
+    const users = await prisma.user.findMany({
+      where: {
+        ...DIGEST_AUDIENCE,
+        ...zoneFilter
+      },
+      select: {
+        id: true,
+        city: true,
+        locationPlaceId: true,
+        preferredSports: true,
+        timezone: true
+      },
+      orderBy: { id: "asc" },
+      ...page,
+      take: USER_BATCH_SIZE
+    });
+
+    if (users.length === 0) {
+      break;
+    }
+
+    cursor = users[users.length - 1].id;
+
+    for (const user of users) {
+      const slot = resolveHotDigestSlot(now, user.timezone);
+
+      if (!slot) {
+        continue;
+      }
+
+      scanned += 1;
+
+      const searches = await getDigestSearchesForUser(user.id, user.preferredSports, slot, now, {
+        city: user.city,
+        locationPlaceId: user.locationPlaceId
+      });
+
+      if (searches.length === 0) {
+        continue;
+      }
+
+      const result = await sendCampaignPush({
+        userId: user.id,
+        campaignKey: "hot_search_digest",
+        dedupeKey: `hot_search_digest:${user.id}:${slot.slotKey}`,
+        content: (locale) => ({
+          title: buildDigestTitle(locale, searches.length),
+          body: buildDigestBody(locale, searches)
+        }),
+        href: "/discover?view=hot",
+        context: {
+          slotKey: slot.slotKey,
+          label: slot.label,
+          searchIds: searches.map((search) => search.id)
+        },
+        now
+      });
+
+      stats[result.status] += 1;
+    }
+  }
+
+  return { ...stats, scanned };
+}
+
+/**
+ * Те же условия, что и во вкладке «Срочно»: без них дайджест обещает игры,
+ * которых игрок на экране не увидит. Городской фолбэк живёт здесь же, иначе он
+ * перезаписал бы фильтр целиком.
+ */
+function buildCreatorFilter(userId: string, location: { city: string | null; locationPlaceId: string | null }) {
+  return {
+    accountStatus: "active",
+    onboardingCompleted: true,
+    isVerified: true,
+    ...(!location.locationPlaceId && location.city ? { city: location.city } : {}),
+    blockedUsers: {
+      none: {
+        blockedUserId: userId
       }
     },
-    select: {
-      id: true,
-      city: true,
-      locationPlaceId: true,
-      preferredSports: true,
-      notificationSound: true
-    },
-    take: 1000
-  });
-
-  let sent = 0;
-
-  for (const user of users) {
-    const searches = await getDigestSearchesForUser(user.id, user.preferredSports, slot, now, {
-      city: user.city,
-      locationPlaceId: user.locationPlaceId
-    });
-
-    if (searches.length === 0) {
-      continue;
+    blockingUsers: {
+      none: {
+        blockerUserId: userId
+      }
     }
-
-    const searchIds = searches.map((search) => search.id);
-    const created = await createDigestDelivery(user.id, slot.slotKey, searchIds);
-
-    if (!created) {
-      continue;
-    }
-
-    await sendPushToUser({
-      userId: user.id,
-      title: buildDigestTitle(searches.length),
-      body: buildDigestBody(searches),
-      href: "/discover?view=hot",
-      sound: user.notificationSound ?? true
-    });
-    sent += 1;
-  }
-
-  return { sent, skipped: false };
+  } satisfies Prisma.UserWhereInput;
 }
 
 async function getDigestSearchesForUser(
@@ -137,10 +238,11 @@ async function getDigestSearchesForUser(
       createdByUserId: {
         not: userId
       },
+      createdByUser: buildCreatorFilter(userId, location),
       ...(location.locationPlaceId
         ? { locationPlaceId: location.locationPlaceId }
         : location.city
-          ? { createdByUser: { city: location.city } }
+          ? {}
           : { id: "__no_location__" }),
       responses: {
         none: {
@@ -186,64 +288,18 @@ async function getDigestSearchesForUser(
     .slice(0, MAX_SEARCHES_PER_DIGEST);
 }
 
-async function createDigestDelivery(userId: string, slotKey: string, searchIds: string[]) {
-  try {
-    await prisma.hotSearchDigestDelivery.create({
-      data: {
-        userId,
-        slotKey,
-        searchIds,
-        deliveredCount: searchIds.length
-      }
-    });
-    return true;
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return false;
-    }
-
-    throw error;
-  }
+function buildDigestTitle(locale: SupportedLocale, count: number) {
+  return translateServer(locale, `push.hotDigest.title.${pluralKeySuffix(locale, count)}`, { count });
 }
 
-function buildDigestTitle(count: number) {
-  return count === 1 ? "Есть срочная игра рядом" : `Есть ${count} срочные игры`;
-}
-
-function buildDigestBody(searches: Awaited<ReturnType<typeof getDigestSearchesForUser>>) {
-  const sports = Array.from(new Set(searches.map((search) => SPORT_LABELS[search.sport] ?? search.sport))).slice(0, 3);
+function buildDigestBody(
+  locale: SupportedLocale,
+  searches: Awaited<ReturnType<typeof getDigestSearchesForUser>>
+) {
+  const sports = Array.from(new Set(searches.map((search) => getAuthSportLabel(locale, search.sport)))).slice(0, 3);
   const firstCourt = searches.find((search) => search.preferredCourt)?.preferredCourt?.name;
 
-  return [sports.join(", "), firstCourt ? `например ${firstCourt}` : "можно откликнуться во вкладке «Срочно»"]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function getMoscowDateParts(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false
-  })
-    .formatToParts(date)
-    .reduce<Record<string, string>>((acc, part) => {
-      if (part.type !== "literal") {
-        acc[part.type] = part.value;
-      }
-      return acc;
-    }, {});
-
-  return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: parts.hour ?? "00"
-  };
-}
-
-function moscowDateToUtc(year: number, month: number, day: number, hour: number) {
-  return new Date(Date.UTC(year, month - 1, day, hour - 3, 0, 0, 0));
+  return firstCourt
+    ? translateServer(locale, "push.hotDigest.body.court", { sports: sports.join(", "), court: firstCourt })
+    : translateServer(locale, "push.hotDigest.body.plain", { sports: sports.join(", ") });
 }

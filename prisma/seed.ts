@@ -47,7 +47,8 @@ async function main() {
   await prisma.courtMetro.deleteMany();
   await prisma.court.deleteMany();
   await prisma.discoverImpression.deleteMany();
-  await prisma.hotSearchDigestDelivery.deleteMany();
+  await prisma.notificationDelivery.deleteMany();
+  await prisma.userEvent.deleteMany();
   await prisma.user.deleteMany();
   await prisma.metro.deleteMany();
   await prisma.district.deleteMany();

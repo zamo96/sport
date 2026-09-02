@@ -20,6 +20,7 @@ export function SettingsForm({ user }: { user: User }) {
     notificationMatches: user.notificationMatches,
     notificationMessages: user.notificationMessages,
     notificationGames: user.notificationGames,
+    notificationDigest: user.notificationDigest ?? true,
     notificationSound: user.notificationSound ?? true
   });
 
@@ -95,6 +96,11 @@ export function SettingsForm({ user }: { user: User }) {
           title={t("settings.notifications.games")}
           checked={values.notificationGames}
           onChange={(checked) => setValues((current) => ({ ...current, notificationGames: checked }))}
+        />
+        <Switch
+          title={t("settings.notifications.digest")}
+          checked={values.notificationDigest}
+          onChange={(checked) => setValues((current) => ({ ...current, notificationDigest: checked }))}
         />
         <Switch
           title={t("settings.notifications.sound")}

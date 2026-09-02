@@ -6,6 +6,7 @@ import { fail, getErrorMessage, ok } from "@/lib/http";
 import { resolveRequestLocale } from "@/lib/locales";
 import { prisma } from "@/lib/prisma";
 import { getPrimarySportLevel, normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
+import { resolveTimezoneFromCoordinates } from "@/lib/timezone";
 import { updateMeSchema } from "@/lib/validators";
 import {
   ensureLegacyLocation,
@@ -76,6 +77,8 @@ export async function PATCH(request: NextRequest) {
       availabilityEntries.length > 0
         ? Array.from(new Set(availabilityEntries.flatMap(([, ranges]) => ranges)))
         : body.availableTimeRanges;
+    const homeLat = districtLocation?.lat ?? selectedPlace.latitude;
+    const homeLng = districtLocation?.lng ?? selectedPlace.longitude;
 
     const user = await prisma.user.update({
       where: { id: currentUser.id },
@@ -93,8 +96,9 @@ export async function PATCH(request: NextRequest) {
             : "legacy",
         district: primaryDistrict,
         preferredDistricts,
-        homeLat: districtLocation?.lat ?? selectedPlace.latitude,
-        homeLng: districtLocation?.lng ?? selectedPlace.longitude,
+        homeLat,
+        homeLng,
+        timezone: resolveTimezoneFromCoordinates(homeLat, homeLng) ?? currentUser.timezone,
         tennisLevel: primarySportLevel,
         preferredSports,
         sportLevels,
@@ -119,6 +123,7 @@ export async function PATCH(request: NextRequest) {
         ),
         isLookingForGame: body.isLookingForGame ?? currentUser.isLookingForGame,
         notificationGames: body.notificationGames ?? currentUser.notificationGames,
+        notificationDigest: body.notificationDigest ?? currentUser.notificationDigest,
         notificationMatches: body.notificationMatches ?? currentUser.notificationMatches,
         notificationMessages: body.notificationMessages ?? currentUser.notificationMessages,
         notificationSound: body.notificationSound ?? currentUser.notificationSound,

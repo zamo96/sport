@@ -45,7 +45,9 @@ export function GameSearchForm({
   availableSports,
   profileSports,
   sportLevels,
-  authRequiredHref
+  authRequiredHref,
+  presetSport,
+  presetAvailability
 }: {
   courts: CourtOption[];
   initialMode?: GameSearchType;
@@ -53,9 +55,12 @@ export function GameSearchForm({
   profileSports: Sport[];
   sportLevels?: unknown;
   authRequiredHref?: string;
+  presetSport?: Sport;
+  presetAvailability?: AvailabilityByDay;
 }) {
   const router = useRouter();
-  const initialSport = availableSports[0] ?? "tennis";
+  const hasPreset = Boolean(presetSport || presetAvailability);
+  const initialSport = presetSport ?? availableSports[0] ?? "tennis";
   const initialFormat = getSportPlaybook(initialSport).defaultFormat;
   const storageKey = useMemo(() => `game-search-form-draft:${initialMode}`, [initialMode]);
   const [searchType, setSearchType] = useState<GameSearchType>(initialMode);
@@ -66,10 +71,12 @@ export function GameSearchForm({
   const [sport, setSport] = useState<Sport>(initialSport);
   const [preferredCourtId, setPreferredCourtId] = useState("");
   const [preferredDistricts, setPreferredDistricts] = useState<string[]>([]);
-  const [availabilityByDay, setAvailabilityByDay] = useState<AvailabilityByDay>({
-    wednesday: ["evening"],
-    saturday: ["day", "evening"]
-  });
+  const [availabilityByDay, setAvailabilityByDay] = useState<AvailabilityByDay>(
+    presetAvailability ?? {
+      wednesday: ["evening"],
+      saturday: ["day", "evening"]
+    }
+  );
   const [selfLevel, setSelfLevel] = useState<number | null>(null);
   const [selfLevelUnknown, setSelfLevelUnknown] = useState(false);
   const [desiredLevelMin, setDesiredLevelMin] = useState(1);
@@ -157,6 +164,12 @@ export function GameSearchForm({
       return;
     }
 
+    // Пришли по ссылке с готовым слотом (например, из пуша «сходить на
+    // тренировку») — старый черновик не должен её затирать.
+    if (hasPreset) {
+      return;
+    }
+
     const rawDraft = window.localStorage.getItem(storageKey);
 
     if (!rawDraft) {
@@ -216,7 +229,7 @@ export function GameSearchForm({
     } catch {
       window.localStorage.removeItem(storageKey);
     }
-  }, [availableSports, initialMode, storageKey]);
+  }, [availableSports, hasPreset, initialMode, storageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

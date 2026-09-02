@@ -4,10 +4,11 @@ import {
   type ServerTranslationValues
 } from "@/lib/i18n/server/define";
 import { serverAuthMessages } from "@/lib/i18n/server/auth";
+import { notificationMessages } from "@/lib/i18n/server/notifications";
 
 export const serverMessages = {
-  en: { ...serverAuthMessages.en },
-  ru: { ...serverAuthMessages.ru }
+  en: { ...serverAuthMessages.en, ...notificationMessages.en },
+  ru: { ...serverAuthMessages.ru, ...notificationMessages.ru }
 } as const satisfies Record<SupportedLocale, Record<string, string>>;
 
 export type ServerMessageKey = keyof (typeof serverMessages)["en"];

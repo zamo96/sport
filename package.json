@@ -22,6 +22,7 @@
     "clubs:replace:spb": "tsx prisma/replace-city-clubs.ts",
     "clubs:report": "tsx prisma/club-sync-report.ts",
     "clubs:sync": "tsx prisma/sync-clubs.ts",
+    "db:backfill-timezones": "tsx prisma/backfill-timezones.ts",
     "db:setup": "npm run prisma:generate && npm run prisma:push && npm run prisma:seed",
     "db:start": "docker compose up -d db",
     "infra:start": "docker compose up -d db redis",
@@ -47,6 +48,7 @@
     "react-dom": "^18.3.1",
     "sharp": "^0.35.3",
     "tailwind-merge": "^3.3.1",
+    "tz-lookup": "^6.1.25",
     "world-cities-json": "1.0.1",
     "xlsx": "^0.18.5",
     "zod": "^4.1.12"
