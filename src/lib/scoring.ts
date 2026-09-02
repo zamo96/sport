@@ -55,17 +55,6 @@ export type ScoredCandidate = CandidateUser & {
   timeOverlapCount: number;
   exactTimeSlotOverlapCount: number;
   ageGap: number | null;
-  /** Игрок из другого города, показан из-за нехватки кандидатов рядом. */
-  isNearbyFallback?: boolean;
-};
-
-export type ScoringOptions = {
-  /**
-   * Пускать игроков из других городов, если они ближе этого расстояния.
-   * Нужно для холодного старта: в городе с полутора десятками профилей
-   * изоляция по городу оставляет человека перед пустым экраном.
-   */
-  nearbyRadiusKm?: number;
 };
 
 function isSport(value: unknown): value is Sport {
@@ -311,11 +300,10 @@ export function buildDiscoverExplainabilityReasons<T extends CandidateUser>(
 export function scoreCandidates<T extends CandidateUser>(
   viewer: CandidateUser,
   candidates: T[],
-  filters: DiscoverFilters = {},
-  options: ScoringOptions = {}
+  filters: DiscoverFilters = {}
 ) {
   return candidates
-    .map((candidate) => scoreCandidate(viewer, candidate, filters, options))
+    .map((candidate) => scoreCandidate(viewer, candidate, filters))
     .filter((candidate): candidate is T & ScoredCandidate => candidate !== null)
     .sort((left, right) => right.score - left.score || (left.distanceKm ?? 999) - (right.distanceKm ?? 999));
 }
@@ -323,35 +311,19 @@ export function scoreCandidates<T extends CandidateUser>(
 export function scoreCandidate<T extends CandidateUser>(
   viewer: CandidateUser,
   candidate: T,
-  filters: DiscoverFilters = {},
-  options: ScoringOptions = {}
+  filters: DiscoverFilters = {}
 ) {
-  const distanceKm = haversineDistanceKm(
-    viewer.homeLat != null && viewer.homeLng != null ? { lat: viewer.homeLat, lng: viewer.homeLng } : null,
-    candidate.homeLat != null && candidate.homeLng != null ? { lat: candidate.homeLat, lng: candidate.homeLng } : null
-  );
-  const cityEligible = isCityEligible(
-    viewer.city,
-    candidate.city,
-    filters,
-    viewer.locationPlaceId,
-    candidate.locationPlaceId
-  );
-  // Явный фильтр по городу не ослабляем: человек выбрал его сам.
-  const isNearbyFallback =
-    !cityEligible &&
-    !filters.city &&
-    options.nearbyRadiusKm != null &&
-    distanceKm != null &&
-    distanceKm <= options.nearbyRadiusKm;
-
-  if (!cityEligible && !isNearbyFallback) {
+  if (!isCityEligible(viewer.city, candidate.city, filters, viewer.locationPlaceId, candidate.locationPlaceId)) {
     return null;
   }
 
   const viewerSports = normalizeSports(viewer.preferredSports);
   const candidateSports = normalizeSports(candidate.preferredSports);
   const relevantSports = getSharedSports(viewerSports, candidateSports, filters.sport);
+  const distanceKm = haversineDistanceKm(
+    viewer.homeLat != null && viewer.homeLng != null ? { lat: viewer.homeLat, lng: viewer.homeLng } : null,
+    candidate.homeLat != null && candidate.homeLng != null ? { lat: candidate.homeLat, lng: candidate.homeLng } : null
+  );
 
   if (relevantSports.length === 0) {
     return null;
@@ -454,7 +426,6 @@ export function scoreCandidate<T extends CandidateUser>(
   return {
     ...candidate,
     distanceKm,
-    ...(isNearbyFallback ? { isNearbyFallback: true } : {}),
     sportsOverlapCount,
     dayOverlapCount: availability.dayOverlapCount,
     timeOverlapCount: availability.timeOverlapCount,

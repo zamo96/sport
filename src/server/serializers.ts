@@ -44,7 +44,6 @@ export function serializeUserPreview(
     distanceKm?: number | null;
     score?: number | null;
     explainabilityReasons?: string[] | null;
-    isNearbyFallback?: boolean;
   }
 ) {
   return {
@@ -95,9 +94,6 @@ export function serializeUserPreview(
     gameSearches: "gameSearches" in user ? (user as Partial<User> & { gameSearches?: unknown }).gameSearches : undefined,
     distanceKm: user.distanceKm ?? null,
     distanceLabel: formatDistanceKm(user.distanceKm),
-    // Игрок из соседнего города: клиент должен показать это честно, а не
-    // выдавать его за находящегося рядом.
-    isNearbyFallback: user.isNearbyFallback ?? false,
     score: user.score ?? null,
     explainabilityReasons: user.explainabilityReasons ?? []
   };
