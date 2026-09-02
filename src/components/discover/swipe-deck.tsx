@@ -12,6 +12,12 @@ import { savePendingGuestAction } from "@/lib/pending-guest-action";
 import { cn } from "@/lib/utils";
 import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import {
+  EmptyDeck,
+  ThinDeckInvite,
+  type EmptyDeckCourt,
+  type EmptyDeckInvite
+} from "@/components/discover/empty-deck";
+import {
   getDiscoverDayLabel,
   getDiscoverFormatLabel,
   getDiscoverSurfaceLabel,
@@ -50,11 +56,17 @@ type DiscoverUser = {
 export function SwipeDeck({
   initialUsers,
   profileSports,
-  authRequiredHref
+  authRequiredHref,
+  city = null,
+  nearbyCourts = [],
+  invite = null
 }: {
   initialUsers: DiscoverUser[];
   profileSports: Sport[];
   authRequiredHref?: string;
+  city?: string | null;
+  nearbyCourts?: EmptyDeckCourt[];
+  invite?: EmptyDeckInvite | null;
 }) {
   const { locale, t } = useLocale();
   const router = useRouter();
@@ -119,26 +131,10 @@ export function SwipeDeck({
   const stack = useMemo(() => users.slice(0, 2), [users]);
 
   if (stack.length === 0) {
-    return (
-      <Panel className="flex min-h-[58vh] flex-col items-center justify-center text-center">
-        <div className="rounded-full bg-mint p-4">
-          <Star className="h-7 w-7 text-court" />
-        </div>
-        <h3 className="mt-4 text-2xl font-bold">{t("discover.swipe.emptyTitle")}</h3>
-        <p className="mt-2 max-w-xs text-sm leading-6 text-ink/65">
-          {t("discover.swipe.emptyText")}
-        </p>
-        <div className="mt-5 flex gap-3">
-          <Link href="/inbox">
-            <Button>{t("discover.swipe.openMatches")}</Button>
-          </Link>
-          <Link href="/play/courts">
-            <Button variant="ghost">{t("discover.swipe.sportsCenters")}</Button>
-          </Link>
-        </div>
-      </Panel>
-    );
+    return <EmptyDeck city={city} seenCount={initialUsers.length} courts={nearbyCourts} invite={invite} />;
   }
+
+  const isThin = initialUsers.length > 0 && initialUsers.length < 3;
 
   return (
     <div className="space-y-3">
@@ -356,6 +352,7 @@ export function SwipeDeck({
           });
         }}
       />
+      {isThin ? <ThinDeckInvite invite={invite} city={city} /> : null}
     </div>
   );
 }

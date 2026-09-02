@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { normalizeSports } from "@/lib/sport-levels";
 import {
   getActiveRegularPairsForUser,
+  getCourtsForUser,
   getDiscoverPageData,
   getHotNotificationsCount,
   getHotPlayers,
@@ -29,7 +30,9 @@ import {
   getSeekingPlayers,
   getUpcomingGamesForUser
 } from "@/server/app-data";
-import { serializeUserPreview } from "@/server/serializers";
+import { getDistrictLabel } from "@/lib/constants";
+import { buildInviteUrl, getInviteSummary } from "@/lib/invites";
+import { serializeCourt, serializeUserPreview } from "@/server/serializers";
 
 function buildUpcomingOpponentLabel(
   game: Awaited<ReturnType<typeof getUpcomingGamesForUser>>[number],
@@ -117,6 +120,28 @@ export default async function DiscoverPage({
     getHotNotificationsCount(user.id),
     getActiveRegularPairsForUser(user.id)
   ]);
+  // Клубы и приглашение нужны только на пустом экране — не тянем их на каждый
+  // заход в поиск.
+  const needsEmptyState = candidates.length < 3;
+  const [nearbyCourts, inviteSummary] = needsEmptyState
+    ? await Promise.all([getCourtsForUser(user.id), getInviteSummary(user.id)])
+    : [[], null];
+  const emptyStateCourts = nearbyCourts.slice(0, 3).map((court) => {
+    const preview = serializeCourt(court);
+    return {
+      id: court.id,
+      name: court.name,
+      districtLabel: getDistrictLabel(court.district) ?? court.district ?? null,
+      distanceLabel: preview.distanceLabel
+    };
+  });
+  const emptyStateInvite = inviteSummary
+    ? {
+        url: buildInviteUrl(inviteSummary.code, process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://sportsearch.shop"),
+        visits: inviteSummary.visits,
+        joined: inviteSummary.joined
+      }
+    : null;
   const upcomingGameCards = upcomingGames.map((game) => ({
     id: game.id,
     opponentName: buildUpcomingOpponentLabel(game, user.id, locale),
@@ -355,6 +380,9 @@ export default async function DiscoverPage({
             <SwipeDeck
               key={swipeDeckKey}
               profileSports={profileSports}
+              city={user.city}
+              nearbyCourts={emptyStateCourts}
+              invite={emptyStateInvite}
               initialUsers={candidates.map((candidate) => {
                 const preview = serializeUserPreview(candidate);
                 return {
