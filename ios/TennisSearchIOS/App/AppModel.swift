@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published var pendingChatMatchID: String?
     @Published var pendingSearchLobbyID: String?
     @Published var pendingCreateSearchPrefill: CreateSearchPrefill?
+    @Published var pendingCourtID: String?
     @Published var bottomBarDisplayMode: BottomBarDisplayMode = .expanded
     @Published var pendingHighlightedDiscoverUserID: String?
     @Published var pendingHighlightedSearchID: String?
@@ -306,6 +307,7 @@ final class AppModel: ObservableObject {
         pendingChatMatchID = nil
         pendingSearchLobbyID = nil
         pendingCreateSearchPrefill = nil
+        pendingCourtID = nil
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil

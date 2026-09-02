@@ -487,6 +487,17 @@ struct CourtsView: View {
         AppHaptics.selection()
     }
 
+    /// Открывает корт, выбранный на другом экране (например, в пустой колоде).
+    private func openPendingCourtIfNeeded() {
+        guard let pendingCourtID = appModel.pendingCourtID,
+              let court = courts.first(where: { $0.id == pendingCourtID }) else {
+            return
+        }
+
+        appModel.pendingCourtID = nil
+        openCourtDetail(court)
+    }
+
     private func openCourtDetail(_ court: Court) {
         selectedCourtId = court.id
         focusedDistrictId = nil
@@ -1251,6 +1262,7 @@ struct CourtsView: View {
             }
             CourtsViewCache.entries[cacheKey] = CourtsViewCache.Entry(courts: fetchedCourts, loadedAt: Date())
             courts = fetchedCourts
+            openPendingCourtIfNeeded()
         } catch {
             guard !error.isCancellationLike else {
                 return

@@ -4,6 +4,8 @@ import SwiftUI
 /// на корт сегодня, приглашение приводит нового игрока — далёких игроков здесь
 /// намеренно нет: сыграть с ними нельзя, а свайп потрачен.
 struct EmptyDeckView: View {
+    @EnvironmentObject private var appModel: AppModel
+
     let city: String?
     let seenCount: Int
     let courts: [Court]
@@ -84,7 +86,13 @@ struct EmptyDeckView: View {
                     .padding(.horizontal, 4)
 
                 ForEach(courts.prefix(3)) { court in
-                    CourtRow(court: court)
+                    Button {
+                        appModel.pendingCourtID = court.id
+                        appModel.navigate(to: .courts(sport: nil))
+                    } label: {
+                        CourtRow(court: court)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -132,6 +140,10 @@ private struct CourtRow: View {
                     .monospacedDigit()
                     .foregroundStyle(AppTheme.court)
             }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.ink.opacity(0.3))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
