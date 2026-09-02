@@ -27,9 +27,18 @@ export async function POST(request: NextRequest) {
     const explicitHotStartsAt = body.hotStartsAt ? new Date(body.hotStartsAt) : null;
     const hotStartsAt =
       body.searchType === "hot"
-        ? explicitHotStartsAt ?? (body.hotWindow && body.hotStartTime ? resolveHotSearchStartAt(body.hotWindow, body.hotStartTime) : null)
+        ? explicitHotStartsAt ??
+          (body.hotWindow && body.hotStartTime
+            ? resolveHotSearchStartAt(body.hotWindow, body.hotStartTime, user.timezone)
+            : null)
         : null;
-    const preferredDays = resolveSearchDays(body.searchType, body.preferredDays, explicitHotStartsAt ? null : body.hotWindow, hotStartsAt);
+    const preferredDays = resolveSearchDays(
+      body.searchType,
+      body.preferredDays,
+      explicitHotStartsAt ? null : body.hotWindow,
+      hotStartsAt,
+      user.timezone
+    );
 
     if (body.searchType === "hot" && !hotStartsAt) {
       return fail("Не удалось определить время начала горячего поиска");

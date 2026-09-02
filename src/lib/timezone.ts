@@ -50,6 +50,16 @@ export function resolveLocalHour(timezone: string | null | undefined, now = new 
   return Number(getLocalDateParts(timezone, now).hour);
 }
 
+/** Часы и минуты в зоне игрока, «ЧЧ:ММ». */
+export function formatLocalTime(timezone: string | null | undefined, date: Date) {
+  const parts = formatParts(
+    timezone?.trim() && isUsableTimezone(timezone.trim()) ? timezone.trim() : DEFAULT_TIMEZONE,
+    date
+  );
+
+  return `${String(Number(parts.hour) % 24).padStart(2, "0")}:${parts.minute}`;
+}
+
 export function getLocalDateParts(timezone: string | null | undefined, now = new Date()) {
   const zone = timezone?.trim() || DEFAULT_TIMEZONE;
   const parts = formatParts(isUsableTimezone(zone) ? zone : DEFAULT_TIMEZONE, now);
@@ -94,10 +104,11 @@ export function localDateTimeToUtc(
   year: number,
   month: number,
   day: number,
-  hour: number
+  hour: number,
+  minute = 0
 ) {
   const zone = timezone?.trim() && isUsableTimezone(timezone.trim()) ? timezone.trim() : DEFAULT_TIMEZONE;
-  const naive = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
+  const naive = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
   let result = naive;
 
   // Две итерации: первая снимает основное смещение, вторая правит случай, когда

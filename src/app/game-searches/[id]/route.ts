@@ -3,6 +3,7 @@ import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, Prisma }
 
 import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
+import { formatLocalTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
@@ -103,16 +104,25 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         : []);
     const explicitHotStartsAt = body.hotStartsAt !== undefined ? (body.hotStartsAt ? new Date(body.hotStartsAt) : null) : undefined;
     const hotWindow = body.hotWindow !== undefined ? body.hotWindow : explicitHotStartsAt !== undefined ? null : gameSearch.hotWindow;
-    const hotStartTime = body.hotStartTime ?? (gameSearch.hotStartsAt ? gameSearch.hotStartsAt.toISOString().slice(11, 16) : null);
+    // Сохранённое время читаем в зоне игрока: в ISO-строке лежит UTC, и брать
+    // из неё часы напрямую значило бы сдвинуть игру ещё раз.
+    const hotStartTime =
+      body.hotStartTime ?? (gameSearch.hotStartsAt ? formatLocalTime(user.timezone, gameSearch.hotStartsAt) : null);
     const hotStartsAt =
       nextSearchType === "hot"
         ? explicitHotStartsAt !== undefined
           ? explicitHotStartsAt
           : hotWindow && hotStartTime
-            ? resolveHotSearchStartAt(hotWindow, hotStartTime)
+            ? resolveHotSearchStartAt(hotWindow, hotStartTime, user.timezone)
             : gameSearch.hotStartsAt
         : null;
-    const preferredDays = resolveSearchDays(nextSearchType, preferredDaysInput, hotWindow ?? undefined, hotStartsAt);
+    const preferredDays = resolveSearchDays(
+      nextSearchType,
+      preferredDaysInput,
+      hotWindow ?? undefined,
+      hotStartsAt,
+      user.timezone
+    );
 
     if (nextSearchType === "hot" && !hotStartsAt) {
       return fail("Не удалось определить время начала горячего поиска");

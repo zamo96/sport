@@ -1,49 +1,67 @@
 import { HotSearchWindow, type GameSearchStatus, type GameSearchType } from "@prisma/client";
 
 import { DAY_OPTIONS } from "@/lib/constants";
+import { getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
+
+const DAY_MAP = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+function windowOffsetDays(hotWindow?: HotSearchWindow | null) {
+  if (hotWindow === "tomorrow") {
+    return 1;
+  }
+
+  if (hotWindow === "day_after_tomorrow") {
+    return 2;
+  }
+
+  return 0;
+}
 
 export function resolveSearchDays(
   searchType: GameSearchType,
   preferredDays: string[],
   hotWindow?: HotSearchWindow | null,
-  hotStartsAt?: Date | null
+  hotStartsAt?: Date | null,
+  timezone?: string | null
 ) {
   if (searchType !== "hot") {
     return preferredDays;
   }
 
-  const targetDate = hotStartsAt ? new Date(hotStartsAt) : new Date();
-  if (hotWindow === "tomorrow") {
-    targetDate.setDate(targetDate.getDate() + 1);
-  } else if (hotWindow === "day_after_tomorrow") {
-    targetDate.setDate(targetDate.getDate() + 2);
-  }
-
-  const dayIndex = targetDate.getDay();
-  const dayMap = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-  const resolvedDay = dayMap[dayIndex];
+  const base = hotStartsAt ? new Date(hotStartsAt) : new Date();
+  const parts = getLocalDateParts(timezone, base);
+  // День недели считаем в календаре игрока: сервер живёт в UTC, и под вечер
+  // его дата уже не совпадает с той, что человек видит у себя.
+  const local = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + windowOffsetDays(hotWindow)));
+  const resolvedDay = DAY_MAP[local.getUTCDay()];
 
   return DAY_OPTIONS.includes(resolvedDay) ? [resolvedDay] : [];
 }
 
-export function resolveHotSearchStartAt(hotWindow: HotSearchWindow, time: string) {
+/**
+ * «Сегодня в 9:00» — это девять утра у игрока, а не на сервере. Контейнер
+ * работает в UTC, поэтому прежний `setHours` сдвигал время на смещение зоны:
+ * выбранные 9:00 сохранялись как 12:00 по Москве.
+ */
+export function resolveHotSearchStartAt(hotWindow: HotSearchWindow, time: string, timezone?: string | null) {
   const [hoursString, minutesString] = time.split(":");
   const hours = Number(hoursString);
   const minutes = Number(minutesString);
 
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
     return null;
   }
 
-  const targetDate = new Date();
-  if (hotWindow === "tomorrow") {
-    targetDate.setDate(targetDate.getDate() + 1);
-  } else if (hotWindow === "day_after_tomorrow") {
-    targetDate.setDate(targetDate.getDate() + 2);
-  }
+  const parts = getLocalDateParts(timezone, new Date());
 
-  targetDate.setHours(hours, minutes, 0, 0);
-  return targetDate;
+  return localDateTimeToUtc(
+    timezone,
+    parts.year,
+    parts.month,
+    parts.day + windowOffsetDays(hotWindow),
+    hours,
+    minutes
+  );
 }
 
 export function isExpiredHotSearch(startsAt: string | Date | null | undefined) {
