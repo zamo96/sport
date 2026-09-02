@@ -1037,7 +1037,7 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
-    func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?) async throws {
+    func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws {
         let _: RegisterPushDeviceEnvelope = try await client.request(
             path: "devices/apns",
             method: "POST",
@@ -1046,7 +1046,8 @@ final class LiveTennisRepository: TennisRepository {
                 platform: "ios",
                 environment: environment.rawValue,
                 bundleId: bundleId,
-                deviceName: deviceName
+                deviceName: deviceName,
+                locale: locale
             )
         )
     }
@@ -1615,6 +1616,7 @@ private struct RegisterPushDeviceRequest: Encodable {
     let environment: String
     let bundleId: String
     let deviceName: String?
+    let locale: String?
 }
 
 private struct RegisterPushDeviceEnvelope: Decodable {

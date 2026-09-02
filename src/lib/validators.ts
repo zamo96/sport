@@ -23,6 +23,7 @@ import { z } from "zod";
 import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
 import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
+import { normalizeSupportedLocale } from "@/lib/locales";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { CLIENT_REPORTABLE_EVENT_TYPES } from "@/lib/user-events";
 
@@ -735,7 +736,14 @@ export const registerPushDeviceSchema = z.object({
   platform: z.enum(["ios"]).default("ios"),
   environment: z.enum(["development", "production"]),
   bundleId: z.string().trim().min(3).max(200),
-  deviceName: z.string().trim().max(120).optional().nullable()
+  deviceName: z.string().trim().max(120).optional().nullable(),
+  locale: z
+    .string()
+    .trim()
+    .max(35)
+    .optional()
+    .nullable()
+    .transform((value) => normalizeSupportedLocale(value))
 });
 
 const publicReportReasonSchema = z.enum([

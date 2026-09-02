@@ -2315,7 +2315,7 @@ actor MockRepository: TennisRepository {
 
     func setActiveSearchLobby(searchId: String, isActive: Bool) async throws {}
 
-    func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?) async throws {}
+    func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws {}
 }
 
 private let mockCourt = Court(

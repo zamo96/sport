@@ -444,7 +444,10 @@ final class NotificationManager: NSObject, ObservableObject {
                 token: token,
                 environment: environment,
                 bundleId: bundleId,
-                deviceName: UIDevice.current.name
+                deviceName: UIDevice.current.name,
+                // Язык интерфейса приложения: для игроков без города это
+                // единственный сигнал, на каком языке слать пуши.
+                locale: LocaleStore.currentEffectiveLocale.rawValue
             )
         } catch {
             print("apns device register error:", error.localizedDescription)

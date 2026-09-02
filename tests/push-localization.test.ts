@@ -71,3 +71,51 @@ describe("locale for a push", () => {
     expect(resolveUserLocale({})).toBe("en");
   });
 });
+
+describe("locale from the device", () => {
+  it("prefers the app language over the country when no explicit choice", () => {
+    expect(
+      resolveUserLocale({
+        localeOverride: null,
+        location: null,
+        pushDevices: [{ locale: "ru" }]
+      })
+    ).toBe("ru");
+
+    expect(
+      resolveUserLocale({
+        localeOverride: null,
+        location: { countryCode: "RU" },
+        pushDevices: [{ locale: "en" }]
+      })
+    ).toBe("en");
+  });
+
+  it("still lets an explicit choice win", () => {
+    expect(
+      resolveUserLocale({
+        localeOverride: "en",
+        location: { countryCode: "RU" },
+        pushDevices: [{ locale: "ru" }]
+      })
+    ).toBe("en");
+  });
+
+  it("skips devices without a usable locale", () => {
+    expect(
+      resolveUserLocale({
+        localeOverride: null,
+        location: { countryCode: "RU" },
+        pushDevices: [{ locale: null }, { locale: "zz" }, { locale: "ru" }]
+      })
+    ).toBe("ru");
+
+    expect(
+      resolveUserLocale({
+        localeOverride: null,
+        location: null,
+        pushDevices: [{ locale: null }]
+      })
+    ).toBe("en");
+  });
+});

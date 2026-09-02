@@ -39,9 +39,12 @@ async function handleMaintenance(request: NextRequest) {
 
   // Дайджест и кампании делят один дневной лимит на игрока, поэтому идут
   // последовательно: параллельно оба прошли бы проверку до записи доставки.
+  // Общий на прогон счётчик доставок: в dry-run записей в базе нет, а дневной
+  // лимит у дайджеста и кампаний один на игрока.
+  const simulatedDeliveries = new Map<string, number>();
   const gameRequests = dryRun ? null : await runGameRequestMaintenance();
-  const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun });
-  const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun });
+  const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun, simulatedDeliveries });
+  const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun, simulatedDeliveries });
 
   return ok({ success: true, dryRun, gameRequests, hotSearchDigest, lifecycleCampaigns });
 }

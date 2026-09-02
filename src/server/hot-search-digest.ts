@@ -101,7 +101,7 @@ async function resolveActiveZoneFilter(now: Date): Promise<Prisma.UserWhereInput
 
 export async function runHotSearchDigestMaintenance(
   now = new Date(),
-  options: { dryRun?: boolean } = {}
+  options: { dryRun?: boolean; simulatedDeliveries?: Map<string, number> } = {}
 ) {
   const stats: Record<CampaignSendStatus, number> = {
     sent: 0,
@@ -187,6 +187,13 @@ export async function runHotSearchDigestMaintenance(
 
       if (result.preview && samples.length < 5) {
         samples.push({ userId: user.id, ...result.preview });
+      }
+
+      // Дайджест идёт первым и расходует общий дневной лимит, поэтому в dry-run
+      // его отправки должны учитываться в кампаниях, которые считаются после.
+      if (options.dryRun && options.simulatedDeliveries && (result.status === "sent" || result.status === "holdout")) {
+        const counters = options.simulatedDeliveries;
+        counters.set(user.id, (counters.get(user.id) ?? 0) + 1);
       }
     }
   }

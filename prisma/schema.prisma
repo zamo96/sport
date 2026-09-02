@@ -1091,6 +1091,8 @@ model PushDevice {
   token             String          @unique
   bundleId          String
   deviceName        String?
+  /// Язык интерфейса приложения на момент регистрации — сигнал для языка пушей.
+  locale            String?
   isActive          Boolean         @default(true)
   lastRegisteredAt  DateTime        @default(now())
   lastDeliveredAt   DateTime?

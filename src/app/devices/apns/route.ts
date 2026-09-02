@@ -25,6 +25,7 @@ export async function POST(request: Request) {
           environment: body.environment,
           bundleId: body.bundleId,
           deviceName: body.deviceName ?? null,
+          locale: body.locale ?? null,
           isActive: true,
           lastRegisteredAt: new Date(),
           lastFailureAt: null,
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
           token: body.token,
           bundleId: body.bundleId,
           deviceName: body.deviceName ?? null,
+          locale: body.locale ?? null,
           isActive: true
         }
       });

@@ -9,8 +9,13 @@ import { getLocalDateParts } from "@/lib/timezone";
 import { getIncomingLikePlayers } from "@/server/app-data";
 import { countDiscoverCandidates, summarizeDiscoverCandidates } from "@/server/discover";
 import {
+  CAMPAIGNS,
+  DEFAULT_MAX_PER_DAY,
   sendCampaignPush,
+  type CampaignDefinition,
+  type CampaignKey,
   type CampaignPreview,
+  type CampaignSendInput,
   type CampaignSendStatus
 } from "@/server/notification-campaigns";
 
@@ -62,6 +67,12 @@ const HAS_ACTIVE_DEVICE = {
 export type CampaignRunOptions = {
   /** Прогон без отправки: считает аудиторию и собирает примеры текстов. */
   dryRun?: boolean;
+  /**
+   * Сколько доставок игрок уже получил бы в этом прогоне. В dry-run строки
+   * доставок не пишутся, поэтому движок не видит накопления и каждая кампания
+   * считает лимит нетронутым — без этого счётчика прогон завышает объём.
+   */
+  simulatedDeliveries?: Map<string, number>;
 };
 
 type CampaignStats = Record<CampaignSendStatus, number> & {
@@ -84,18 +95,54 @@ function collect(stats: CampaignStats, userId: string, result: Awaited<ReturnTyp
 }
 
 /**
+ * Отправка с учётом лимитов. В боевом прогоне их считает движок по записанным
+ * доставкам; в dry-run записей нет, поэтому дневной лимит держим в памяти.
+ */
+async function dispatch(
+  stats: CampaignStats,
+  options: CampaignRunOptions,
+  input: Omit<CampaignSendInput, "dryRun">
+) {
+  const campaignKey: CampaignKey = input.campaignKey;
+  const counters = options.simulatedDeliveries;
+
+  if (options.dryRun && counters) {
+    const alreadySent = counters.get(input.userId) ?? 0;
+    const definition: CampaignDefinition = CAMPAIGNS[campaignKey];
+    const dailyCap = definition.maxPerDay ?? DEFAULT_MAX_PER_DAY;
+
+    if (alreadySent >= dailyCap) {
+      stats.skipped += 1;
+      return;
+    }
+  }
+
+  const result = await sendCampaignPush({ ...input, dryRun: options.dryRun });
+  collect(stats, input.userId, result);
+
+  if (options.dryRun && counters && (result.status === "sent" || result.status === "holdout")) {
+    counters.set(input.userId, (counters.get(input.userId) ?? 0) + 1);
+  }
+}
+
+/**
  * Кампании идут строго последовательно и в порядке ценности: дневной лимит один
  * на всех, и при параллельном запуске две кампании успели бы проверить лимит до
  * того, как любая из них записала доставку.
  */
 export async function runLifecycleCampaigns(now = new Date(), options: CampaignRunOptions = {}) {
+  const resolved: CampaignRunOptions = {
+    ...options,
+    simulatedDeliveries: options.simulatedDeliveries ?? new Map<string, number>()
+  };
+
   return {
-    onboardingIncomplete: await runOnboardingIncomplete(now, options),
-    likesWaiting: await runLikesWaiting(now, options),
-    firstPlayersReady: await runFirstPlayersReady(now, options),
-    newPlayersArrived: await runNewPlayersArrived(now, options),
-    trainingNudge: await runTrainingNudge(now, options),
-    winBack: await runWinBack(now, options)
+    onboardingIncomplete: await runOnboardingIncomplete(now, resolved),
+    likesWaiting: await runLikesWaiting(now, resolved),
+    firstPlayersReady: await runFirstPlayersReady(now, resolved),
+    newPlayersArrived: await runNewPlayersArrived(now, resolved),
+    trainingNudge: await runTrainingNudge(now, resolved),
+    winBack: await runWinBack(now, resolved)
   };
 }
 
@@ -134,7 +181,7 @@ export async function runOnboardingIncomplete(now = new Date(), options: Campaig
   for (const user of users) {
     stats.scanned += 1;
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "onboarding_incomplete",
       dedupeKey: `onboarding_incomplete:${user.id}:${getLocalDateParts(user.timezone, now).dateKey}`,
@@ -143,11 +190,8 @@ export async function runOnboardingIncomplete(now = new Date(), options: Campaig
         body: translateServer(locale, "push.onboarding.body")
       }),
       href: "/onboarding",
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;
@@ -194,7 +238,7 @@ export async function runFirstPlayersReady(now = new Date(), options: CampaignRu
       continue;
     }
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "first_players_ready",
       // Кампания разовая: один ключ на игрока за всё время.
@@ -205,11 +249,8 @@ export async function runFirstPlayersReady(now = new Date(), options: CampaignRu
       }),
       href: "/discover",
       context: { candidateCount },
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;
@@ -267,7 +308,7 @@ export async function runLikesWaiting(now = new Date(), options: CampaignRunOpti
       continue;
     }
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "likes_waiting",
       dedupeKey: `likes_waiting:${user.id}:${getLocalDateParts(user.timezone, now).dateKey}`,
@@ -281,11 +322,8 @@ export async function runLikesWaiting(now = new Date(), options: CampaignRunOpti
       }),
       href: "/discover?view=likes",
       context: { waiting: waiting.length },
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;
@@ -334,7 +372,7 @@ export async function runNewPlayersArrived(now = new Date(), options: CampaignRu
       continue;
     }
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "new_players_arrived",
       dedupeKey: `new_players_arrived:${user.id}:${getLocalDateParts(user.timezone, now).dateKey}`,
@@ -346,11 +384,8 @@ export async function runNewPlayersArrived(now = new Date(), options: CampaignRu
       }),
       href: "/discover",
       context: { freshCandidates: fresh },
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;
@@ -416,7 +451,7 @@ export async function runTrainingNudge(now = new Date(), options: CampaignRunOpt
       query.set("sport", sport);
     }
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "training_nudge",
       dedupeKey: `training_nudge:${user.id}:${getLocalDateParts(user.timezone, now).dateKey}`,
@@ -428,11 +463,8 @@ export async function runTrainingNudge(now = new Date(), options: CampaignRunOpt
       }),
       href: `/play/searches/new?${query.toString()}`,
       context: { day: slot.day, timeRange: slot.timeRange, sport: sport ?? null },
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;
@@ -476,7 +508,7 @@ export async function runWinBack(now = new Date(), options: CampaignRunOptions =
       continue;
     }
 
-    const result = await sendCampaignPush({
+    await dispatch(stats, options, {
       userId: user.id,
       campaignKey: "win_back",
       dedupeKey: `win_back:${user.id}:${getLocalDateParts(user.timezone, now).dateKey}`,
@@ -488,11 +520,8 @@ export async function runWinBack(now = new Date(), options: CampaignRunOptions =
       }),
       href: "/discover",
       context: { candidateCount },
-      now,
-      dryRun: options.dryRun
+      now
     });
-
-    collect(stats, user.id, result);
   }
 
   return stats;

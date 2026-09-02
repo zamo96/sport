@@ -256,13 +256,23 @@ export type CampaignSendInput = {
   dryRun?: boolean;
 };
 
-/** Явный выбор языка → страна проживания → язык по умолчанию. */
+/**
+ * Явный выбор языка → язык приложения на устройстве → страна проживания →
+ * язык по умолчанию. Устройство идёт раньше страны: это то, что человек реально
+ * видит в интерфейсе, и единственный сигнал у аккаунтов без города.
+ */
 export function resolveUserLocale(user: {
   localeOverride?: string | null;
   location?: { countryCode?: string | null } | null;
+  pushDevices?: Array<{ locale?: string | null }> | null;
 }): SupportedLocale {
+  const deviceLocale = user.pushDevices
+    ?.map((device) => normalizeSupportedLocale(device.locale))
+    .find((locale): locale is SupportedLocale => locale != null);
+
   return (
     normalizeSupportedLocale(user.localeOverride) ??
+    deviceLocale ??
     (user.location?.countryCode
       ? recommendLocaleForConfirmedCountry(user.location.countryCode)
       : DEFAULT_LOCALE)
@@ -293,6 +303,12 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
       notificationGames: true,
       notificationMatches: true,
       notificationMessages: true,
+      pushDevices: {
+        where: { platform: "ios", isActive: true },
+        select: { locale: true },
+        orderBy: { lastRegisteredAt: "desc" },
+        take: 3
+      },
       _count: {
         select: {
           pushDevices: {
