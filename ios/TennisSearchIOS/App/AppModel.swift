@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     @Published var pendingNavigationTarget: AppNavigationTarget?
     @Published var pendingChatMatchID: String?
     @Published var pendingSearchLobbyID: String?
+    @Published var pendingCreateSearchPrefill: CreateSearchPrefill?
     @Published var bottomBarDisplayMode: BottomBarDisplayMode = .expanded
     @Published var pendingHighlightedDiscoverUserID: String?
     @Published var pendingHighlightedSearchID: String?
@@ -304,6 +305,7 @@ final class AppModel: ObservableObject {
         pendingNavigationTarget = nil
         pendingChatMatchID = nil
         pendingSearchLobbyID = nil
+        pendingCreateSearchPrefill = nil
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil
@@ -469,13 +471,66 @@ final class AppModel: ObservableObject {
     }
 }
 
+/// Предзаполнение формы создания поиска из пуша «сходить на тренировку».
+/// День недели превращается в окно «сегодня/завтра», потому что в приложении
+/// композер умеет только срочные поиски (`SearchType.userVisibleCases == [.hot]`).
+struct CreateSearchPrefill: Equatable {
+    let sport: Sport?
+    let hotWindow: HotWindow?
+    let hotStartTime: String?
+
+    init(sport: Sport?, day: String?, timeRange: String?) {
+        self.sport = sport
+        self.hotWindow = Self.window(for: day)
+        self.hotStartTime = timeRange.flatMap(TimeRange.init(rawValue:)).map(Self.startTime(for:))
+    }
+
+    private static func window(for day: String?) -> HotWindow? {
+        guard let day, let target = DayOfWeek(rawValue: day) else {
+            return nil
+        }
+
+        let calendar = Calendar.current
+        let windows: [HotWindow] = [.today, .tomorrow, .dayAfterTomorrow]
+
+        for (offset, window) in windows.enumerated() {
+            guard let candidate = calendar.date(byAdding: .day, value: offset, to: Date()),
+                  weekday(from: calendar.component(.weekday, from: candidate)) == target else {
+                continue
+            }
+            return window
+        }
+
+        return nil
+    }
+
+    /// `Calendar.weekday` считает с воскресенья (1), `DayOfWeek` — с понедельника.
+    private static func weekday(from calendarWeekday: Int) -> DayOfWeek? {
+        let order: [DayOfWeek] = [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+        guard order.indices.contains(calendarWeekday - 1) else {
+            return nil
+        }
+        return order[calendarWeekday - 1]
+    }
+
+    private static func startTime(for range: TimeRange) -> String {
+        switch range {
+        case .morning: return "09:00"
+        case .day: return "14:00"
+        case .evening: return "19:00"
+        }
+    }
+}
+
 enum AppNavigationTarget: Equatable {
     case discover(DiscoverTab, highlightedUserID: String? = nil, highlightedSearchID: String? = nil, highlightedGameRequestID: String? = nil)
     case matches
     case searches
     case searchLobby(String)
+    case createSearch(CreateSearchPrefill)
     case courts(sport: Sport?)
     case chat(String)
+    case profile
 }
 
 extension AppNavigationTarget {
@@ -553,6 +608,17 @@ extension AppNavigationTarget {
             return
         }
 
+        if path == "/play/searches/new" || path == "/play/searches/new/" {
+            self = .createSearch(
+                CreateSearchPrefill(
+                    sport: queryItems.first(where: { $0.name == "sport" })?.value.flatMap(Sport.init(rawValue:)),
+                    day: queryItems.first(where: { $0.name == "day" })?.value,
+                    timeRange: queryItems.first(where: { $0.name == "time" })?.value
+                )
+            )
+            return
+        }
+
         if path.hasPrefix("/play/searches/") {
             self = .searchLobby(String(path.dropFirst("/play/searches/".count)))
             return
@@ -588,6 +654,11 @@ extension AppNavigationTarget {
 
         if path.hasPrefix("/matches") || path.hasPrefix("/inbox") {
             self = .matches
+            return
+        }
+
+        if path.hasPrefix("/onboarding") || path.hasPrefix("/profile") || path.hasPrefix("/settings") {
+            self = .profile
             return
         }
 

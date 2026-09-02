@@ -61,6 +61,9 @@ struct SearchesView: View {
         .simultaneousGesture(backToDiscoverSwipe)
         .task {
             openPendingSearchLobbyIfNeeded()
+            if appModel.pendingCreateSearchPrefill != nil {
+                presentCreateSearchComposer()
+            }
             await loadSearches()
         }
         .task(id: createFABAutoCollapseKey) {
@@ -74,6 +77,12 @@ struct SearchesView: View {
             }
             collapseCreateFAB()
         }
+        .onChange(of: appModel.pendingCreateSearchPrefill) { prefill in
+            guard prefill != nil else {
+                return
+            }
+            presentCreateSearchComposer()
+        }
         .onChange(of: appModel.pendingSearchLobbyID) { _ in
             openPendingSearchLobbyIfNeeded()
         }
@@ -82,8 +91,13 @@ struct SearchesView: View {
         }
         .sheet(isPresented: $isPresentingComposer, onDismiss: {
             isOpeningCreateComposer = false
+            appModel.pendingCreateSearchPrefill = nil
         }) {
-            SearchComposerView { created in
+            SearchComposerView(
+                initialSport: appModel.pendingCreateSearchPrefill?.sport,
+                initialHotWindow: appModel.pendingCreateSearchPrefill?.hotWindow,
+                initialHotStartTime: appModel.pendingCreateSearchPrefill?.hotStartTime
+            ) { created in
                 searches.insert(created, at: 0)
             }
             .id("create-search-composer")
@@ -4595,6 +4609,8 @@ struct SearchComposerView: View {
         initialSearch: GameSearch? = nil,
         initialCourt: Court? = nil,
         initialSport: Sport? = nil,
+        initialHotWindow: HotWindow? = nil,
+        initialHotStartTime: String? = nil,
         onCreate: @escaping (GameSearch) -> Void
     ) {
         self.initialSearch = initialSearch
@@ -4628,6 +4644,14 @@ struct SearchComposerView: View {
             playersNeeded: resolvedSport.defaultPlayersNeeded(format: resolvedFormat),
             comment: ""
         )
+
+        if let initialHotWindow {
+            initialDraft.hotWindow = initialHotWindow
+        }
+
+        if let initialHotStartTime {
+            initialDraft.hotStartTime = initialHotStartTime
+        }
 
         if let initialSearch {
             initialDraft.preferredCourtId = initialSearch.preferredCourt?.id

@@ -466,6 +466,12 @@ private struct MainTabView: View {
             appModel.pendingSearchLobbyID = searchId
             searchesStackID = UUID()
             selectedTab = .searches
+        case .createSearch(let prefill):
+            appModel.pendingCreateSearchPrefill = prefill
+            searchesStackID = UUID()
+            selectedTab = .searches
+        case .profile:
+            selectedTab = .profile
         case .courts(let sport):
             courtsInitialSport = sport
             courtsStackID = UUID()
