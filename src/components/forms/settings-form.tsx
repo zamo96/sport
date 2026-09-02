@@ -50,7 +50,6 @@ export function SettingsForm({ user }: { user: User }) {
         preferredSurface: user.preferredSurface,
         bio: user.bio ?? "",
         avatarUrl: user.avatarUrl,
-        searchRadiusKm: user.searchRadiusKm ?? 20,
         availableDays: Array.isArray(user.availableDays) && user.availableDays.length > 0 ? user.availableDays : [DAY_OPTIONS[0]],
         availableTimeRanges:
           Array.isArray(user.availableTimeRanges) && user.availableTimeRanges.length > 0

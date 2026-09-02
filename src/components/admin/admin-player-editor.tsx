@@ -54,7 +54,6 @@ type EditableProfile = Pick<
   | "avatarUrl"
   | "profilePhotoUrls"
   | "profileVideoUrls"
-  | "searchRadiusKm"
   | "availableDays"
   | "availableTimeRanges"
   | "availabilityByDay"
@@ -257,9 +256,6 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
                   <option value="">Не указан</option>
                   {AVAILABLE_CITIES.map((city) => <option key={city} value={city}>{city}</option>)}
                 </select>
-              </Field>
-              <Field label="Радиус поиска, км">
-                <input type="number" min={1} max={100} value={form.searchRadiusKm} onChange={(event) => setField("searchRadiusKm", Number(event.target.value))} className={inputClass} />
               </Field>
               <Field label="Предпочтительный формат">
                 <select value={form.preferredPlayFormat} onChange={(event) => setField("preferredPlayFormat", event.target.value as PlayFormat)} className={inputClass}>
@@ -525,7 +521,6 @@ function toEditableProfile(player: AdminPlayer): EditableProfile {
     avatarUrl: player.avatarUrl,
     profilePhotoUrls: player.profilePhotoUrls ?? [],
     profileVideoUrls: player.profileVideoUrls ?? [],
-    searchRadiusKm: player.searchRadiusKm,
     availableDays: player.availableDays ?? [],
     availableTimeRanges: player.availableTimeRanges ?? [],
     availabilityByDay: player.availabilityByDay ?? {},

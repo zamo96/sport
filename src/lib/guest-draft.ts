@@ -17,7 +17,6 @@ export type GuestOnboardingDraft = {
   sportLevels: Partial<Record<Sport, SportLevelValue>>;
   preferredPlayFormat: PlayFormat;
   preferredSurface: Surface;
-  searchRadiusKm: number;
   isLookingForGame: boolean;
   availableDays: string[];
   availableTimeRanges: string[];
@@ -37,7 +36,6 @@ export function createDefaultGuestOnboardingDraft(): GuestOnboardingDraft {
     sportLevels: {},
     preferredPlayFormat: PlayFormat.both,
     preferredSurface: Surface.any,
-    searchRadiusKm: 20,
     isLookingForGame: true,
     availableDays: [],
     availableTimeRanges: [],

@@ -1423,7 +1423,6 @@ function getDiscoverCandidatesFromUsers(
     availableDays: unknown;
     availableTimeRanges: unknown;
     availableTimeSlots: unknown;
-    searchRadiusKm: number;
     isLookingForGame: boolean;
     gameSearches?: unknown;
   }>,
@@ -1454,7 +1453,6 @@ function getDiscoverCandidatesFromUsers(
     availableDays: viewer.availableDays,
     availableTimeRanges: viewer.availableTimeRanges,
     availableTimeSlots: viewer.availableTimeSlots,
-    searchRadiusKm: viewer.searchRadiusKm,
     isLookingForGame: viewer.isLookingForGame
   } satisfies CandidateUser;
 

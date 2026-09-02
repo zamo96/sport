@@ -635,6 +635,10 @@ export const DAY_LABELS = {
   sunday: "Вс"
 } as const;
 
+/** Радиус круга и подписи на карте кортов. Раньше брался из настройки игрока,
+ *  которую убрали: город и районы задают охват точнее, чем километры. */
+export const COURTS_MAP_RADIUS_KM = 20;
+
 export const TIME_RANGE_OPTIONS = ["morning", "day", "evening"] as const;
 
 export const TIME_RANGE_LABELS = {

@@ -20,7 +20,6 @@ export type AdminPlayer = {
   avatarUrl: string | null;
   profilePhotoUrls: string[];
   profileVideoUrls: string[];
-  searchRadiusKm: number;
   availableDays: string[];
   availableTimeRanges: string[];
   availabilityByDay: Partial<Record<string, string[]>>;

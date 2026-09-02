@@ -21,7 +21,6 @@ const viewer = {
   availableDays: ["monday", "wednesday", "saturday"],
   availableTimeRanges: ["evening", "morning"],
   availableTimeSlots: ["monday-evening", "wednesday-evening", "saturday-morning"],
-  searchRadiusKm: 20,
   isLookingForGame: true
 };
 

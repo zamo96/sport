@@ -35,7 +35,6 @@ const adminPlayerDetailSelect = {
   profileVideoUrls: true,
   preferredPlayFormat: true,
   preferredSurface: true,
-  searchRadiusKm: true,
   availableDays: true,
   availableTimeRanges: true,
   availableTimeSlots: true,

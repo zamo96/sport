@@ -141,7 +141,6 @@ export const updateMeSchema = z.object({
   preferredPlayFormat: z.nativeEnum(PlayFormat),
   preferredSurface: z.nativeEnum(Surface),
   bio: publicText(220).optional().default(""),
-  searchRadiusKm: z.number().int().min(1).max(100).optional().default(20),
   availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
   availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).default([]),
   availabilityByDay: z
@@ -201,7 +200,6 @@ const adminPlayerProfileFieldsSchema = z
     avatarUrl: z.string().trim().max(300).nullable().optional(),
     profilePhotoUrls: z.array(z.string().trim().min(1).max(600)).max(6).optional(),
     profileVideoUrls: z.array(z.string().trim().min(1).max(600)).max(4).optional(),
-    searchRadiusKm: z.number().int().min(1).max(100).optional(),
     availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).optional(),
     availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).optional(),
     availabilityByDay: z
@@ -326,7 +324,6 @@ export const guestOnboardingDraftSchema = z.object({
     ),
   preferredPlayFormat: z.nativeEnum(PlayFormat),
   preferredSurface: z.nativeEnum(Surface),
-  searchRadiusKm: z.number().int().min(1).max(100).optional().default(20),
   isLookingForGame: z.boolean().default(true),
   availableDays: z.array(dayEnum).max(DAY_OPTIONS.length).default([]),
   availableTimeRanges: z.array(timeRangeEnum).max(TIME_RANGE_OPTIONS.length).default([]),

@@ -5,7 +5,7 @@ import { ArrowUp, Building2, ChevronDown, ChevronUp, MapPinned, Search } from "l
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Sport } from "@prisma/client";
 
-import { DEFAULT_CITY, getDistrictLabel, SPORT_OPTIONS } from "@/lib/constants";
+import { COURTS_MAP_RADIUS_KM, DEFAULT_CITY, getDistrictLabel, SPORT_OPTIONS } from "@/lib/constants";
 import { useLocale } from "@/components/i18n/locale-provider";
 import { normalizeCourtSports } from "@/lib/courts";
 import { getAuthSportLabel } from "@/lib/i18n/web/auth";
@@ -53,7 +53,6 @@ type Court = {
 type CourtsBrowserProps = {
   courts: Court[];
   userDistrict?: string | null;
-  searchRadiusKm: number;
   profileSports: Sport[];
   initialQuery?: string;
   initialSport?: Sport | null;
@@ -73,7 +72,6 @@ type SearchSuggestion = {
 export function CourtsBrowser({
   courts,
   userDistrict,
-  searchRadiusKm,
   profileSports,
   initialQuery = "",
   initialSport = null
@@ -346,7 +344,7 @@ export function CourtsBrowser({
           </div>
           <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
             <div className="text-[11px] uppercase tracking-[0.18em] text-court">{t("courts.browser.radius")}</div>
-            <div className="mt-1 font-bold text-ink">{formatCourtsRadius(locale, searchRadiusKm)}</div>
+            <div className="mt-1 font-bold text-ink">{formatCourtsRadius(locale, COURTS_MAP_RADIUS_KM)}</div>
           </div>
         </div>
 
@@ -439,7 +437,7 @@ export function CourtsBrowser({
           <CourtsMap
             courts={filteredCourts}
             district={userDistrict}
-            radiusKm={searchRadiusKm}
+            radiusKm={COURTS_MAP_RADIUS_KM}
             focus={
               mapFocus?.type === "metro" && mapFocus.center
                 ? {

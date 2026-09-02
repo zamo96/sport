@@ -269,7 +269,6 @@ model User {
   avatarUrl                          String?
   profilePhotoUrls                   Json?
   profileVideoUrls                   Json?
-  searchRadiusKm                     Int                                 @default(20)
   availableDays                      Json?
   availableTimeRanges                Json?
   availableTimeSlots                 Json?

@@ -96,7 +96,6 @@ type SimUser = {
   availableDays: Prisma.JsonValue | null;
   availableTimeRanges: Prisma.JsonValue | null;
   availableTimeSlots: Prisma.JsonValue | null;
-  searchRadiusKm: number;
   isLookingForGame: boolean;
 };
 
@@ -169,7 +168,6 @@ export async function runDemoActivitySimulation(
       availableDays: true,
       availableTimeRanges: true,
       availableTimeSlots: true,
-      searchRadiusKm: true,
       isLookingForGame: true
     }
   })) as SimUser[];
@@ -477,7 +475,6 @@ export async function runLiveActivityTick(
       availableDays: true,
       availableTimeRanges: true,
       availableTimeSlots: true,
-      searchRadiusKm: true,
       isLookingForGame: true
     }
   })) as SimUser[];
@@ -568,7 +565,6 @@ function buildGeneratedDemoUser(index: number, random: () => number): Prisma.Use
     preferredSurface: pickSurface(random, sports[0]),
     bio: buildBio(firstName, sports[0], district, random),
     avatarUrl: null,
-    searchRadiusKm: 8 + Math.floor(random() * 18),
     availableDays,
     availableTimeRanges,
     availableTimeSlots: availableDays.flatMap((day) => (availabilityByDay[day] ?? []).map((range) => `${day}-${range}`)),
@@ -618,7 +614,6 @@ async function createLiveUser(prisma: PrismaClient, currentUserCount: number, ra
       preferredSurface: user.preferredSurface,
       bio: user.bio,
       avatarUrl: user.avatarUrl,
-      searchRadiusKm: user.searchRadiusKm,
       availableDays: user.availableDays,
       availableTimeRanges: user.availableTimeRanges,
       availableTimeSlots: user.availableTimeSlots,

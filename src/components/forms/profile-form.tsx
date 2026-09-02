@@ -44,7 +44,6 @@ type ProfilePayload = Pick<
   | "preferredSurface"
   | "bio"
   | "avatarUrl"
-  | "searchRadiusKm"
   | "isLookingForGame"
   | "notificationGames"
   | "notificationMatches"
@@ -117,7 +116,6 @@ export function ProfileForm({
     preferredSurface: user.preferredSurface ?? Surface.any,
     bio: user.bio ?? "",
     avatarUrl: user.avatarUrl ?? null,
-    searchRadiusKm: user.searchRadiusKm ?? 20,
     availableDays: Array.isArray(user.availableDays)
       ? user.availableDays.filter((slot): slot is string => typeof slot === "string")
       : [],
@@ -742,7 +740,6 @@ function toGuestDraft(form: ProfilePayload): GuestOnboardingDraft {
     sportLevels: form.sportLevels,
     preferredPlayFormat: form.preferredPlayFormat,
     preferredSurface: form.preferredSurface,
-    searchRadiusKm: form.searchRadiusKm,
     isLookingForGame: form.isLookingForGame,
     availableDays: form.availableDays,
     availableTimeRanges: form.availableTimeRanges,

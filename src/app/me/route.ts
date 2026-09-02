@@ -114,7 +114,6 @@ export async function PATCH(request: NextRequest) {
           body.profileVideoUrls === undefined
             ? undefined
             : Array.from(new Set(body.profileVideoUrls.map((url) => url.trim()).filter(Boolean))).slice(0, 4),
-        searchRadiusKm: body.searchRadiusKm ?? currentUser.searchRadiusKm,
         availableDays,
         availableTimeRanges,
         availabilityByDay,

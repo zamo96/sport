@@ -38,7 +38,6 @@ const candidateBaseSelect = {
   availableDays: true,
   availableTimeRanges: true,
   availableTimeSlots: true,
-  searchRadiusKm: true,
   isLookingForGame: true,
   lastActiveAt: true,
   createdAt: true
@@ -257,7 +256,6 @@ function toCandidateViewer(viewer: CandidateUser) {
     availableDays: viewer.availableDays,
     availableTimeRanges: viewer.availableTimeRanges,
     availableTimeSlots: viewer.availableTimeSlots,
-    searchRadiusKm: viewer.searchRadiusKm,
     isLookingForGame: viewer.isLookingForGame,
     lastActiveAt: viewer.lastActiveAt,
     createdAt: viewer.createdAt
@@ -378,7 +376,6 @@ export async function getDiscoverCandidatesForGuestDraft(draft: GuestOnboardingD
     availableTimeSlots: availableDays.flatMap((day) =>
       (availabilityByDay[day] ?? availableTimeRanges).map((timeRange) => `${day}-${timeRange}`)
     ),
-    searchRadiusKm: draft.searchRadiusKm,
     isLookingForGame: draft.isLookingForGame
   };
 

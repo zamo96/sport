@@ -23,7 +23,6 @@ export type CandidateUser = Pick<
   | "availableDays"
   | "availableTimeRanges"
   | "availableTimeSlots"
-  | "searchRadiusKm"
   | "isLookingForGame"
 > & {
   locationPlaceId?: User["locationPlaceId"] | null;

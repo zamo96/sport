@@ -45,7 +45,6 @@ export default async function CourtsPage({
       <CourtsBrowser
         courts={courts.map(serializeCourt)}
         userDistrict={user.district}
-        searchRadiusKm={user.searchRadiusKm}
         profileSports={normalizeSports(user.preferredSports)}
         initialQuery={query.q ?? ""}
         initialSport={query.sport ?? null}

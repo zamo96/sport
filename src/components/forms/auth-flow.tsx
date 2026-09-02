@@ -244,7 +244,6 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             preferredSurface: draft.preferredSurface,
             bio: "",
             avatarUrl: null,
-            searchRadiusKm: draft.searchRadiusKm ?? 20,
             availableDays: draft.availableDays,
             availableTimeRanges: draft.availableTimeRanges,
             availabilityByDay: draft.availabilityByDay,
