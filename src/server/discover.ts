@@ -264,12 +264,38 @@ function toCandidateViewer(viewer: CandidateUser) {
   } satisfies CandidateUser;
 }
 
+/**
+ * Ступени расширения для холодного старта. Пока кандидатов меньше порога,
+ * пускаем игроков из соседних городов — сначала ближних, потом дальних.
+ * Показать человека в сорока километрах честнее, чем пустой экран.
+ */
+const NEARBY_RADIUS_STEPS_KM = [60, 200] as const;
+const MIN_CANDIDATES_BEFORE_WIDENING = 5;
+
+export function widenCandidateSearch<T extends { length: number }>(
+  scoreWith: (nearbyRadiusKm?: number) => T
+): T {
+  let result = scoreWith();
+
+  for (const radiusKm of NEARBY_RADIUS_STEPS_KM) {
+    if (result.length >= MIN_CANDIDATES_BEFORE_WIDENING) {
+      return result;
+    }
+
+    result = scoreWith(radiusKm);
+  }
+
+  return result;
+}
+
 async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string | null, filters: DiscoverFilters = {}) {
   const candidates = await fetchCandidatePool(viewerId, filters);
   const filteredCandidates = filterCandidatesForView(viewer, candidates, filters);
 
   const viewerProfile = toCandidateViewer(viewer);
-  const scored = scoreCandidates(viewerProfile, filteredCandidates, filters);
+  const scored = widenCandidateSearch((nearbyRadiusKm) =>
+    scoreCandidates(viewerProfile, filteredCandidates, filters, { nearbyRadiusKm })
+  );
   const ranked = viewerId ? await rerankDiscoverCandidates(viewerId, scored, filters) : scored;
   const source = filters.view ?? "discover";
 
@@ -304,7 +330,11 @@ export async function summarizeDiscoverCandidates(
 
   const pool = await fetchCandidatePool(userId, filters);
   const filtered = filterCandidatesForView(viewer, pool, filters);
-  const scored = scoreCandidates(toCandidateViewer(viewer), filtered, filters);
+  // Тот же каскад, что и в самом поиске: иначе кампания насчитает меньше
+  // кандидатов, чем игрок увидит на экране, и промолчит без причины.
+  const scored = widenCandidateSearch((nearbyRadiusKm) =>
+    scoreCandidates(toCandidateViewer(viewer), filtered, filters, { nearbyRadiusKm })
+  );
   const newerThan = options.newerThan;
 
   return {
