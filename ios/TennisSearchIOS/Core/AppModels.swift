@@ -2271,6 +2271,15 @@ extension SearchLobbyGameSearch {
     }
 }
 
+/// Личная ссылка-приглашение и её счётчики.
+struct InviteSummary: Codable {
+    let code: String
+    let url: String
+    let visits: Int
+    let registered: Int
+    let joined: Int
+}
+
 struct Court: Codable, Identifiable {
     let id: String
     let name: String

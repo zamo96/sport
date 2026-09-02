@@ -50,6 +50,8 @@ struct DiscoverView: View {
     @State private var similarPlayersBadgeCount = 0
     @State private var selectedTab: DiscoverTab = .swipe
     @State private var isLoading = false
+    @State private var emptyDeckCourts: [Court] = []
+    @State private var inviteSummary: InviteSummary?
     @State private var matchMessage: String?
     @State private var matchMessageTask: Task<Void, Never>?
     @State private var responseMessage: String?
@@ -1451,11 +1453,13 @@ struct DiscoverView: View {
                 .padding(.top, -8)
                 .padding(.bottom, 4)
             if topStack.isEmpty, !isLoading {
-                EmptyStateView(
-                    title: L10n.string("No more cards", "Карточки закончились"),
-                    subtitle: L10n.string("Refresh recommendations later or switch to active searches.", "Обнови подбор позже или переключись на активные поиски."),
-                    systemImage: "sparkles"
+                EmptyDeckView(
+                    city: appModel.currentUser?.city,
+                    seenCount: users.count,
+                    courts: emptyDeckCourts,
+                    invite: inviteSummary
                 )
+                .task { await loadEmptyDeckContent() }
             } else {
                 ZStack {
                     if isSimilarPlayersHintPresented {
@@ -2286,6 +2290,20 @@ struct DiscoverView: View {
 
     private var topStack: [DiscoverUser] {
         Array(users.prefix(2))
+    }
+
+    /// Клубы и приглашение нужны только на пустом экране, поэтому грузятся
+    /// отдельно и один раз — тянуть их на каждый заход в поиск незачем.
+    private func loadEmptyDeckContent() async {
+        guard appModel.isAuthenticated, inviteSummary == nil else {
+            return
+        }
+
+        async let courtsRequest = appModel.repository.fetchCourts(city: appModel.currentUser?.city)
+        async let inviteRequest = appModel.repository.fetchInviteSummary()
+
+        emptyDeckCourts = (try? await courtsRequest) ?? []
+        inviteSummary = try? await inviteRequest
     }
 
     private func loadDiscover() async {

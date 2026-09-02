@@ -1037,6 +1037,11 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
+    func fetchInviteSummary() async throws -> InviteSummary {
+        let envelope: InviteEnvelope = try await client.request(path: "me/invite")
+        return envelope.invite
+    }
+
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws {
         let _: RegisterPushDeviceEnvelope = try await client.request(
             path: "devices/apns",
@@ -1617,6 +1622,10 @@ private struct RegisterPushDeviceRequest: Encodable {
     let bundleId: String
     let deviceName: String?
     let locale: String?
+}
+
+private struct InviteEnvelope: Decodable {
+    let invite: InviteSummary
 }
 
 private struct RegisterPushDeviceEnvelope: Decodable {

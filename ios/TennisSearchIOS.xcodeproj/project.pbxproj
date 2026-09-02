@@ -23,6 +23,7 @@
 		A1000000000000000000010A /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020A /* DiscoverView.swift */; };
 		A1000000000000000000010B /* MatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020B /* MatchesView.swift */; };
 		A1000000000000000000010C /* SearchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020C /* SearchesView.swift */; };
+		A1000000000000000000019E /* EmptyDeckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000029E /* EmptyDeckView.swift */; };
 		A1000000000000000000010D /* CourtsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020D /* CourtsView.swift */; };
 		A1000000000000000000010E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020E /* ProfileView.swift */; };
 		A10000000000000000000122 /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000227 /* LocationPickerView.swift */; };
@@ -91,6 +92,7 @@
 		A1000000000000000000020A /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020B /* MatchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchesView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020C /* SearchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchesView.swift; sourceTree = "<group>"; };
+		A1000000000000000000029E /* EmptyDeckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyDeckView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020D /* CourtsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtsView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020E /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A10000000000000000000227 /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
@@ -226,6 +228,7 @@
 				A1000000000000000000020A /* DiscoverView.swift */,
 				A1000000000000000000020B /* MatchesView.swift */,
 				A1000000000000000000020C /* SearchesView.swift */,
+				A1000000000000000000029E /* EmptyDeckView.swift */,
 				A1000000000000000000020D /* CourtsView.swift */,
 				A1000000000000000000020E /* ProfileView.swift */,
 				A10000000000000000000227 /* LocationPickerView.swift */,
@@ -398,6 +401,7 @@
 				A1000000000000000000010A /* DiscoverView.swift in Sources */,
 				A1000000000000000000010B /* MatchesView.swift in Sources */,
 				A1000000000000000000010C /* SearchesView.swift in Sources */,
+				A1000000000000000000019E /* EmptyDeckView.swift in Sources */,
 				A1000000000000000000010D /* CourtsView.swift in Sources */,
 				A1000000000000000000010E /* ProfileView.swift in Sources */,
 				A10000000000000000000122 /* LocationPickerView.swift in Sources */,
