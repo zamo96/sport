@@ -9,6 +9,7 @@ import {
   type AcceptedUserAgreementVersion,
   type LegalAcceptanceSource
 } from "@/lib/legal-contract";
+import { attributeInvite, INVITE_COOKIE_NAME } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
 
 type AppleIdentityTokenHeader = {
@@ -354,6 +355,7 @@ export async function verifyAuthCode(email: string, code: string) {
         isVerified: true
       }
     });
+    await attributeInviteFromCookie(user.id);
   } else if (!user.isVerified) {
     user = await prisma.user.update({
       where: { id: user.id },
@@ -362,6 +364,18 @@ export async function verifyAuthCode(email: string, code: string) {
   }
 
   return user;
+}
+
+/**
+ * Пришёл ли человек по чужой ссылке. Ошибку глотаем намеренно: приглашение —
+ * приятный бонус, из-за него регистрация падать не должна.
+ */
+async function attributeInviteFromCookie(userId: string) {
+  try {
+    await attributeInvite(userId, cookies().get(INVITE_COOKIE_NAME)?.value ?? null);
+  } catch (error) {
+    console.error("invite attribution failed", { userId, error });
+  }
 }
 
 export async function signInWithAppleIdentityToken(identityToken: string, profile?: AppleAuthProfile) {
@@ -395,6 +409,7 @@ export async function signInWithAppleIdentityToken(identityToken: string, profil
         isVerified: true
       }
     });
+    await attributeInviteFromCookie(user.id);
   } else {
     const nextData: {
       appleSubject?: string;

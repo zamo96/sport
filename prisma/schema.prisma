@@ -286,6 +286,13 @@ model User {
   accountStatus                      AccountStatus                       @default(active)
   deactivatedAt                      DateTime?
   deactivationReason                 String?
+  /// Личный код приглашения, выдаётся по первому запросу.
+  inviteCode                         String?                             @unique
+  /// Кто привёл этого игрока. Заполняется один раз при регистрации.
+  invitedByUserId                    String?
+  invitedAt                          DateTime?
+  /// Переходы по личной ссылке — знаменатель для конверсии приглашений.
+  inviteVisits                       Int                                 @default(0)
   lastInboxSeenAt                    DateTime?
   lastNotificationsSeenAt            DateTime?
   lastActiveAt                       DateTime?
@@ -323,7 +330,10 @@ model User {
   contentReportsMade                 ContentReport[]                     @relation("ContentReportReporter")
   contentReportsReceived             ContentReport[]                     @relation("ContentReportTarget")
   contentReportsReviewed             ContentReport[]                     @relation("ContentReportReviewer")
+  invitedBy                          User?                               @relation("UserInvites", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  invitedUsers                       User[]                              @relation("UserInvites")
 
+  @@index([invitedByUserId])
   @@index([accountStatus, createdAt])
   @@index([locationPlaceId, accountStatus])
 }
