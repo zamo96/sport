@@ -20,6 +20,16 @@ export { DEFAULT_TIMEZONE, resolveLocalHour };
 export const DEFAULT_MAX_PER_DAY = 1;
 export const DEFAULT_MAX_PER_WEEK = 3;
 
+/**
+ * Рубильник для всех lifecycle-рассылок. Выключенный по умолчанию, он даёт
+ * выкатить код и проверить аудиторию через `?dryRun=1` до того, как cron
+ * отправит первый настоящий пуш: cron ходит раз в 5 минут, догнать его после
+ * деплоя нельзя.
+ */
+export function lifecycleCampaignsEnabled() {
+  return ["1", "true", "yes"].includes((process.env.LIFECYCLE_CAMPAIGNS_ENABLED ?? "").trim().toLowerCase());
+}
+
 /** Тихие часы в локальном времени пользователя: [22:00, 09:00). */
 export const QUIET_HOURS_START = 22;
 export const QUIET_HOURS_END = 9;
@@ -107,7 +117,8 @@ export type EligibilityReason =
   | "quiet_hours"
   | "daily_cap"
   | "weekly_cap"
-  | "campaign_cooldown";
+  | "campaign_cooldown"
+  | "campaigns_disabled";
 
 export type CampaignEligibilityInput = {
   campaignKey: CampaignKey;
@@ -297,6 +308,12 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
 
   if (!user || user.accountStatus !== "active") {
     return { status: "skipped", reason: "inactive_account" };
+  }
+
+  // Рубильник не мешает dry-run: смысл как раз в том, чтобы посмотреть
+  // аудиторию на выключенных рассылках.
+  if (!input.dryRun && campaign.category === "lifecycle" && !lifecycleCampaignsEnabled()) {
+    return { status: "skipped", reason: "campaigns_disabled" };
   }
 
   const [lifecycleDeliveriesLast24h, lifecycleDeliveriesLast7d, lastCampaignDelivery] = await Promise.all([

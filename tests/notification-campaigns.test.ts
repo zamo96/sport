@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   DEFAULT_MAX_PER_DAY,
@@ -6,6 +6,7 @@ import {
   evaluateCampaignEligibility,
   getHoldoutBucket,
   isQuietHour,
+  lifecycleCampaignsEnabled,
   resolveLifecycleVariant,
   resolveLocalHour,
   type CampaignEligibilityInput
@@ -146,6 +147,36 @@ describe("lifecycle holdout", () => {
       const bucket = getHoldoutBucket(userId);
       expect(bucket).toBeGreaterThanOrEqual(0);
       expect(bucket).toBeLessThan(100);
+    }
+  });
+});
+
+describe("lifecycle kill switch", () => {
+  const original = process.env.LIFECYCLE_CAMPAIGNS_ENABLED;
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env.LIFECYCLE_CAMPAIGNS_ENABLED;
+    } else {
+      process.env.LIFECYCLE_CAMPAIGNS_ENABLED = original;
+    }
+  });
+
+  it("stays off unless explicitly enabled", () => {
+    delete process.env.LIFECYCLE_CAMPAIGNS_ENABLED;
+    expect(lifecycleCampaignsEnabled()).toBe(false);
+
+    process.env.LIFECYCLE_CAMPAIGNS_ENABLED = "";
+    expect(lifecycleCampaignsEnabled()).toBe(false);
+
+    process.env.LIFECYCLE_CAMPAIGNS_ENABLED = "false";
+    expect(lifecycleCampaignsEnabled()).toBe(false);
+  });
+
+  it("turns on for the documented values", () => {
+    for (const value of ["1", "true", "TRUE", "yes"]) {
+      process.env.LIFECYCLE_CAMPAIGNS_ENABLED = value;
+      expect(lifecycleCampaignsEnabled()).toBe(true);
     }
   });
 });
