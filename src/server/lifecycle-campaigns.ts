@@ -8,7 +8,11 @@ import { normalizeSports } from "@/lib/sport-levels";
 import { getLocalDateParts } from "@/lib/timezone";
 import { getIncomingLikePlayers } from "@/server/app-data";
 import { countDiscoverCandidates, summarizeDiscoverCandidates } from "@/server/discover";
-import { sendCampaignPush, type CampaignSendStatus } from "@/server/notification-campaigns";
+import {
+  sendCampaignPush,
+  type CampaignPreview,
+  type CampaignSendStatus
+} from "@/server/notification-campaigns";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -55,10 +59,28 @@ const HAS_ACTIVE_DEVICE = {
   }
 } satisfies Prisma.UserWhereInput;
 
-type CampaignStats = Record<CampaignSendStatus, number> & { scanned: number };
+export type CampaignRunOptions = {
+  /** Прогон без отправки: считает аудиторию и собирает примеры текстов. */
+  dryRun?: boolean;
+};
+
+type CampaignStats = Record<CampaignSendStatus, number> & {
+  scanned: number;
+  samples: Array<{ userId: string } & CampaignPreview>;
+};
+
+const MAX_SAMPLES = 5;
 
 function emptyStats(): CampaignStats {
-  return { sent: 0, holdout: 0, duplicate: 0, skipped: 0, failed: 0, scanned: 0 };
+  return { sent: 0, holdout: 0, duplicate: 0, skipped: 0, failed: 0, scanned: 0, samples: [] };
+}
+
+function collect(stats: CampaignStats, userId: string, result: Awaited<ReturnType<typeof sendCampaignPush>>) {
+  stats[result.status] += 1;
+
+  if (result.preview && stats.samples.length < MAX_SAMPLES) {
+    stats.samples.push({ userId, ...result.preview });
+  }
 }
 
 /**
@@ -66,14 +88,14 @@ function emptyStats(): CampaignStats {
  * на всех, и при параллельном запуске две кампании успели бы проверить лимит до
  * того, как любая из них записала доставку.
  */
-export async function runLifecycleCampaigns(now = new Date()) {
+export async function runLifecycleCampaigns(now = new Date(), options: CampaignRunOptions = {}) {
   return {
-    onboardingIncomplete: await runOnboardingIncomplete(now),
-    likesWaiting: await runLikesWaiting(now),
-    firstPlayersReady: await runFirstPlayersReady(now),
-    newPlayersArrived: await runNewPlayersArrived(now),
-    trainingNudge: await runTrainingNudge(now),
-    winBack: await runWinBack(now)
+    onboardingIncomplete: await runOnboardingIncomplete(now, options),
+    likesWaiting: await runLikesWaiting(now, options),
+    firstPlayersReady: await runFirstPlayersReady(now, options),
+    newPlayersArrived: await runNewPlayersArrived(now, options),
+    trainingNudge: await runTrainingNudge(now, options),
+    winBack: await runWinBack(now, options)
   };
 }
 
@@ -81,7 +103,7 @@ export async function runLifecycleCampaigns(now = new Date()) {
  * Человек зарегистрировался, но не дошёл до конца анкеты: без уровня и
  * расписания подобрать ему некого, поэтому это самая дырявая точка воронки.
  */
-export async function runOnboardingIncomplete(now = new Date()) {
+export async function runOnboardingIncomplete(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -121,10 +143,11 @@ export async function runOnboardingIncomplete(now = new Date()) {
         body: translateServer(locale, "push.onboarding.body")
       }),
       href: "/onboarding",
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;
@@ -134,7 +157,7 @@ export async function runOnboardingIncomplete(now = new Date()) {
  * Первые сутки без единого свайпа. Пуш уходит только если игроку реально есть
  * что показать — иначе он открывает пустой поиск и удаляет приложение.
  */
-export async function runFirstPlayersReady(now = new Date()) {
+export async function runFirstPlayersReady(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -182,10 +205,11 @@ export async function runFirstPlayersReady(now = new Date()) {
       }),
       href: "/discover",
       context: { candidateCount },
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;
@@ -195,7 +219,7 @@ export async function runFirstPlayersReady(now = new Date()) {
  * Кто-то лайкнул, но человек не вернулся. Мгновенный пуш на лайк уже уходит из
  * `POST /swipes`, здесь — напоминание через сутки.
  */
-export async function runLikesWaiting(now = new Date()) {
+export async function runLikesWaiting(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -257,17 +281,18 @@ export async function runLikesWaiting(now = new Date()) {
       }),
       href: "/discover?view=likes",
       context: { waiting: waiting.length },
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;
 }
 
 /** Игрок давно не заходил, а рядом за это время появились новые профили. */
-export async function runNewPlayersArrived(now = new Date()) {
+export async function runNewPlayersArrived(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -321,10 +346,11 @@ export async function runNewPlayersArrived(now = new Date()) {
       }),
       href: "/discover",
       context: { freshCandidates: fresh },
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;
@@ -335,7 +361,7 @@ export async function runNewPlayersArrived(now = new Date()) {
  * проверка на пустой экран: она ведёт в форму создания поиска, а не в список.
  * Зато форма приходит уже заполненной свободным слотом из профиля.
  */
-export async function runTrainingNudge(now = new Date()) {
+export async function runTrainingNudge(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -402,17 +428,18 @@ export async function runTrainingNudge(now = new Date()) {
       }),
       href: `/play/searches/new?${query.toString()}`,
       context: { day: slot.day, timeRange: slot.timeRange, sport: sport ?? null },
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;
 }
 
 /** Неделя молчания. Возвращаем только туда, где действительно есть с кем играть. */
-export async function runWinBack(now = new Date()) {
+export async function runWinBack(now = new Date(), options: CampaignRunOptions = {}) {
   const stats = emptyStats();
 
   const users = await prisma.user.findMany({
@@ -461,10 +488,11 @@ export async function runWinBack(now = new Date()) {
       }),
       href: "/discover",
       context: { candidateCount },
-      now
+      now,
+      dryRun: options.dryRun
     });
 
-    stats[result.status] += 1;
+    collect(stats, user.id, result);
   }
 
   return stats;

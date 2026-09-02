@@ -31,11 +31,17 @@ async function handleMaintenance(request: NextRequest) {
     return fail("Нет доступа", 403);
   }
 
+  // dryRun=1 показывает, кого выберут кампании и с каким текстом, ничего не
+  // отправляя и не записывая — единственный способ проверить аудиторию до
+  // первой реальной рассылки.
+  const dryRun = ["1", "true"].includes(request.nextUrl.searchParams.get("dryRun")?.trim() ?? "");
+  const now = new Date();
+
   // Дайджест и кампании делят один дневной лимит на игрока, поэтому идут
   // последовательно: параллельно оба прошли бы проверку до записи доставки.
-  const gameRequests = await runGameRequestMaintenance();
-  const hotSearchDigest = await runHotSearchDigestMaintenance();
-  const lifecycleCampaigns = await runLifecycleCampaigns();
+  const gameRequests = dryRun ? null : await runGameRequestMaintenance();
+  const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun });
+  const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun });
 
-  return ok({ success: true, gameRequests, hotSearchDigest, lifecycleCampaigns });
+  return ok({ success: true, dryRun, gameRequests, hotSearchDigest, lifecycleCampaigns });
 }

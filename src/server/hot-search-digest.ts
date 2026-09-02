@@ -7,7 +7,11 @@ import type { SupportedLocale } from "@/lib/locales";
 import { prisma } from "@/lib/prisma";
 import { normalizeSports } from "@/lib/sport-levels";
 import { DEFAULT_TIMEZONE, getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
-import { sendCampaignPush, type CampaignSendStatus } from "@/server/notification-campaigns";
+import {
+  sendCampaignPush,
+  type CampaignPreview,
+  type CampaignSendStatus
+} from "@/server/notification-campaigns";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SEARCHES_PER_DIGEST = 5;
@@ -95,7 +99,10 @@ async function resolveActiveZoneFilter(now: Date): Promise<Prisma.UserWhereInput
   return { OR: [{ timezone: { in: namedZones } }, { timezone: null }] };
 }
 
-export async function runHotSearchDigestMaintenance(now = new Date()) {
+export async function runHotSearchDigestMaintenance(
+  now = new Date(),
+  options: { dryRun?: boolean } = {}
+) {
   const stats: Record<CampaignSendStatus, number> = {
     sent: 0,
     holdout: 0,
@@ -103,13 +110,14 @@ export async function runHotSearchDigestMaintenance(now = new Date()) {
     skipped: 0,
     failed: 0
   };
+  const samples: Array<{ userId: string } & CampaignPreview> = [];
   let scanned = 0;
   let cursor: string | null = null;
 
   const zoneFilter = await resolveActiveZoneFilter(now);
 
   if (!zoneFilter) {
-    return { ...stats, scanned };
+    return { ...stats, scanned, samples };
   }
 
   for (;;) {
@@ -171,14 +179,19 @@ export async function runHotSearchDigestMaintenance(now = new Date()) {
           label: slot.label,
           searchIds: searches.map((search) => search.id)
         },
-        now
+        now,
+        dryRun: options.dryRun
       });
 
       stats[result.status] += 1;
+
+      if (result.preview && samples.length < 5) {
+        samples.push({ userId: user.id, ...result.preview });
+      }
     }
   }
 
-  return { ...stats, scanned };
+  return { ...stats, scanned, samples };
 }
 
 /**

@@ -206,10 +206,19 @@ export function resolveLifecycleVariant(userId: string, holdoutPercent = getHold
 
 export type CampaignSendStatus = "sent" | "holdout" | "duplicate" | "skipped" | "failed";
 
+export type CampaignPreview = {
+  title: string;
+  body: string;
+  href: string;
+  locale: SupportedLocale;
+};
+
 export type CampaignSendResult = {
   status: CampaignSendStatus;
   reason: EligibilityReason;
   deliveryId?: string;
+  /** Заполняется только в dry-run: что ушло бы этому игроку. */
+  preview?: CampaignPreview;
 };
 
 export type CampaignContent = {
@@ -232,6 +241,8 @@ export type CampaignSendInput = {
   href: string;
   context?: Prisma.InputJsonValue;
   now?: Date;
+  /** Прогон без последствий: считает аудиторию и текст, но ничего не пишет и не шлёт. */
+  dryRun?: boolean;
 };
 
 /** Явный выбор языка → страна проживания → язык по умолчанию. */
@@ -332,6 +343,20 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
   const locale = resolveUserLocale(user);
   const content = typeof input.content === "function" ? input.content(locale) : input.content;
   const variant = resolveLifecycleVariant(user.id);
+
+  if (input.dryRun) {
+    const existing = await prisma.notificationDelivery.findUnique({
+      where: { dedupeKey: input.dedupeKey },
+      select: { id: true }
+    });
+
+    return {
+      status: existing ? "duplicate" : variant === "holdout" ? "holdout" : "sent",
+      reason: "ok",
+      preview: { title: content.title, body: content.body, href: input.href, locale }
+    };
+  }
+
   let delivery: { id: string };
 
   try {
