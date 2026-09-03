@@ -153,14 +153,19 @@ private struct ClubRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+            // Заголовки лежат прямо на чёрном фоне экрана, а не на карточке:
+            // тёмно-зелёный из палитры здесь нечитаем.
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Image(systemName: section.sport.appSystemIconName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.mint)
                 Text(section.sport.title)
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(.white)
                 Spacer()
                 Text(L10n.string("All · \(section.total)", "Все · \(section.total)"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.court)
+                    .foregroundStyle(AppTheme.mint)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -170,7 +175,7 @@ private struct ClubRow: View {
                             appModel.pendingCourtID = court.id
                             appModel.navigate(to: .courts(sport: section.sport))
                         } label: {
-                            ClubTile(court: court)
+                            ClubTile(court: court, sport: section.sport)
                         }
                         .buttonStyle(.plain)
                     }
@@ -214,6 +219,7 @@ private struct ClubRow: View {
 
 private struct ClubTile: View {
     let court: EmptyDeckCourt
+    let sport: Sport
 
     private var reason: String? {
         if court.activeSearchesCount > 0 {
@@ -235,7 +241,7 @@ private struct ClubTile: View {
             HStack(spacing: 7) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous).fill(AppTheme.mint)
-                    Image(systemName: "mappin.and.ellipse")
+                    Image(systemName: sport.appSystemIconName)
                         .font(.caption)
                         .foregroundStyle(AppTheme.court)
                 }

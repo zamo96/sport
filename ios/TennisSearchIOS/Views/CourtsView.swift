@@ -342,6 +342,9 @@ struct CourtsView: View {
             focusesUserLocation = false
             appModel.errorMessage = message
         }
+        .onChange(of: appModel.pendingCourtID) { _ in
+            openPendingCourtIfNeeded()
+        }
         .sheet(item: $selectedCourtForDetail) { court in
             CourtDetailSheet(
                 court: court,
@@ -1246,6 +1249,7 @@ struct CourtsView: View {
            let cachedEntry = CourtsViewCache.entries[cacheKey],
            Date().timeIntervalSince(cachedEntry.loadedAt) < CourtsViewCache.maxAge {
             courts = cachedEntry.courts
+            openPendingCourtIfNeeded()
             return
         }
 
