@@ -13,9 +13,8 @@ import { cn } from "@/lib/utils";
 import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import {
   EmptyDeck,
-  ThinDeckInvite,
-  type EmptyDeckCourt,
-  type EmptyDeckInvite
+  type EmptyDeckInvite,
+  type EmptyDeckSection
 } from "@/components/discover/empty-deck";
 import {
   getDiscoverDayLabel,
@@ -58,14 +57,14 @@ export function SwipeDeck({
   profileSports,
   authRequiredHref,
   city = null,
-  nearbyCourts = [],
+  clubSections = [],
   invite = null
 }: {
   initialUsers: DiscoverUser[];
   profileSports: Sport[];
   authRequiredHref?: string;
   city?: string | null;
-  nearbyCourts?: EmptyDeckCourt[];
+  clubSections?: EmptyDeckSection[];
   invite?: EmptyDeckInvite | null;
 }) {
   const { locale, t } = useLocale();
@@ -131,10 +130,8 @@ export function SwipeDeck({
   const stack = useMemo(() => users.slice(0, 2), [users]);
 
   if (stack.length === 0) {
-    return <EmptyDeck city={city} seenCount={initialUsers.length} courts={nearbyCourts} invite={invite} />;
+    return <EmptyDeck city={city} seenCount={initialUsers.length} sections={clubSections} invite={invite} />;
   }
-
-  const isThin = initialUsers.length > 0 && initialUsers.length < 3;
 
   return (
     <div className="space-y-3">
@@ -352,7 +349,6 @@ export function SwipeDeck({
           });
         }}
       />
-      {isThin ? <ThinDeckInvite invite={invite} city={city} /> : null}
     </div>
   );
 }

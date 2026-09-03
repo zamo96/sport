@@ -21,8 +21,8 @@ import { Button } from "@/components/ui/button";
 import { normalizeSports } from "@/lib/sport-levels";
 import {
   getActiveRegularPairsForUser,
-  getCourtsForUser,
   getDiscoverPageData,
+  getEmptyDeckClubSections,
   getHotNotificationsCount,
   getHotPlayers,
   getIncomingLikePlayers,
@@ -30,7 +30,7 @@ import {
   getSeekingPlayers,
   getUpcomingGamesForUser
 } from "@/server/app-data";
-import { getDistrictLabel } from "@/lib/constants";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
 import { buildInviteUrl, getInviteSummary } from "@/lib/invites";
 import { serializeCourt, serializeUserPreview } from "@/server/serializers";
 
@@ -123,18 +123,29 @@ export default async function DiscoverPage({
   // Клубы и приглашение нужны только на пустом экране — не тянем их на каждый
   // заход в поиск.
   const needsEmptyState = candidates.length < 3;
-  const [nearbyCourts, inviteSummary] = needsEmptyState
-    ? await Promise.all([getCourtsForUser(user.id), getInviteSummary(user.id)])
+  const [clubSectionsRaw, inviteSummary] = needsEmptyState
+    ? await Promise.all([getEmptyDeckClubSections(user.id), getInviteSummary(user.id)])
     : [[], null];
-  const emptyStateCourts = nearbyCourts.slice(0, 3).map((court) => {
-    const preview = serializeCourt(court);
-    return {
-      id: court.id,
-      name: court.name,
-      districtLabel: getDistrictLabel(court.district) ?? court.district ?? null,
-      distanceLabel: preview.distanceLabel
-    };
-  });
+  const clubSections = clubSectionsRaw.map((section) => ({
+    sport: section.sport,
+    sportLabel: getAuthSportLabel(locale, section.sport),
+    total: section.total,
+    courts: section.courts.map((court) => {
+      const preview = serializeCourt(court);
+      return {
+        id: court.id,
+        name: court.name,
+        distanceLabel: preview.distanceLabel,
+        activeSearchesCount: preview.activeSearchesCount,
+        memberCount: preview.memberCount,
+        searchers: preview.activeSearchPreviewUsers.slice(0, 3).map((player) => ({
+          id: player.id ?? "",
+          name: player.name ?? null,
+          avatarUrl: player.avatarUrl ?? null
+        }))
+      };
+    })
+  }));
   const emptyStateInvite = inviteSummary
     ? {
         url: buildInviteUrl(inviteSummary.code, process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://sportsearch.shop"),
@@ -381,7 +392,7 @@ export default async function DiscoverPage({
               key={swipeDeckKey}
               profileSports={profileSports}
               city={user.city}
-              nearbyCourts={emptyStateCourts}
+              clubSections={clubSections}
               invite={emptyStateInvite}
               initialUsers={candidates.map((candidate) => {
                 const preview = serializeUserPreview(candidate);
