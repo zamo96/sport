@@ -62,6 +62,7 @@ protocol TennisRepository {
     func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult
     func fetchCourts(city: String?) async throws -> [Court]
     func fetchInviteSummary() async throws -> InviteSummary
+    func fetchEmptyDeckContent() async throws -> EmptyDeckContent
     func fetchCourt(courtId: String) async throws -> Court
     func fetchAddressSuggestions(query: String, city: String?) async throws -> [AddressSuggestion]
     func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court

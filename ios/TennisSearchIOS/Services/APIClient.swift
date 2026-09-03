@@ -1037,6 +1037,10 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
+    func fetchEmptyDeckContent() async throws -> EmptyDeckContent {
+        try await client.request(path: "discover/empty-state")
+    }
+
     func fetchInviteSummary() async throws -> InviteSummary {
         let envelope: InviteEnvelope = try await client.request(path: "me/invite")
         return envelope.invite

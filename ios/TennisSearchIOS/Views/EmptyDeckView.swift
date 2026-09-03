@@ -8,7 +8,7 @@ struct EmptyDeckView: View {
 
     let city: String?
     let seenCount: Int
-    let courts: [Court]
+    let sections: [EmptyDeckSection]
     let invite: InviteSummary?
 
     private var isFirstInCity: Bool { seenCount == 0 }
@@ -30,131 +30,51 @@ struct EmptyDeckView: View {
         }
 
         return L10n.string(
-            "There are \(seenCount) profiles in \(place) right now, and you went through all of them. We will write when new ones show up.",
+            "There are \(seenCount) profiles in \(place) right now, and you went through all of them.",
             "В городе \(place) сейчас \(seenCount) анкет, и вы пролистали все. Появятся новые — напишем."
         )
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            header
+        VStack(alignment: .leading, spacing: 14) {
+            leadCard
 
-            // Когда играть не с кем совсем, приглашение — единственное, что
-            // вообще меняет дело, поэтому оно идёт первым.
-            if isFirstInCity {
-                inviteCard
-                courtsSection
-            } else {
-                courtsSection
-                inviteCard
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                ClubRow(section: section, driftDuration: 22 + Double(index) * 4)
             }
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "person.2.badge.plus")
-                .font(.system(size: 32))
-                .foregroundStyle(AppTheme.clay)
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
-                .multilineTextAlignment(.center)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.ink.opacity(0.62))
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(.white.opacity(0.78))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(AppTheme.line, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var courtsSection: some View {
-        if courts.isEmpty == false {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.string("Courts nearby", "Корты рядом"))
-                    .font(.caption.weight(.semibold))
-                    .kerning(1.1)
-                    .foregroundStyle(AppTheme.ink.opacity(0.55))
-                    .padding(.horizontal, 4)
-
-                ForEach(courts.prefix(3)) { court in
-                    Button {
-                        appModel.pendingCourtID = court.id
-                        appModel.navigate(to: .courts(sport: nil))
-                    } label: {
-                        CourtRow(court: court)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var inviteCard: some View {
-        if let invite {
-            InviteCard(invite: invite, city: city)
-        }
-    }
-}
-
-private struct CourtRow: View {
-    let court: Court
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppTheme.mint)
-                Image(systemName: "mappin.and.ellipse")
-                    .foregroundStyle(AppTheme.court)
-            }
-            .frame(width: 40, height: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(court.name)
-                    .font(.subheadline.weight(.semibold))
+    /// Приговор и действие в одной карточке: так приглашение остаётся выше
+    /// сгиба даже на маленьком экране, где два блока подряд не помещаются.
+    private var leadCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
                     .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-                if let metro = court.nearestMetroName ?? court.metroNames.first {
-                    Text(metro)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.ink.opacity(0.6))
-                        .lineLimit(1)
-                }
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.ink.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
 
-            Spacer(minLength: 8)
-
-            if let distance = court.distanceLabel {
-                Text(distance)
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(AppTheme.court)
+            if let invite {
+                InviteStrip(invite: invite, city: city)
             }
-
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.ink.opacity(0.3))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
         .background(.white.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
-private struct InviteCard: View {
+private struct InviteStrip: View {
     let invite: InviteSummary
     let city: String?
+
+    @State private var showsLink = true
 
     private var shareMessage: String {
         let place = city ?? L10n.string("my city", "своём городе")
@@ -172,55 +92,236 @@ private struct InviteCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string("Invite whoever you already play with", "Позовите, с кем уже играете"))
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text(L10n.string(
-                "It is faster to find a partner when your own people are around.",
-                "Быстрее найти партнёра, если рядом есть свои."
-            ))
-            .font(.subheadline)
-            .foregroundStyle(.white.opacity(0.85))
-
-            HStack(spacing: 10) {
-                Text(shortLink)
-                    .font(.caption.monospaced().weight(.semibold))
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L10n.string("Invite whoever you already play with", "Позовите, с кем уже играете"))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .minimumScaleFactor(0.85)
 
-                Spacer(minLength: 6)
-
-                ShareLink(item: shareMessage) {
-                    Text(L10n.string("Share", "Отправить"))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.clay)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(.white.opacity(0.92))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                // Ссылку никто не перепечатывает — она нужна на один взгляд,
+                // чтобы стало понятно, чем делятся. Дальше место занимает зря.
+                if showsLink {
+                    Text(shortLink)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.white.opacity(0.8))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.16))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            // Пока по ссылке никто не переходил, счётчик показывать незачем —
-            // нули только расхолаживают.
-            if invite.visits > 0 {
-                Text(L10n.string(
-                    "Opened \(invite.visits) · joined \(invite.joined)",
-                    "Переходов \(invite.visits) · дошли до анкеты \(invite.joined)"
-                ))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.75))
+            Spacer(minLength: 6)
+
+            ShareLink(item: shareMessage) {
+                Text(L10n.string("Share", "Отправить"))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.clay)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
         .background(AppTheme.clay)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .task {
+            try? await Task.sleep(for: .seconds(2.6))
+            withAnimation(.easeInOut(duration: 0.45)) {
+                showsLink = false
+            }
+        }
+    }
+}
+
+/// Ряд клубов одного вида спорта. Медленно едет сам, пока его не тронули.
+private struct ClubRow: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let section: EmptyDeckSection
+    let driftDuration: Double
+
+    @State private var driftOffset: CGFloat = 0
+    /// Палец главнее: как только человек листает сам, движение больше не
+    /// возвращаем — иначе оно спорит с ним.
+    @State private var userTookOver = false
+
+    private var driftDistance: CGFloat { -60 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(section.sport.title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text(L10n.string("All · \(section.total)", "Все · \(section.total)"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.court)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
+                    ForEach(section.courts) { court in
+                        Button {
+                            appModel.pendingCourtID = court.id
+                            appModel.navigate(to: .courts(sport: section.sport))
+                        } label: {
+                            ClubTile(court: court)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        appModel.navigate(to: .courts(sport: section.sport))
+                    } label: {
+                        AllCourtsTile()
+                    }
+                    .buttonStyle(.plain)
+                }
+                .offset(x: driftOffset)
+                .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { _ in
+                    stopDrift()
+                })
+            }
+            .scrollDisabled(false)
+        }
+        .task {
+            guard !reduceMotion, !userTookOver, section.courts.count > 2 else {
+                return
+            }
+
+            withAnimation(.linear(duration: driftDuration).repeatForever(autoreverses: true)) {
+                driftOffset = driftDistance
+            }
+        }
+    }
+
+    private func stopDrift() {
+        guard !userTookOver else {
+            return
+        }
+
+        userTookOver = true
+        withAnimation(.easeOut(duration: 0.25)) {
+            driftOffset = 0
+        }
+    }
+}
+
+private struct ClubTile: View {
+    let court: EmptyDeckCourt
+
+    private var reason: String? {
+        if court.activeSearchesCount > 0 {
+            return L10n.string(
+                "\(court.activeSearchesCount) looking for a game",
+                "ищут игру · \(court.activeSearchesCount)"
+            )
+        }
+
+        if court.memberCount > 0 {
+            return L10n.string("\(court.memberCount) players from here", "\(court.memberCount) игроков отсюда")
+        }
+
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(AppTheme.mint)
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.court)
+                }
+                .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(court.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                    if let distance = court.distanceLabel {
+                        Text(distance)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(AppTheme.ink.opacity(0.6))
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                if court.searchers.isEmpty == false {
+                    SearcherFaces(searchers: court.searchers)
+                }
+                if court.activeSearchesCount > 0 {
+                    Circle()
+                        .fill(Color(red: 63 / 255, green: 163 / 255, blue: 127 / 255))
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(height: 22, alignment: .leading)
+
+            Text(reason ?? L10n.string("courts to rent", "корты в аренду"))
+                .font(.caption2.weight(reason == nil ? .regular : .semibold))
+                .foregroundStyle(reason == nil ? AppTheme.ink.opacity(0.55) : AppTheme.court)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .frame(width: 168, alignment: .leading)
+        .background(.white.opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct SearcherFaces: View {
+    let searchers: [EmptyDeckSearcher]
+
+    var body: some View {
+        HStack(spacing: -8) {
+            ForEach(searchers) { searcher in
+                ZStack {
+                    Circle().fill(AppTheme.court)
+                    Text(initials(for: searcher.name))
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 21, height: 21)
+                .overlay(Circle().stroke(.white, lineWidth: 2))
+            }
+        }
+    }
+
+    private func initials(for name: String?) -> String {
+        guard let name, name.isEmpty == false else {
+            return "?"
+        }
+
+        return name.split(separator: " ").prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+    }
+}
+
+private struct AllCourtsTile: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "arrow.right")
+                .font(.caption.weight(.semibold))
+            Text(L10n.string("All courts", "Все корты"))
+                .font(.caption2.weight(.semibold))
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(AppTheme.court)
+        .frame(width: 92, height: 96)
+        .background(.white.opacity(0.55))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppTheme.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

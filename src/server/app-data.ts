@@ -1463,3 +1463,80 @@ function getDiscoverCandidatesFromUsers(
     explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
   }));
 }
+
+/** Сколько клубов показываем в одном ряду и сколько рядов вообще рисуем. */
+const EMPTY_DECK_COURTS_PER_SPORT = 6;
+const EMPTY_DECK_MAX_SPORTS = 3;
+
+/**
+ * Клубы для экрана, где закончились карточки игроков. Сгруппированы по видам
+ * спорта из анкеты, внутри ряда — по «живости».
+ *
+ * Порядок именно такой, а не по расстоянию: экран появился из-за нехватки
+ * людей, поэтому мёртвый корт в 800 метрах здесь бесполезнее живого в
+ * четырёх километрах. Расстояние решает только между одинаково живыми.
+ */
+export async function getEmptyDeckClubSections(userId: string) {
+  const viewer = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { preferredSports: true, city: true }
+  });
+
+  if (!viewer) {
+    return [];
+  }
+
+  const sports = normalizeSports(viewer.preferredSports).slice(0, EMPTY_DECK_MAX_SPORTS);
+
+  if (sports.length === 0) {
+    return [];
+  }
+
+  const courts = await getCourtsForUser(userId);
+
+  return sports
+    .map((sport) => {
+      const forSport = courts.filter((court) => {
+        const supported = Array.isArray(court.supportedSports)
+          ? court.supportedSports.filter((value): value is string => typeof value === "string")
+          : [];
+        // Клуб без списка видов спорта считаем универсальным: так он был виден
+        // и раньше, скрывать его из-за незаполненного поля нечестно.
+        return supported.length === 0 || supported.includes(sport);
+      });
+
+      return {
+        sport,
+        total: forSport.length,
+        courts: [...forSport].sort(compareByLiveliness).slice(0, EMPTY_DECK_COURTS_PER_SPORT)
+      };
+    })
+    // Вид спорта без клубов пропускаем молча: пустой ряд хуже отсутствующего.
+    .filter((section) => section.courts.length > 0);
+}
+
+type LivelinessInput = {
+  activeSearchesCount: number;
+  _count?: { members?: number } | null;
+  distanceKm?: number | null;
+  rating?: number | null;
+};
+
+function compareByLiveliness(left: LivelinessInput, right: LivelinessInput) {
+  const searches = right.activeSearchesCount - left.activeSearchesCount;
+  if (searches !== 0) {
+    return searches;
+  }
+
+  const members = (right._count?.members ?? 0) - (left._count?.members ?? 0);
+  if (members !== 0) {
+    return members;
+  }
+
+  const distance = (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY);
+  if (distance !== 0) {
+    return distance;
+  }
+
+  return (right.rating ?? 0) - (left.rating ?? 0);
+}

@@ -50,7 +50,7 @@ struct DiscoverView: View {
     @State private var similarPlayersBadgeCount = 0
     @State private var selectedTab: DiscoverTab = .swipe
     @State private var isLoading = false
-    @State private var emptyDeckCourts: [Court] = []
+    @State private var emptyDeckSections: [EmptyDeckSection] = []
     @State private var inviteSummary: InviteSummary?
     @State private var matchMessage: String?
     @State private var matchMessageTask: Task<Void, Never>?
@@ -1456,7 +1456,7 @@ struct DiscoverView: View {
                 EmptyDeckView(
                     city: appModel.currentUser?.city,
                     seenCount: users.count,
-                    courts: emptyDeckCourts,
+                    sections: emptyDeckSections,
                     invite: inviteSummary
                 )
                 .task { await loadEmptyDeckContent() }
@@ -2299,11 +2299,12 @@ struct DiscoverView: View {
             return
         }
 
-        async let courtsRequest = appModel.repository.fetchCourts(city: appModel.currentUser?.city)
-        async let inviteRequest = appModel.repository.fetchInviteSummary()
+        guard let content = try? await appModel.repository.fetchEmptyDeckContent() else {
+            return
+        }
 
-        emptyDeckCourts = (try? await courtsRequest) ?? []
-        inviteSummary = try? await inviteRequest
+        emptyDeckSections = content.sections
+        inviteSummary = content.invite
     }
 
     private func loadDiscover() async {

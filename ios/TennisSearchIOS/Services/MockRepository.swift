@@ -2320,6 +2320,10 @@ actor MockRepository: TennisRepository {
     func fetchInviteSummary() async throws -> InviteSummary {
         InviteSummary(code: "K7M2QP", url: "https://sportsearch.shop/i/K7M2QP", visits: 4, registered: 2, joined: 1)
     }
+
+    func fetchEmptyDeckContent() async throws -> EmptyDeckContent {
+        EmptyDeckContent(sections: [], invite: try await fetchInviteSummary())
+    }
 }
 
 private let mockCourt = Court(

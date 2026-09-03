@@ -2271,12 +2271,41 @@ extension SearchLobbyGameSearch {
     }
 }
 
+/// Клубы для экрана без карточек: ряд на каждый вид спорта из анкеты.
+struct EmptyDeckSection: Codable, Identifiable {
+    let sport: Sport
+    let total: Int
+    let courts: [EmptyDeckCourt]
+
+    var id: String { sport.rawValue }
+}
+
+struct EmptyDeckCourt: Codable, Identifiable {
+    let id: String
+    let name: String
+    let distanceLabel: String?
+    let activeSearchesCount: Int
+    let memberCount: Int
+    let searchers: [EmptyDeckSearcher]
+}
+
+struct EmptyDeckSearcher: Codable, Identifiable {
+    let id: String
+    let name: String?
+    let avatarUrl: String?
+}
+
+struct EmptyDeckContent: Codable {
+    let sections: [EmptyDeckSection]
+    let invite: InviteSummary
+}
+
 /// Личная ссылка-приглашение и её счётчики.
 struct InviteSummary: Codable {
-    let code: String
+    let code: String?
     let url: String
     let visits: Int
-    let registered: Int
+    let registered: Int?
     let joined: Int
 }
 
