@@ -1,108 +1,108 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "CFBundleDisplayName" : {
-      "comment" : "Bundle display name",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню"
+  "sourceLanguage": "en",
+  "strings": {
+    "CFBundleDisplayName": {
+      "comment": "Bundle display name",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sportia"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню"
           }
         }
       }
     },
-    "CFBundleName" : {
-      "comment" : "Bundle name",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню"
+    "CFBundleName": {
+      "comment": "Bundle name",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sportia"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню"
           }
         }
       }
     },
-    "NSCalendarsUsageDescription" : {
-      "comment" : "Privacy - Calendars Usage Description",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню adds confirmed games to your calendar when you ask it to."
+    "NSCalendarsUsageDescription": {
+      "comment": "Privacy - Calendars Usage Description",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню adds confirmed games to your calendar when you ask it to."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию."
           }
         }
       }
     },
-    "NSCalendarsWriteOnlyAccessUsageDescription" : {
-      "comment" : "Privacy - Calendars Write Only Usage Description",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню adds confirmed games to your calendar when you ask it to."
+    "NSCalendarsWriteOnlyAccessUsageDescription": {
+      "comment": "Privacy - Calendars Write Only Usage Description",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню adds confirmed games to your calendar when you ask it to."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню добавляет подтверждённые игры в ваш календарь по вашему действию."
           }
         }
       }
     },
-    "NSLocalNetworkUsageDescription" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню uses the local network to connect to the development server on your computer."
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню uses the local network to connect to the development server on your computer."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню использует локальную сеть для подключения к серверу разработки на вашем компьютере."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню использует локальную сеть для подключения к серверу разработки на вашем компьютере."
           }
         }
       }
     },
-    "NSLocationWhenInUseUsageDescription" : {
-      "comment" : "Privacy - Location When In Use Usage Description",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню uses your location to show nearby players and sports centers."
+    "NSLocationWhenInUseUsageDescription": {
+      "comment": "Privacy - Location When In Use Usage Description",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню uses your location to show nearby players and sports centers."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "НаТреню использует геолокацию, чтобы показывать игроков и спортивные центры рядом с вами."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "НаТреню использует геолокацию, чтобы показывать игроков и спортивные центры рядом с вами."
           }
         }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

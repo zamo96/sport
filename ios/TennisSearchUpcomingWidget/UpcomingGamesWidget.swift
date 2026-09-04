@@ -978,8 +978,8 @@ struct UpcomingGamesWidget: Widget {
         StaticConfiguration(kind: kind, provider: UpcomingGamesProvider()) { entry in
             UpcomingGamesWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Ближайшие игры")
-        .description("Показывает следующую подтвержденную игру SportSearch.")
+        .configurationDisplayName(WidgetStrings.displayName)
+        .description(WidgetStrings.description)
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
@@ -1221,5 +1221,22 @@ struct SportSearchWidgets: WidgetBundle {
     var body: some Widget {
         UpcomingGamesWidget()
         UpcomingGameLiveActivityWidget()
+    }
+}
+
+
+private enum WidgetStrings {
+    private static var isRussian: Bool {
+        Locale.current.language.languageCode?.identifier == "ru"
+    }
+
+    static var displayName: String {
+        isRussian ? "Ближайшие игры" : "Upcoming games"
+    }
+
+    static var description: String {
+        isRussian
+            ? "Показывает следующую подтверждённую игру."
+            : "Shows your next confirmed game."
     }
 }
