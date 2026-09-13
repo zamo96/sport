@@ -153,7 +153,16 @@ cd android && ./gradlew :app:assembleDebug
 
 Собирается «из коробки»: JDK берётся из Android Studio
 (`/Applications/Android Studio.app/Contents/jbr/Contents/Home` — пропиши его в
-`JAVA_HOME`, если сборка идёт из терминала). Готовый APK лежит в
+`JAVA_HOME`, если сборка идёт из терминала).
+
+На свежем клоне из терминала нужен ещё путь к SDK — `local.properties` не в
+git, он машинно-зависимый:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+```
+
+Android Studio создаёт `local.properties` сам при открытии проекта. Готовый APK лежит в
 `app/build/outputs/apk/debug/app-debug.apk`, ~22 МБ.
 
 Из Studio: открой папку `android` как проект и запусти конфигурацию `app`.
