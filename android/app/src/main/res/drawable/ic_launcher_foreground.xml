@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The iOS icon is a full-bleed squircle, so it is inset to sit inside the
+     adaptive-icon safe zone instead of being clipped by the launcher mask. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_image"
+    android:inset="13%" />

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppTheme.creamLight from ios/TennisSearchIOS/Views/UIComponents.swift -->
+    <color name="page_background">#FFF9F1</color>
+    <color name="ink">#11261D</color>
+    <!-- Deep navy behind the squircle in the iOS app icon -->
+    <color name="ic_launcher_background">#050B1C</color>
+</resources>

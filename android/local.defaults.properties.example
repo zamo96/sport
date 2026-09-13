@@ -1,0 +1,5 @@
+# Copy to local.defaults.properties to point debug builds at a backend on this machine.
+# The Android emulator reaches the host through 10.0.2.2; a physical device needs the LAN IP.
+API_SCHEME=http
+API_BASE_URL=10.0.2.2:3000
+USE_MOCK_DATA=NO

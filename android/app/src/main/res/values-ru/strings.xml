@@ -1,0 +1,7 @@
+<resources>
+    <string name="upcoming_games_widget_label">Ближайшие игры</string>
+    <string name="upcoming_games_widget_description">Показывает следующую подтверждённую игру.</string>
+    <string name="upcoming_games_widget_preview_title">Анна Волкова</string>
+    <string name="upcoming_games_widget_preview_time">Сегодня 19:30</string>
+    <string name="upcoming_games_widget_preview_venue">Теннис · Крестовский корт</string>
+</resources>

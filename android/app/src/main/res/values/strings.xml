@@ -1,0 +1,11 @@
+<resources>
+    <!-- Matches the iOS storefront name in Resources/InfoPlist.xcstrings -->
+    <string name="app_name">SportSearch</string>
+    <!-- `WidgetStrings` in the iOS widget target picks by device language. -->
+    <string name="upcoming_games_widget_label">Upcoming games</string>
+    <string name="upcoming_games_widget_description">Shows your next confirmed game.</string>
+    <!-- `UpcomingGamesProvider.placeholder(in:)` -->
+    <string name="upcoming_games_widget_preview_title">Anna Volkova</string>
+    <string name="upcoming_games_widget_preview_time">Today 19:30</string>
+    <string name="upcoming_games_widget_preview_venue">Tennis · Krestovsky court</string>
+</resources>
