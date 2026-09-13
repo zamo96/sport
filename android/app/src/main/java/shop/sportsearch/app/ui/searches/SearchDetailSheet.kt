@@ -99,6 +99,8 @@ fun SearchDetailSheet(
     var updatingSearchID by remember { mutableStateOf<String?>(null) }
     var updatingResponseID by remember { mutableStateOf<String?>(null) }
     var updatingOccurrenceID by remember { mutableStateOf<String?>(null) }
+    var editingOccurrence by remember { mutableStateOf<RegularPairOccurrence?>(null) }
+    var occurrenceCourts by remember { mutableStateOf<List<Court>>(emptyList()) }
     var didCopyInviteLink by remember { mutableStateOf(false) }
     var isPresentingResponses by remember { mutableStateOf(false) }
     var isFinalizingRoster by remember { mutableStateOf(false) }
@@ -202,6 +204,35 @@ fun SearchDetailSheet(
             },
         )
         return
+    }
+
+    // `.sheet(item: $editingOccurrence)` в SearchesView.swift:1529.
+    editingOccurrence?.let { occurrence ->
+        val regularPair = search.regularPair
+        if (regularPair == null) {
+            editingOccurrence = null
+        } else {
+            RegularPairOccurrenceEditorSheet(
+                occurrence = occurrence,
+                courts = occurrenceCourts,
+                onDismiss = { editingOccurrence = null },
+                onSave = { date, courtId ->
+                    updatingOccurrenceID = occurrence.id
+                    runCatching {
+                        appModel.repository.updateRegularPairOccurrence(
+                            regularPairId = regularPair.id,
+                            occurrenceId = occurrence.id,
+                            status = null,
+                            scheduledAt = date,
+                            proposedCourtId = courtId,
+                        )
+                    }.onSuccess { reloadSearch() }.onFailure(appModel::present)
+                    updatingOccurrenceID = null
+                    editingOccurrence = null
+                },
+            )
+            return
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).statusBarsPadding()) {
@@ -321,7 +352,15 @@ fun SearchDetailSheet(
                         },
                         onConfirmOccurrence = { updateOccurrence(it.id, "confirmed") },
                         onDeclineOccurrence = { updateOccurrence(it.id, "declined") },
-                        onEditOccurrence = { /* slot editor opens from the lobby on Android */ },
+                        onEditOccurrence = { occurrence ->
+                            scope.launch {
+                                if (occurrenceCourts.isEmpty()) {
+                                    occurrenceCourts = runCatching { appModel.repository.fetchCourts() }
+                                        .getOrElse { appModel.present(it); emptyList() }
+                                }
+                                editingOccurrence = occurrence
+                            }
+                        },
                     )
                 }
             }

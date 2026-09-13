@@ -77,6 +77,7 @@ import shop.sportsearch.app.ui.matches.ChatScreen
 import shop.sportsearch.app.ui.matches.GameProposalSheet
 import shop.sportsearch.app.ui.matches.ProposalSheetContext
 import shop.sportsearch.app.ui.notifications.NotificationsScreen
+import shop.sportsearch.app.ui.searches.RegularPairDetailSheet
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.theme.continuousShape
@@ -128,6 +129,7 @@ fun DiscoverScreen(
     var shareRequest by remember { mutableStateOf<MatchGameRequest?>(null) }
     var detailsRequest by remember { mutableStateOf<MatchGameRequest?>(null) }
     var upcomingCourt by remember { mutableStateOf<Court?>(null) }
+    var regularPairId by remember { mutableStateOf<String?>(null) }
     var isWidgetHelpPresented by remember { mutableStateOf(false) }
     val androidContext = LocalContext.current
     val widgetPrefs = remember(androidContext) {
@@ -493,6 +495,15 @@ fun DiscoverScreen(
                 widgetPrefs.edit().putBoolean(WIDGET_PROMPT_DISMISSED_KEY, true).apply()
             },
             onDismiss = { isWidgetHelpPresented = false },
+        )
+        return
+    }
+
+    regularPairId?.let { pairId ->
+        RegularPairDetailSheet(
+            appModel = appModel,
+            regularPairId = pairId,
+            onDismiss = { regularPairId = null },
         )
         return
     }
@@ -990,7 +1001,15 @@ fun DiscoverScreen(
                         appModel.navigate(AppNavigationTarget.Courts(null))
                     },
                     onOpenApprovedChat = { search ->
-                        appModel.navigate(AppNavigationTarget.SearchLobby(search.id))
+                        // `openApprovedRegularPair(for:)` - парный поиск ведёт в
+                        // лист регулярной пары, а не в лобби на несколько человек.
+                        val pairId = search.regularPair?.id
+                        if (search.playersNeeded > 1 || pairId == null) {
+                            appModel.navigate(AppNavigationTarget.SearchLobby(search.id))
+                        } else {
+                            haptics.selection()
+                            regularPairId = pairId
+                        }
                     },
                     onRespond = { search ->
                         // `respond(to:)` - a guest is sent to sign-in instead.
