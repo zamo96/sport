@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ import shop.sportsearch.app.ui.components.DismissOnSystemBack
 import shop.sportsearch.app.ui.components.PrimaryActionButton
 import shop.sportsearch.app.ui.components.SecondaryActionButton
 import shop.sportsearch.app.ui.components.SportIconView
+import shop.sportsearch.app.ui.components.rememberAppHaptics
 import shop.sportsearch.app.ui.maps.ClubsMapView
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
@@ -143,6 +145,9 @@ fun SearchClubPickerSheet(
     var pendingSelectionId by remember(selectedCourtId) { mutableStateOf(selectedCourtId) }
     val effectiveSelectionId = if (selectsImmediately) selectedCourtId else pendingSelectionId
 
+    var isMapExpanded by remember { mutableStateOf(false) }
+    val haptics = rememberAppHaptics()
+
     fun commit(court: Court?) {
         if (selectsImmediately) {
             onSelect(court)
@@ -151,11 +156,41 @@ fun SearchClubPickerSheet(
             pendingSelectionId = court?.id
         }
     }
+
+    // `previewSelection(_:)` - a tap on the map only pre-selects; the mini card
+    // below is what actually chooses the club.
+    fun previewSelection(court: Court?) {
+        if (court == null && !allowsNoCourt) return
+        pendingSelectionId = court?.id
+        haptics.selection()
+    }
+
+    // `confirmSelection(_:)` - always commits and closes, whatever
+    // `selectsImmediately` says.
+    fun confirmSelection(court: Court?) {
+        onSelect(court)
+        onDismiss()
+    }
     val filtered = courts.filter {
         query.isBlank() ||
             it.name.contains(query, ignoreCase = true) ||
             it.address.contains(query, ignoreCase = true) ||
             it.metroNames.any { metro -> metro.contains(query, ignoreCase = true) }
+    }
+    val pendingCourt = pendingSelectionId?.let { id -> courts.firstOrNull { it.id == id } }
+
+    // `.sheet(isPresented: $isMapExpanded)` in SearchesView.swift:8314.
+    if (isMapExpanded) {
+        SearchClubExpandedMapSheet(
+            sport = sport,
+            courts = filtered,
+            focusedCourt = pendingCourt ?: filtered.firstOrNull(),
+            selectedCourt = pendingCourt,
+            onPreview = { previewSelection(it) },
+            onChoose = { confirmSelection(it) },
+            onDismiss = { isMapExpanded = false },
+        )
+        return
     }
 
     Column(
@@ -225,9 +260,46 @@ fun SearchClubPickerSheet(
             ) {
                 ClubsMapView(
                     courts = filtered,
-                    focusedCourtId = effectiveSelectionId,
+                    focusedCourtId = pendingSelectionId ?: effectiveSelectionId,
                     modifier = Modifier.fillMaxSize(),
-                    onSelectCourt = { id -> filtered.firstOrNull { it.id == id }?.let(::commit) },
+                    onSelectCourt = { id ->
+                        previewSelection(filtered.firstOrNull { it.id == id })
+                    },
+                )
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp)
+                        .clip(continuousShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.92f))
+                        .clickable {
+                            haptics.selection()
+                            isMapExpanded = true
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.OpenInFull,
+                        contentDescription = null,
+                        tint = AppTheme.court,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        L10n.string("Expand map", "Развернуть карту"),
+                        style = AppText.captionBold,
+                        color = AppTheme.court,
+                    )
+                }
+            }
+
+            pendingCourt?.let { court ->
+                MapSelectedCourtMiniCard(
+                    court = court,
+                    sport = sport,
+                    onChoose = { confirmSelection(court) },
                 )
             }
         }

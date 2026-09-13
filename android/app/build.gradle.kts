@@ -35,6 +35,8 @@ android {
         versionName = "1.1.1"
 
         vectorDrawables.useSupportLibrary = true
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -108,8 +110,19 @@ dependencies {
     // and this project has none, so OpenStreetMap tiles via osmdroid stand in.
     implementation(libs.osmdroid.android)
 
+    // The profile video trimmer: ExoPlayer previews the clip the way AVPlayer
+    // does, Transformer cuts it the way AVAssetExportSession does.
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.media3.effect)
+    implementation(libs.androidx.media3.common)
+
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

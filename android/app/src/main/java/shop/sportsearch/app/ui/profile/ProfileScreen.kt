@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.SportsTennis
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
@@ -57,6 +58,7 @@ import kotlinx.coroutines.launch
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
 import shop.sportsearch.app.ui.components.*
+import shop.sportsearch.app.ui.components.rememberAppHaptics
 import shop.sportsearch.app.ui.location.GlobalLocationPickerSheet
 import shop.sportsearch.app.ui.discover.SwipeCard
 import shop.sportsearch.app.ui.theme.AppText
@@ -75,6 +77,7 @@ private enum class ProfileRoute {
 fun ProfileScreen(appModel: AppViewModel) {
     val scope = rememberCoroutineScope()
     val androidContext = LocalContext.current
+    val haptics = rememberAppHaptics()
     val prefs = remember {
         androidContext.getSharedPreferences(PROFILE_PREFS, android.content.Context.MODE_PRIVATE)
     }
@@ -86,6 +89,9 @@ fun ProfileScreen(appModel: AppViewModel) {
     var isUploadingAvatar by remember { mutableStateOf(false) }
     var isUploadingMedia by remember { mutableStateOf(false) }
     var mediaPreview by remember { mutableStateOf<PlayerMediaItem?>(null) }
+    var pendingVideoTrimQueue by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    var pendingVideoTrimDraft by remember { mutableStateOf<ProfileVideoTrimDraft?>(null) }
+    var isPreparingProfileVideo by remember { mutableStateOf(false) }
     var gallery by remember { mutableStateOf<ReportPhotoGalleryItem?>(null) }
     var isDeleteConfirmationPresented by remember { mutableStateOf(false) }
     var visibilityMode by remember {
@@ -177,6 +183,25 @@ fun ProfileScreen(appModel: AppViewModel) {
         }
     }
 
+    // `prepareNextVideoTrimDraft()` - one draft at a time, the rest waits in the
+    // queue until the current clip is uploaded or dropped.
+    suspend fun prepareNextVideoTrimDraft() {
+        while (pendingVideoTrimDraft == null && pendingVideoTrimQueue.isNotEmpty()) {
+            val uri = pendingVideoTrimQueue.first()
+            pendingVideoTrimQueue = pendingVideoTrimQueue.drop(1)
+            isPreparingProfileVideo = true
+            runCatching { prepareProfileVideoTrimDraft(androidContext, uri) }
+                .onSuccess { pendingVideoTrimDraft = it }
+                .onFailure(appModel::present)
+            isPreparingProfileVideo = false
+        }
+    }
+
+    val videoPicker = rememberProfileVideoPicker(maxItems = 4) { uris ->
+        pendingVideoTrimQueue = pendingVideoTrimQueue + uris
+        scope.launch { prepareNextVideoTrimDraft() }
+    }
+
     fun removeMedia(item: PlayerMediaItem) {
         scope.launch {
             isUploadingMedia = true
@@ -191,6 +216,50 @@ fun ProfileScreen(appModel: AppViewModel) {
                 .onFailure(appModel::present)
             isUploadingMedia = false
         }
+    }
+
+    // `performTrimmedProfileVideoUpload(_:startTime:)` - cut the clip, upload it,
+    // then pick up whatever is left in the queue.
+    fun uploadTrimmedProfileVideo(trimDraft: ProfileVideoTrimDraft, startTime: Double) {
+        scope.launch {
+            isUploadingMedia = true
+            runCatching {
+                val payload = trimProfileVideo(androidContext, trimDraft, startTime)
+                appModel.repository.uploadProfileMedia(
+                    payload.bytes,
+                    "${trimDraft.fileName}.${payload.fileExtension}",
+                    payload.mimeType,
+                )
+            }.onSuccess { result ->
+                draft = draft?.copy(
+                    avatarUrl = result.avatarUrl ?: draft?.avatarUrl,
+                    profilePhotoUrls = result.profilePhotoUrls,
+                    profileVideoUrls = result.profileVideoUrls,
+                )
+                trimDraft.sourceFile.delete()
+                pendingVideoTrimDraft = null
+                haptics.success()
+                showSaveToast(L10n.string("Video added", "Видео добавлено"))
+                prepareNextVideoTrimDraft()
+            }.onFailure(appModel::present)
+            isUploadingMedia = false
+        }
+    }
+
+    // `.sheet(item: $pendingVideoTrimDraft)` in ProfileView.swift:200.
+    pendingVideoTrimDraft?.let { trimDraft ->
+        HideBottomBarWhileVisible(appModel)
+        ProfileVideoTrimEditorSheet(
+            draft = trimDraft,
+            isUploading = isUploadingMedia,
+            onCancel = {
+                trimDraft.sourceFile.delete()
+                pendingVideoTrimDraft = null
+                pendingVideoTrimQueue = emptyList()
+            },
+            onConfirm = { startTime -> uploadTrimmedProfileVideo(trimDraft, startTime) },
+        )
+        return
     }
 
     // --- Subscreen routing, standing in for iOS `NavigationLink` destinations ---
@@ -721,6 +790,7 @@ fun ProfileScreen(appModel: AppViewModel) {
                     isUploading = isUploadingMedia,
                     onPickAvatar = avatarPicker,
                     onPickPhotos = photoPicker,
+                    onPickVideo = videoPicker,
                     onEdit = { route = ProfileRoute.EDITOR },
                     onPreview = { mediaPreview = it },
                     onRemove = ::removeMedia,
@@ -829,6 +899,16 @@ fun ProfileScreen(appModel: AppViewModel) {
                 ),
             )
         }
+
+        if (isPreparingProfileVideo) {
+            ProfileMediaProgressOverlay(
+                title = L10n.string("Uploading video", "Видео загружается"),
+                subtitle = L10n.string(
+                    "Opening the video and preparing the trim editor.",
+                    "Открываем ролик и готовим редактор обрезки.",
+                ),
+            )
+        }
     }
 
     if (isDeleteConfirmationPresented) {
@@ -872,12 +952,14 @@ private fun ProfileSelectionMediaCard(
     isUploading: Boolean,
     onPickAvatar: () -> Unit,
     onPickPhotos: () -> Unit,
+    onPickVideo: () -> Unit,
     onEdit: () -> Unit,
     onPreview: (PlayerMediaItem) -> Unit,
     onRemove: (PlayerMediaItem) -> Unit,
 ) {
     val mediaItems = profile.playerCardMediaItems
     val remainingPhotoSlots = maxOf(6 - profile.profilePhotoUrls.size, 0)
+    val remainingVideoSlots = maxOf(4 - profile.profileVideoUrls.size, 0)
 
     ProfileDarkPanel {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -994,6 +1076,15 @@ private fun ProfileSelectionMediaCard(
                             icon = Icons.Filled.PhotoCamera,
                             enabled = !isUploading && !isUploadingAvatar,
                             onClick = onPickPhotos,
+                        )
+                    }
+
+                    if (remainingVideoSlots > 0) {
+                        ProfileAddMediaTile(
+                            title = L10n.string("Video up to 10 sec", "Видео до 10 сек"),
+                            icon = Icons.Filled.SmartDisplay,
+                            enabled = !isUploading && !isUploadingAvatar,
+                            onClick = onPickVideo,
                         )
                     }
                 }
