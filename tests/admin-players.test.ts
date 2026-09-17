@@ -10,11 +10,13 @@ const mocks = vi.hoisted(() => {
     session: { deleteMany: vi.fn() },
     pushDevice: { updateMany: vi.fn() },
     gameSearch: { updateMany: vi.fn() },
+    userEvent: { create: vi.fn(), createMany: vi.fn() },
     adminAuditLog: { create: vi.fn() }
   };
   const prisma = {
     $transaction: vi.fn(),
     user: { findUnique: vi.fn() },
+    userEvent: { create: vi.fn(), createMany: vi.fn() },
     adminAuditLog: { findMany: vi.fn() }
   };
   return { tx, prisma };
@@ -54,6 +56,64 @@ describe("admin player moderation", () => {
     mocks.tx.adminAuditLog.create.mockResolvedValue({ id: "audit-1" });
     mocks.prisma.user.findUnique.mockResolvedValue(deactivatedPlayer);
     mocks.prisma.adminAuditLog.findMany.mockResolvedValue([]);
+  });
+
+  it.each([true, false])("updates completion to %s on a draft with empty sports and audits both values", async (onboardingCompleted) => {
+    const before = { ...currentPlayer, onboardingCompleted: !onboardingCompleted, preferredSports: [] };
+    const after = { ...before, onboardingCompleted };
+    mocks.tx.user.findUnique.mockResolvedValue(before);
+    mocks.tx.user.findUniqueOrThrow.mockResolvedValue(after);
+    mocks.prisma.user.findUnique.mockResolvedValue(after);
+
+    await updateAdminPlayerProfile(
+      { id: "admin-1", email: "admin@example.com" },
+      currentPlayer.id,
+      { expectedUpdatedAt: updatedAt.toISOString(), profile: { onboardingCompleted } }
+    );
+
+    expect(mocks.tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: currentPlayer.id, updatedAt },
+      data: { onboardingCompleted }
+    });
+    expect(mocks.tx.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "PROFILE_UPDATED",
+        before: { onboardingCompleted: !onboardingCompleted },
+        after: { onboardingCompleted }
+      })
+    });
+    expect(mocks.tx.userEvent.create).not.toHaveBeenCalled();
+    expect(mocks.tx.userEvent.createMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.userEvent.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.userEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("leaves completion unchanged when editing another field", async () => {
+    const before = { ...currentPlayer, onboardingCompleted: false, name: "Старое имя" };
+    const after = { ...before, name: "Новое имя" };
+    mocks.tx.user.findUnique.mockResolvedValue(before);
+    mocks.tx.user.findUniqueOrThrow.mockResolvedValue(after);
+    mocks.prisma.user.findUnique.mockResolvedValue(after);
+
+    await updateAdminPlayerProfile(
+      { id: "admin-1", email: "admin@example.com" },
+      currentPlayer.id,
+      { expectedUpdatedAt: updatedAt.toISOString(), profile: { name: "Новое имя" } }
+    );
+
+    expect(mocks.tx.user.updateMany.mock.calls[0][0].data).toEqual({ name: "Новое имя" });
+    expect(mocks.tx.adminAuditLog.create.mock.calls[0][0].data.after).toEqual({ name: "Новое имя" });
+  });
+
+  it.each([true, false])("rejects stale completion=%s before writing or auditing", async (onboardingCompleted) => {
+    await expect(updateAdminPlayerProfile(
+      { id: "admin-1", email: "admin@example.com" },
+      currentPlayer.id,
+      { expectedUpdatedAt: "2026-08-23T09:00:00.000Z", profile: { onboardingCompleted } }
+    )).rejects.toThrow("STALE_PLAYER_UPDATE");
+
+    expect(mocks.tx.user.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.adminAuditLog.create).not.toHaveBeenCalled();
   });
 
   it("deactivates atomically and reports every revoked capability", async () => {

@@ -72,6 +72,10 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
   const [statusReason, setStatusReason] = useState("");
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [profileStatusTarget, setProfileStatusTarget] = useState(false);
+  const [profileStatusSaving, setProfileStatusSaving] = useState(false);
+  const [profileStatusError, setProfileStatusError] = useState<string | null>(null);
+  const [profileStatusNeedsRefresh, setProfileStatusNeedsRefresh] = useState(false);
 
   async function loadPlayer() {
     setLoading(true);
@@ -83,6 +87,9 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
       setPlayer(payload.player);
       setForm(toEditableProfile(payload.player));
       setAuditLogs(payload.auditLogs);
+      setProfileStatusTarget(payload.player.onboardingCompleted);
+      setProfileStatusError(null);
+      setProfileStatusNeedsRefresh(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить карточку игрока");
     } finally {
@@ -109,7 +116,7 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
-    if (!player || !form) return;
+    if (!player || !form || saving || statusSaving || profileStatusSaving) return;
 
     setSaving(true);
     setError(null);
@@ -133,6 +140,36 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
     }
   }
 
+  async function saveProfileStatus() {
+    if (!player || dirty || saving || statusSaving || profileStatusSaving || statusDialogOpen || profileStatusNeedsRefresh || profileStatusTarget === player.onboardingCompleted) return;
+
+    setProfileStatusSaving(true);
+    setProfileStatusError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/players/${encodeURIComponent(player.id)}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedUpdatedAt: player.updatedAt, profile: { onboardingCompleted: profileStatusTarget } })
+      });
+      const payload = (await response.json()) as MutationResponse & { error?: string };
+      if (response.status === 409) {
+        setProfileStatusNeedsRefresh(true);
+        throw new Error(conflictMessage(response.status));
+      }
+      if (!response.ok) throw new Error(payload.error ?? "Не удалось изменить статус профиля");
+      setPlayer(payload.player);
+      setForm(toEditableProfile(payload.player));
+      setProfileStatusTarget(payload.player.onboardingCompleted);
+      setNotice(`Статус профиля изменён: ${payload.player.onboardingCompleted ? "Профиль заполнен" : "Черновик"}.`);
+      await refreshAuditLogs(payload.player);
+    } catch (requestError) {
+      setProfileStatusError(requestError instanceof Error ? requestError.message : "Не удалось изменить статус профиля");
+    } finally {
+      setProfileStatusSaving(false);
+    }
+  }
+
   async function refreshAuditLogs(nextPlayer: AdminPlayer) {
     try {
       const response = await fetch(`/api/admin/players/${encodeURIComponent(nextPlayer.id)}`);
@@ -145,7 +182,7 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
   }
 
   async function changeStatus() {
-    if (!player || statusReason.trim().length < 3) return;
+    if (!player || dirty || saving || statusSaving || profileStatusSaving || statusReason.trim().length < 3) return;
     const nextStatus = player.accountStatus === "active" ? "deactivated" : "active";
 
     setStatusSaving(true);
@@ -199,7 +236,7 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
               <div className="mt-3 flex flex-wrap gap-2">
                 <AccountStatusBadge status={player.accountStatus} />
                 <SmallBadge tone={player.isVerified ? "success" : "muted"}>{player.isVerified ? "Верифицирован" : "Не верифицирован"}</SmallBadge>
-                <SmallBadge tone={player.onboardingCompleted ? "success" : "warning"}>{player.onboardingCompleted ? "Профиль заполнен" : "Онбординг не завершён"}</SmallBadge>
+                <SmallBadge tone={player.onboardingCompleted ? "success" : "warning"}>{player.onboardingCompleted ? "Профиль заполнен" : "Черновик"}</SmallBadge>
                 {dirty ? <SmallBadge tone="warning">Есть несохранённые изменения</SmallBadge> : null}
               </div>
             </div>
@@ -212,7 +249,7 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
                 setStatusError(null);
                 setStatusDialogOpen(true);
               }}
-              disabled={dirty || selfDeactivationForbidden}
+              disabled={dirty || saving || statusSaving || profileStatusSaving || selfDeactivationForbidden}
               title={
                 selfDeactivationForbidden
                   ? "Нельзя деактивировать собственный аккаунт администратора"
@@ -235,7 +272,47 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
       {notice ? <MessagePanel tone="success" title="Готово" detail={notice} /> : null}
       {error ? <MessagePanel tone="danger" title="Операция не выполнена" detail={error} /> : null}
 
-      <form onSubmit={saveProfile} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
+      <EditorSection title="Статус профиля" icon={<CheckCircle2 className="h-5 w-5" />}>
+        <p className="mb-4 text-sm leading-6 text-ink/65">
+          Статус управляет прохождением онбординга и доступностью игрока для подбора. Поля профиля при смене статуса не заполняются автоматически.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="w-full sm:max-w-xs">
+            <Field label="Заполненность профиля">
+              <select
+                value={profileStatusTarget ? "completed" : "draft"}
+                onChange={(event) => {
+                  setProfileStatusTarget(event.target.value === "completed");
+                  setProfileStatusError(null);
+                  setNotice(null);
+                }}
+                disabled={dirty || saving || statusSaving || profileStatusSaving || statusDialogOpen || profileStatusNeedsRefresh}
+                className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <option value="draft">Черновик</option>
+                <option value="completed">Профиль заполнен</option>
+              </select>
+            </Field>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveProfileStatus()}
+            disabled={dirty || saving || statusSaving || profileStatusSaving || statusDialogOpen || profileStatusNeedsRefresh || profileStatusTarget === player.onboardingCompleted}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#126A4A] px-5 text-sm font-semibold text-white hover:bg-[#0e573d] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Save className="h-4 w-4" /> {profileStatusSaving ? "Сохраняем статус…" : "Сохранить статус профиля"}
+          </button>
+        </div>
+        {dirty ? <p className="mt-3 text-sm text-amber-800">Сначала сохраните или отмените изменения в полях профиля, затем измените его статус.</p> : null}
+        {!dirty && profileStatusTarget !== player.onboardingCompleted ? <p className="mt-3 text-xs text-ink/55">Новый статус применится после нажатия «Сохранить статус профиля».</p> : null}
+        {profileStatusError ? <div className="mt-3 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700" role="alert">
+          <p>{profileStatusError}</p>
+          {profileStatusNeedsRefresh ? <button type="button" disabled={dirty || saving || statusSaving || profileStatusSaving} onClick={() => void loadPlayer()} className="mt-2 font-semibold underline disabled:opacity-40">Обновить карточку</button> : null}
+        </div> : null}
+      </EditorSection>
+
+      <form onSubmit={saveProfile}>
+        <fieldset disabled={saving || statusSaving || profileStatusSaving || statusDialogOpen} className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-5">
           <EditorSection title="Основные данные" icon={<UserRoundCog className="h-5 w-5" />}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -387,6 +464,7 @@ export function AdminPlayerEditor({ playerId, currentAdminId }: { playerId: stri
             )}
           </EditorSection>
         </aside>
+        </fieldset>
       </form>
 
       {statusDialogOpen && !selfDeactivationForbidden ? (
@@ -475,7 +553,7 @@ function AuditRow({ log }: { log: AdminPlayerAuditLog }) {
       <div className="text-sm font-bold text-ink">{auditActionLabel(log.action)}</div>
       <div className="mt-1 text-xs text-ink/55">{formatDateTime(log.createdAt)} · {log.actorEmail}</div>
       {log.reason ? <div className="mt-2 text-sm leading-5 text-ink/70">{log.reason}</div> : null}
-      {log.action === "PROFILE_UPDATED" ? <div className="mt-2 text-xs font-semibold text-court">Изменено: {changedKeys(log.before, log.after).join(", ") || "профиль"}</div> : null}
+      {log.action === "PROFILE_UPDATED" ? <div className="mt-2 text-xs font-semibold text-court">Изменено: {changedKeys(log.before, log.after).map((key) => key === "onboardingCompleted" ? "статус профиля" : key).join(", ") || "профиль"}</div> : null}
     </article>
   );
 }
