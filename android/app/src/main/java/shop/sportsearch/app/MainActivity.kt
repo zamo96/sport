@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.view.WindowCompat
+import shop.sportsearch.app.core.AppNavigationTarget
+import shop.sportsearch.app.push.SportSearchMessagingService
 import shop.sportsearch.app.ui.AppViewModel
 import shop.sportsearch.app.ui.RootScreen
 import shop.sportsearch.app.ui.theme.SportSearchTheme
@@ -30,7 +32,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SportSearchTheme {
-                LaunchedEffect(Unit) { appModel.bootstrap() }
+                LaunchedEffect(Unit) {
+                    appModel.bootstrap()
+                    routeFromNotification(intent)
+                }
                 RootScreen(appModel)
             }
         }
@@ -39,5 +44,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         intent.data?.let(appModel::handleIncomingUri)
+        routeFromNotification(intent)
+    }
+
+    /** `\.onReceive(.tennisNotificationRouteRequested)` in ContentView.swift:217. */
+    private fun routeFromNotification(intent: android.content.Intent?) {
+        val href = intent?.getStringExtra(SportSearchMessagingService.EXTRA_NOTIFICATION_HREF) ?: return
+        intent.removeExtra(SportSearchMessagingService.EXTRA_NOTIFICATION_HREF)
+        AppNavigationTarget.fromNotificationHref(href)?.let(appModel::navigate)
     }
 }

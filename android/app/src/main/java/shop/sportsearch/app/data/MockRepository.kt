@@ -541,5 +541,11 @@ class MockRepository : TennisRepository {
     override suspend fun fetchInviteSummary() =
         InviteSummary(code = "MOCK", url = "https://sportsearch.shop/i/MOCK", visits = 12, joined = 3)
 
-    override suspend fun registerPushDevice(token: String, bundleId: String, deviceName: String?, locale: String?) = Unit
+    override suspend fun registerPushDevice(
+        token: String,
+        environment: String,
+        bundleId: String,
+        deviceName: String?,
+        locale: String?,
+    ) = Unit
 }

@@ -7,6 +7,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// google-services.json carries the Firebase project and is not in version
+// control, so the plugin is applied only when the file is present. Without it
+// the app builds and runs exactly as before, just without push: Firebase never
+// initializes and PushRegistration notices and stays quiet.
+val hasFirebaseConfig = file("google-services.json").exists()
+if (hasFirebaseConfig) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+}
+
 // Mirrors ios/TennisSearchIOS/Configs/*.xcconfig.
 // Copy local.defaults.properties.example to local.defaults.properties to point
 // debug builds at a backend running on this machine.
@@ -37,6 +46,8 @@ android {
         vectorDrawables.useSupportLibrary = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
     }
 
     buildTypes {
@@ -117,6 +128,11 @@ dependencies {
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.common)
+
+    // Push. The messaging library is safe to ship without google-services.json:
+    // it simply finds no default FirebaseApp and never asks for a token.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 

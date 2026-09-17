@@ -1,0 +1,12 @@
+<!-- Status-bar icons are alpha masks: the system tints them, so this is drawn
+     as a flat white glyph. A tennis ball, matching the launcher. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM19.93,11h-2.09c0.17,-2.68 1.14,-4.65 1.86,-5.76C19.11,6.61 19.79,8.73 19.93,11zM18.31,3.86C17.4,5.2 16.05,7.62 15.84,11H8.16C7.95,7.62 6.6,5.2 5.69,3.86 7.42,2.68 9.63,2 12,2s4.58,0.68 6.31,1.86zM4.3,5.24C5.02,6.35 5.99,8.32 6.16,11H4.07C4.21,8.73 4.89,6.61 4.3,5.24zM4.07,13h2.09c-0.17,2.68 -1.14,4.65 -1.86,5.76C4.89,17.39 4.21,15.27 4.07,13zM5.69,20.14C6.6,18.8 7.95,16.38 8.16,13h7.68c0.21,3.38 1.56,5.8 2.47,7.14C16.58,21.32 14.37,22 12,22s-4.58,-0.68 -6.31,-1.86zM19.7,18.76c-0.72,-1.11 -1.69,-3.08 -1.86,-5.76h2.09C19.79,15.27 19.11,17.39 19.7,18.76z" />
+</vector>

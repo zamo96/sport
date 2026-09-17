@@ -50,6 +50,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Push. Firebase only starts this when google-services.json is present,
+             so the declaration is harmless in a build without one. -->
+        <service
+            android:name=".push.SportSearchMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sportsearch.games" />
+
         <!-- The iOS app ships an "Upcoming games" home-screen widget; this is its
              Android counterpart, backed by UpcomingGamesWidgetStore. -->
         <receiver

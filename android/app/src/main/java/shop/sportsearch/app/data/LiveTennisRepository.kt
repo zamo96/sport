@@ -826,12 +826,21 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
      * A matching `devices/fcm` route has to land before Android push works;
      * until then nothing in the app calls this.
      */
-    override suspend fun registerPushDevice(token: String, bundleId: String, deviceName: String?, locale: String?) {
+    override suspend fun registerPushDevice(
+        token: String,
+        environment: String,
+        bundleId: String,
+        deviceName: String?,
+        locale: String?,
+    ) {
         client.requestDiscardingResponse(
             path = "devices/fcm",
             jsonBody = body {
                 put("token", token)
                 put("platform", "android")
+                // FCM has no sandbox/production split the way APNs does, but the
+                // column is shared with iOS rows, so the build type stands in.
+                put("environment", environment)
                 put("bundleId", bundleId)
                 put("deviceName", deviceName)
                 put("locale", locale)

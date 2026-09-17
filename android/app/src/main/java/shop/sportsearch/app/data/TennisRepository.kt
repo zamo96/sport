@@ -108,5 +108,11 @@ interface TennisRepository {
     suspend fun fetchInviteSummary(): InviteSummary
 
     /** `registerPushDevice` on iOS talks to APNs; Android registers an FCM token. */
-    suspend fun registerPushDevice(token: String, bundleId: String, deviceName: String?, locale: String?)
+    suspend fun registerPushDevice(
+        token: String,
+        environment: String,
+        bundleId: String,
+        deviceName: String?,
+        locale: String?,
+    )
 }

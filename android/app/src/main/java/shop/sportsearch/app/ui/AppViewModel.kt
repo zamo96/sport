@@ -20,6 +20,7 @@ import shop.sportsearch.app.data.MockRepository
 import shop.sportsearch.app.data.TennisRepository
 import java.io.IOException
 import java.util.UUID
+import shop.sportsearch.app.push.PushRegistration
 
 /**
  * Port of `@MainActor final class AppModel`. Same published state, same
@@ -99,7 +100,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 updateGuestDraft(OnboardingRequirements.resumeDraft(user, guestDraft))
             }
             currentUser = user
-            if (currentUser != null) refreshActivitySummary()
+            if (currentUser != null) {
+                refreshActivitySummary()
+                registerForPush()
+            }
+        }
+    }
+
+    /** `AppModel.registerForRemoteNotifications()` - only ever for a real session. */
+    private fun registerForPush() {
+        if (isUsingMockData) return
+        viewModelScope.launch {
+            PushRegistration.register(getApplication(), repository)
         }
     }
 
@@ -244,6 +256,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 updateGuestDraft(OnboardingRequirements.resumeDraft(user, guestDraft))
             }
             currentUser = user
+            registerForPush()
             authUserAgreementAccepted = false
             authMessage = null
             debugCode = null
