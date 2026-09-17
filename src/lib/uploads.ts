@@ -4,6 +4,8 @@ import path from "path";
 
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES } from "@/lib/upload-limits";
+
 type UploadImageInput = {
   bytes: Buffer;
   originalName: string;
@@ -33,7 +35,7 @@ type UploadProfileMediaInput = UploadImageInput & {
   userId: string;
 };
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const ALLOWED_VIDEO_CONTENT_TYPES = new Set(["video/mp4", "video/quicktime", "video/mpeg"]);
@@ -115,7 +117,7 @@ function validateImage(bytes: Buffer, contentType?: string) {
   }
 
   if (bytes.length > MAX_IMAGE_BYTES) {
-    throw new Error("Фото должно быть не больше 5 МБ");
+    throw new Error(IMAGE_SIZE_ERROR);
   }
 
   if (contentType && !ALLOWED_CONTENT_TYPES.has(contentType)) {

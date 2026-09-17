@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { IMAGE_SIZE_ERROR } from "@/lib/upload-limits";
 import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_IMAGE_BYTES,
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     try {
       for (const file of files) {
         if (file.size > MAX_CHAT_IMAGE_BYTES) {
-          throw new Error("Фото должно быть не больше 5 МБ");
+          throw new Error(IMAGE_SIZE_ERROR);
         }
 
         const stored = await storeChatImage({

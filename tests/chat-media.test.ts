@@ -11,6 +11,7 @@ import {
 } from "@/server/chat-media";
 import { createGameSearchMessageSchema, directMessageSchema } from "@/lib/validators";
 import { parseChatMediaFiles } from "@/server/chat-media-multipart";
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES } from "@/lib/upload-limits";
 
 describe("chat media validation", () => {
   it("detects supported images from magic bytes instead of the filename", () => {
@@ -31,13 +32,37 @@ describe("chat media validation", () => {
     ).toBe("image/webp");
   });
 
-  it("rejects unsupported content and images larger than 5 MB", () => {
+  it("rejects unsupported content and images larger than 20 MiB", () => {
     expect(() => detectChatImage(Buffer.from("not-an-image"))).toThrow(
       "Поддерживаются только JPG, PNG, WEBP или GIF"
     );
-    expect(() => detectChatImage(Buffer.alloc(5 * 1024 * 1024 + 1))).toThrow(
-      "Фото должно быть не больше 5 МБ"
+    expect(() => detectChatImage(Buffer.alloc(MAX_IMAGE_BYTES + 1))).toThrow(
+      IMAGE_SIZE_ERROR
     );
+  });
+
+  it("normalizes a real JPEG above the former 5 MiB limit", async () => {
+    const source = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#2d6a4f" } }).jpeg().toBuffer();
+    // Valid JPEG comment segments model large metadata; normalization must
+    // decode the image and remove it instead of only accepting magic bytes.
+    const segments: Buffer[] = [source.subarray(0, 2)];
+    let remaining = 6 * 1024 * 1024 - source.length;
+    while (remaining > 0) {
+      let segmentSize = Math.min(remaining, 65_537);
+      if (remaining - segmentSize > 0 && remaining - segmentSize < 4) segmentSize -= 4 - (remaining - segmentSize);
+      const segment = Buffer.alloc(segmentSize, 120);
+      segment[0] = 0xff;
+      segment[1] = 0xfe;
+      segment.writeUInt16BE(segmentSize - 2, 2);
+      segments.push(segment);
+      remaining -= segmentSize;
+    }
+    segments.push(source.subarray(2));
+    const padded = Buffer.concat(segments);
+    expect(padded.length).toBe(6 * 1024 * 1024);
+    const normalized = await normalizeChatImage(padded);
+    expect(normalized.bytes.length).toBeLessThan(5 * 1024 * 1024);
+    await expect(sharp(normalized.bytes).metadata()).resolves.toMatchObject({ width: 2, height: 2 });
   });
 
   it("decodes and re-encodes real images while rejecting header-only payloads", async () => {
@@ -164,7 +189,7 @@ describe("chat media multipart limits", () => {
     );
     const payload = Buffer.concat([
       prefix,
-      Buffer.alloc(5 * 1024 * 1024 + 1),
+      Buffer.alloc(MAX_IMAGE_BYTES + 1),
       Buffer.from(`\r\n--${boundary}--\r\n`)
     ]);
     const body = new ReadableStream<Uint8Array>({
@@ -183,6 +208,6 @@ describe("chat media multipart limits", () => {
     } as unknown as RequestInit);
     const request = new NextRequest(streamedRequest);
 
-    await expect(parseChatMediaFiles(request)).rejects.toThrow("Фото должно быть не больше 5 МБ");
+    await expect(parseChatMediaFiles(request)).rejects.toThrow(IMAGE_SIZE_ERROR);
   });
 });

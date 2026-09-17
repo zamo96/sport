@@ -6,8 +6,11 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import type { Prisma, PrismaClient } from "@prisma/client";
 import sharp from "sharp";
 
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES, NORMALIZED_IMAGE_SIZE_ERROR } from "@/lib/upload-limits";
+import { summarizeChatReceipts } from "@/lib/chat-receipts";
+
 export const MAX_CHAT_ATTACHMENTS = 4;
-export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_CHAT_IMAGE_BYTES = MAX_IMAGE_BYTES;
 export const MAX_CHAT_IMAGE_PIXELS = 40_000_000;
 
 const CHAT_MEDIA_PREFIX = "chat-media";
@@ -26,6 +29,7 @@ type MessageWithAttachments = {
   id: string;
   createdAt: Date;
   text: string;
+  receipts?: Array<{ readAt: Date | null }>;
   attachments: Array<{
     position: number;
     asset: {
@@ -39,6 +43,7 @@ type MessageWithAttachments = {
 let privateS3Client: S3Client | null = null;
 
 export const chatMessageAttachmentsInclude = {
+  receipts: { select: { readAt: true } },
   attachments: {
     include: {
       asset: true
@@ -50,6 +55,7 @@ export const chatMessageAttachmentsInclude = {
 } satisfies Prisma.ChatMessageInclude;
 
 export const gameSearchMessageAttachmentsInclude = {
+  receipts: { select: { readAt: true } },
   attachments: {
     include: {
       asset: true
@@ -109,7 +115,7 @@ export function detectChatImage(bytes: Buffer): SupportedImage {
     throw new Error("Файл пустой");
   }
   if (bytes.length > MAX_CHAT_IMAGE_BYTES) {
-    throw new Error("Фото должно быть не больше 5 МБ");
+    throw new Error(IMAGE_SIZE_ERROR);
   }
 
   if (
@@ -225,12 +231,12 @@ export async function normalizeChatImage(bytes: Buffer) {
     }
 
     if (normalizedBytes.length > MAX_CHAT_IMAGE_BYTES) {
-      throw new Error("Фото после обработки должно быть не больше 5 МБ");
+      throw new Error(NORMALIZED_IMAGE_SIZE_ERROR);
     }
 
     return { bytes: normalizedBytes, image };
   } catch (error) {
-    if (error instanceof Error && (error.message.includes("разрешение") || error.message.includes("5 МБ"))) {
+    if (error instanceof Error && (error.message.includes("разрешение") || error.message === NORMALIZED_IMAGE_SIZE_ERROR)) {
       throw error;
     }
     throw new Error("Не удалось безопасно обработать фото");
@@ -284,8 +290,10 @@ export function serializeChatAttachment(
 }
 
 export function serializeChatMessage<T extends MessageWithAttachments>(message: T) {
+  const { receipts, ...publicMessage } = message;
   return {
-    ...message,
+    ...publicMessage,
+    ...(receipts ? { receipt: summarizeChatReceipts(receipts) } : {}),
     attachments: message.attachments.map(serializeChatAttachment),
     createdAt: message.createdAt.toISOString()
   };

@@ -3,6 +3,10 @@
 import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import { ImagePlus, Loader2, SendHorizonal, X } from "lucide-react";
 
+import type { MessageReceipt } from "@/lib/chat-receipts-client";
+
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES } from "@/lib/upload-limits";
+
 export type ChatAttachment = {
   id: string;
   kind: "image";
@@ -13,6 +17,7 @@ export type ChatAttachment = {
 };
 
 export type ChatMessage = {
+  receipt?: MessageReceipt;
   id: string;
   senderUserId: string;
   text: string;
@@ -66,7 +71,8 @@ export function ChatComposer({
 
     const nextFiles = Array.from(files);
     const unsupported = nextFiles.some((file) => !ACCEPTED_IMAGE_TYPES.has(file.type));
-    const accepted = nextFiles.filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type));
+    const oversized = nextFiles.some((file) => ACCEPTED_IMAGE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES);
+    const accepted = nextFiles.filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type) && file.size <= MAX_IMAGE_BYTES);
 
     setSelectedImages((current) => {
       const availableSlots = MAX_ATTACHMENTS - current.length;
@@ -78,6 +84,8 @@ export function ChatComposer({
 
       if (unsupported) {
         setError("Можно прикреплять только JPG, PNG, WEBP или GIF.");
+      } else if (oversized) {
+        setError(IMAGE_SIZE_ERROR);
       } else if (accepted.length > availableSlots) {
         setError(`К сообщению можно прикрепить не больше ${MAX_ATTACHMENTS} фото.`);
       } else {
