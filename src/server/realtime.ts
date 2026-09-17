@@ -3,6 +3,7 @@ import Redis from "ioredis";
 export type RealtimeEventType =
   | "notification"
   | "chat_message_created"
+  | "chat_receipts_updated"
   | "game_request_created"
   | "game_request_updated"
   | "game_report_updated"

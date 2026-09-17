@@ -258,6 +258,7 @@ model User {
   locationSource                     LocationSource?
   district                           String?
   preferredDistricts                 Json?
+  showOnMap                          Boolean                             @default(true)
   homeLat                            Float?
   homeLng                            Float?
   tennisLevel                        Int?
@@ -308,6 +309,7 @@ model User {
   authCodes                          AuthCode[]
   agreementAcceptances               UserAgreementAcceptance[]
   sentMessages                       ChatMessage[]
+  messageReceipts                    MessageReceipt[]
   uploadedChatMedia                  ChatMediaAsset[]
   gameRequestsCreated                GameRequest[]                       @relation("GameRequestCreator")
   gameRequestsReceived               GameRequest[]                       @relation("GameRequestRecipient")
@@ -707,6 +709,7 @@ model ChatMessage {
   gameRequest   GameRequest?       @relation(fields: [gameRequestId], references: [id], onDelete: Cascade)
   senderUser    User               @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
   attachments   ChatMessageMedia[]
+  receipts      MessageReceipt[]
 
   @@index([matchId, createdAt])
   @@index([gameRequestId, createdAt])
@@ -888,8 +891,25 @@ model GameSearchMessage {
   gameSearch   GameSearch               @relation(fields: [gameSearchId], references: [id], onDelete: Cascade)
   senderUser   User                     @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
   attachments  GameSearchMessageMedia[]
+  receipts     MessageReceipt[]
 
   @@index([gameSearchId, createdAt])
+}
+
+model MessageReceipt {
+  id                  String             @id @default(cuid())
+  userId              String
+  chatMessageId       String?
+  gameSearchMessageId String?
+  deliveredAt         DateTime           @default(now())
+  readAt              DateTime?
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatMessage         ChatMessage?       @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
+  gameSearchMessage   GameSearchMessage? @relation(fields: [gameSearchMessageId], references: [id], onDelete: Cascade)
+
+  @@unique([chatMessageId, userId])
+  @@unique([gameSearchMessageId, userId])
+  @@index([userId])
 }
 
 model GameSearchMessageMedia {
@@ -1113,4 +1133,10 @@ model PushDevice {
 
   @@index([userId, platform, isActive])
   @@index([environment, isActive])
+}
+
+// Durable markers for bounded deployment SQL; retain across Prisma db push.
+model DeploymentMigration {
+  id        String   @id
+  appliedAt DateTime @default(now())
 }

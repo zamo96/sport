@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ChatMessageReceipt, useChatReceipts } from "@/components/chat/chat-receipts";
+import { mergeChatMessages } from "@/lib/chat-receipts-client";
+
 import { apiFetch } from "@/lib/client-api";
 import { Avatar } from "@/components/ui/avatar";
 import { Panel } from "@/components/ui/panel";
 import { ChatComposer, ChatMessageAttachments, type ChatMessage as Message } from "@/components/chat/chat-media";
 
-export function GameRequestChatRoom({
+export function GameRequestChatRoom(props: Parameters<typeof GameRequestChatRoomContent>[0]) {
+  return <GameRequestChatRoomContent key={`${props.gameRequestId}:${props.currentUserId}`} {...props} />;
+}
+
+function GameRequestChatRoomContent({
   gameRequestId,
   currentUserId,
   otherUser,
@@ -22,17 +29,20 @@ export function GameRequestChatRoom({
   initialMessages: Message[];
 }) {
   const [messages, setMessages] = useState(initialMessages);
+  const { containerRef, receivedMessages } = useChatReceipts({ gameRequestId }, currentUserId, messages);
 
   const loadMessages = useCallback(async () => {
     try {
       const data = await apiFetch<{ messages: Message[] }>(`/game-requests/${gameRequestId}/messages`);
-      setMessages(data.messages);
+      receivedMessages(data.messages);
+      setMessages((current) => mergeChatMessages(current, data.messages, { currentUserId }));
     } catch {
       return;
     }
-  }, [gameRequestId]);
+  }, [gameRequestId, receivedMessages, currentUserId]);
 
   useEffect(() => {
+    void loadMessages();
     const interval = window.setInterval(loadMessages, 5000);
     return () => {
       window.clearInterval(interval);
@@ -53,6 +63,7 @@ export function GameRequestChatRoom({
     };
 
     source.addEventListener("chat_message_created", refreshIfRelevant);
+    source.addEventListener("chat_receipts_updated", refreshIfRelevant);
     source.addEventListener("game_request_updated", refreshIfRelevant);
 
     return () => {
@@ -65,7 +76,7 @@ export function GameRequestChatRoom({
       method: "POST",
       body: JSON.stringify({ text, attachmentIds })
     });
-    setMessages((current) => [...current, data.message]);
+    setMessages((current) => mergeChatMessages(current, [data.message]));
   }
 
   return (
@@ -79,7 +90,7 @@ export function GameRequestChatRoom({
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div ref={containerRef} className="space-y-3">
         {messages.length === 0 ? (
           <div className="rounded-2xl bg-mint px-4 py-3 text-sm text-ink/72">
             Уточните детали этой игры: кто приносит мячи, где встретиться и что делать, если планы изменятся.
@@ -88,7 +99,7 @@ export function GameRequestChatRoom({
         {messages.map((message) => {
           const mine = message.senderUserId === currentUserId;
           return (
-            <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div key={message.id} data-chat-message-id={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-[24px] p-2 text-sm leading-6 ${mine ? "bg-ink text-white" : "bg-cream text-ink"}`}>
                 {!mine ? (
                   <div className="mb-1 px-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court">
@@ -97,6 +108,7 @@ export function GameRequestChatRoom({
                 ) : null}
                 <ChatMessageAttachments attachments={message.attachments} />
                 {message.text ? <div className="px-2 py-1">{message.text}</div> : null}
+                {mine ? <ChatMessageReceipt receipt={message.receipt} /> : null}
               </div>
             </div>
           );
