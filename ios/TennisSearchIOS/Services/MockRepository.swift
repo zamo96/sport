@@ -157,6 +157,8 @@ actor MockRepository: TennisRepository {
     private var incomingLikes: [DiscoverUser] = []
     private var matches: [MatchSummary] = []
     private var messagesByMatch: [String: [ChatMessage]] = [:]
+    private var seenInboxMatchIDs: Set<String> = []
+    private var seenInboxIncomingMessageIDs: Set<String> = []
     private var searches: [GameSearch] = [
         GameSearch(
             id: "search-1",
@@ -474,6 +476,8 @@ actor MockRepository: TennisRepository {
         searches = []
         notifications = []
         messagesByMatch = [:]
+        seenInboxMatchIDs = []
+        seenInboxIncomingMessageIDs = []
         discoverUsers = []
         incomingLikes = []
     }
@@ -2318,7 +2322,7 @@ actor MockRepository: TennisRepository {
             count += search.responses.filter { $0.status == "pending" }.count
         }
         return ActivitySummary(
-            inboxBadgeCount: matches.count,
+            inboxBadgeCount: unseenInboxThreadIDs.count,
             incomingLikesCount: incomingLikes.count,
             hotBadgeCount: discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
             discoverBadgeCount: incomingLikes.count + discoverUsers.filter { !$0.gameSearches.filter { $0.searchType == .hot }.isEmpty }.count,
@@ -2339,7 +2343,26 @@ actor MockRepository: TennisRepository {
         )
     }
 
-    func markInboxSeen() async throws {}
+    private var unseenInboxThreadIDs: Set<String> {
+        var identifiers: Set<String> = []
+        for match in matches where match.status == "active" {
+            if !seenInboxMatchIDs.contains(match.id) {
+                identifiers.insert(match.id)
+            }
+            for message in messagesByMatch[match.id] ?? []
+            where message.senderUserId != currentUser.id && !seenInboxIncomingMessageIDs.contains(message.id) {
+                identifiers.insert(message.gameRequestId ?? match.id)
+            }
+        }
+        return identifiers
+    }
+
+    func markInboxSeen() async throws {
+        seenInboxMatchIDs = Set(matches.map(\.id))
+        seenInboxIncomingMessageIDs = Set(messagesByMatch.values.flatMap { messages in
+            messages.filter { $0.senderUserId != currentUser.id }.map(\.id)
+        })
+    }
 
     func markNotificationsSeen() async throws {}
 

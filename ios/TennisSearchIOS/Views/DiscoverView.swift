@@ -133,10 +133,11 @@ struct DiscoverView: View {
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .headline) private var headerTabFontSize: CGFloat = 17
-    @ScaledMetric(relativeTo: .caption) private var viewedPlayersTrayHeight: CGFloat = 112
+    @ScaledMetric(relativeTo: .caption) private var viewedPlayersTrayHeight: CGFloat = 120
 
     @State private var users: [DiscoverUser] = []
     @State private var viewedPlayers = ViewedPlayerQueue()
+    @State private var isViewedPlayersExpanded = false
     @State private var isDiscoverVisible = false
     @State private var isNotificationsPresented = false
     @State private var deckFrame: CGRect = .zero
@@ -430,18 +431,24 @@ struct DiscoverView: View {
         return true
     }
 
+    private var incomingLikesAttentionItem: DiscoverSummaryAttentionItem? {
+        let count = notificationManager.summary.incomingLikesCount
+        guard appModel.isAuthenticated, count > 0 else { return nil }
+        return .init(
+            count: count,
+            title: count == 1
+                ? L10n.string("wants to play", "хочет сыграть")
+                : L10n.string("want to play", "хотят сыграть"),
+            subtitle: L10n.string("Want to play with you", "Хотят с тобой поиграть"),
+            target: .discover(.likes)
+        )
+    }
+
     private var typedAttentionItems: [DiscoverSummaryAttentionItem] {
         var items: [DiscoverSummaryAttentionItem] = []
 
-        if notificationManager.summary.incomingLikesCount > 0 {
-            items.append(.init(
-                count: notificationManager.summary.incomingLikesCount,
-                title: notificationManager.summary.incomingLikesCount == 1
-                    ? L10n.string("wants to play", "хочет сыграть")
-                    : L10n.string("want to play", "хотят сыграть"),
-                subtitle: L10n.string("Want to play with you", "Хотят с тобой поиграть"),
-                target: .discover(.likes)
-            ))
+        if let incomingLikesAttentionItem {
+            items.append(incomingLikesAttentionItem)
         }
 
         if pendingConfirmationCount > 0 {
@@ -585,6 +592,29 @@ struct DiscoverView: View {
         }
     }
 
+    private var isTransientSummaryIslandVisible: Bool {
+        hasVisibleSummaryCard && isSummaryIslandPresented
+    }
+
+    private var displayedSummaryCardState: DiscoverSummaryCardState? {
+        if isTransientSummaryIslandVisible { return summaryCardState }
+        // Likes remain actionable after the transient summary expires or is dismissed.
+        // Keep this fallback likes-only so unrelated notes still disappear on schedule.
+        guard let item = incomingLikesAttentionItem else { return nil }
+        return .attention(count: item.count, title: attentionTitle(for: [item]), subtitle: item.subtitle)
+    }
+
+    private var displayedSummaryNavigationTarget: AppNavigationTarget? {
+        isTransientSummaryIslandVisible ? summaryNavigationTarget : incomingLikesAttentionItem?.target
+    }
+
+    private var summaryAttentionIconName: String {
+        if case .discover(.likes, _, _, _)? = displayedSummaryNavigationTarget {
+            return "heart.fill"
+        }
+        return "clock.badge.exclamationmark"
+    }
+
     private var summaryStateSignature: String {
         switch summaryCardState {
         case .upcoming(let request):
@@ -650,6 +680,7 @@ struct DiscoverView: View {
         .onChange(of: emptyDeckContextKey) { _ in
             cancelPlayerAutoAdvance()
             viewedPlayers = ViewedPlayerQueue()
+            isViewedPlayersExpanded = false
             selectedSimilarPlayerID = nil
             autoAdvanceReplayID += 1
         }
@@ -692,8 +723,7 @@ struct DiscoverView: View {
             // stable before the first arrival, so playback geometry never jumps.
             viewedPlayersTray
                 .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-                .frame(height: viewedPlayersTrayHeight, alignment: .top)
+                .frame(height: isViewedPlayersExpanded ? viewedPlayersTrayHeight : 44, alignment: .top)
                 .opacity(viewedTrayUsers.isEmpty ? 0 : 1)
                 .allowsHitTesting(!viewedTrayUsers.isEmpty)
                 .accessibilityHidden(viewedTrayUsers.isEmpty)
@@ -1151,16 +1181,18 @@ struct DiscoverView: View {
         let compactWidth = summaryMaxWidth - (78 * islandCollapseProgress)
 
         return Group {
-            if hasVisibleSummaryCard, isSummaryIslandPresented {
+            if let displayedSummaryCardState {
                 HStack {
                     DiscoverSummaryCard(
-                        state: summaryCardState,
+                        state: displayedSummaryCardState,
                         maxWidth: max(176, compactWidth),
                         compact: true,
                         islandStyle: true,
                         pulse: islandPulse,
+                        attentionIconName: summaryAttentionIconName,
                         onTap: handleSummaryTap
                     )
+                    .accessibilityIdentifier("discover-summary-island")
                     .scaleEffect(
                         x: (0.72 + (0.28 * visibility)) * (1 - (0.1 * islandCollapseProgress)),
                         y: (0.84 + (0.16 * visibility)) * (1 - (0.16 * islandCollapseProgress)),
@@ -1518,7 +1550,7 @@ struct DiscoverView: View {
     private func discoverHeaderRow(
         flexibleLabels: Bool = false
     ) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 8) {
             ForEach(DiscoverTab.userVisibleCases) { tab in
                 Button {
                     selectTab(tab)
@@ -1563,11 +1595,6 @@ struct DiscoverView: View {
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(flexible ? 0.5 : 1)
                 .fixedSize(horizontal: !flexible, vertical: true)
-            if tab == .swipe, let count = tabBadgeCount(for: tab) {
-                Text(count > 99 ? "99+" : "\(count)")
-                    .foregroundStyle(headerAccent)
-                    .fixedSize()
-            }
         }
         .font(.system(size: headerTabFontSize, weight: .semibold))
         .frame(minWidth: 44, minHeight: 44)
@@ -2122,51 +2149,81 @@ struct DiscoverView: View {
     }
 
     private var viewedPlayersTray: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Label(L10n.string("Viewed", "Просмотренные"), systemImage: "clock.arrow.circlepath")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                Text("\(viewedSimilarUsers.count)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.58))
-                Spacer(minLength: 8)
-                Text(L10n.string("Tap to view again", "Нажми, чтобы вернуться"))
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.48))
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                let shouldExpand = !isViewedPlayersExpanded
+                cancelPlayerAutoAdvance()
+                AppHaptics.selection()
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    isViewedPlayersExpanded = shouldExpand && !viewedSimilarUsers.isEmpty
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if !isViewedPlayersExpanded, let user = viewedTrayUsers.first {
+                        RemoteAvatarView(name: user.displayName, path: user.profileHeroImagePath, size: 32)
+                            .opacity(pendingViewedPlayerID == user.id ? 0 : 1)
+                            .background(ViewedFlightFrameMarker(endpoints: viewedFlightEndpoints, role: .destination, userID: user.id))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .stroke(AppTheme.mint.opacity(pendingViewedPlayerID == user.id ? 0.25 : (isViewedArrivalHighlighted ? 1 : 0)), lineWidth: 2)
+                            }
+                            .transition(.identity)
+                    } else {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .frame(width: 32, height: 32)
+                    }
+                    Text(L10n.string("Viewed", "Просмотренные"))
+                        .font(.caption.weight(.semibold))
+                    Text("\(viewedSimilarUsers.count)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.58))
+                    Spacer(minLength: 8)
+                    Image(systemName: isViewedPlayersExpanded ? "chevron.down" : "chevron.up")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(viewedTrayUsers.isEmpty)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(L10n.string("Viewed players: \(viewedSimilarUsers.count)", "Просмотренные игроки: \(viewedSimilarUsers.count)"))
-            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(isViewedPlayersExpanded ? L10n.string("Expanded", "Развёрнуто") : L10n.string("Collapsed", "Свёрнуто"))
+            .accessibilityHint(isViewedPlayersExpanded ? L10n.string("Hide viewed players", "Скрыть просмотренных игроков") : L10n.string("Show viewed players", "Показать просмотренных игроков"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("discover-viewed-players-toggle")
 
-            ScrollViewReader { trayProxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 12) {
-                        // Only the measured first slot is eager; long history remains lazy.
-                        if let user = viewedTrayUsers.first {
-                            viewedPlayerButton(user, isLandingSlot: true)
-                                .id("viewed-first-slot")
-                        }
-                        LazyHStack(alignment: .top, spacing: 12) {
-                            ForEach(Array(viewedTrayUsers.dropFirst())) { user in
-                                viewedPlayerButton(user)
+            if isViewedPlayersExpanded {
+                ScrollViewReader { trayProxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            // Only the measured first slot is eager; long history remains lazy.
+                            if let user = viewedTrayUsers.first {
+                                viewedPlayerButton(user, isLandingSlot: true)
+                                    .id("viewed-first-slot")
+                            }
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(Array(viewedTrayUsers.dropFirst())) { user in
+                                    viewedPlayerButton(user)
+                                }
                             }
                         }
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 3)
                     }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 3)
+                    .onAppear {
+                        if pendingViewedPlayerID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
+                    }
+                    .onChange(of: pendingViewedPlayerID) { pendingID in
+                        if pendingID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
+                    }
                 }
-                .onAppear {
-                    if pendingViewedPlayerID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
-                }
-                .onChange(of: pendingViewedPlayerID) { pendingID in
-                    if pendingID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
-                }
+                .frame(height: 76)
+                .transition(.identity)
             }
-            .frame(height: 76)
         }
-        .accessibilityIdentifier("discover-viewed-players")
-        .padding(.top, 4)
+        .accessibilityElement(children: .contain)
     }
 
     private func viewedPlayerButton(_ user: DiscoverUser, isLandingSlot: Bool = false) -> some View {
@@ -3422,9 +3479,10 @@ struct DiscoverView: View {
     }
 
     private func handleSummaryTap() {
-        let target = summaryNavigationTarget
-        let signature = summaryStateSignature
-        dismissSummaryIsland(signature: signature)
+        let target = displayedSummaryNavigationTarget
+        if isTransientSummaryIslandVisible {
+            dismissSummaryIsland(signature: summaryStateSignature)
+        }
         AppHaptics.selection()
         guard let target else { return }
         if case .discover(.hot, _, _, _) = target {
@@ -6227,6 +6285,7 @@ private struct DiscoverSummaryCard: View {
     var compact = false
     var islandStyle = false
     var pulse = false
+    var attentionIconName = "clock.badge.exclamationmark"
     let onTap: () -> Void
 
     var body: some View {
@@ -6350,7 +6409,7 @@ private struct DiscoverSummaryCard: View {
         case .upcoming:
             return "calendar"
         case .attention:
-            return "clock.badge.exclamationmark"
+            return attentionIconName
         case .idle:
             return "cup.and.saucer.fill"
         }
