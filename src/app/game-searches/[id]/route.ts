@@ -4,7 +4,7 @@ import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, Prisma }
 
 import { requireSessionUser } from "@/lib/auth";
 import { resolveHotSearchStartAt, resolveSearchDays } from "@/lib/game-search";
-import { formatLocalTime } from "@/lib/timezone";
+import { formatLocalDateTime, formatLocalTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
@@ -315,12 +315,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       if (shouldFinalizeFilledGroupHotSearch && updated.hotStartsAt) {
         const proposedCourtId = nextPreferredCourtId ?? updated.preferredCourtId ?? null;
         const scheduledAt = updated.hotStartsAt;
-        const scheduleText = `${scheduledAt.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit"
-        })} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
+        const scheduleText = `${formatLocalDateTime(user.timezone, scheduledAt)} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
         const courtLabel =
           updated.preferredCourt?.name ??
           updated.customVenueAddress ??
@@ -537,12 +532,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         confirmedGameRequestId = gameRequest.id;
 
         if (!existingConfirmed) {
-          const scheduleText = `${scheduledAt.toLocaleString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-          })} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
+          const scheduleText = `${formatLocalDateTime(user.timezone, scheduledAt)} · ${updated.format}${updated.durationMinutes ? ` · ${updated.durationMinutes} мин` : ""}`;
           const courtLabel =
             updated.preferredCourt?.name ??
             updated.customVenueAddress ??
@@ -607,12 +597,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           const proposedCourtId = updated.scheduledCourtId ?? updated.preferredCourtId ?? null;
 
           {
-            const scheduleText = `${nextScheduledAt.toLocaleString("ru-RU", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit"
-            })} · ${updated.format}${updated.scheduledDurationMinutes ? ` · ${updated.scheduledDurationMinutes} мин` : ""}`;
+            const scheduleText = `${formatLocalDateTime(user.timezone, nextScheduledAt)} · ${updated.format}${updated.scheduledDurationMinutes ? ` · ${updated.scheduledDurationMinutes} мин` : ""}`;
             const courtLabel =
               updated.scheduledCourt?.name ??
               updated.preferredCourt?.name ??

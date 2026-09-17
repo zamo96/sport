@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
@@ -31,18 +32,18 @@ function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function formatTimeSlot(date: Date) {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+function formatTimeSlot(date: Date, timezone: string | null | undefined) {
+  return formatLocalDateTime(timezone, date, { hour: "2-digit", minute: "2-digit" });
 }
 
-function buildWeeklySchedule(options: { scheduledAt: Date }[]) {
+function buildWeeklySchedule(options: { scheduledAt: Date }[], timezone: string | null | undefined) {
   const days = new Set<string>();
   const timePreferences = new Set<string>();
 
   for (const option of options) {
     const day = DAY_KEYS[option.scheduledAt.getDay()];
     days.add(day);
-    timePreferences.add(`${day}@${formatTimeSlot(option.scheduledAt)}`);
+    timePreferences.add(`${day}@${formatTimeSlot(option.scheduledAt, timezone)}`);
   }
 
   return {
@@ -228,7 +229,7 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
 
         const finalizedOptions = updatedProposal.options.filter((option) => option.votes.length >= approvedResponses.length);
         if (finalizedOptions.length > 0) {
-          const weeklySchedule = buildWeeklySchedule(finalizedOptions);
+          const weeklySchedule = buildWeeklySchedule(finalizedOptions, user.timezone);
           const proposedRegularCourtId = commonCourtId(finalizedOptions) ?? gameSearch.preferredCourtId ?? null;
 
           await tx.gameSearch.update({

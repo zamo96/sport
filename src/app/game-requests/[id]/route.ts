@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { GameRequestOutcome, GameRequestStatus } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/push";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -346,7 +347,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         if (activeRequests.length > 0) {
           await tx.chatMessage.createMany({
             data: activeRequests.flatMap((requestItem) => {
-              const editMessage = getEditChangeMessage(requestItem, nextForMessages, {
+              const editMessage = getEditChangeMessage(requestItem, nextForMessages, { timezone: user.timezone,
                 resetConfirmation: true
               });
 
@@ -436,7 +437,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
 
         if (editableRequested && !editableNoOp) {
-          const editMessage = getEditChangeMessage(gameRequest, result, {
+          const editMessage = getEditChangeMessage(gameRequest, result, { timezone: user.timezone,
             resetConfirmation: true
           });
 
@@ -559,7 +560,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                 data: {
                   gameSearchId: lobbyId,
                   senderUserId: user.id,
-                  text: getEditChangeMessage(gameRequest, result, {
+                  text: getEditChangeMessage(gameRequest, result, { timezone: user.timezone,
                     resetConfirmation: true
                   })
                 }
@@ -630,7 +631,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         body.outcome !== undefined
           ? getOutcomeChangeMessage(body.outcome) ?? "Есть обновление по вашей игре."
           : editableRequested && !editableNoOp
-            ? getEditChangeMessage(gameRequest, updated, {
+            ? getEditChangeMessage(gameRequest, updated, { timezone: user.timezone,
                 resetConfirmation: true
               })
           : body.status !== undefined
@@ -724,7 +725,7 @@ function getEditChangeMessage(
     format: string;
     proposedCourt?: { name: string } | null;
   },
-  options: { resetConfirmation?: boolean } = {}
+  options: { resetConfirmation?: boolean; timezone?: string | null } = {}
 ) {
   const changes: string[] = [];
 
@@ -733,7 +734,7 @@ function getEditChangeMessage(
   }
 
   if (previous.proposedDatetime.getTime() !== next.proposedDatetime.getTime()) {
-    changes.push(`Изменилась дата и время: ${next.proposedDatetime.toLocaleString("ru-RU")}`);
+    changes.push(`Изменилась дата и время: ${formatLocalDateTime(options.timezone, next.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`);
   }
 
   if (previous.sport !== next.sport) {

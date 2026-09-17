@@ -1,6 +1,7 @@
 import { GameRequestStatus } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/push";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { prisma } from "@/lib/prisma";
 import { getRealtimeRedis, publishRealtimeEventToUsers } from "@/server/realtime";
 
@@ -215,7 +216,7 @@ async function sendPendingGameRequestReminders() {
       await sendPushToUser({
         userId: request.matchedUserId,
         title: "Подтверди игру",
-        body: `${request.proposedCourt?.name ?? "Место уточняется"} · ${request.proposedDatetime.toLocaleString("ru-RU")}`,
+        body: `${request.proposedCourt?.name ?? "Место уточняется"} · ${formatLocalDateTime(null, request.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
         href: `/play/games/${request.id}`,
         sound: request.matchedUser.notificationSound ?? true
       });

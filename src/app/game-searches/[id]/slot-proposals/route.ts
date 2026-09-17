@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { GameSearchResponseStatus, GameSearchType, Prisma } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { createGameSearchSlotProposalSchema } from "@/lib/validators";
@@ -15,11 +16,12 @@ function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function formatTimeSlot(date: Date) {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+// Зона обязательна: сервер в UTC, и без неё слот уезжает на смещение назад.
+function formatTimeSlot(date: Date, timezone: string | null | undefined) {
+  return formatLocalDateTime(timezone, date, { hour: "2-digit", minute: "2-digit" });
 }
 
-function buildWeeklySchedule(options: { scheduledAt: string }[]) {
+function buildWeeklySchedule(options: { scheduledAt: string }[], timezone: string | null | undefined) {
   const days = new Set<string>();
   const timePreferences = new Set<string>();
 
@@ -30,7 +32,7 @@ function buildWeeklySchedule(options: { scheduledAt: string }[]) {
     }
     const day = DAY_KEYS[date.getDay()];
     days.add(day);
-    timePreferences.add(`${day}@${formatTimeSlot(date)}`);
+    timePreferences.add(`${day}@${formatTimeSlot(date, timezone)}`);
   }
 
   return {
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const proposal = await prisma.$transaction(async (tx) => {
       await assertActiveCourtIds(tx, [gameSearch.preferredCourtId, ...body.options.map((option) => option.proposedCourtId)]);
-      const weeklySchedule = buildWeeklySchedule(body.options);
+      const weeklySchedule = buildWeeklySchedule(body.options, user.timezone);
       const preferredDays = weeklySchedule.preferredDays.length
         ? weeklySchedule.preferredDays
         : normalizeStringArray(gameSearch.preferredDays);
@@ -165,12 +167,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const summary = created.options
         .slice(0, 3)
         .map((option) =>
-          option.scheduledAt.toLocaleString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-          })
+          formatLocalDateTime(user.timezone, option.scheduledAt)
         )
         .join(", ");
 

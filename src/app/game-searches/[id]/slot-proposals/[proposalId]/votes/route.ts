@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { GameSearchResponseStatus, GameSearchType, Prisma } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { voteGameSearchSlotProposalSchema } from "@/lib/validators";
@@ -185,7 +186,7 @@ export async function PUT(
       const summary = finalizedOptions
         .slice(0, 3)
         .map((option) =>
-          option.scheduledAt.toLocaleString("ru-RU", {
+          formatLocalDateTime(user.timezone, option.scheduledAt, {
             weekday: "short",
             hour: "2-digit",
             minute: "2-digit"

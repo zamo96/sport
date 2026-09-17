@@ -5,6 +5,7 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { formatLocalDateTime } from "@/lib/timezone";
 
 type DBLike = Prisma.TransactionClient | typeof prisma;
 type TimePreferenceSlot = { hour: number; minute: number; day?: string };
@@ -411,12 +412,10 @@ export async function updateRegularPairOccurrenceConfirmation(
       }
     });
 
-    const scheduleText = `${updatedOccurrence.scheduledAt.toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    })} · ${createdGameRequest.durationMinutes ?? 90} мин`;
+    const scheduleText = `${formatLocalDateTime(
+      updatedOccurrence.regularPair.createdByUser?.timezone,
+      updatedOccurrence.scheduledAt
+    )} · ${createdGameRequest.durationMinutes ?? 90} мин`;
 
     await db.chatMessage.create({
       data: {

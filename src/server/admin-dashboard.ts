@@ -1,6 +1,7 @@
 import type { GameRequestStatus, GameSearchStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { formatLocalDateTime } from "@/lib/timezone";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ACTIVITY_DAYS = 14;
@@ -1088,7 +1089,7 @@ function createDailyBuckets(start: Date, days: number) {
     const day = formatDayKey(date);
     buckets.set(day, {
       day,
-      label: date.toLocaleDateString("ru-RU", {
+      label: formatLocalDateTime(null, date, {
         day: "2-digit",
         month: "short"
       }),
@@ -1182,8 +1183,9 @@ function compactText(value: string) {
   return `${normalized.slice(0, 93)}...`;
 }
 
+// Сервер в UTC: без явной зоны админ видит время на смещение раньше.
 function formatDateForSubtitle(value: Date) {
-  return value.toLocaleString("ru-RU", {
+  return formatLocalDateTime(null, value, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

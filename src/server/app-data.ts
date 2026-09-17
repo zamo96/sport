@@ -1,6 +1,7 @@
 import { CourtStatus, GameSearchResponseStatus, GameSearchStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { haversineDistanceKm } from "@/lib/geo";
 import { selectNearby, validCoordinates, type NearbyMetadata } from "@/lib/nearby";
 import { resolveNearbyOrigin } from "@/server/nearby-location";
@@ -751,9 +752,11 @@ function buildNotificationSearchTime(search: {
   hotStartsAt?: Date | null;
   preferredDays?: unknown;
   preferredTimeRanges?: unknown;
+  /** Зона автора поиска; без неё время печатается в UTC и уезжает назад. */
+  timezone?: string | null;
 }) {
   if (search.searchType === "hot" && search.hotStartsAt) {
-    return search.hotStartsAt.toLocaleString("ru-RU", {
+    return formatLocalDateTime(search.timezone, search.hotStartsAt, {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",

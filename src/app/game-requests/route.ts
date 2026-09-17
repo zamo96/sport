@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { GameRequestStatus } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/push";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      const summaryText = `Предложение игры: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+      const summaryText = `Предложение игры: ${formatLocalDateTime(user.timezone, created.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · ${created.format}. ${
         created.comment?.trim() ? created.comment : "Второй игрок должен подтвердить игру."
       }`;
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
       await sendPushToUser({
         userId: recipient.id,
         title: `Предложение игры от ${user.name ?? "игрока"}`,
-        body: `Подтверди: ${gameRequest.proposedCourt?.name ?? "Место уточняется"} · ${gameRequest.proposedDatetime.toLocaleString("ru-RU")}`,
+        body: `Подтверди: ${gameRequest.proposedCourt?.name ?? "Место уточняется"} · ${formatLocalDateTime(user.timezone, gameRequest.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true
       });

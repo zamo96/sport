@@ -50,6 +50,28 @@ export function resolveLocalHour(timezone: string | null | undefined, now = new 
   return Number(getLocalDateParts(timezone, now).hour);
 }
 
+/**
+ * Дата и время в зоне игрока. Контейнер работает в UTC, поэтому без явной зоны
+ * `toLocaleString` печатает время на смещение раньше — для Москвы на три часа.
+ * Зона обязательна во всём, что человек потом читает.
+ */
+export function formatLocalDateTime(
+  timezone: string | null | undefined,
+  date: Date,
+  options: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  },
+  locale = "ru-RU"
+) {
+  const trimmed = timezone?.trim();
+  const zone = trimmed && isUsableTimezone(trimmed) ? trimmed : DEFAULT_TIMEZONE;
+
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone: zone }).format(date);
+}
+
 /** Часы и минуты в зоне игрока, «ЧЧ:ММ». */
 export function formatLocalTime(timezone: string | null | undefined, date: Date) {
   const parts = formatParts(

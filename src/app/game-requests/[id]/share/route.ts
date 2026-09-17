@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { GameRequestStatus } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { shareGameRequestSchema } from "@/lib/validators";
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           }
         });
 
-        const summaryText = `Игра назначена: ${created.proposedDatetime.toLocaleString("ru-RU")} · ${created.format}. ${
+        const summaryText = `Игра назначена: ${formatLocalDateTime(user.timezone, created.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · ${created.format}. ${
           created.comment?.trim() ? created.comment : "Открой детали, чтобы обсудить игру отдельно."
         }`;
 

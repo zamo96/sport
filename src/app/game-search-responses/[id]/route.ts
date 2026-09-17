@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, GameSearchType, Prisma } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/push";
+import { formatLocalDateTime } from "@/lib/timezone";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -237,7 +238,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               updatedAt: "asc"
             }
           });
-          const scheduleText = `${response.gameSearch.hotStartsAt.toLocaleString("ru-RU")} · ${
+          const scheduleText = `${formatLocalDateTime(user.timezone, response.gameSearch.hotStartsAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", year: "numeric" })} · ${
             response.gameSearch.format
           }${response.gameSearch.durationMinutes ? ` · ${response.gameSearch.durationMinutes} мин` : ""}`;
           const venueText =
@@ -440,7 +441,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               createdAt: "asc"
             }
           });
-          const scheduleText = `${response.gameSearch.hotStartsAt.toLocaleString("ru-RU")} · ${
+          const scheduleText = `${formatLocalDateTime(user.timezone, response.gameSearch.hotStartsAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", year: "numeric" })} · ${
             response.gameSearch.format
           }${response.gameSearch.durationMinutes ? ` · ${response.gameSearch.durationMinutes} мин` : ""}`;
           const baseComment = response.gameSearch.comment?.trim() || "Игра из срочного поиска подтверждена.";
