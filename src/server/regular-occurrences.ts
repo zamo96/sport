@@ -186,32 +186,20 @@ export async function syncRegularPairOccurrences(db: DBLike, regularPairId: stri
           }
         });
 
-    await db.regularPairOccurrenceConfirmation.upsert({
-      where: {
-        occurrenceId_userId: {
+    // Multiple read endpoints can sync the same pair concurrently. Insert only
+    // missing rows atomically, without resetting either player's existing answer.
+    await db.regularPairOccurrenceConfirmation.createMany({
+      data: [
+        {
           occurrenceId: occurrence.id,
           userId: regularPair.createdByUserId
-        }
-      },
-      update: {},
-      create: {
-        occurrenceId: occurrence.id,
-        userId: regularPair.createdByUserId
-      }
-    });
-
-    await db.regularPairOccurrenceConfirmation.upsert({
-      where: {
-        occurrenceId_userId: {
+        },
+        {
           occurrenceId: occurrence.id,
           userId: regularPair.partnerUserId
         }
-      },
-      update: {},
-      create: {
-        occurrenceId: occurrence.id,
-        userId: regularPair.partnerUserId
-      }
+      ],
+      skipDuplicates: true
     });
   }
 

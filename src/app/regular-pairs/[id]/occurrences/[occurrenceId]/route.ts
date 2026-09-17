@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { RegularPairOccurrenceConfirmationStatus } from "@prisma/client";
 
@@ -20,6 +21,7 @@ export async function PATCH(
     const body = updateRegularPairOccurrenceSchema.parse(await request.json());
 
     const occurrence = await prisma.regularPairOccurrence.findFirst({
+      include: { gameRequest: { select: { id: true } } },
       where: {
         id: params.occurrenceId,
         regularPairId: params.id,
@@ -37,6 +39,7 @@ export async function PATCH(
       return fail("Нельзя переносить слот в прошедшее время", 400);
     }
 
+    const acceptedRequestIds: string[] = [];
     const updated = await prisma.$transaction(async (tx) => {
       if (body.proposedCourtId !== undefined) {
         await assertActiveCourtIds(tx, [body.proposedCourtId]);
@@ -56,7 +59,7 @@ export async function PATCH(
       }
 
       if (body.status) {
-        nextOccurrence = await updateRegularPairOccurrenceConfirmation(
+        const confirmed = await updateRegularPairOccurrenceConfirmation(
           tx,
           params.occurrenceId,
           user.id,
@@ -64,6 +67,8 @@ export async function PATCH(
             ? RegularPairOccurrenceConfirmationStatus.confirmed
             : RegularPairOccurrenceConfirmationStatus.declined
         );
+        nextOccurrence = confirmed;
+        if (!occurrence.gameRequest && confirmed?.gameRequest) acceptedRequestIds.push(confirmed.gameRequest.id);
       }
 
       return nextOccurrence;
@@ -73,6 +78,7 @@ export async function PATCH(
       return fail("Слот не найден", 404);
     }
 
+    await recordGameRequestMilestones(acceptedRequestIds, "request_accepted", "regular");
     return ok({
       occurrence: {
         ...updated,

@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -83,16 +84,21 @@ export default async function RegularPairPage({
       return;
     }
 
-    await prisma.$transaction((tx) =>
-      updateRegularPairOccurrenceConfirmation(
+    const { updated, previous } = await prisma.$transaction(async (tx) => {
+      const previous = await tx.gameRequest.findUnique({ where: { regularPairOccurrenceId: occurrenceId }, select: { id: true } });
+      const updated = await updateRegularPairOccurrenceConfirmation(
         tx,
         occurrenceId,
         viewer.id,
         nextStatus === "confirmed"
           ? RegularPairOccurrenceConfirmationStatus.confirmed
           : RegularPairOccurrenceConfirmationStatus.declined
-      )
-    );
+      );
+      return { updated, previous };
+    });
+    if (!previous && updated?.gameRequest) {
+      await recordGameRequestMilestones([updated.gameRequest.id], "request_accepted", "regular");
+    }
 
     revalidatePath(`/play/regular/${params.id}`);
     revalidatePath("/play/searches");
