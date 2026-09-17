@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { AuthRequiredSheet } from "@/components/auth/auth-required-sheet";
 import {
   EmptyDeck,
+  NearbyClubSections,
   type EmptyDeckInvite,
   type EmptyDeckSection
 } from "@/components/discover/empty-deck";
@@ -31,7 +32,10 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportLevelBadge } from "@/components/ui/sport-level-badge";
 
+import { NearbyDistance, NearbyNotice, type NearbyContext } from "@/components/discover/nearby-notice";
+
 type DiscoverUser = {
+  nearby?: NearbyContext | null;
   id: string;
   name: string | null;
   age: number | null;
@@ -135,6 +139,7 @@ export function SwipeDeck({
 
   return (
     <div className="space-y-3">
+      {activeUser?.nearby ? <NearbyNotice nearby={activeUser.nearby} /> : null}
       <div className="flex items-center justify-between gap-3 px-1">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">{t("discover.swipe.title")}</div>
@@ -215,9 +220,9 @@ export function SwipeDeck({
                     </div>
                     <Avatar src={user.avatarUrl} alt={user.name ?? t("discover.common.player")} size="lg" className="ring-4 ring-white/15" />
                   </div>
-                  <div className="rounded-[24px] bg-white/14 px-3 py-2 text-right backdrop-blur">
+                  <div className="max-w-[55%] rounded-[24px] bg-white/14 px-3 py-2 text-right backdrop-blur">
                     <div className="text-xs uppercase tracking-[0.2em] text-white/65">{t("discover.swipe.nearby")}</div>
-                    <div className="mt-1 text-sm font-bold">{user.distanceLabel ? translateDiscoverDistanceLabel(locale, user.distanceLabel) : "—"}</div>
+                    <div className="mt-1 text-sm font-bold">{user.nearby ? <NearbyDistance nearby={user.nearby} /> : user.distanceLabel ? translateDiscoverDistanceLabel(locale, user.distanceLabel) : "—"}</div>
                     <div className="mt-1 text-xs text-white/70">{user.districtLabel ?? t("discover.swipe.districtUnknown")}</div>
                   </div>
                 </div>
@@ -304,6 +309,8 @@ export function SwipeDeck({
           {busy ? t("discover.respond.sending") : t("discover.swipe.play")}
         </Button>
       </div>
+
+      {initialUsers.some((user) => user.nearby) && clubSections.length > 0 ? <NearbyClubSections sections={clubSections} /> : null}
 
       {matchId && matchName ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 px-4 pb-6">

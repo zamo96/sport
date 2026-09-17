@@ -34,8 +34,8 @@ export async function GET() {
         }
       },
       include: {
-        user1: true,
-        user2: true,
+        user1: { include: { location: { include: { serviceArea: true } } } },
+        user2: { include: { location: { include: { serviceArea: true } } } },
         messages: {
           include: chatMessageAttachmentsInclude,
           where: {
@@ -122,8 +122,8 @@ export async function POST(request: NextRequest) {
       return tx.match.findUnique({
         where: { id: ensured.id },
         include: {
-          user1: true,
-          user2: true,
+          user1: { include: { location: { include: { serviceArea: true } } } },
+          user2: { include: { location: { include: { serviceArea: true } } } },
           messages: {
             include: chatMessageAttachmentsInclude,
             where: {

@@ -9,7 +9,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/client-api";
 import {
   buildGuestAuthHref,
-  guestDraftHasProfileBasics,
+  guestDraftCanCompleteOnboarding,
   loadGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
@@ -24,7 +24,12 @@ import { Panel } from "@/components/ui/panel";
 import { useLocale } from "@/components/i18n/locale-provider";
 import { getDiscoverFormatLabel, translateDiscover } from "@/lib/i18n/web/discover";
 
+import type { NearbyContext } from "@/components/discover/nearby-notice";
+import type { EmptyDeckSection } from "@/components/discover/empty-deck";
+import { getAuthSportLabel } from "@/lib/i18n/web/auth";
+
 type GuestDiscoverUser = {
+  nearby?: NearbyContext | null;
   id: string;
   name: string | null;
   age: number | null;
@@ -72,6 +77,10 @@ export function GuestDiscoverScreen() {
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<GuestOnboardingDraft | null>(null);
   const [users, setUsers] = useState<GuestDiscoverUser[]>([]);
+  const [clubSections, setClubSections] = useState<EmptyDeckSection[]>([]);
+  const [clubRequestUrl, setClubRequestUrl] = useState<string | null>(null);
+  const [clubLoadFailed, setClubLoadFailed] = useState(false);
+  const [clubRetry, setClubRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { locale } = useLocale();
@@ -89,7 +98,7 @@ export function GuestDiscoverScreen() {
   useEffect(() => {
     const savedDraft = loadGuestOnboardingDraft();
 
-    if (!savedDraft || !guestDraftHasProfileBasics(savedDraft)) {
+    if (!savedDraft || !guestDraftCanCompleteOnboarding(savedDraft)) {
       router.replace("/auth");
       return;
     }
@@ -115,6 +124,7 @@ export function GuestDiscoverScreen() {
     async function loadUsers() {
       setLoading(true);
       setError(null);
+      setClubRequestUrl(null);
 
       try {
         const filters = Object.fromEntries(searchParams.entries());
@@ -128,6 +138,19 @@ export function GuestDiscoverScreen() {
 
         if (!cancelled) {
           setUsers(data.users);
+          setClubSections([]);
+          setLoading(false);
+          if (currentView === "swipe" && (data.users.length === 0 || data.users.some((user) => user.nearby))) {
+            const selectedCity = searchParams.get("city") || draft!.city || "";
+            const nearbyQuery = new URLSearchParams({ city: selectedCity });
+            const selectedPlaceId = searchParams.get("locationPlaceId") || (selectedCity === draft!.city ? draft!.locationPlaceId : null);
+            if (selectedPlaceId) nearbyQuery.set("locationPlaceId", selectedPlaceId);
+            const selectedSports = searchParams.get("sport") || normalizeSports(draft!.preferredSports).join(",");
+            if (selectedSports) nearbyQuery.set("sport", selectedSports);
+            const selectedRadius = searchParams.get("distanceKm");
+            if (selectedRadius) nearbyQuery.set("maxDistanceKm", selectedRadius);
+            setClubRequestUrl(`/discover/empty-state?${nearbyQuery}`);
+          }
         }
       } catch (requestError) {
         if (!cancelled) {
@@ -145,7 +168,27 @@ export function GuestDiscoverScreen() {
     return () => {
       cancelled = true;
     };
-  }, [draft, locale, searchParams]);
+  }, [currentView, draft, locale, searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setClubSections([]);
+    setClubLoadFailed(false);
+    if (!clubRequestUrl) return;
+
+    async function loadClubs() {
+      try {
+        const empty = await apiFetch<{ sections: EmptyDeckSection[] }>(clubRequestUrl!);
+        if (!cancelled) setClubSections(empty.sections.map((section) => ({
+          ...section, sportLabel: getAuthSportLabel(locale, section.sport as Sport)
+        })));
+      } catch {
+        if (!cancelled) setClubLoadFailed(true);
+      }
+    }
+    void loadClubs();
+    return () => { cancelled = true; };
+  }, [clubRequestUrl, clubRetry, locale]);
 
   const profileSports = useMemo(() => normalizeSports(draft?.preferredSports ?? []), [draft]);
   const userSportLevels = useMemo(
@@ -200,7 +243,11 @@ export function GuestDiscoverScreen() {
           </>
         ) : (
           <>
-            <SwipeDeck initialUsers={users} profileSports={profileSports as Sport[]} authRequiredHref={authHref} />
+            <SwipeDeck initialUsers={users} profileSports={profileSports as Sport[]} authRequiredHref={authHref} city={searchParams.get("city") || draft?.city} clubSections={clubSections} />
+            {clubLoadFailed ? <Panel className="space-y-2 text-sm">
+              <p role="status">{t("discover.nearby.clubsError")}</p>
+              <button type="button" className="font-semibold text-court underline" onClick={() => setClubRetry((value) => value + 1)}>{t("discover.nearby.retry")}</button>
+            </Panel> : null}
             <FiltersBar profileSports={profileSports} />
           </>
         )}

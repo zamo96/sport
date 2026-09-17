@@ -1,7 +1,9 @@
-import { CourtStatus, GameSearchResponseStatus, GameSearchStatus } from "@prisma/client";
+import { CourtStatus, GameSearchResponseStatus, GameSearchStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceKm } from "@/lib/geo";
+import { selectNearby, validCoordinates, type NearbyMetadata } from "@/lib/nearby";
+import { resolveNearbyOrigin } from "@/server/nearby-location";
 import {
   buildDiscoverExplainabilityReasons,
   type CandidateUser,
@@ -128,6 +130,7 @@ export async function getIncomingLikePlayers(userId: string, filters: DiscoverFi
     include: {
       fromUser: {
         include: {
+          location: { include: { serviceArea: true } },
           swipesReceived: {
             where: {
               fromUserId: userId
@@ -351,55 +354,20 @@ export async function getActiveSearchesCount(userId: string) {
   });
 }
 
+/**
+ * Счётчик обязан совпадать со списком: раньше он фильтровал только по
+ * активности аккаунта и блокировкам, а `getIncomingLikePlayers` дополнительно
+ * требует завершённый онбординг, `isVerified` и совпадение по городу и виду
+ * спорта в `scoreCandidate`. Из-за этого бейдж показывал «1 хочет сыграть»,
+ * а вкладка была пустой.
+ *
+ * Единственный способ не разъехаться снова — считать по тому же коду, что
+ * строит список. Это дороже, чем `count`, но выдача и так проходит скоринг на
+ * открытии вкладки, а расхождение бейджа и списка пользователь видит сразу.
+ */
 export async function getIncomingLikesCount(userId: string) {
-  const incomingLikes = await prisma.swipe.findMany({
-    where: {
-      toUserId: userId,
-      action: {
-        in: ["like", "superlike"]
-      },
-      fromUser: {
-        accountStatus: "active"
-      }
-    },
-    select: {
-      fromUserId: true,
-      fromUser: {
-        select: {
-          blockedUsers: {
-            where: {
-              blockedUserId: userId
-            },
-            select: { id: true }
-          },
-          blockingUsers: {
-            where: {
-              blockerUserId: userId
-            },
-            select: { id: true }
-          }
-        }
-      }
-    }
-  });
-
-  const outgoing = await prisma.swipe.findMany({
-    where: {
-      fromUserId: userId
-    },
-    select: {
-      toUserId: true
-    }
-  });
-
-  const respondedIds = new Set(outgoing.map((swipe) => swipe.toUserId));
-
-  return incomingLikes.filter(
-    (like) =>
-      !respondedIds.has(like.fromUserId) &&
-      like.fromUser.blockedUsers.length === 0 &&
-      like.fromUser.blockingUsers.length === 0
-  ).length;
+  const players = await getIncomingLikePlayers(userId);
+  return players.length;
 }
 
 export async function getHotNotificationsCount(userId: string) {
@@ -1116,6 +1084,7 @@ export type CourtsFilters = {
   district?: string;
   maxDistanceKm?: number;
   city?: string;
+  locationPlaceId?: string;
 };
 
 export async function getCourtsForUser(
@@ -1142,10 +1111,13 @@ export async function getCourtsForUser(
       })
     : [];
   const memberCourtIds = new Set(memberships.map((membership) => membership.courtId));
+  const origin = await resolveNearbyOrigin(user, filters.city, filters.locationPlaceId);
+  const selectedCity = (filters.locationPlaceId ? origin?.city : filters.city ?? user?.city) ?? origin?.city;
+  if (!selectedCity || (filters.locationPlaceId && !origin)) return [];
 
-  const courts = await prisma.court.findMany({
+  const courtQuery = Prisma.validator<Prisma.CourtFindManyArgs>()({
     where: {
-      city: filters.city,
+      city: selectedCity ?? undefined,
       status: CourtStatus.active,
       ...(filters.district ? { district: filters.district } : {}),
       ...(filters.q
@@ -1206,15 +1178,13 @@ export async function getCourtsForUser(
         }
       },
       members: {
-        ...(user
-          ? {
-              where: {
-                userId: {
-                  not: user.id
-                }
-              }
-            }
-          : {}),
+        where: {
+          ...(user ? { userId: { not: user.id } } : {}),
+          user: {
+            accountStatus: "active", isVerified: true, onboardingCompleted: true,
+            ...(user ? visibleToUserPairFilter(user.id) : {})
+          }
+        },
         include: {
           user: true
         },
@@ -1231,18 +1201,25 @@ export async function getCourtsForUser(
     },
     orderBy: [{ rating: "desc" }, { name: "asc" }]
   });
-
-  const filteredCourts = courts
-    .map((court) => ({
+  const courts = await prisma.court.findMany(courtQuery);
+  const measureCourts = (rows: typeof courts, nearby = false) => rows.map((court) => {
+    const viewerCoordinates = !nearby && (!filters.locationPlaceId || filters.locationPlaceId === user?.locationPlaceId) &&
+      (!filters.city || filters.city === user?.city) &&
+      user?.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : origin?.coordinates;
+    const coordinates = { lat: court.locationLat, lng: court.locationLng };
+    return {
       ...court,
       isMember: memberCourtIds.has(court.id),
-      distanceKm: haversineDistanceKm(
-        user && user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
-        { lat: court.locationLat, lng: court.locationLng }
-      )
-    }))
+      distanceKm: validCoordinates(viewerCoordinates) && validCoordinates(coordinates)
+        ? haversineDistanceKm(viewerCoordinates, coordinates) : null,
+      nearby: undefined as NearbyMetadata | undefined
+    };
+  });
+
+  let filteredCourts = measureCourts(courts)
     .filter((court) =>
       courtSupportsSport(court.supportedSports, filters.sport) &&
+      (!origin?.locationPlaceId || (court.distanceKm != null && court.distanceKm <= 200)) &&
       (filters.maxDistanceKm && court.distanceKm != null
         ? court.distanceKm <= filters.maxDistanceKm
         : true
@@ -1266,7 +1243,22 @@ export async function getCourtsForUser(
       return (second.rating ?? 0) - (first.rating ?? 0);
     });
 
-  const activeSearchSummaries = await getCourtActiveSearchSummaries(filteredCourts.map((court) => court.id));
+  if (filteredCourts.length === 0 && origin) {
+    // Latitude bounds reduce the query without breaking antimeridian/polar cases;
+    // the exact great-circle cap is applied before any result limit.
+    const nearbyCourts = await prisma.court.findMany({
+      ...courtQuery,
+      where: {
+        ...courtQuery.where, city: undefined, district: undefined,
+        locationLat: { gte: Math.max(-90, origin.coordinates.lat - 1.81), lte: Math.min(90, origin.coordinates.lat + 1.81) }
+      }
+    });
+    filteredCourts = selectNearby(measureCourts(nearbyCourts, true)
+      .filter((court) => courtSupportsSport(court.supportedSports, filters.sport)), origin.city, 6,
+      filters.maxDistanceKm, (left, right) => (right.rating ?? 0) - (left.rating ?? 0));
+  }
+
+  const activeSearchSummaries = await getCourtActiveSearchSummaries(filteredCourts.map((court) => court.id), user?.id);
 
   return filteredCourts.map((court) => ({
     ...court,
@@ -1288,7 +1280,7 @@ export function emptyCourtActiveSearchSummary(): CourtActiveSearchSummary {
   };
 }
 
-export async function getCourtActiveSearchSummaries(courtIds: string[]) {
+export async function getCourtActiveSearchSummaries(courtIds: string[], viewerId?: string) {
   const uniqueCourtIds = Array.from(new Set(courtIds)).filter(Boolean);
   const summaries = new Map<string, CourtActiveSearchSummary>();
 
@@ -1303,6 +1295,8 @@ export async function getCourtActiveSearchSummaries(courtIds: string[]) {
   const searches = await prisma.gameSearch.findMany({
     where: {
       isActive: true,
+      createdByUser: { accountStatus: "active", isVerified: true, onboardingCompleted: true,
+        ...(viewerId ? visibleToUserPairFilter(viewerId) : {}) },
       status: {
         in: [GameSearchStatus.active, GameSearchStatus.in_review]
       },
@@ -1323,7 +1317,9 @@ export async function getCourtActiveSearchSummaries(courtIds: string[]) {
       createdByUser: true,
       responses: {
         where: {
-          status: GameSearchResponseStatus.approved
+          status: GameSearchResponseStatus.approved,
+          responderUser: { accountStatus: "active", isVerified: true, onboardingCompleted: true,
+            ...(viewerId ? visibleToUserPairFilter(viewerId) : {}) }
         },
         include: {
           responderUser: true
@@ -1410,6 +1406,7 @@ function getDiscoverCandidatesFromUsers(
     age: number | null;
     gender: import("@prisma/client").Gender | null;
     city: string | null;
+    showOnMap?: boolean;
     locationPlaceId?: string | null;
     bio: string | null;
     avatarUrl: string | null;
@@ -1468,51 +1465,27 @@ function getDiscoverCandidatesFromUsers(
 const EMPTY_DECK_COURTS_PER_SPORT = 6;
 const EMPTY_DECK_MAX_SPORTS = 3;
 
-/**
- * Клубы для экрана, где закончились карточки игроков. Сгруппированы по видам
- * спорта из анкеты, внутри ряда — по «живости».
- *
- * Порядок именно такой, а не по расстоянию: экран появился из-за нехватки
- * людей, поэтому мёртвый корт в 800 метрах здесь бесполезнее живого в
- * четырёх километрах. Расстояние решает только между одинаково живыми.
- */
-export async function getEmptyDeckClubSections(userId: string) {
-  const viewer = await prisma.user.findUnique({
+/** Local clubs first; nearby clubs use the same bounded geography as players. */
+export async function getEmptyDeckClubSections(userId?: string | null,
+  filters: Omit<CourtsFilters, "sport"> & { sport?: CourtsFilters["sport"] | NonNullable<CourtsFilters["sport"]>[]; distanceKm?: number } = {}) {
+  const viewer = userId ? await prisma.user.findUnique({
     where: { id: userId },
     select: { preferredSports: true, city: true }
-  });
-
-  if (!viewer) {
-    return [];
-  }
-
-  const sports = normalizeSports(viewer.preferredSports).slice(0, EMPTY_DECK_MAX_SPORTS);
-
-  if (sports.length === 0) {
-    return [];
-  }
-
-  const courts = await getCourtsForUser(userId);
-
-  return sports
-    .map((sport) => {
-      const forSport = courts.filter((court) => {
-        const supported = Array.isArray(court.supportedSports)
-          ? court.supportedSports.filter((value): value is string => typeof value === "string")
-          : [];
-        // Клуб без списка видов спорта считаем универсальным: так он был виден
-        // и раньше, скрывать его из-за незаполненного поля нечестно.
-        return supported.length === 0 || supported.includes(sport);
-      });
-
-      return {
-        sport,
-        total: forSport.length,
-        courts: [...forSport].sort(compareByLiveliness).slice(0, EMPTY_DECK_COURTS_PER_SPORT)
-      };
-    })
-    // Вид спорта без клубов пропускаем молча: пустой ряд хуже отсутствующего.
-    .filter((section) => section.courts.length > 0);
+  }) : null;
+  if (userId && !viewer) return [];
+  const sports = (Array.isArray(filters.sport) && filters.sport.length > 0 ? filters.sport :
+    filters.sport && !Array.isArray(filters.sport) ? [filters.sport] : normalizeSports(viewer?.preferredSports))
+    .slice(0, EMPTY_DECK_MAX_SPORTS);
+  const sections = await Promise.all(sports.map(async (sport) => {
+    const courts = await getCourtsForUser(userId, { ...filters, sport,
+      maxDistanceKm: filters.maxDistanceKm ?? filters.distanceKm, city: filters.city ?? viewer?.city ?? undefined });
+    return {
+      sport,
+      total: courts.length,
+      courts: (courts[0]?.nearby ? courts : [...courts].sort(compareByLiveliness)).slice(0, EMPTY_DECK_COURTS_PER_SPORT)
+    };
+  }));
+  return sections.filter((section) => section.courts.length > 0);
 }
 
 type LivelinessInput = {

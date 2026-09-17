@@ -5,9 +5,9 @@ export const courtsMessages = defineWebMessages(
   {
     "courts.page.eyebrow": "Sports venues",
     "courts.page.title": "Choose a venue before you start chatting.",
-    "courts.page.subtitle": "Browse our Saint Petersburg sports venue directory. Search suggests clubs and districts as you type.",
+    "courts.page.subtitle": "Browse sports venues in your selected city and nearby. Search suggests clubs and districts as you type.",
     "courts.browser.eyebrow": "Sports venues",
-    "courts.browser.description": "Our directory of clubs and venues in Saint Petersburg. The map is ready right away, and search suggests options as you type.",
+    "courts.browser.description": "Clubs and venues for your selected city. The map is ready right away, and search suggests options as you type.",
     "courts.browser.found": "Found: {count}",
     "courts.browser.radius": "Radius",
     "courts.search.placeholder": "Search by club, district, metro station, or sport",
@@ -50,9 +50,9 @@ export const courtsMessages = defineWebMessages(
   {
     "courts.page.eyebrow": "Спортивные центры",
     "courts.page.title": "Выбери место до начала переписки.",
-    "courts.page.subtitle": "Показываем свою базу спортивных центров Санкт-Петербурга. Поиск подсказывает клубы и районы сразу при вводе.",
+    "courts.page.subtitle": "Спортивные центры в выбранном городе и поблизости. Поиск подсказывает клубы и районы сразу при вводе.",
     "courts.browser.eyebrow": "Спортивные центры",
-    "courts.browser.description": "Собственная база клубов и площадок в Санкт-Петербурге. Карта видна сразу, а поиск подсказывает варианты по мере ввода.",
+    "courts.browser.description": "Клубы и площадки для выбранного города. Карта видна сразу, а поиск подсказывает варианты по мере ввода.",
     "courts.browser.found": "Найдено: {count}",
     "courts.browser.radius": "Радиус",
     "courts.search.placeholder": "Клуб, район, метро или вид спорта",

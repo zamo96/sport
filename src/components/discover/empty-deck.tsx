@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, MapPin } from "lucide-react";
 
+import { NearbyDistance, NearbyNotice, type NearbyContext } from "@/components/discover/nearby-notice";
 import { useLocale } from "@/components/i18n/locale-provider";
 
 export type EmptyDeckSearcher = {
@@ -13,6 +14,8 @@ export type EmptyDeckSearcher = {
 };
 
 export type EmptyDeckCourt = {
+  city?: string | null;
+  nearby?: NearbyContext | null;
   id: string;
   name: string;
   distanceLabel: string;
@@ -56,7 +59,7 @@ export function EmptyDeck({
       <section className="overflow-hidden rounded-[22px] bg-white/90 shadow-card">
         <div className="p-4">
           <h3 className="text-lg font-bold text-ink">
-            {isFirstInCity ? t("discover.empty.firstHere.title") : t("discover.empty.seenAll.title")}
+            {isFirstInCity ? t("discover.nearby.empty") : t("discover.empty.seenAll.title")}
           </h3>
           <p className="mt-1 text-sm leading-6 text-ink/65">
             {isFirstInCity
@@ -67,11 +70,17 @@ export function EmptyDeck({
         {invite ? <InviteStrip invite={invite} city={cityLabel} /> : null}
       </section>
 
-      {sections.map((section, index) => (
-        <ClubRow key={section.sport} section={section} driftSeconds={22 + index * 4} />
-      ))}
+      <NearbyClubSections sections={sections} />
     </div>
   );
+}
+
+export function NearbyClubSections({ sections }: { sections: EmptyDeckSection[] }) {
+  const nearby = sections.flatMap((section) => section.courts).find((court) => court.nearby)?.nearby;
+  return <div className="space-y-3">
+    {nearby ? <NearbyNotice nearby={nearby} clubs /> : null}
+    {sections.map((section, index) => <ClubRow key={section.sport} section={section} driftSeconds={22 + index * 4} />)}
+  </div>;
 }
 
 function InviteStrip({ invite, city }: { invite: EmptyDeckInvite; city: string }) {
@@ -132,6 +141,8 @@ function InviteStrip({ invite, city }: { invite: EmptyDeckInvite; city: string }
 function ClubRow({ section, driftSeconds }: { section: EmptyDeckSection; driftSeconds: number }) {
   const { t } = useLocale();
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const originCity = section.courts.find((court) => court.nearby)?.nearby?.originCity ?? section.courts[0]?.city;
+  const courtsHref = `/play/courts?sport=${section.sport}${originCity ? `&city=${encodeURIComponent(originCity)}` : ""}`;
 
   useEffect(() => {
     const track = trackRef.current;
@@ -201,7 +212,7 @@ function ClubRow({ section, driftSeconds }: { section: EmptyDeckSection; driftSe
     <section className="space-y-2">
       <div className="flex items-baseline justify-between px-1">
         <h4 className="text-sm font-bold text-ink">{section.sportLabel}</h4>
-        <Link href={`/play/courts?sport=${section.sport}`} className="text-xs font-semibold text-court hover:underline">
+        <Link href={courtsHref} className="text-xs font-semibold text-court hover:underline">
           {t("discover.empty.sportAll", { count: section.total })}
         </Link>
       </div>
@@ -210,7 +221,7 @@ function ClubRow({ section, driftSeconds }: { section: EmptyDeckSection; driftSe
           <ClubTile key={court.id} court={court} />
         ))}
         <Link
-          href={`/play/courts?sport=${section.sport}`}
+          href={courtsHref}
           className="flex w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-[16px] border border-dashed border-line bg-white/55 text-court transition hover:bg-white"
         >
           <ArrowRight className="h-4 w-4" />
@@ -234,7 +245,7 @@ function ClubTile({ court }: { court: EmptyDeckCourt }) {
 
   return (
     <Link
-      href={`/play/courts?focus=${court.id}`}
+      href={`/play/courts?q=${encodeURIComponent(court.name)}${court.city ? `&city=${encodeURIComponent(court.city)}` : ""}`}
       className="flex w-[168px] shrink-0 flex-col gap-1.5 rounded-[16px] bg-white p-2.5 shadow-card transition hover:-translate-y-0.5"
     >
       <span className="flex items-center gap-2">
@@ -243,7 +254,8 @@ function ClubTile({ court }: { court: EmptyDeckCourt }) {
         </span>
         <span className="min-w-0">
           <span className="block truncate text-xs font-semibold text-ink">{court.name}</span>
-          <span className="block text-[10px] tabular-nums text-ink/60">{court.distanceLabel}</span>
+          {court.city ? <span className="block text-[10px] text-ink/60">{court.city}</span> : null}
+          <span className="block text-[10px] tabular-nums text-ink/60">{court.nearby ? <NearbyDistance nearby={court.nearby} /> : court.distanceLabel}</span>
         </span>
       </span>
 

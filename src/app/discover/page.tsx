@@ -95,6 +95,7 @@ export default async function DiscoverPage({
   const swipeDeckKey = JSON.stringify({
     view: effectiveFilters.view ?? "swipe",
     city: effectiveFilters.city ?? null,
+    locationPlaceId: effectiveFilters.locationPlaceId ?? null,
     gender: effectiveFilters.gender ?? [],
     sport: effectiveFilters.sport ?? [],
     format: effectiveFilters.format ?? [],
@@ -122,9 +123,9 @@ export default async function DiscoverPage({
   ]);
   // Клубы и приглашение нужны только на пустом экране — не тянем их на каждый
   // заход в поиск.
-  const needsEmptyState = candidates.length < 3;
+  const needsEmptyState = candidates.length < 3 || candidates.some((candidate) => candidate.nearby);
   const [clubSectionsRaw, inviteSummary] = needsEmptyState
-    ? await Promise.all([getEmptyDeckClubSections(user.id), getInviteSummary(user.id)])
+    ? await Promise.all([getEmptyDeckClubSections(user.id, effectiveFilters), getInviteSummary(user.id)])
     : [[], null];
   const clubSections = clubSectionsRaw.map((section) => ({
     sport: section.sport,
@@ -135,6 +136,8 @@ export default async function DiscoverPage({
       return {
         id: court.id,
         name: court.name,
+        city: court.city,
+        nearby: preview.nearby,
         distanceLabel: preview.distanceLabel,
         activeSearchesCount: preview.activeSearchesCount,
         memberCount: preview.memberCount,
@@ -282,6 +285,7 @@ export default async function DiscoverPage({
                   preferredSurface: candidate.preferredSurface,
                   availableDays: candidate.availableDays,
                   availableTimeRanges: candidate.availableTimeRanges,
+                  nearby: preview.nearby,
                   distanceLabel: preview.distanceLabel,
                   score: candidate.score,
                   explainabilityReasons: preview.explainabilityReasons
@@ -343,6 +347,7 @@ export default async function DiscoverPage({
                   preferredSports: candidate.preferredSports,
                   sportLevels: candidate.sportLevels,
                   preferredPlayFormat: candidate.preferredPlayFormat,
+                  nearby: preview.nearby,
                   distanceLabel: preview.distanceLabel,
                   score: candidate.score,
                   availableDays: candidate.availableDays,
@@ -391,7 +396,7 @@ export default async function DiscoverPage({
             <SwipeDeck
               key={swipeDeckKey}
               profileSports={profileSports}
-              city={user.city}
+              city={effectiveFilters.city ?? user.city}
               clubSections={clubSections}
               invite={emptyStateInvite}
               initialUsers={candidates.map((candidate) => {
@@ -412,6 +417,7 @@ export default async function DiscoverPage({
                   preferredSurface: candidate.preferredSurface,
                   availableDays: candidate.availableDays,
                   availableTimeRanges: candidate.availableTimeRanges,
+                  nearby: preview.nearby,
                   distanceLabel: preview.distanceLabel,
                   score: candidate.score,
                   explainabilityReasons: preview.explainabilityReasons

@@ -5,6 +5,13 @@ import { getAuthSportLabel } from "@/lib/i18n/web/auth";
 
 export const discoverMessages = defineWebMessages(
   {
+    "discover.nearby.clubsError": "Nearby venues could not be loaded.",
+    "discover.nearby.retry": "Try again",
+    "discover.nearby.title": "Nearby options · {city}",
+    "discover.nearby.players": "No players match here yet. Showing nearby options within {radius} km, with the same preferences.",
+    "discover.nearby.clubs": "Venues within {radius} km",
+    "discover.nearby.distance": "{distance} in a straight line from {city}",
+    "discover.nearby.empty": "No players match your current preferences yet.",
     "discover.common.player": "Player",
     "discover.common.city": "City",
     "discover.common.unspecifiedCity": "City not specified",
@@ -146,7 +153,7 @@ export const discoverMessages = defineWebMessages(
     "discover.empty.allCourtsTile": "All courts",
     "discover.empty.seenAll.text": "There are {count} profiles in {city} right now, and you went through all of them. We will write when new ones show up.",
     "discover.empty.firstHere.title": "You are the first one here",
-    "discover.empty.firstHere.text": "No other players in {city} yet. Invite the people you already play with.",
+    "discover.empty.firstHere.text": "No matching players to show in {city} yet. You can invite the people you already play with.",
     "discover.empty.courtsTitle": "Courts nearby",
     "discover.empty.allCourts": "All courts",
     "discover.empty.invite.title": "Invite whoever you already play with",
@@ -222,6 +229,13 @@ export const discoverMessages = defineWebMessages(
     "discover.label.hot.day_after_tomorrow": "Day after tomorrow"
   },
   {
+    "discover.nearby.clubsError": "Не удалось загрузить клубы поблизости.",
+    "discover.nearby.retry": "Попробовать снова",
+    "discover.nearby.title": "Варианты рядом · {city}",
+    "discover.nearby.players": "По выбранным условиям игроков не найдено. Показываем варианты в радиусе {radius} км с теми же предпочтениями.",
+    "discover.nearby.clubs": "Клубы в радиусе {radius} км",
+    "discover.nearby.distance": "{distance} по прямой · точка отсчёта: {city}",
+    "discover.nearby.empty": "По текущим условиям игроков пока не найдено.",
     "discover.common.player": "Игрок",
     "discover.common.city": "Город",
     "discover.common.unspecifiedCity": "Город не указан",
@@ -363,7 +377,7 @@ export const discoverMessages = defineWebMessages(
     "discover.empty.allCourtsTile": "Все корты",
     "discover.empty.seenAll.text": "В городе {city} сейчас {count} анкет, и вы пролистали все. Появятся новые — напишем.",
     "discover.empty.firstHere.title": "Здесь вы первый",
-    "discover.empty.firstHere.text": "В городе {city} пока нет других игроков. Позовите тех, с кем уже играете.",
+    "discover.empty.firstHere.text": "В городе {city} пока нет подходящих игроков для показа. Можно позвать тех, с кем уже играете.",
     "discover.empty.courtsTitle": "Корты рядом",
     "discover.empty.allCourts": "Все корты",
     "discover.empty.invite.title": "Позовите, с кем уже играете",

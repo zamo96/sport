@@ -5,7 +5,6 @@ import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionTitle } from "@/components/ui/section-title";
 import { CourtsBrowser } from "@/components/courts/courts-browser";
-import { DEFAULT_CITY } from "@/lib/constants";
 import { translateCourts } from "@/lib/i18n/web/courts";
 import { getWebRequestLocale } from "@/lib/i18n/web/request-locale";
 import { normalizeSports } from "@/lib/sport-levels";
@@ -32,7 +31,9 @@ export default async function CourtsPage({
     )
   );
   const courts = await getCourtsForUser(user.id, {
-    city: DEFAULT_CITY
+    sport: query.sport,
+    locationPlaceId: query.locationPlaceId,
+    city: query.city ?? user.city ?? undefined
   });
 
   return (

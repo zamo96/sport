@@ -13,6 +13,9 @@ import {
 import type { GuestOnboardingDraft } from "@/lib/guest-draft";
 import { getLocationPlace } from "@/server/locations";
 import { recordDiscoverImpressions, rerankDiscoverCandidates } from "@/server/recommendations";
+import { scoreCandidate } from "@/lib/scoring";
+import { selectNearby, type NearbyMetadata, validCoordinates } from "@/lib/nearby";
+import { resolveNearbyOrigin } from "@/server/nearby-location";
 
 const candidateBaseSelect = {
   id: true,
@@ -24,6 +27,7 @@ const candidateBaseSelect = {
   location: { include: { serviceArea: true } },
   district: true,
   preferredDistricts: true,
+  showOnMap: true,
   bio: true,
   avatarUrl: true,
   profilePhotoUrls: true,
@@ -131,7 +135,7 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
           preferredCourt: true,
           regularPair: {
             include: {
-              partnerUser: true,
+              partnerUser: { include: { location: { include: { serviceArea: true } } } },
               preferredCourt: true
             }
           },
@@ -148,7 +152,7 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
                   ]
                 },
                 include: {
-                  responderUser: true
+                  responderUser: { include: { location: { include: { serviceArea: true } } } }
                 }
               }
             : {
@@ -264,11 +268,10 @@ function toCandidateViewer(viewer: CandidateUser) {
 
 async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string | null, filters: DiscoverFilters = {}) {
   const candidates = await fetchCandidatePool(viewerId, filters);
-  const filteredCandidates = filterCandidatesForView(viewer, candidates, filters);
-
-  const viewerProfile = toCandidateViewer(viewer);
-  const scored = scoreCandidates(viewerProfile, filteredCandidates, filters);
+  const { scored, viewerProfile } = await selectDiscoverCandidates(viewer, candidates, filters);
   const ranked = viewerId ? await rerankDiscoverCandidates(viewerId, scored, filters) : scored;
+  if (scored[0]?.nearby) ranked.sort((left, right) => left.distanceKm! - right.distanceKm! ||
+    (right.recommendationScore ?? right.score) - (left.recommendationScore ?? left.score) || left.id.localeCompare(right.id));
   const source = filters.view ?? "discover";
 
   if (viewerId) {
@@ -279,6 +282,37 @@ async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string 
     ...candidate,
     explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
   }));
+}
+
+/** Same eligible result set for presentation and notification counts; no impressions here. */
+async function selectDiscoverCandidates(viewer: CandidateUser, candidates: DiscoverCandidateRecord[], filters: DiscoverFilters) {
+  const isPrimary = filters.view == null || filters.view === "swipe";
+  const origin = isPrimary ? await resolveNearbyOrigin(viewer, filters.city, filters.locationPlaceId) : null;
+  const viewerProfile = toCandidateViewer(viewer);
+  if (isPrimary && (filters.city || filters.locationPlaceId) && origin) {
+    viewerProfile.city = origin.city;
+    viewerProfile.locationPlaceId = origin.locationPlaceId;
+    viewerProfile.homeLat = origin.coordinates.lat;
+    viewerProfile.homeLng = origin.coordinates.lng;
+  }
+  const filtered = filterCandidatesForView(viewerProfile, candidates, filters);
+  type Scored = ReturnType<typeof scoreCandidates<DiscoverCandidateRecord>>[number] & { nearby?: NearbyMetadata; recommendationScore?: number };
+  if (isPrimary && filters.locationPlaceId && !origin) return { scored: [] as Scored[], viewerProfile };
+  const local: Scored[] = scoreCandidates(viewerProfile, filtered, filters);
+  if (local.length || !isPrimary || !origin) return { scored: local, viewerProfile };
+  const nearbyViewer = { ...viewerProfile, homeLat: origin.coordinates.lat, homeLng: origin.coordinates.lng };
+  const measured = filtered.flatMap((candidate) => {
+    const home = candidate.homeLat != null && candidate.homeLng != null
+      ? { lat: candidate.homeLat, lng: candidate.homeLng } : null;
+    const center = candidate.location ? { lat: candidate.location.latitude, lng: candidate.location.longitude } : null;
+    const coordinates = validCoordinates(home) ? home : validCoordinates(center) ? center : null;
+    if (!coordinates) return [];
+    const scored = scoreCandidate(nearbyViewer, { ...candidate, homeLat: coordinates.lat, homeLng: coordinates.lng },
+      { ...filters, distanceKm: undefined }, "nearby");
+    return scored ? [scored] : [];
+  });
+  const nearby: Scored[] = selectNearby(measured, origin.city, 12, filters.distanceKm, (left, right) => right.score - left.score);
+  return { scored: nearby, viewerProfile: nearbyViewer };
 }
 
 /**
@@ -301,8 +335,7 @@ export async function summarizeDiscoverCandidates(
   }
 
   const pool = await fetchCandidatePool(userId, filters);
-  const filtered = filterCandidatesForView(viewer, pool, filters);
-  const scored = scoreCandidates(toCandidateViewer(viewer), filtered, filters);
+  const { scored } = await selectDiscoverCandidates(viewer, pool, filters);
   const newerThan = options.newerThan;
 
   return {

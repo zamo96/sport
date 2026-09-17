@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, Building2, ChevronDown, ChevronUp, MapPinned, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Sport } from "@prisma/client";
 
-import { COURTS_MAP_RADIUS_KM, DEFAULT_CITY, getDistrictLabel, SPORT_OPTIONS } from "@/lib/constants";
+import { COURTS_MAP_RADIUS_KM, getDistrictLabel, SPORT_OPTIONS } from "@/lib/constants";
 import { useLocale } from "@/components/i18n/locale-provider";
 import { normalizeCourtSports } from "@/lib/courts";
 import { getAuthSportLabel } from "@/lib/i18n/web/auth";
@@ -23,7 +24,10 @@ import { Panel } from "@/components/ui/panel";
 import { SportBadge } from "@/components/ui/sport-badge";
 import { SportIcon } from "@/components/ui/sport-icon";
 
+import { NearbyDistance, NearbyNotice, type NearbyContext } from "@/components/discover/nearby-notice";
+
 type Court = {
+  nearby?: NearbyContext | null;
   id: string;
   name: string;
   address: string;
@@ -77,12 +81,23 @@ export function CourtsBrowser({
   initialSport = null
 }: CourtsBrowserProps) {
   const { locale } = useLocale();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useCallback(
     (key: CourtsMessageKey, values?: Parameters<typeof translateCourts>[2]) => translateCourts(locale, key, values),
     [locale]
   );
   const [searchInput, setSearchInput] = useState(initialQuery);
   const [selectedSport, setSelectedSport] = useState<Sport | null>(initialSport ?? null);
+  useEffect(() => { setSelectedSport(initialSport); }, [initialSport]);
+  function selectSport(sport: Sport | null) {
+    setSelectedSport(sport);
+    const params = new URLSearchParams(searchParams.toString());
+    if (sport) params.set("sport", sport);
+    else params.delete("sport");
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+  }
   const [showSuggestions, setShowSuggestions] = useState(Boolean(initialQuery));
   const [mapFocus, setMapFocus] = useState<SearchSuggestion | null>(null);
   const [expandedCourtId, setExpandedCourtId] = useState<string | null>(null);
@@ -246,6 +261,9 @@ export function CourtsBrowser({
   }, [courts, searchInput, selectedSport]);
 
   const courtSections = useMemo(() => {
+    if (filteredCourts.some((court) => court.nearby)) {
+      return [{ letter: "", courts: filteredCourts }];
+    }
     const sections: Array<{ letter: string; courts: Court[] }> = [];
     const sectionByLetter = new Map<string, Court[]>();
     const alphabetizedCourts = [...filteredCourts].sort((left, right) =>
@@ -267,6 +285,7 @@ export function CourtsBrowser({
   }, [filteredCourts, locale]);
 
   const alphabetLetters = courtSections.map((section) => section.letter);
+  const nearby = courts.find((court) => court.nearby)?.nearby;
 
   useEffect(() => {
     function handleScroll() {
@@ -286,7 +305,7 @@ export function CourtsBrowser({
 
   function applySuggestion(suggestion: SearchSuggestion) {
     if (suggestion.type === "sport" && suggestion.sport) {
-      setSelectedSport(suggestion.sport);
+      selectSport(suggestion.sport);
       setSearchInput("");
       setMapFocus(null);
     } else {
@@ -329,6 +348,7 @@ export function CourtsBrowser({
 
   return (
     <div ref={topRef} className="space-y-4">
+      {nearby ? <NearbyNotice nearby={nearby} clubs /> : null}
       <Panel className="space-y-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -344,7 +364,7 @@ export function CourtsBrowser({
           </div>
           <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
             <div className="text-[11px] uppercase tracking-[0.18em] text-court">{t("courts.browser.radius")}</div>
-            <div className="mt-1 font-bold text-ink">{formatCourtsRadius(locale, COURTS_MAP_RADIUS_KM)}</div>
+            <div className="mt-1 font-bold text-ink">{formatCourtsRadius(locale, nearby?.radiusKm ?? COURTS_MAP_RADIUS_KM)}</div>
           </div>
         </div>
 
@@ -414,7 +434,7 @@ export function CourtsBrowser({
                 key={sport}
                 type="button"
                 onClick={() => {
-                  setSelectedSport(active ? null : sport);
+                  selectSport(active ? null : sport);
                   setMapFocus(null);
                 }}
                 aria-pressed={active}
@@ -436,8 +456,8 @@ export function CourtsBrowser({
         <div ref={mapRef} className="scroll-mt-4">
           <CourtsMap
             courts={filteredCourts}
-            district={userDistrict}
-            radiusKm={COURTS_MAP_RADIUS_KM}
+            district={nearby ? null : userDistrict}
+            radiusKm={nearby?.radiusKm ?? COURTS_MAP_RADIUS_KM}
             focus={
               mapFocus?.type === "metro" && mapFocus.center
                 ? {
@@ -497,9 +517,9 @@ export function CourtsBrowser({
 
         {courtSections.map((section) => (
           <div key={section.letter} id={`court-section-${encodeURIComponent(section.letter)}`} className="scroll-mt-4 space-y-3">
-            <div className="sticky top-2 z-10 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-white/95 px-3 text-xs font-bold text-court shadow-card">
+            {section.letter ? <div className="sticky top-2 z-10 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-white/95 px-3 text-xs font-bold text-court shadow-card">
               {section.letter}
-            </div>
+            </div> : null}
             {section.courts.map((court) => {
               const expanded = expandedCourtId === court.id;
 
@@ -515,7 +535,7 @@ export function CourtsBrowser({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-                        {getDistrictLabel(court.district) ?? court.district ?? DEFAULT_CITY}
+                        {[court.city, getDistrictLabel(court.district) ?? court.district].filter(Boolean).join(" · ")}
                       </div>
                       <div className="mt-1 text-xl font-bold text-ink">{court.name}</div>
                       <div className="mt-1 text-sm leading-6 text-ink/65">{courtDisplayAddress(court)}</div>
@@ -527,7 +547,7 @@ export function CourtsBrowser({
                     </div>
                     <div className="rounded-[22px] bg-mint px-3 py-2 text-right">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-court">{t("courts.card.distance")}</div>
-                      <div className="mt-1 font-bold text-ink">{formatCourtsDistance(locale, court.distanceKm)}</div>
+                      <div className="mt-1 font-bold text-ink">{court.nearby ? <NearbyDistance nearby={court.nearby} /> : formatCourtsDistance(locale, court.distanceKm)}</div>
                     </div>
                   </div>
 
