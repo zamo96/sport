@@ -460,7 +460,7 @@ final class LiveTennisRepository: TennisRepository {
         return AuthChallenge(message: response.message, debugCode: response.debugCode)
     }
 
-    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
         let response: VerifyEnvelope = try await client.request(
             path: "auth/verify",
             method: "POST",
@@ -470,14 +470,15 @@ final class LiveTennisRepository: TennisRepository {
                 userAgreement: UserAgreementAcceptanceRequest(
                     accepted: userAgreementAccepted,
                     version: userAgreementVersion
-                )
+                ),
+                showOnMap: showOnMap
             )
         )
         client.setSessionToken(response.sessionToken)
         return response.user
     }
 
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
         let response: VerifyEnvelope = try await client.request(
             path: "auth/apple",
             method: "POST",
@@ -489,7 +490,8 @@ final class LiveTennisRepository: TennisRepository {
                 userAgreement: UserAgreementAcceptanceRequest(
                     accepted: userAgreementAccepted,
                     version: userAgreementVersion
-                )
+                ),
+                showOnMap: showOnMap
             )
         )
         client.setSessionToken(response.sessionToken)
@@ -606,19 +608,20 @@ final class LiveTennisRepository: TennisRepository {
         try await client.download(path: path)
     }
 
-    func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
+    func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
         let response: DiscoverEnvelope
         switch view {
         case .likes:
             response = try await client.request(path: "users/discover/likes")
         default:
-            let queryItems = view == .swipe ? [] : [URLQueryItem(name: "view", value: view.rawValue)]
+            var queryItems = view == .swipe ? [] : [URLQueryItem(name: "view", value: view.rawValue)]
+            if view == .swipe, let sport { queryItems.append(URLQueryItem(name: "sport", value: sport.rawValue)) }
             response = try await client.request(path: "users/discover", queryItems: queryItems)
         }
         return response.users
     }
 
-    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser] {
+    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
         let queryView: String
         switch view {
         case .upcoming:
@@ -638,7 +641,7 @@ final class LiveTennisRepository: TennisRepository {
             method: "POST",
             body: GuestDiscoverRequest(
                 draft: draft,
-                filters: GuestDiscoverFilters(view: queryView == "swipe" ? nil : queryView)
+                filters: GuestDiscoverFilters(view: queryView == "swipe" ? nil : queryView, sport: view == .swipe ? sport.map { [$0.rawValue] } : nil)
             )
         )
         return response.users
@@ -688,6 +691,20 @@ final class LiveTennisRepository: TennisRepository {
     func fetchMyGameRequests() async throws -> [MatchGameRequest] {
         let response: GameRequestsEnvelope = try await client.request(path: "game-requests/my")
         return response.gameRequests
+    }
+
+    func acknowledgeChatMessages(scope: ChatReceiptScope, messageIds: [String], status: String) async throws {
+        guard !messageIds.isEmpty else { return }
+        let matchId: String?
+        let searchId: String?
+        switch scope {
+        case .match(let id): matchId = id; searchId = nil
+        case .search(let id): matchId = nil; searchId = id
+        }
+        let _: SuccessEnvelope = try await client.request(
+            path: "activity/chat-receipts", method: "POST",
+            body: ChatReceiptRequest(matchId: matchId, searchId: searchId, messageIds: messageIds, status: status)
+        )
     }
 
     func fetchMessages(matchId: String) async throws -> [ChatMessage] {
@@ -956,11 +973,13 @@ final class LiveTennisRepository: TennisRepository {
         try await client.request(path: "game-searches/\(searchId)/simulate", method: "POST", body: EmptyRequest())
     }
 
-    func fetchCourts(city: String?) async throws -> [Court] {
-        let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let queryItems = normalizedCity?.isEmpty == false
-            ? [URLQueryItem(name: "city", value: normalizedCity)]
-            : []
+    func fetchCourts(city: String?, locationPlaceId: String?, sport: Sport?) async throws -> [Court] {
+        var queryItems: [URLQueryItem] = []
+        if let city, !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "city", value: city))
+        }
+        if let locationPlaceId { queryItems.append(URLQueryItem(name: "locationPlaceId", value: locationPlaceId)) }
+        if let sport { queryItems.append(URLQueryItem(name: "sport", value: sport.rawValue)) }
         let response: CourtsEnvelope = try await client.request(
             path: "courts",
             queryItems: queryItems
@@ -1037,8 +1056,14 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
-    func fetchEmptyDeckContent() async throws -> EmptyDeckContent {
-        try await client.request(path: "discover/empty-state")
+    func fetchEmptyDeckContent(city: String?, locationPlaceId: String?, sports: [Sport]?) async throws -> EmptyDeckContent {
+        var queryItems: [URLQueryItem] = []
+        if let city { queryItems.append(URLQueryItem(name: "city", value: city)) }
+        if let locationPlaceId { queryItems.append(URLQueryItem(name: "locationPlaceId", value: locationPlaceId)) }
+        if let sports, !sports.isEmpty {
+            queryItems.append(URLQueryItem(name: "sport", value: sports.map(\.rawValue).joined(separator: ",")))
+        }
+        return try await client.request(path: "discover/empty-state", queryItems: queryItems)
     }
 
     func fetchInviteSummary() async throws -> InviteSummary {
@@ -1075,6 +1100,7 @@ private struct VerifyRequest: Encodable {
     let email: String
     let code: String
     let userAgreement: UserAgreementAcceptanceRequest
+    let showOnMap: Bool?
 }
 
 private struct AppleAuthRequest: Encodable {
@@ -1083,6 +1109,7 @@ private struct AppleAuthRequest: Encodable {
     let givenName: String?
     let familyName: String?
     let userAgreement: UserAgreementAcceptanceRequest
+    let showOnMap: Bool?
 }
 
 private struct UserAgreementAcceptanceRequest: Encodable {
@@ -1334,6 +1361,7 @@ private struct UpdateProfileRequest: Encodable {
     let availabilityByDay: [String: [String]]
     let searchRadiusKm: Int
     let isLookingForGame: Bool
+    let showOnMap: Bool
     let notificationMatches: Bool
     let notificationMessages: Bool
     let notificationGames: Bool
@@ -1364,6 +1392,7 @@ private struct UpdateProfileRequest: Encodable {
         availabilityByDay = profile.availabilityByDay
         searchRadiusKm = profile.searchRadiusKm
         isLookingForGame = profile.isLookingForGame
+        showOnMap = profile.showOnMap
         notificationMatches = profile.notificationMatches
         notificationMessages = profile.notificationMessages
         notificationGames = profile.notificationGames
@@ -1427,6 +1456,7 @@ private struct GuestDraftPayload: Encodable {
 
 private struct GuestDiscoverFilters: Encodable {
     let view: String?
+    let sport: [String]?
 }
 
 private struct AuthRequestEnvelope: Decodable {
@@ -1650,4 +1680,11 @@ private extension Date {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: self)
     }
+}
+
+private struct ChatReceiptRequest: Encodable {
+    let matchId: String?
+    let searchId: String?
+    let messageIds: [String]
+    let status: String
 }

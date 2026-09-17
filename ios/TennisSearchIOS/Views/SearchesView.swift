@@ -2445,6 +2445,7 @@ struct SearchLobbySheet: View {
     let searchId: String
 
     @State private var lobby: SearchLobbyGameSearch?
+    @State private var lobbyLoadRevision = 0
     @State private var lobbyLoadError: String?
     @State private var courts: [Court] = []
     @State private var messageText = ""
@@ -2466,6 +2467,7 @@ struct SearchLobbySheet: View {
     @State private var simulationMessage: String?
     @State private var lastLobbyPresenceRefresh = Date.distantPast
     @State private var selectedLobbyPlayer: DiscoverUser?
+    @State private var isChatPhotoPickerPresented = false
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var pendingPhotos: [PendingSearchChatPhoto] = []
     @State private var selectedMediaAttachment: ChatMediaAttachment?
@@ -2599,6 +2601,11 @@ struct SearchLobbySheet: View {
                         .padding(.top, 12)
                         .padding(.bottom, 40)
                     }
+                    .chatReceiptViewport(
+                        incomingIDs: (lobby?.messages ?? []).filter { $0.senderUserId != appModel.currentUser?.id }.map(\.id),
+                        isUncovered: !isChatPhotoPickerPresented && !isCourtPickerPresented && !isDatePickerPresented && selectedLobbyPlayer == nil && selectedMediaAttachment == nil,
+                        scope: .search(searchId), repository: appModel.repository
+                    )
                     .scrollDismissesKeyboard(.interactively)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -2799,6 +2806,7 @@ struct SearchLobbySheet: View {
                     ForEach(lobby.messages) { message in
                         searchLobbyBubble(message: message)
                             .id(message.id)
+                            .chatReceiptRow(id: message.id)
                     }
                 }
 
@@ -2828,16 +2836,15 @@ struct SearchLobbySheet: View {
                 }
 
                 HStack(alignment: .bottom, spacing: 10) {
-                    PhotosPicker(
-                        selection: $photoPickerItems,
-                        maxSelectionCount: 4,
-                        matching: .images
-                    ) {
+                    Button {
+                        isChatPhotoPickerPresented = true
+                    } label: {
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 40, height: 50)
                             .foregroundStyle(AppTheme.court)
                     }
+                    .photosPicker(isPresented: $isChatPhotoPickerPresented, selection: $photoPickerItems, maxSelectionCount: 4, matching: .images)
                     .disabled(isSendingMessage)
 
                     FieldShell {
@@ -2913,12 +2920,15 @@ struct SearchLobbySheet: View {
     }
 
     private func loadLobby(showErrors: Bool = true) async {
+        lobbyLoadRevision += 1
+        let revision = lobbyLoadRevision
         if showErrors {
             lobbyLoadError = nil
         }
 
         do {
             let summary = try await appModel.repository.fetchSearchLobby(searchId: searchId)
+            guard revision == lobbyLoadRevision else { return }
             applyLobbySummary(summary)
             lobbyLoadError = nil
         } catch {
@@ -2989,7 +2999,9 @@ struct SearchLobbySheet: View {
     }
 
     private func applyLobbySummary(_ summary: SearchLobbySummary) {
-        lobby = summary.gameSearch
+        var updated = summary.gameSearch
+        updated.messages = mergeChatReceipts(current: lobby?.messages ?? [], fetched: updated.messages)
+        lobby = updated
         proposedCourtId = summary.gameSearch.scheduledCourt?.id ?? summary.gameSearch.preferredCourt?.id ?? ""
         proposedAt = summary.gameSearch.scheduledAt?.parsedISODateValue() ?? summary.gameSearch.hotStartsAt?.parsedISODateValue() ?? proposedAt
         durationMinutes = summary.gameSearch.scheduledDurationMinutes ?? summary.gameSearch.durationMinutes ?? 90
@@ -3127,6 +3139,7 @@ struct SearchLobbySheet: View {
                 text: trimmed,
                 attachmentIds: attachmentIds
             )
+            lobbyLoadRevision += 1 // Do not let an earlier history request remove this sent message.
             lobby = SearchLobbyGameSearch(
                 id: lobby?.id ?? searchId,
                 createdByUserId: lobby?.createdByUserId ?? appModel.currentUser?.id ?? "",
@@ -3151,7 +3164,7 @@ struct SearchLobbySheet: View {
                 scheduledCourt: lobby?.scheduledCourt,
                 activeSlotProposal: lobby?.activeSlotProposal,
                 responses: lobby?.responses ?? [],
-                messages: (lobby?.messages ?? []) + [message]
+                messages: (lobby?.messages ?? []).filter { $0.id != message.id } + [message]
             )
             messageText = ""
             pendingPhotos = []
@@ -3365,9 +3378,12 @@ struct SearchLobbySheet: View {
                         .foregroundStyle(isMine ? .white : AppTheme.ink)
                 }
 
-                Text(message.createdAt.formattedDateTime())
-                    .font(.caption2)
-                    .foregroundStyle(isMine ? .white.opacity(0.72) : AppTheme.ink.opacity(0.42))
+                HStack(spacing: 6) {
+                    Text(message.createdAt.formattedDateTime())
+                        .font(.caption2)
+                        .foregroundStyle(isMine ? .white.opacity(0.72) : AppTheme.ink.opacity(0.42))
+                    if isMine { ChatReceiptLabel(receipt: message.receipt, isGroup: true) }
+                }
             }
             .padding(14)
             .background(

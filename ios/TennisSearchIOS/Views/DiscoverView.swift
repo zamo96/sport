@@ -5,6 +5,106 @@ import UIKit
 import AVFoundation
 import MapKit
 
+// MARK: - Player auto-advance state (Foundation-only; exercised by the regression harness)
+struct PlayerMediaPlaybackClock {
+    private(set) var itemIndex = 0
+    private(set) var elapsed: TimeInterval = 0
+    private(set) var isComplete = false
+    private var anchor: TimeInterval?
+
+    var progress: Double { min(elapsed / 10, 1) }
+
+    mutating func pause() { anchor = nil }
+
+    mutating func tick(now: TimeInterval, itemCount: Int, loops: Bool) {
+        guard !isComplete else { return }
+        guard let previous = anchor else { anchor = now; return }
+        anchor = now
+        elapsed += max(0, now - previous)
+        guard elapsed >= 10 else { return }
+        let count = max(1, min(itemCount, 6))
+        if itemIndex + 1 < count {
+            itemIndex += 1
+            elapsed = 0
+        } else if loops {
+            itemIndex = 0
+            elapsed = 0
+        } else {
+            elapsed = 10
+            isComplete = true
+        }
+    }
+}
+
+struct ViewedPlayerQueue {
+    private(set) var viewedIDs: [String] = []
+
+    func orderedIDs(_ candidates: [String]) -> [String] {
+        let available = Set(candidates)
+        let seen = Set(viewedIDs)
+        return candidates.filter { !seen.contains($0) } + viewedIDs.filter { available.contains($0) }
+    }
+
+    func newestViewedIDs(_ candidates: [String]) -> [String] {
+        let available = Set(candidates)
+        return viewedIDs.reversed().filter { available.contains($0) }
+    }
+
+    mutating func deferPlayer(_ id: String) {
+        remove(id)
+        viewedIDs.append(id)
+    }
+
+    mutating func remove(_ id: String) {
+        viewedIDs.removeAll { $0 == id }
+    }
+}
+
+struct ViewedCardFlight: Equatable {
+    let source: CGRect
+    let destination: CGRect
+
+    init?(source: CGRect, destination: CGRect) {
+        let values = [source.origin.x, source.origin.y, source.size.width, source.size.height,
+                      destination.origin.x, destination.origin.y, destination.size.width, destination.size.height,
+                      source.midX, source.midY, destination.midX, destination.midY,
+                      destination.midX - source.midX, destination.midY - source.midY]
+        guard !source.isInfinite, !destination.isInfinite, values.allSatisfy(\.isFinite),
+              source.size.width > 0, source.size.height > 0,
+              destination.size.width > 0, destination.size.height > 0 else { return nil }
+        let scale = destination.width / source.width
+        guard scale.isFinite, scale > 0, (destination.height / scale).isFinite else { return nil }
+        self.source = source
+        self.destination = destination
+    }
+
+    func sample(at progress: CGFloat) -> ViewedCardFlightSample {
+        let t = min(max(progress.isFinite ? progress : 0, 0), 1)
+        let inverse = 1 - t
+        let delta = CGPoint(x: destination.midX - source.midX, y: destination.midY - source.midY)
+        let scale = 1 + (destination.width / source.width - 1) * t
+        // A restrained curved path; the endpoint is the measured slot, never a guessed offset.
+        let x = 3 * inverse * inverse * t * 24 + 3 * inverse * t * t * (delta.x + 36) + t * t * t * delta.x
+        let y = 3 * inverse * inverse * t * 28 + 3 * inverse * t * t * (delta.y - 72) + t * t * t * delta.y
+        return ViewedCardFlightSample(
+            scale: scale,
+            offset: CGSize(width: x, height: y),
+            maskHeight: source.height + (destination.height / scale - source.height) * t,
+            cornerRadius: 34 + (destination.width * 0.34 / scale - 34) * t,
+            coverBlend: min(max((t - 0.5) / 0.4, 0), 1)
+        )
+    }
+}
+
+struct ViewedCardFlightSample {
+    let scale: CGFloat
+    let offset: CGSize
+    let maskHeight: CGFloat
+    let cornerRadius: CGFloat
+    let coverBlend: CGFloat
+}
+// MARK: - End player auto-advance state
+
 private enum CalendarExportError: LocalizedError {
     case accessDenied
     case calendarUnavailable
@@ -30,8 +130,36 @@ struct DiscoverView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
+    @Environment(\.scenePhase) private var scenePhase
+    @ScaledMetric(relativeTo: .headline) private var headerTabFontSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .caption) private var viewedPlayersTrayHeight: CGFloat = 112
 
     @State private var users: [DiscoverUser] = []
+    @State private var viewedPlayers = ViewedPlayerQueue()
+    @State private var isDiscoverVisible = false
+    @State private var isNotificationsPresented = false
+    @State private var deckFrame: CGRect = .zero
+    @State private var deckViewport: CGRect = .zero
+    @State private var viewedFlightViewport: CGRect = .zero
+    @State private var isCardInteracting = false
+    @State private var autoAdvanceTask: Task<Void, Never>?
+    @State private var autoAdvanceToken: UUID?
+    @State private var isAutoAdvanceExiting = false
+    @State private var isAutoAdvanceFading = false
+    @State private var isViewedArrivalHighlighted = false
+    @State private var viewedArrivalTask: Task<Void, Never>?
+    @State private var viewedFlightEndpoints = ViewedFlightEndpoints()
+    @State private var viewedCardFlight: ViewedCardFlight?
+    @State private var viewedFlightProgress: CGFloat = 0
+    @State private var pendingViewedPlayerID: String?
+    @State private var autoAdvanceReplayID = 0
+    @State private var viewedPlayerScrollRequest = 0
+    @State private var similarPlayersDisplayMode: SimilarPlayersDisplayMode = .cards
+    @State private var selectedSimilarPlayerID: String?
+    @State private var similarPlayersSportFilter: Sport?
+    @State private var isSubmittingSwipe = false
+    @Namespace private var similarPlayersTransition
     @State private var upcomingMatches: [MatchSummary] = []
     @State private var upcomingGameRequests: [MatchGameRequest] = []
     @State private var personalActivities: [PersonalActivity] = []
@@ -52,6 +180,11 @@ struct DiscoverView: View {
     @State private var isLoading = false
     @State private var emptyDeckSections: [EmptyDeckSection] = []
     @State private var inviteSummary: InviteSummary?
+    @State private var isLoadingEmptyDeckContent = false
+    @State private var hasLoadedEmptyDeckContent = false
+    @State private var emptyDeckContentFailed = false
+    @State private var emptyDeckAccountID: String?
+    @State private var emptyDeckRequestID: UUID?
     @State private var matchMessage: String?
     @State private var matchMessageTask: Task<Void, Never>?
     @State private var responseMessage: String?
@@ -67,6 +200,8 @@ struct DiscoverView: View {
     @State private var refreshSymbols: [String] = [Sport.tennis.ambientSymbol, Sport.football.ambientSymbol]
     @State private var didPrimeRefreshPull = false
     @State private var islandPulse = false
+    @State private var isSummaryIslandPresented = false
+    @State private var presentedSummaryIslandSignature: String?
     @State private var lastAnnouncedSummarySignature: String?
     @AppStorage("announcedDiscoverSummarySignatures") private var announcedSummarySignaturesRaw = ""
     @State private var discoverScrollOffset: CGFloat = 0
@@ -99,8 +234,10 @@ struct DiscoverView: View {
     private let highlightedSearchID: String?
     private let highlightedGameRequestID: String?
     private let onTabChanged: ((DiscoverTab) -> Void)?
+    private let isForeground: Bool
 
     init(
+        isForeground: Bool = true,
         initialTab: DiscoverTab = .swipe,
         highlightedUserID: String? = nil,
         highlightedSearchID: String? = nil,
@@ -112,10 +249,52 @@ struct DiscoverView: View {
         self.highlightedSearchID = highlightedSearchID
         self.highlightedGameRequestID = highlightedGameRequestID
         self.onTabChanged = onTabChanged
+        self.isForeground = isForeground
+    }
+
+    private var visibleSimilarUsers: [DiscoverUser] {
+        if similarPlayersDisplayMode == .cards {
+            return SimilarPlayersMapData.filteredUsers(users, sport: similarPlayersSportFilter)
+        }
+        return SimilarPlayersMapData.mapUsers(users, sport: similarPlayersSportFilter)
+    }
+
+    private var similarPlayersMapUsers: [DiscoverUser] {
+        SimilarPlayersMapData.mapUsers(users, sport: similarPlayersSportFilter)
     }
 
     private var activeUser: DiscoverUser? {
-        users.first
+        guard selectedTab == .swipe else { return users.first }
+        if let selectedSimilarPlayerID,
+           let selectedUser = visibleSimilarUsers.first(where: { $0.id == selectedSimilarPlayerID }) {
+            return selectedUser
+        }
+        return orderedSimilarUsers.first
+    }
+
+    private var canSwitchSimilarPlayersMode: Bool {
+        autoAdvanceToken == nil && !isSubmittingSwipe && dragOffset == .zero && !isLoading
+            && !isSimilarPlayersHintPresented && !isFirstInterestHintPresented
+    }
+
+    private var similarPlayersAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)
+    }
+
+    private func showSimilarPlayers(_ mode: SimilarPlayersDisplayMode, selectedID: String? = nil) {
+        guard canSwitchSimilarPlayersMode else { return }
+        AppHaptics.selection()
+        withAnimation(similarPlayersAnimation) {
+            selectedSimilarPlayerID = selectedID ?? activeUser?.id
+            resetSwipeInteraction(animated: false)
+            similarPlayersDisplayMode = mode
+        }
+    }
+
+    private func reconcileSimilarPlayerSelection() {
+        if let selectedSimilarPlayerID, !visibleSimilarUsers.contains(where: { $0.id == selectedSimilarPlayerID }) {
+            self.selectedSimilarPlayerID = nil
+        }
     }
 
     private var similarPlayersHintDemoOffset: CGSize {
@@ -215,6 +394,18 @@ struct DiscoverView: View {
                 return
             }
             count += search.responses.filter { $0.status == "pending" }.count
+        }
+    }
+
+    private var hasActiveOwnedSearchForEmptyDeck: Bool {
+        let now = Date()
+        return mySearches.contains { search in
+            guard isOwnedActiveHotSearchForAttention(search, currentUserId: appModel.currentUser?.id),
+                  search.isExpired != true,
+                  let startsAt = search.hotStartsAt?.parsedISODateValue() else {
+                return false
+            }
+            return startsAt > now
         }
     }
 
@@ -421,28 +612,113 @@ struct DiscoverView: View {
     }
 
     var body: some View {
+        ScrollViewReader { scrollProxy in
+        VStack(spacing: 0) {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                DiscoverScrollOffsetReader()
-                topIslandCard
-                tabBar
-                tabContentContainer
-            }
+            discoverScrollContent(scrollProxy)
+            // Measure the stable content background, independently of child visibility.
+            .background(DiscoverScrollOffsetReader())
             .padding(.horizontal, 16)
-            .padding(.top, 6)
-            .padding(.bottom, 120)
+            .padding(.top, 2)
+            .padding(.bottom, isViewedPlayersDockEligible ? 24 : 120)
         }
+        .scrollDisabled(autoAdvanceToken != nil)
         .coordinateSpace(name: "discover-scroll")
+        .background(GeometryReader { proxy in
+            let scrollFrame = proxy.frame(in: .global)
+            let frame = CGRect(
+                x: scrollFrame.minX,
+                y: scrollFrame.minY,
+                width: scrollFrame.width,
+                height: max(0, scrollFrame.height - proxy.safeAreaInsets.bottom)
+            )
+            Color.clear
+                .onAppear { updateDeckViewport(frame, requiresVisibility: false) }
+                .onChange(of: frame) { updateDeckViewport($0) }
+                .onDisappear { if deckViewport != .zero { deckViewport = .zero } }
+        })
+        .onAppear { isDiscoverVisible = true }
+        .onChange(of: isDiscoverForeground) { active in
+            if !active { cancelPlayerAutoAdvance() }
+        }
+        .onChange(of: deckViewport.size) { _ in
+            if autoAdvanceToken != nil { cancelPlayerAutoAdvance() }
+        }
+        .onChange(of: isDeckPlaybackAllowed) { allowed in
+            if !allowed { cancelPlayerAutoAdvance() }
+        }
+        .onChange(of: emptyDeckContextKey) { _ in
+            cancelPlayerAutoAdvance()
+            viewedPlayers = ViewedPlayerQueue()
+            selectedSimilarPlayerID = nil
+            autoAdvanceReplayID += 1
+        }
+        .onChange(of: similarPlayersDisplayMode) { mode in
+            guard selectedTab == .swipe else { return }
+            withAnimation(similarPlayersAnimation) {
+                scrollProxy.scrollTo("discover-pinned-controls", anchor: .top)
+            }
+            if mode == .cards {
+                scheduleSimilarPlayersHintIfNeeded()
+                scheduleFirstInterestHintIfNeeded()
+            }
+        }
+        .onChange(of: hotSearchDisplayMode) { _ in
+            guard selectedTab == .hot || selectedTab == .seeking else { return }
+            withAnimation(similarPlayersAnimation) {
+                scrollProxy.scrollTo("discover-pinned-controls", anchor: .top)
+            }
+        }
+        .onChange(of: similarPlayersMapUsers.map(\.id)) { _ in
+            reconcileSimilarPlayerSelection()
+        }
+        .onChange(of: visibleSimilarUsers.map(\.id)) { _ in
+            cancelPlayerAutoAdvance()
+            reconcileSimilarPlayerSelection()
+        }
         .refreshable {
             await performRefresh()
         }
         .background(
             RefreshProgressObserver(
                 progress: $pullRefreshProgress,
-                isRefreshing: $isSystemRefreshing
+                isRefreshing: $isSystemRefreshing,
+                isActive: isDiscoverForeground && isDiscoverVisible
             )
         )
         .background(Color.black.ignoresSafeArea())
+        if isViewedPlayersDockEligible, !visibleSimilarUsers.isEmpty {
+            // A real sibling row keeps card content above history. Its footprint is
+            // stable before the first arrival, so playback geometry never jumps.
+            viewedPlayersTray
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+                .frame(height: viewedPlayersTrayHeight, alignment: .top)
+                .opacity(viewedTrayUsers.isEmpty ? 0 : 1)
+                .allowsHitTesting(!viewedTrayUsers.isEmpty)
+                .accessibilityHidden(viewedTrayUsers.isEmpty)
+                .id("discover-viewed-players-tray")
+        }
+        }
+        .background(Color.black)
+        .overlay {
+            GeometryReader { viewport in
+                let frame = viewport.frame(in: .global)
+                Color.clear
+                    .onAppear { viewedFlightViewport = frame }
+                    .onChange(of: frame) { viewedFlightViewport = $0 }
+                    .onDisappear { viewedFlightViewport = .zero }
+                ViewedCardFlightCover(
+                    flight: viewedCardFlight,
+                    progress: viewedFlightProgress,
+                    playerName: viewedTrayUsers.first?.displayName ?? "",
+                    imagePath: viewedTrayUsers.first?.profileHeroImagePath,
+                    containerOrigin: frame.origin
+                )
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
         .overlay {
             if let actionCelebration {
                 SuccessCelebrationOverlay(
@@ -455,6 +731,9 @@ struct DiscoverView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $isNotificationsPresented) {
+            NotificationsView()
+        }
         .sheet(isPresented: Binding(
             get: { presentedRegularPairID != nil },
             set: { isPresented in
@@ -497,51 +776,14 @@ struct DiscoverView: View {
         }
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 12) {
-                    if appModel.isAuthenticated {
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                selectedTab = .hot
-                            }
-                            markHotEventsSeenIfNeeded()
-                        } label: {
-                            UrgentGamesToolbarButton(count: activeHotSearchItems.count)
-                        }
-                        .buttonStyle(.plain)
-
-                        NavigationLink {
-                            NotificationsView()
-                        } label: {
-                            Image(systemName: "bell")
-                                .foregroundStyle(AppTheme.ink)
-                                .frame(width: 34, height: 34)
-                                .background(.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .overlay(alignment: .topTrailing) {
-                            if notificationManager.unreadNotificationCount > 0 {
-                                Text("\(min(notificationManager.unreadNotificationCount, 99))")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(.red, in: Capsule())
-                                    .offset(x: 10, y: -8)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Button {
-                            appModel.presentAuth(step: .email)
-                        } label: {
-                            UrgentGamesToolbarButton(count: 0)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(L10n.string("Sign in", "Войти")) {
-                            appModel.presentAuth(step: .email)
-                        }
-                    }
+            if #available(iOS 26.0, *) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    discoverHeaderActions
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    discoverHeaderActions
                 }
             }
         }
@@ -703,7 +945,18 @@ struct DiscoverView: View {
             }
         }
         .onChange(of: appModel.isAuthenticated) { _ in
+            selectedSimilarPlayerID = nil
+            similarPlayersSportFilter = nil
+            similarPlayersDisplayMode = .cards
             resetSwipeInteraction(animated: false)
+            resetEmptyDeckContentIfAccountChanged()
+        }
+        .onChange(of: appModel.currentUser?.id) { _ in
+            selectedSimilarPlayerID = nil
+            similarPlayersSportFilter = nil
+            similarPlayersDisplayMode = .cards
+            resetSwipeInteraction(animated: false)
+            resetEmptyDeckContentIfAccountChanged()
         }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
@@ -741,7 +994,11 @@ struct DiscoverView: View {
             }
         }
         .onPreferenceChange(DiscoverScrollOffsetPreferenceKey.self) { value in
-            discoverScrollOffset = value
+            guard isDiscoverForeground, isDiscoverVisible, value.isFinite else { return }
+            // Only the first 110 points affect the collapsing island.
+            let offset = min(max(value, 0), 110)
+            guard abs(offset - discoverScrollOffset) >= 0.5 else { return }
+            discoverScrollOffset = offset
         }
         .overlay {
             if isSimilarPlayersHintPresented {
@@ -781,12 +1038,17 @@ struct DiscoverView: View {
             }
         }
         .onDisappear {
+            isDiscoverVisible = false
+            cancelPlayerAutoAdvance()
             if isSimilarPlayersHintPresented || isFirstInterestHintPresented {
                 appModel.bottomBarDisplayMode = .expanded
             }
         }
         .toolbarBackground(Color.black, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .task(id: summaryIslandTaskID) {
+            await presentSummaryIslandBriefly()
+        }
         .onChange(of: summaryStateSignature) { _ in
             guard hasVisibleSummaryCard else {
                 lastAnnouncedSummarySignature = nil
@@ -822,6 +1084,66 @@ struct DiscoverView: View {
                 }
             }
         }
+        }
+    }
+
+    private var isSummaryIslandForeground: Bool {
+        isDiscoverForeground && isDiscoverVisible && scenePhase == .active
+    }
+
+    private var summaryIslandTaskID: String {
+        "account:\(appModel.currentUser?.id ?? "guest")|\(summaryStateSignature)|foreground:\(isSummaryIslandForeground)|voiceOver:\(isVoiceOverEnabled)"
+    }
+
+    @MainActor
+    private func presentSummaryIslandBriefly() async {
+        guard isSummaryIslandForeground else { return }
+        let signature = summaryStateSignature
+        let accountID = appModel.currentUser?.id
+        let presentationSignature = "\(accountID ?? "guest")|\(signature)"
+        guard hasVisibleSummaryCard else {
+            presentedSummaryIslandSignature = presentationSignature
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                isSummaryIslandPresented = false
+            }
+            return
+        }
+
+        // The session record survives navigation recreating this view and idle hydration.
+        guard !appModel.isDiscoverSummaryDismissed(signature) else {
+            presentedSummaryIslandSignature = presentationSignature
+            isSummaryIslandPresented = false
+            return
+        }
+        // Refreshing unchanged data must not show an already dismissed island again.
+        if presentedSummaryIslandSignature != presentationSignature {
+            presentedSummaryIslandSignature = presentationSignature
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                isSummaryIslandPresented = true
+            }
+        }
+        // Keep the actionable summary available while VoiceOver is reading it.
+        guard isSummaryIslandPresented, !isVoiceOverEnabled else { return }
+        do {
+            try await Task.sleep(for: .seconds(6))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled,
+              isSummaryIslandForeground,
+              !isVoiceOverEnabled,
+              isSummaryIslandPresented,
+              appModel.currentUser?.id == accountID,
+              presentedSummaryIslandSignature == presentationSignature,
+              summaryStateSignature == signature else { return }
+        dismissSummaryIsland(signature: signature)
+    }
+
+    private func dismissSummaryIsland(signature: String) {
+        appModel.dismissDiscoverSummary(signature)
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+            isSummaryIslandPresented = false
+        }
     }
 
     private var topIslandCard: some View {
@@ -829,7 +1151,7 @@ struct DiscoverView: View {
         let compactWidth = summaryMaxWidth - (78 * islandCollapseProgress)
 
         return Group {
-            if hasVisibleSummaryCard {
+            if hasVisibleSummaryCard, isSummaryIslandPresented {
                 HStack {
                     DiscoverSummaryCard(
                         state: summaryCardState,
@@ -870,7 +1192,9 @@ struct DiscoverView: View {
     private func scheduleSimilarPlayersHintIfNeeded() {
         guard appModel.shouldPresentDiscoverSimilarPlayersHint(),
               selectedTab == .swipe,
-              !users.isEmpty,
+              similarPlayersDisplayMode == .cards,
+              !isSubmittingSwipe,
+              !visibleSimilarUsers.isEmpty,
               !isSimilarPlayersHintPresented,
               !isFirstInterestHintPresented,
               !isSimilarPlayersHintScheduled else {
@@ -886,7 +1210,9 @@ struct DiscoverView: View {
             guard !Task.isCancelled,
                   appModel.shouldPresentDiscoverSimilarPlayersHint(),
                   selectedTab == .swipe,
-                  !users.isEmpty,
+                  similarPlayersDisplayMode == .cards,
+                  !isSubmittingSwipe,
+                  !visibleSimilarUsers.isEmpty,
                   !isFirstInterestHintPresented,
                   !isSimilarPlayersHintPresented else {
                 return
@@ -927,6 +1253,7 @@ struct DiscoverView: View {
 
     private func scheduleFirstInterestHintIfNeeded(playerName: String? = nil) {
         guard appModel.shouldPresentDiscoverFirstInterestHint(),
+              selectedTab != .swipe || similarPlayersDisplayMode == .cards,
               !isSimilarPlayersHintPresented,
               !isFirstInterestHintPresented,
               !isFirstInterestHintScheduled else {
@@ -945,6 +1272,7 @@ struct DiscoverView: View {
             try? await Task.sleep(for: .milliseconds(360))
             guard !Task.isCancelled,
                   appModel.shouldPresentDiscoverFirstInterestHint(),
+                  selectedTab != .swipe || similarPlayersDisplayMode == .cards,
                   !isSimilarPlayersHintPresented,
                   !isFirstInterestHintPresented else {
                 return
@@ -1060,67 +1388,249 @@ struct DiscoverView: View {
         return "\(prefix), \(date.formattedHourMinute())"
     }
 
-    private var tabBar: some View {
-        HStack(spacing: 6) {
-            ForEach(DiscoverTab.userVisibleCases) { tab in
-                let isSelected = selectedTab == tab
+    private let headerAccent = Color(red: 0.60, green: 0.92, blue: 0.75)
 
+    private var discoverHeaderActions: some View {
+        HStack(spacing: 10) {
+            Button {
+                if appModel.isAuthenticated {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        selectedTab = .hot
+                    }
+                    markHotEventsSeenIfNeeded()
+                } else {
+                    appModel.presentAuth(step: .email)
+                }
+            } label: {
+                discoverHeaderIcon("magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("Searches", "Поиски"))
+            .accessibilityValue("\(appModel.isAuthenticated ? activeHotSearchItems.count : 0)")
+            .accessibilityIdentifier("discover-search-button")
+
+            if appModel.isAuthenticated {
+                Button {
+                    cancelPlayerAutoAdvance()
+                    isNotificationsPresented = true
+                } label: {
+                    discoverHeaderIcon("bell")
+                        .overlay(alignment: .topTrailing) {
+                            if notificationManager.unreadNotificationCount > 0 {
+                                DiscoverToolbarBadge(
+                                    text: "\(min(notificationManager.unreadNotificationCount, 99))",
+                                    tint: .red
+                                )
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Notifications", "Уведомления"))
+                .accessibilityValue("\(notificationManager.unreadNotificationCount)")
+                .accessibilityIdentifier("discover-notifications-button")
+            } else {
+                Button(L10n.string("Sign in", "Войти")) {
+                    appModel.presentAuth(step: .email)
+                }
+                .foregroundStyle(.white)
+                .frame(minWidth: 44, minHeight: 44)
+            }
+        }
+    }
+
+    private func discoverHeaderIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 20, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(Color(white: 0.075), in: Circle())
+            .contentShape(Circle())
+    }
+
+    private var primarySelectedTab: DiscoverTab {
+        switch selectedTab {
+        case .likes: return .swipe
+        case .seeking: return .hot
+        default: return selectedTab
+        }
+    }
+
+    private func discoverScrollContent(_ scrollProxy: ScrollViewProxy) -> AnyView {
+        if #available(iOS 17.0, *) {
+            // Keep the large tab subtree out of outer lazy measurement during navigation.
+            // Pin only the rendered controls; their offset never changes the stack's layout.
+            return AnyView(VStack(alignment: .leading, spacing: 10) {
+                Color.clear.frame(height: 0).accessibilityHidden(true)
+                topIslandCard
+                discoverPinnedControls
+                    .visualEffect { content, proxy in
+                        let minY = proxy.frame(in: .named("discover-scroll")).minY
+                        return content.offset(y: minY.isFinite ? max(0, -minY) : 0)
+                    }
+                    .zIndex(2)
+                discoverSecondaryControls
+                discoverScrollableTabContent(scrollProxy)
+            })
+        } else {
+            return AnyView(LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+                Color.clear.frame(height: 0).accessibilityHidden(true)
+                topIslandCard
+                Section {
+                    discoverSecondaryControls
+                    discoverScrollableTabContent(scrollProxy)
+                } header: {
+                    discoverPinnedControls
+                        .zIndex(2)
+                }
+            })
+        }
+    }
+
+    private var discoverPinnedControls: some View {
+        tabBar
+            .padding(.horizontal, -8)
+            .padding(.top, 2)
+            .background(Color.black)
+            .id("discover-pinned-controls")
+    }
+
+    private func discoverScrollableTabContent(_ scrollProxy: ScrollViewProxy) -> some View {
+        tabContentContainer
+            .onChange(of: viewedPlayerScrollRequest) { _ in
+                withAnimation(similarPlayersAnimation) {
+                    scrollProxy.scrollTo("discover-pinned-controls", anchor: .top)
+                }
+            }
+    }
+
+    private var tabBar: some View {
+        ViewThatFits(in: .horizontal) {
+            discoverHeaderRow()
+            discoverHeaderRow(flexibleLabels: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transaction { $0.animation = nil }
+        .background(alignment: .bottom) {
+            Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    private func discoverHeaderRow(
+        flexibleLabels: Bool = false
+    ) -> some View {
+        HStack(spacing: 2) {
+            ForEach(DiscoverTab.userVisibleCases) { tab in
                 Button {
                     selectTab(tab)
                 } label: {
-                    HStack(spacing: isSelected ? 7 : 0) {
-                        Image(systemName: tab.systemImage)
-                            .frame(width: 20)
-
-                        if isSelected {
-                            Text(tab.title)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .transition(.opacity.combined(with: .move(edge: .leading)))
-                        }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, isSelected ? 10 : 0)
-                    .frame(
-                        minWidth: 44,
-                        maxWidth: isSelected ? .infinity : 44,
-                        minHeight: 44
+                    discoverPrimaryTabLabel(
+                        tab,
+                        flexible: flexibleLabels
                     )
-                    .background(backgroundColor(for: tab))
-                    .foregroundStyle(foregroundColor(for: tab))
-                    .scaleEffect(isSelected ? 1 : 0.985)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(isSelected ? AppTheme.line : Color.white.opacity(0.8), lineWidth: isSelected ? 1.2 : 1)
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if let count = tabBadgeCount(for: tab) {
-                            Text("\(min(count, 99))")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(
-                                    isSelected ? Color.white.opacity(0.25) : AppTheme.clay,
-                                    in: Capsule()
-                                )
-                                .offset(x: 4, y: -5)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .shadow(color: AppTheme.ink.opacity(isSelected ? 0.12 : 0.04), radius: 14, x: 0, y: 8)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(tab.title))
-                .accessibilityValue(Text(isSelected
-                    ? L10n.string("Selected", "Выбрано")
-                    : L10n.string("Not selected", "Не выбрано")))
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-                .animation(.easeInOut(duration: 0.28), value: selectedTab)
+                .accessibilityLabel(tab == .swipe ? L10n.string("Players", "Игроки") : tab.title)
+                .accessibilityValue(tabAccessibilityValue(for: tab))
+                .accessibilityAddTraits(primarySelectedTab == tab ? .isSelected : [])
+                .accessibilityIdentifier("discover-tab-\(tab.rawValue)")
+            }
+            // One permanent slot after Searches keeps every title in the same place
+            // regardless of selection, including tabs without display modes.
+            Group {
+                if selectedTab == .swipe {
+                    discoverPlayerDisplayControl
+                } else if primarySelectedTab == .hot {
+                    activeHotSearchDisplayControl.disabled(isLoading)
+                } else {
+                    Color.clear.accessibilityHidden(true).allowsHitTesting(false)
+                }
+            }
+            .frame(width: 88, height: 44)
+            .padding(.bottom, 9)
+        }
+        .fixedSize(horizontal: !flexibleLabels, vertical: false)
+    }
+
+    private func discoverPrimaryTabLabel(
+        _ tab: DiscoverTab,
+        flexible: Bool
+    ) -> some View {
+        let isSelected = primarySelectedTab == tab
+        return HStack(spacing: 4) {
+            Text(tab == .swipe ? L10n.string("Players", "Игроки") : tab.title)
+                .foregroundStyle(isSelected ? .white : Color(white: 0.48))
+                .lineLimit(1)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(flexible ? 0.5 : 1)
+                .fixedSize(horizontal: !flexible, vertical: true)
+            if tab == .swipe, let count = tabBadgeCount(for: tab) {
+                Text(count > 99 ? "99+" : "\(count)")
+                    .foregroundStyle(headerAccent)
+                    .fixedSize()
             }
         }
+        .font(.system(size: headerTabFontSize, weight: .semibold))
+        .frame(minWidth: 44, minHeight: 44)
+        .padding(.bottom, 9)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            Capsule()
+                .fill(isSelected ? headerAccent : Color.clear)
+                .frame(height: 3)
+        }
+    }
+
+    private func tabAccessibilityValue(for tab: DiscoverTab) -> String {
+        let selection = primarySelectedTab == tab
+            ? L10n.string("Selected", "Выбрано")
+            : L10n.string("Not selected", "Не выбрано")
+        guard let count = tabBadgeCount(for: tab) else { return selection }
+        return "\(selection), \(count)"
+    }
+
+    @ViewBuilder
+    private var discoverSecondaryControls: some View {
+        if selectedTab == .likes {
+            discoverLikesControl
+        }
+    }
+
+    private var discoverPlayerDisplayControl: some View {
+        SimilarPlayersModeControl(
+            mode: similarPlayersDisplayMode,
+            isEnabled: canSwitchSimilarPlayersMode && !users.isEmpty
+        ) { mode in
+            showSimilarPlayers(mode)
+        }
+    }
+
+    private var discoverLikesControl: some View {
+        Button {
+            selectTab(selectedTab == .likes ? .swipe : .likes)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: selectedTab == .likes ? "arrow.left" : "heart")
+                Text(selectedTab == .likes
+                     ? L10n.string("All players", "Все игроки")
+                     : L10n.string("Want to play", "Хотят сыграть"))
+                if selectedTab != .likes, let count = tabBadgeCount(for: .likes) {
+                    Text("\(count)").foregroundStyle(headerAccent)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.85))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(Color.white.opacity(0.07), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(selectedTab == .likes ? "discover-all-players-button" : "discover-likes-button")
+    }
+
+    private var isSearchMapActive: Bool {
+        (selectedTab == .hot || selectedTab == .seeking) && hotSearchDisplayMode == .map
     }
 
     private func tabBadgeCount(for tab: DiscoverTab) -> Int? {
@@ -1146,17 +1656,17 @@ struct DiscoverView: View {
         return count > 0 ? count : nil
     }
 
-    @ViewBuilder
-    private var selectedTabContent: some View {
+    // Bound runtime view metadata at the tab boundary instead of combining every tab's generic tree.
+    private var selectedTabContent: AnyView {
         switch selectedTab {
         case .upcoming:
-            upcomingContent
+            return AnyView(upcomingContent)
         case .swipe:
-            swipeContent
+            return AnyView(swipeContent)
         case .likes:
-            likesContent
+            return AnyView(likesContent)
         case .seeking, .hot:
-            searchContent
+            return AnyView(searchContent)
         }
     }
 
@@ -1165,7 +1675,7 @@ struct DiscoverView: View {
         let content = selectedTabContent
             .frame(maxWidth: .infinity, alignment: .leading)
 
-        if selectedTab == .swipe || selectedTab == .likes {
+        if selectedTab == .swipe || selectedTab == .likes || isSearchMapActive {
             content
         } else {
             content
@@ -1449,17 +1959,55 @@ struct DiscoverView: View {
 
     private var swipeContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SwipeHintBar(isHighlighted: isSimilarPlayersHintPresented)
+            if let nearby = visibleSimilarUsers.compactMap(\.nearby).first {
+                NearbyResultsBanner(nearby: nearby, title: L10n.string("Players around your city", "Игроки рядом с вашим городом"))
+            }
+            if !topStack.isEmpty, similarPlayersDisplayMode == .cards {
+                HStack(spacing: 8) {
+                    SwipeHintBar(
+                        leftTitle: viewedSimilarUsers.isEmpty ? L10n.string("Left — skip", "Влево — пропустить") : L10n.string("Skip", "Пропустить"),
+                        rightTitle: viewedSimilarUsers.isEmpty ? L10n.string("Right — ready to play", "Вправо — можно сыграть") : L10n.string("Play", "Играть"),
+                        isHighlighted: isSimilarPlayersHintPresented
+                    )
+                }
                 .padding(.top, -8)
                 .padding(.bottom, 4)
-            if topStack.isEmpty, !isLoading {
+            }
+            if users.isEmpty, let sport = similarPlayersSportFilter {
+                Button(L10n.string("\(sport.title) · Show all sports", "\(sport.title) · Все виды спорта")) {
+                    similarPlayersSportFilter = nil
+                }
+                .font(.subheadline)
+            }
+            if users.isEmpty, !isLoading {
                 EmptyDeckView(
-                    city: appModel.currentUser?.city,
-                    seenCount: users.count,
+                    city: appModel.currentUser?.city ?? appModel.guestDraft.city,
+                    preferredSports: appModel.currentUser?.preferredSports ?? appModel.guestDraft.preferredSports,
                     sections: emptyDeckSections,
-                    invite: inviteSummary
+                    invite: inviteSummary,
+                    hasActiveSearch: hasActiveOwnedSearchForEmptyDeck,
+                    isLoading: isLoadingEmptyDeckContent,
+                    hasLoaded: hasLoadedEmptyDeckContent,
+                    loadFailed: emptyDeckContentFailed,
+                    onCreateSearch: presentHotSearchComposer,
+                    onManageSearches: { appModel.navigate(to: .searches) },
+                    onOpenCourt: { court, sport in
+                        AppHaptics.selection()
+                        appModel.pendingCourtID = court.id
+                        appModel.navigate(to: .courts(sport: sport))
+                    },
+                    onOpenClubs: { sport in
+                        AppHaptics.selection()
+                        appModel.navigate(to: .courts(sport: sport))
+                    },
+                    onRetry: { Task { await loadEmptyDeckContent() } }
                 )
-                .task { await loadEmptyDeckContent() }
+
+            } else if similarPlayersDisplayMode == .grid, !users.isEmpty {
+                similarPlayersGrid
+                    .transition(.opacity)
+            } else if visibleSimilarUsers.isEmpty, !isLoading {
+                similarPlayersFilteredEmptyState
             } else {
                 ZStack {
                     if isSimilarPlayersHintPresented {
@@ -1475,12 +2023,24 @@ struct DiscoverView: View {
                                 dragOffset: isSimilarPlayersHintPresented ? similarPlayersHintDemoOffset : dragOffset,
                                 decision: isSimilarPlayersHintPresented ? similarPlayersHintDemoDecision : dragDecision,
                                 onOpen: { openDiscoverParticipant(user) },
-                                onDislike: { Task { await submitSwipe(.dislike) } },
-                                onLike: { Task { await submitSwipe(.like) } },
-                                onBlocked: { handleBlockedUser(user.id) }
+                                onDislike: { Task { await submitSwipe(.dislike, userID: user.id) } },
+                                onLike: { Task { await submitSwipe(.like, userID: user.id) } },
+                                onBlocked: { handleBlockedUser(user.id) },
+                                playbackEnabled: isDeckPlaybackAllowed && autoAdvanceToken == nil,
+                                detailsOpacity: isAutoAdvanceExiting && !reduceMotion ? 0 : 1,
+                                playbackReplayID: autoAdvanceReplayID,
+                                mediaCompletionRetryID: visibleSimilarUsers.map(\.id).joined(separator: "|"),
+                                onPlaybackInteractionChanged: { isCardInteracting = $0 },
+                                onMediaCompleted: { completePlayerMedia(userID: user.id) }
                             )
-                            .scaleEffect(isSimilarPlayersHintPresented ? 0.92 : 1.0)
+                            .modifier(SimilarPlayerGeometry(id: user.id, namespace: similarPlayersTransition, isEnabled: !reduceMotion))
+                            .background(ViewedFlightFrameMarker(endpoints: viewedFlightEndpoints, role: .source, userID: user.id))
+                            .allowsHitTesting(autoAdvanceToken == nil && !isSubmittingSwipe && !isSimilarPlayersHintPresented && !isFirstInterestHintPresented)
+                            .scaleEffect(isSimilarPlayersHintPresented ? 0.92 : 1)
                             .offset(y: isSimilarPlayersHintPresented ? 10 : 0)
+                            .modifier(ViewedCardFlowModifier(flight: viewedCardFlight, progress: viewedFlightProgress))
+                            .opacity(isAutoAdvanceFading ? 0 : 1)
+                            .transition(.identity)
                             .zIndex(Double(topStack.count))
                             .simultaneousGesture(dragGesture(for: user))
                         } else {
@@ -1492,19 +2052,209 @@ struct DiscoverView: View {
                                 onOpen: {},
                                 onDislike: {},
                                 onLike: {},
-                                onBlocked: {}
+                                onBlocked: {},
+                                playbackEnabled: false
                             )
-                            .scaleEffect(0.965 - CGFloat(index) * 0.02)
-                            .offset(y: CGFloat(index) * 14)
+                            .allowsHitTesting(false)
+                            .accessibilityElement(children: .ignore)
+                            .disabled(true)
+                            .scaleEffect(reduceMotion || isAutoAdvanceExiting ? 1 : 0.965 - CGFloat(index) * 0.02)
+                            .offset(y: reduceMotion || isAutoAdvanceExiting ? 0 : CGFloat(index) * 14)
+                            .animation(reduceMotion ? nil : .timingCurve(0.32, 0, 0.2, 1, duration: 0.8), value: isAutoAdvanceExiting)
                             .zIndex(Double(topStack.count - index))
                         }
                     }
                 }
+                .zIndex(viewedCardFlight == nil ? 0 : 10)
                 .frame(minHeight: swipeDeckMinHeight)
+                .background(GeometryReader { proxy in
+                    let frame = proxy.frame(in: .global)
+                    Color.clear
+                        .onAppear { updateDeckFrame(frame, requiresVisibility: false) }
+                        .onChange(of: frame) { updateDeckFrame($0) }
+                        .onDisappear { if deckFrame != .zero { deckFrame = .zero } }
+                })
                 .padding(.top, 4)
+            }
+            if !users.isEmpty, users.contains(where: { $0.nearby != nil }) {
+                ForEach(emptyDeckSections.filter { !$0.courts.isEmpty }) { section in
+                    EmptyDeckClubRow(section: section, onOpenCourt: { court in
+                        appModel.pendingCourtID = court.id
+                        appModel.navigate(to: .courts(sport: section.sport))
+                    }, onOpenClubs: { appModel.navigate(to: .courts(sport: section.sport)) })
+                }
+                if emptyDeckContentFailed {
+                    Button(L10n.string("Retry loading clubs", "Загрузить клубы повторно")) {
+                        Task { await loadEmptyDeckContent() }
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .task(id: emptyDeckContextKey) { await loadEmptyDeckContent() }
+        .onChange(of: similarPlayersSportFilter) { _ in
+            users = []
+            Task { await loadDiscover() }
+        }
+        .onChange(of: discoverLocationKey) { _ in
+            users = []
+            Task { await loadDiscover() }
+        }
+        .id("similar-players-content")
+    }
+
+    private var isViewedPlayersDockEligible: Bool {
+        selectedTab == .swipe && similarPlayersDisplayMode == .cards
+    }
+
+    private var viewedSimilarUsers: [DiscoverUser] {
+        let lookup = Dictionary(uniqueKeysWithValues: visibleSimilarUsers.map { ($0.id, $0) })
+        return viewedPlayers.newestViewedIDs(visibleSimilarUsers.map(\.id)).compactMap { lookup[$0] }
+    }
+
+    private var viewedTrayUsers: [DiscoverUser] {
+        guard let pendingViewedPlayerID,
+              let pendingUser = visibleSimilarUsers.first(where: { $0.id == pendingViewedPlayerID }) else {
+            return viewedSimilarUsers
+        }
+        // Prepare a real first slot without changing committed history or its count.
+        return [pendingUser] + viewedSimilarUsers.filter { $0.id != pendingViewedPlayerID }
+    }
+
+    private var viewedPlayersTray: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Label(L10n.string("Viewed", "Просмотренные"), systemImage: "clock.arrow.circlepath")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text("\(viewedSimilarUsers.count)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.58))
+                Spacer(minLength: 8)
+                Text(L10n.string("Tap to view again", "Нажми, чтобы вернуться"))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.48))
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.string("Viewed players: \(viewedSimilarUsers.count)", "Просмотренные игроки: \(viewedSimilarUsers.count)"))
+            .accessibilityAddTraits(.isHeader)
+
+            ScrollViewReader { trayProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        // Only the measured first slot is eager; long history remains lazy.
+                        if let user = viewedTrayUsers.first {
+                            viewedPlayerButton(user, isLandingSlot: true)
+                                .id("viewed-first-slot")
+                        }
+                        LazyHStack(alignment: .top, spacing: 12) {
+                            ForEach(Array(viewedTrayUsers.dropFirst())) { user in
+                                viewedPlayerButton(user)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 3)
+                }
+                .onAppear {
+                    if pendingViewedPlayerID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
+                }
+                .onChange(of: pendingViewedPlayerID) { pendingID in
+                    if pendingID != nil { trayProxy.scrollTo("viewed-first-slot", anchor: .leading) }
+                }
+            }
+            .frame(height: 76)
+        }
+        .accessibilityIdentifier("discover-viewed-players")
+        .padding(.top, 4)
+    }
+
+    private func viewedPlayerButton(_ user: DiscoverUser, isLandingSlot: Bool = false) -> some View {
+        let isCurrent = activeUser?.id == user.id
+        let isPending = pendingViewedPlayerID == user.id
+        return Button {
+            replayViewedPlayer(user.id)
+        } label: {
+            VStack(spacing: 5) {
+                RemoteAvatarView(name: user.displayName, path: user.profileHeroImagePath, size: 46)
+                    .opacity(isPending ? 0 : 1)
+                    .background {
+                        if isLandingSlot {
+                            ViewedFlightFrameMarker(endpoints: viewedFlightEndpoints, role: .destination, userID: user.id)
+                        }
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            .stroke(isPending ? AppTheme.mint.opacity(0.25) : (isCurrent || (isLandingSlot && isViewedArrivalHighlighted) ? AppTheme.mint : Color.white.opacity(0.18)), lineWidth: isCurrent || (isLandingSlot && isViewedArrivalHighlighted) ? 2 : 1)
+                            .padding(-2)
+                    }
+                Text(user.displayName)
+                    .font(.caption2.weight(isCurrent ? .semibold : .regular))
+                    .foregroundStyle(isCurrent ? AppTheme.mint : .white.opacity(0.72))
+                    .lineLimit(1)
+                    .frame(width: 70)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canReplayViewedPlayer || isPending)
+        .accessibilityHidden(isPending)
+        .accessibilityIdentifier("discover-viewed-player-\(user.id)")
+        .accessibilityLabel(user.displayName)
+        .accessibilityValue(isCurrent ? L10n.string("Currently showing", "Сейчас на экране") : L10n.string("Viewed", "Просмотрен"))
+        .accessibilityHint(L10n.string("Show this player's card from the beginning", "Открыть карточку этого игрока с начала"))
+    }
+
+    private var canReplayViewedPlayer: Bool {
+        isDeckPresentationReady && autoAdvanceToken == nil
+    }
+
+    private func replayViewedPlayer(_ userID: String) {
+        guard canReplayViewedPlayer,
+              viewedSimilarUsers.contains(where: { $0.id == userID }) else { return }
+        AppHaptics.selection()
+        withAnimation(similarPlayersAnimation) {
+            resetSwipeInteraction(animated: false)
+            selectedSimilarPlayerID = userID
+            autoAdvanceReplayID += 1
+        }
+        viewedPlayerScrollRequest += 1
+    }
+
+    private var similarPlayersGrid: some View {
+        SimilarPlayersMapGrid(
+            users: visibleSimilarUsers,
+            layoutUsers: users,
+            availableSports: appModel.currentUser?.preferredSports ?? appModel.guestDraft.preferredSports,
+            selectedSport: similarPlayersSportFilter,
+            selectedPlayerID: selectedSimilarPlayerID,
+            namespace: similarPlayersTransition,
+            reduceMotion: reduceMotion,
+            isEnabled: canSwitchSimilarPlayersMode,
+            onSelectSport: { sport in
+                guard canSwitchSimilarPlayersMode else { return }
+                AppHaptics.selection()
+                similarPlayersSportFilter = sport
+                reconcileSimilarPlayerSelection()
+            },
+            onSelectMapPlayer: openSimilarMapPlayer,
+            onShowCards: { showSimilarPlayers(.cards) },
+            onOpenPlayer: { user in showSimilarPlayers(.cards, selectedID: user.id) }
+        )
+
+    }
+
+    private func openSimilarMapPlayer(_ userID: String) {
+        guard canSwitchSimilarPlayersMode,
+              similarPlayersMapUsers.contains(where: { $0.id == userID }) else { return }
+        showSimilarPlayers(.cards, selectedID: userID)
+    }
+
+    private var similarPlayersFilteredEmptyState: some View {
+        SimilarPlayersFilteredEmptyState {
+            similarPlayersSportFilter = nil
+            reconcileSimilarPlayerSelection()
+        }
     }
 
     @ViewBuilder
@@ -1540,10 +2290,11 @@ struct DiscoverView: View {
                                 dragOffset: dragOffset,
                                 decision: dragDecision,
                                 onOpen: { openDiscoverParticipant(user) },
-                                onDislike: { Task { await submitSwipe(.dislike) } },
-                                onLike: { Task { await submitSwipe(.like) } },
+                                onDislike: { Task { await submitSwipe(.dislike, userID: user.id) } },
+                                onLike: { Task { await submitSwipe(.like, userID: user.id) } },
                                 onBlocked: { handleBlockedUser(user.id) }
                             )
+                            .allowsHitTesting(!isSubmittingSwipe)
                             .scaleEffect(1.0)
                             .offset(y: 0)
                             .zIndex(Double(topStack.count))
@@ -1559,6 +2310,9 @@ struct DiscoverView: View {
                                 onLike: {},
                                 onBlocked: {}
                             )
+                                .allowsHitTesting(false)
+                                .accessibilityElement(children: .ignore)
+                                .disabled(true)
                                 .scaleEffect(0.965 - CGFloat(index) * 0.02)
                                 .offset(y: CGFloat(index) * 14)
                                 .zIndex(Double(topStack.count - index))
@@ -1578,7 +2332,6 @@ struct DiscoverView: View {
         let visibleItems = filteredActiveHotSearchItems
 
         VStack(alignment: .leading, spacing: 16) {
-            activeHotSearchDisplayControl
             activeHotSearchDateRail
 
             if !availableHotSearchSports.isEmpty {
@@ -1621,6 +2374,7 @@ struct DiscoverView: View {
 
             if hotSearchDisplayMode == .map {
                 activeHotSearchMap(items: visibleItems)
+                    .transition(.opacity)
             } else {
                 LazyVStack(spacing: 14) {
                     ForEach(visibleItems) { item in
@@ -1654,9 +2408,11 @@ struct DiscoverView: View {
                         }
                     }
                 }
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: hotSearchDisplayMode)
         .sheet(isPresented: $isHotSearchCalendarPresented) {
             ActiveHotSearchCalendarSheet(
                 selectedDate: $hotSearchCalendarDate,
@@ -1696,37 +2452,42 @@ struct DiscoverView: View {
     }
 
     private var activeHotSearchDisplayControl: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(ActiveHotSearchDisplayMode.allCases) { mode in
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                        hotSearchDisplayMode = mode
-                    }
-                    if mode == .map {
-                        hotSearchLocationProvider.requestCurrentLocation()
-                    }
-                    AppHaptics.selection()
+                    showHotSearches(mode)
                 } label: {
-                    Label(mode.title, systemImage: mode.systemImage)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(hotSearchDisplayMode == mode ? .black : .white.opacity(0.82))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 42)
-                        .background(
-                            hotSearchDisplayMode == mode ? AppTheme.court : Color.white.opacity(0.08),
-                            in: Capsule()
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(hotSearchDisplayMode == mode ? AppTheme.court : Color.white.opacity(0.10), lineWidth: 1)
-                        )
+                    Image(systemName: mode == .list ? "rectangle.stack" : "map")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(hotSearchDisplayMode == mode ? Color.black : Color.white.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                        .background {
+                            if hotSearchDisplayMode == mode {
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .fill(Color(red: 0.63, green: 0.93, blue: 0.75))
+                                    .padding(4)
+                            }
+                        }
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(mode == .list ? L10n.string("Cards", "Карточки") : L10n.string("Map", "Карта"))
+                .accessibilityAddTraits(hotSearchDisplayMode == mode ? .isSelected : [])
+                .accessibilityIdentifier("discover-search-mode-\(mode.rawValue)")
             }
         }
-        .padding(4)
-        .background(Color.white.opacity(0.05), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .fixedSize()
+    }
+
+    private func showHotSearches(_ mode: ActiveHotSearchDisplayMode) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            hotSearchDisplayMode = mode
+        }
+        if mode == .map {
+            hotSearchLocationProvider.requestCurrentLocation()
+        }
+        AppHaptics.selection()
     }
 
     private func activeHotSearchMap(items: [ActiveHotSearchItem]) -> some View {
@@ -2288,30 +3049,254 @@ struct DiscoverView: View {
         .buttonStyle(.plain)
     }
 
-    private var topStack: [DiscoverUser] {
-        Array(users.prefix(2))
+    private var orderedSimilarUsers: [DiscoverUser] {
+        let lookup = Dictionary(uniqueKeysWithValues: visibleSimilarUsers.map { ($0.id, $0) })
+        return viewedPlayers.orderedIDs(visibleSimilarUsers.map(\.id)).compactMap { lookup[$0] }
     }
 
-    /// Клубы и приглашение нужны только на пустом экране, поэтому грузятся
-    /// отдельно и один раз — тянуть их на каждый заход в поиск незачем.
+    private func normalizedDeckGeometry(_ frame: CGRect) -> CGRect? {
+        guard [frame.origin.x, frame.origin.y, frame.width, frame.height].allSatisfy(\.isFinite),
+              frame.width >= 0, frame.height >= 0 else { return nil }
+        let scale = UIScreen.main.scale
+        func pixelAligned(_ value: CGFloat) -> CGFloat { (value * scale).rounded() / scale }
+        return CGRect(x: pixelAligned(frame.origin.x), y: pixelAligned(frame.origin.y),
+                      width: pixelAligned(frame.width), height: pixelAligned(frame.height))
+    }
+
+    private func updateDeckViewport(_ frame: CGRect, requiresVisibility: Bool = true) {
+        guard isDiscoverForeground, !requiresVisibility || isDiscoverVisible,
+              let normalized = normalizedDeckGeometry(frame), normalized != deckViewport else { return }
+        deckViewport = normalized
+    }
+
+    private func updateDeckFrame(_ frame: CGRect, requiresVisibility: Bool = true) {
+        guard isDiscoverForeground, !requiresVisibility || isDiscoverVisible,
+              let normalized = normalizedDeckGeometry(frame), normalized != deckFrame else { return }
+        deckFrame = normalized
+    }
+
+    private var isDeckInViewport: Bool {
+        guard deckFrame.height > 0, deckViewport.height > 0 else { return false }
+        let intersection = deckFrame.intersection(deckViewport)
+        return !intersection.isNull && intersection.height >= deckFrame.height * 0.5
+    }
+
+    private var isDeckPlaybackAllowed: Bool {
+        isDeckPresentationReady && isDeckInViewport
+    }
+
+    private var isDiscoverForeground: Bool {
+        // Stop source-screen work before the push, rather than waiting for onDisappear.
+        isForeground && !isNotificationsPresented
+    }
+
+    private var isDeckPresentationReady: Bool {
+        isDiscoverForeground && isDiscoverVisible && scenePhase == .active && selectedTab == .swipe
+            && similarPlayersDisplayMode == .cards
+            && !isLoading && !isSystemRefreshing && pullRefreshProgress < 0.01
+            && !isSubmittingSwipe && dragOffset == .zero && !isCardInteracting
+            && !isSimilarPlayersHintPresented && !isFirstInterestHintPresented
+            && appModel.presentedAuthStep == nil && appModel.errorMessage == nil
+            && !appModel.isBusy && appModel.serverRecoveryNotice == nil
+            && selectedUpcomingParticipant == nil && !isUpcomingChatPresented
+            && presentedRegularPairID == nil && presentedSearchLobbyID == nil
+            && !isHotSearchComposerPresented && actionCelebration == nil
+            && selectedUpcomingDetailsRequest == nil && selectedUpcomingCourt == nil
+            && selectedPhotoReportRequest == nil && selectedPersonalActivityReport == nil
+            && selectedEditGameRequest == nil && selectedShareRequest == nil
+            && selectedNextProposalMatch == nil && !isWidgetHelpPresented
+    }
+
+    private func canCompletePlayerAutoAdvance(token: UUID, context: String, userID: String) -> Bool {
+        !Task.isCancelled && autoAdvanceToken == token
+            && context == emptyDeckContextKey && isDeckPlaybackAllowed
+            && activeUser?.id == userID
+            && visibleSimilarUsers.contains(where: { $0.id != userID })
+    }
+
+    @MainActor
+    private func completePlayerMedia(userID: String) -> Bool {
+        guard isDeckPlaybackAllowed, autoAdvanceToken == nil,
+              activeUser?.id == userID else { return false }
+        guard visibleSimilarUsers.contains(where: { $0.id != userID }) else {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                viewedPlayers.deferPlayer(userID)
+            }
+            highlightViewedArrival()
+            return true
+        }
+        let token = UUID()
+        let context = emptyDeckContextKey
+        let usesReducedMotion = reduceMotion
+        autoAdvanceToken = token
+        pendingViewedPlayerID = userID
+        autoAdvanceTask = Task { @MainActor in
+            if !usesReducedMotion {
+                // Give the real first tray slot time to mount and return to its leading edge.
+                // This is bounded sampling, never a layout-to-state feedback loop.
+                for _ in 0..<4 {
+                    guard canCompletePlayerAutoAdvance(token: token, context: context, userID: userID) else {
+                        if autoAdvanceToken == token { cancelPlayerAutoAdvance() }
+                        return
+                    }
+                    do { try await Task.sleep(for: .milliseconds(20)) }
+                    catch { return }
+                    guard canCompletePlayerAutoAdvance(token: token, context: context, userID: userID) else {
+                        if autoAdvanceToken == token { cancelPlayerAutoAdvance() }
+                        return
+                    }
+                    if let flight = viewedFlightEndpoints.capture(for: userID),
+                       viewedFlightViewport.insetBy(dx: -1, dy: -1).contains(flight.destination) {
+                        viewedCardFlight = flight
+                        break
+                    }
+                }
+            }
+            guard canCompletePlayerAutoAdvance(token: token, context: context, userID: userID) else {
+                if autoAdvanceToken == token { cancelPlayerAutoAdvance() }
+                return
+            }
+            let hasFlight = viewedCardFlight != nil
+            withAnimation(hasFlight ? .timingCurve(0.32, 0, 0.2, 1, duration: 0.8) : .easeInOut(duration: 0.18)) {
+                isAutoAdvanceExiting = true
+                isAutoAdvanceFading = !hasFlight
+                viewedFlightProgress = 1
+            }
+            do { try await Task.sleep(for: .milliseconds(hasFlight ? 800 : 180)) }
+            catch { return }
+            guard canCompletePlayerAutoAdvance(token: token, context: context, userID: userID) else {
+                if autoAdvanceToken == token { cancelPlayerAutoAdvance() }
+                return
+            }
+            // The moving cover and prepared tray avatar are identical here.
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                viewedPlayers.deferPlayer(userID)
+                selectedSimilarPlayerID = nil
+                isAutoAdvanceExiting = false
+                isAutoAdvanceFading = false
+                autoAdvanceToken = nil
+                autoAdvanceTask = nil
+                viewedCardFlight = nil
+                viewedFlightProgress = 0
+                pendingViewedPlayerID = nil
+            }
+            highlightViewedArrival()
+        }
+        return true
+    }
+
+    private func cancelPlayerAutoAdvance() {
+        clearViewedArrivalHighlight()
+        viewedCardFlight = nil
+        viewedFlightProgress = 0
+        pendingViewedPlayerID = nil
+        guard autoAdvanceToken != nil else { return }
+        autoAdvanceTask?.cancel()
+        autoAdvanceTask = nil
+        autoAdvanceToken = nil
+        isAutoAdvanceExiting = false
+        isAutoAdvanceFading = false
+        autoAdvanceReplayID += 1
+    }
+
+    private func highlightViewedArrival() {
+        viewedArrivalTask?.cancel()
+        withAnimation(.easeOut(duration: 0.14)) {
+            isViewedArrivalHighlighted = true
+        }
+        viewedArrivalTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(650)) }
+            catch { return }
+            guard !Task.isCancelled, isDiscoverForeground, isDiscoverVisible else { return }
+            withAnimation(.easeOut(duration: 0.22)) {
+                isViewedArrivalHighlighted = false
+            }
+            viewedArrivalTask = nil
+        }
+    }
+
+    private func clearViewedArrivalHighlight() {
+        viewedArrivalTask?.cancel()
+        viewedArrivalTask = nil
+        isViewedArrivalHighlighted = false
+    }
+
+    private var topStack: [DiscoverUser] {
+        guard selectedTab == .swipe else { return Array(users.prefix(2)) }
+        guard let activeUser else { return [] }
+        return [activeUser] + orderedSimilarUsers.filter { $0.id != activeUser.id }.prefix(1)
+    }
+
+    private var discoverLocationKey: String {
+        let user = appModel.currentUser
+        let draft = appModel.guestDraft
+        let accountID = appModel.isAuthenticated ? (user?.id ?? "authenticated") : "guest"
+        let placeID = user?.location?.id ?? draft.location?.id ?? ""
+        let city = user?.city ?? draft.city
+        let sports: [Sport] = user?.preferredSports ?? draft.preferredSports
+        let sportKey = sports.map { $0.rawValue }.sorted().joined(separator: ",")
+        let radius = String(user?.searchRadiusKm ?? draft.searchRadiusKm)
+        return [accountID, placeID, city, sportKey, radius].joined(separator: "|")
+    }
+
+    private var emptyDeckContextKey: String {
+        discoverLocationKey + "|" + (similarPlayersSportFilter?.rawValue ?? "all")
+    }
+
+    private func resetEmptyDeckContentIfAccountChanged() {
+        let context = emptyDeckContextKey
+        guard emptyDeckAccountID != context else { return }
+        emptyDeckAccountID = context
+        emptyDeckRequestID = nil
+        emptyDeckSections = []
+        inviteSummary = nil
+        isLoadingEmptyDeckContent = false
+        hasLoadedEmptyDeckContent = false
+        emptyDeckContentFailed = false
+    }
+
+    @MainActor
     private func loadEmptyDeckContent() async {
-        guard appModel.isAuthenticated, inviteSummary == nil else {
-            return
+        resetEmptyDeckContentIfAccountChanged()
+        guard !isLoadingEmptyDeckContent, !hasLoadedEmptyDeckContent else { return }
+        let context = emptyDeckContextKey
+        let requestID = UUID()
+        emptyDeckRequestID = requestID
+        isLoadingEmptyDeckContent = true
+        emptyDeckContentFailed = false
+        defer {
+            if emptyDeckRequestID == requestID { isLoadingEmptyDeckContent = false }
         }
-
-        guard let content = try? await appModel.repository.fetchEmptyDeckContent() else {
-            return
+        do {
+            let content = try await appModel.repository.fetchEmptyDeckContent(
+                city: appModel.currentUser?.city ?? appModel.guestDraft.city,
+                locationPlaceId: appModel.currentUser?.location?.id ?? appModel.guestDraft.location?.id,
+                sports: similarPlayersSportFilter.map { [$0] }
+                    ?? appModel.currentUser?.preferredSports ?? appModel.guestDraft.preferredSports
+            )
+            guard !Task.isCancelled, context == emptyDeckContextKey,
+                  emptyDeckRequestID == requestID else { return }
+            emptyDeckSections = content.sections
+            inviteSummary = content.invite
+            hasLoadedEmptyDeckContent = true
+        } catch {
+            guard !Task.isCancelled, context == emptyDeckContextKey,
+                  emptyDeckRequestID == requestID else { return }
+            emptyDeckContentFailed = true
         }
-
-        emptyDeckSections = content.sections
-        inviteSummary = content.invite
     }
 
     private func loadDiscover() async {
+        let requestContext = emptyDeckContextKey
+        let requestSport = selectedTab == .swipe ? similarPlayersSportFilter : nil
+        let requestTab = selectedTab
         let shouldReportMenuLoading = users.isEmpty && upcomingGameRequests.isEmpty && upcomingMatches.isEmpty && personalActivities.isEmpty
         if shouldReportMenuLoading {
             appModel.setTabContentLoading("discover", isLoading: true)
         }
+        cancelPlayerAutoAdvance()
         isLoading = true
         defer {
             isLoading = false
@@ -2331,6 +3316,7 @@ struct DiscoverView: View {
                 let fetchedPersonalActivities = try await personalActivitiesRequest
                 let searches = try await searchesRequest
 
+                guard !Task.isCancelled, requestContext == emptyDeckContextKey, requestTab == selectedTab else { return }
                 upcomingMatches = matches
                 upcomingGameRequests = reorderedGameRequests(gameRequests)
                 personalActivities = fetchedPersonalActivities
@@ -2351,8 +3337,9 @@ struct DiscoverView: View {
                     return
                 }
 
-                async let discoverRequest = appModel.repository.fetchDiscoverUsers(view: selectedTab)
+                async let discoverRequest = appModel.repository.fetchDiscoverUsers(view: selectedTab, sport: requestSport)
                 let fetchedUsers = try await discoverRequest
+                guard !Task.isCancelled, requestContext == emptyDeckContextKey, requestTab == selectedTab else { return }
                 users = reorderedUsers(fetchedUsers)
                 updateSimilarPlayersBadgeIfNeeded()
                 await appModel.notificationManager.manualRefresh(repository: appModel.repository)
@@ -2363,7 +3350,8 @@ struct DiscoverView: View {
                 appModel.hasActiveUpcomingGameRequests = false
                 UpcomingGamesWidgetStore.clear()
                 mySearches = []
-                let fetchedUsers = try await appModel.repository.fetchGuestDiscoverUsers(draft: appModel.guestDraft, view: selectedTab)
+                let fetchedUsers = try await appModel.repository.fetchGuestDiscoverUsers(draft: appModel.guestDraft, view: selectedTab, sport: requestSport)
+                guard !Task.isCancelled, requestContext == emptyDeckContextKey, requestTab == selectedTab else { return }
                 users = reorderedUsers(fetchedUsers)
                 updateSimilarPlayersBadgeIfNeeded()
             }
@@ -2434,10 +3422,11 @@ struct DiscoverView: View {
     }
 
     private func handleSummaryTap() {
+        let target = summaryNavigationTarget
+        let signature = summaryStateSignature
+        dismissSummaryIsland(signature: signature)
         AppHaptics.selection()
-        guard let target = summaryNavigationTarget else {
-            return
-        }
+        guard let target else { return }
         if case .discover(.hot, _, _, _) = target {
             notificationManager.markHotEventsOpened()
         }
@@ -2458,6 +3447,7 @@ struct DiscoverView: View {
         selectedUpcomingParticipant = nil
         selectedUpcomingMatch = nil
         users.removeAll { $0.id == userId }
+        viewedPlayers.remove(userId)
         upcomingGameRequests.removeAll { request in
             guard let matchId = request.matchId else { return false }
             return blockedMatchIDs.contains(matchId)
@@ -2504,15 +3494,20 @@ struct DiscoverView: View {
         announcedSummarySignaturesRaw = signatures.sorted().joined(separator: "|")
     }
 
-    private func submitSwipe(_ action: SwipeAction) async {
-        guard let activeUser else {
-            return
+    @MainActor
+    private func submitSwipe(_ action: SwipeAction, userID: String) async {
+        guard autoAdvanceToken == nil, !isSubmittingSwipe, !isSimilarPlayersHintPresented, !isFirstInterestHintPresented,
+              let activeUser, activeUser.id == userID,
+              selectedTab != .swipe || similarPlayersDisplayMode == .cards else { return }
+        isSubmittingSwipe = true
+        let sourceTab = selectedTab
+        let sourceAccountID = appModel.currentUser?.id
+        let sourceIsAuthenticated = appModel.isAuthenticated
+        defer {
+            isSubmittingSwipe = false
+            resetSwipeInteraction(animated: false)
         }
         let swipedUserName = activeUser.displayName
-
-        if isSimilarPlayersHintPresented {
-            dismissSimilarPlayersHint()
-        }
 
         if !appModel.isAuthenticated && (action == .like || action == .superlike) {
             resetSwipeInteraction()
@@ -2542,9 +3537,13 @@ struct DiscoverView: View {
         }
 
         try? await Task.sleep(nanoseconds: 180_000_000)
+        guard !Task.isCancelled, selectedTab == sourceTab,
+              appModel.currentUser?.id == sourceAccountID,
+              appModel.isAuthenticated == sourceIsAuthenticated else { return }
 
         if !appModel.isAuthenticated {
             users.removeAll { $0.id == activeUser.id }
+            viewedPlayers.remove(activeUser.id)
             updateSimilarPlayersBadgeIfNeeded()
             resetSwipeInteraction()
             return
@@ -2552,6 +3551,7 @@ struct DiscoverView: View {
 
         if action == .dislike {
             users.removeAll { $0.id == activeUser.id }
+            viewedPlayers.remove(activeUser.id)
             updateSimilarPlayersBadgeIfNeeded()
             resetSwipeInteraction()
 
@@ -2563,9 +3563,16 @@ struct DiscoverView: View {
 
         do {
             let createdMatchId = try await appModel.repository.swipe(userId: activeUser.id, action: action)
-            users.removeFirst()
+            guard !Task.isCancelled, selectedTab == sourceTab,
+                  appModel.currentUser?.id == sourceAccountID,
+                  appModel.isAuthenticated == sourceIsAuthenticated else { return }
+            users.removeAll { $0.id == activeUser.id }
+            viewedPlayers.remove(activeUser.id)
             updateSimilarPlayersBadgeIfNeeded()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
+            guard !Task.isCancelled, selectedTab == sourceTab,
+                  appModel.currentUser?.id == sourceAccountID,
+                  appModel.isAuthenticated == sourceIsAuthenticated else { return }
             if createdMatchId != nil, action == .like {
                 showMatchToast(L10n.string("You matched with \(activeUser.displayName).", "С \(activeUser.displayName) случился новый мэтч."))
             }
@@ -2576,7 +3583,9 @@ struct DiscoverView: View {
                 }
             }
         } catch {
-            guard !error.isCancellationLike else {
+            guard !error.isCancellationLike, selectedTab == sourceTab,
+                  appModel.currentUser?.id == sourceAccountID,
+                  appModel.isAuthenticated == sourceIsAuthenticated else {
                 return
             }
             appModel.present(error: error)
@@ -3020,7 +4029,9 @@ struct DiscoverView: View {
     private func dragGesture(for user: DiscoverUser) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard !isSimilarPlayersHintPresented, !isFirstInterestHintPresented else {
+                guard autoAdvanceToken == nil, !isSubmittingSwipe, !isSimilarPlayersHintPresented, !isFirstInterestHintPresented,
+                      activeUser?.id == user.id,
+                      selectedTab != .swipe || similarPlayersDisplayMode == .cards else {
                     return
                 }
                 guard isHorizontalSwipe(value.translation) else {
@@ -3030,7 +4041,9 @@ struct DiscoverView: View {
                 dragDecision = currentDecision(for: value.translation)
             }
             .onEnded { value in
-                guard !isSimilarPlayersHintPresented, !isFirstInterestHintPresented else {
+                guard autoAdvanceToken == nil, !isSubmittingSwipe, !isSimilarPlayersHintPresented, !isFirstInterestHintPresented,
+                      activeUser?.id == user.id,
+                      selectedTab != .swipe || similarPlayersDisplayMode == .cards else {
                     return
                 }
                 guard isHorizontalSwipe(value.translation) else {
@@ -3044,8 +4057,7 @@ struct DiscoverView: View {
                 }
 
                 Task {
-                    _ = user
-                    await submitSwipe(decision)
+                    await submitSwipe(decision, userID: user.id)
                 }
             }
     }
@@ -3062,29 +4074,6 @@ struct DiscoverView: View {
             return .dislike
         }
         return nil
-    }
-
-    private func backgroundColor(for tab: DiscoverTab) -> Color {
-        guard selectedTab == tab else {
-            return .white.opacity(0.8)
-        }
-
-        switch tab {
-        case .upcoming:
-            return AppTheme.court
-        case .swipe:
-            return AppTheme.ink
-        case .likes:
-            return Color(red: 0.16, green: 0.50, blue: 0.34)
-        case .seeking:
-            return AppTheme.clay
-        case .hot:
-            return .red.opacity(0.9)
-        }
-    }
-
-    private func foregroundColor(for tab: DiscoverTab) -> Color {
-        selectedTab == tab ? .white : AppTheme.ink.opacity(0.65)
     }
 
     private var tabSwitchGesture: some Gesture {
@@ -5073,6 +6062,7 @@ private struct TennisBallIcon: View {
 private struct RefreshProgressObserver: UIViewRepresentable {
     @Binding var progress: CGFloat
     @Binding var isRefreshing: Bool
+    let isActive: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(progress: $progress, isRefreshing: $isRefreshing)
@@ -5085,7 +6075,11 @@ private struct RefreshProgressObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.attachIfNeeded(from: uiView)
+        context.coordinator.update(from: uiView, isActive: isActive)
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.stopObserving()
     }
 
     final class Coordinator {
@@ -5093,57 +6087,71 @@ private struct RefreshProgressObserver: UIViewRepresentable {
         private let isRefreshing: Binding<Bool>
         private weak var scrollView: UIScrollView?
         private weak var refreshControl: UIRefreshControl?
+        private weak var hostView: UIView?
         private var observation: NSKeyValueObservation?
+        private var scheduledUpdate: DispatchWorkItem?
+        private var isActive = false
 
         init(progress: Binding<CGFloat>, isRefreshing: Binding<Bool>) {
             self.progress = progress
             self.isRefreshing = isRefreshing
         }
 
-        func attachIfNeeded(from view: UIView) {
-            guard scrollView == nil else {
-                syncRefreshState()
+        func update(from view: UIView, isActive: Bool) {
+            guard isActive else {
+                stopObserving()
                 return
             }
+            self.isActive = true
+            hostView = view
+            scheduleUpdate()
+        }
 
-            DispatchQueue.main.async {
-                guard self.scrollView == nil else {
-                    self.syncRefreshState()
-                    return
-                }
-                guard let scrollView = self.enclosingScrollView(from: view) else {
-                    return
-                }
+        func stopObserving() {
+            isActive = false
+            scheduledUpdate?.cancel()
+            scheduledUpdate = nil
+            observation?.invalidate()
+            observation = nil
+            scrollView = nil
+            refreshControl = nil
+            hostView = nil
+        }
 
-                self.scrollView = scrollView
+        private func scheduleUpdate() {
+            guard isActive, scheduledUpdate == nil else { return }
+            // Never publish SwiftUI state inside updateUIView or UIKit's layout/KVO callback.
+            let update = DispatchWorkItem { [weak self] in
+                guard let self, self.isActive else { return }
+                self.scheduledUpdate = nil
+                guard let hostView = self.hostView else { return }
+                if self.scrollView == nil {
+                    guard let scrollView = self.enclosingScrollView(from: hostView) else { return }
+                    self.scrollView = scrollView
+                    self.observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+                        self?.scheduleUpdate()
+                    }
+                }
+                guard let scrollView = self.scrollView else { return }
                 self.refreshControl = scrollView.refreshControl
                 self.refreshControl?.tintColor = .clear
-                self.refreshControl?.attributedTitle = NSAttributedString(string: " ")
-
-                self.observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] scrollView, _ in
-                    self?.handleContentOffsetChange(scrollView)
-                }
-                self.handleContentOffsetChange(scrollView)
+                self.syncRefreshState(from: scrollView)
             }
+            scheduledUpdate = update
+            DispatchQueue.main.async(execute: update)
         }
 
-        private func handleContentOffsetChange(_ scrollView: UIScrollView) {
-            let overscroll = max(-(scrollView.contentOffset.y + scrollView.adjustedContentInset.top), 0)
-            let normalized = min(overscroll / 42, 1)
-
-            DispatchQueue.main.async {
-                self.progress.wrappedValue = self.isRefreshing.wrappedValue ? 1 : normalized
-                self.syncRefreshState()
-            }
-        }
-
-        private func syncRefreshState() {
+        private func syncRefreshState(from scrollView: UIScrollView) {
             let controlRefreshing = refreshControl?.isRefreshing ?? false
+            let overscroll = max(-(scrollView.contentOffset.y + scrollView.adjustedContentInset.top), 0)
+            guard overscroll.isFinite else { return }
+            let normalized = min(overscroll / 42, 1)
+            let nextProgress: CGFloat = controlRefreshing ? 1 : (normalized < 0.01 ? 0 : normalized)
             if isRefreshing.wrappedValue != controlRefreshing {
                 isRefreshing.wrappedValue = controlRefreshing
             }
-            if !controlRefreshing, progress.wrappedValue < 0.01 {
-                progress.wrappedValue = 0
+            if progress.wrappedValue != nextProgress {
+                progress.wrappedValue = nextProgress
             }
         }
 
@@ -5161,32 +6169,22 @@ private struct RefreshProgressObserver: UIViewRepresentable {
 }
 
 
-private struct UrgentGamesToolbarButton: View {
-    let count: Int
+private struct DiscoverToolbarBadge: View {
+    let text: String
+    let tint: Color
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(AppTheme.court)
-                .frame(width: 42, height: 42)
-                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-
-            if count > 0 {
-                Text(count > 99 ? "99+" : "\(count)")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .frame(height: 20)
-                    .background(AppTheme.court, in: Capsule())
-                    .offset(x: 7, y: -7)
-            }
-        }
-        .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 8)
+        Text(text)
+            .font(.system(size: 11, weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .frame(maxWidth: 36)
+            .frame(height: 18)
+            .background(tint, in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -5199,7 +6197,6 @@ private struct DiscoverScrollOffsetReader: View {
                     value: max(-geometry.frame(in: .named("discover-scroll")).minY, 0)
                 )
         }
-        .frame(height: 0)
     }
 }
 
@@ -6263,17 +7260,31 @@ struct SwipeCard: View {
     let index: Int
     let dragOffset: CGSize
     let decision: SwipeAction?
+    let detailsOpacity: Double
     let mode: SwipeCardMode
     let onOpen: () -> Void
     let onDislike: () -> Void
     let onLike: () -> Void
     let onBlocked: () -> Void
 
-    @State private var storyIndex = 0
-    @State private var storyStartedAt = Date()
-    @State private var storyProgress: CGFloat = 0
+    let playbackEnabled: Bool
+    let playbackReplayID: Int
+    let mediaCompletionRetryID: String
+    let onPlaybackInteractionChanged: ((Bool) -> Void)?
+    // A rejected completion is retried only when playback resumes or candidates change.
+    let onMediaCompleted: (() -> Bool)?
 
-    private let storyDuration: TimeInterval = 10
+    @State private var mediaClock = PlayerMediaPlaybackClock()
+    @State private var completionAccepted = false
+    @State private var completionAttempted = false
+    @State private var isTouchHeld = false
+    @State private var isSafetyPresented = false
+    @State private var isCardVisible = false
+
+    private var storyIndex: Int { mediaClock.itemIndex }
+    private var storyProgress: CGFloat { CGFloat(mediaClock.progress) }
+    private var isPlaybackInteracting: Bool { isTouchHeld || isSafetyPresented }
+    private var isPlaying: Bool { index == 0 && playbackEnabled && isCardVisible && !isPlaybackInteracting }
     private let storyTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
     init(
@@ -6285,7 +7296,13 @@ struct SwipeCard: View {
         onOpen: @escaping () -> Void,
         onDislike: @escaping () -> Void,
         onLike: @escaping () -> Void,
-        onBlocked: @escaping () -> Void = {}
+        onBlocked: @escaping () -> Void = {},
+        playbackEnabled: Bool = true,
+        detailsOpacity: Double = 1,
+        playbackReplayID: Int = 0,
+        mediaCompletionRetryID: String = "",
+        onPlaybackInteractionChanged: ((Bool) -> Void)? = nil,
+        onMediaCompleted: (() -> Bool)? = nil
     ) {
         self.user = user
         self.index = index
@@ -6296,6 +7313,12 @@ struct SwipeCard: View {
         self.onDislike = onDislike
         self.onLike = onLike
         self.onBlocked = onBlocked
+        self.playbackEnabled = playbackEnabled
+        self.detailsOpacity = detailsOpacity
+        self.playbackReplayID = playbackReplayID
+        self.mediaCompletionRetryID = mediaCompletionRetryID
+        self.onPlaybackInteractionChanged = onPlaybackInteractionChanged
+        self.onMediaCompleted = onMediaCompleted
     }
 
     private var swipeStrength: CGFloat {
@@ -6370,17 +7393,41 @@ struct SwipeCard: View {
         .rotationEffect(.degrees(index == 0 ? Double(dragOffset.width / 22) : 0))
         .offset(dragOffset)
         .shadow(color: AppTheme.ink.opacity(index == 0 ? 0.18 : 0.08), radius: 24, x: 0, y: 14)
-        .onReceive(storyTimer) { now in
-            updateStoryProgress(now: now)
+        .background {
+            if onMediaCompleted != nil {
+                PlayerCardTouchObserver { isTouchHeld = $0 }
+            }
         }
-        .onChange(of: user.id) { _ in
-            resetStory()
+        .onReceive(storyTimer) { _ in
+            updateStoryProgress()
         }
+        .onAppear { isCardVisible = true; mediaClock.pause() }
+        .onDisappear {
+            isCardVisible = false
+            mediaClock.pause()
+            onPlaybackInteractionChanged?(false)
+        }
+        .onChange(of: isPlaying) { playing in
+            mediaClock.pause()
+            if playing && !completionAccepted { completionAttempted = false }
+        }
+        .onChange(of: mediaCompletionRetryID) { _ in
+            if mediaClock.isComplete {
+                completionAccepted = false
+                completionAttempted = false
+            }
+        }
+        .onChange(of: isPlaybackInteracting) { onPlaybackInteractionChanged?($0) }
+        .onChange(of: user.id) { _ in resetStory() }
+        .onChange(of: index) { newIndex in if newIndex == 0 { resetStory() } }
+        .onChange(of: playbackReplayID) { _ in resetStory() }
         .allowsHitTesting(mode == .interactive)
     }
 
     private var cardSurface: some View {
         cardContent
+            .opacity(detailsOpacity)
+            .animation(.easeOut(duration: 0.25), value: detailsOpacity)
             .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .offset(x: contentParallaxX, y: contentParallaxY)
@@ -6404,7 +7451,8 @@ struct SwipeCard: View {
                         userId: user.id,
                         displayName: user.displayName,
                         context: .profile(userId: user.id),
-                        onBlocked: onBlocked
+                        onBlocked: onBlocked,
+                        onPresentationChanged: onMediaCompleted == nil ? nil : { isSafetyPresented = $0 }
                     )
                     .padding(16)
                 }
@@ -6471,24 +7519,20 @@ struct SwipeCard: View {
         return 0
     }
 
-    private func updateStoryProgress(now: Date) {
-        guard index == 0 else { return }
-        let elapsed = now.timeIntervalSince(storyStartedAt)
-        let count = max(storyItems.count, 1)
-
-        if elapsed >= storyDuration {
-            storyIndex = storyItems.isEmpty ? 0 : (storyIndex + 1) % count
-            storyStartedAt = now
-            storyProgress = 0
-        } else {
-            storyProgress = min(max(CGFloat(elapsed / storyDuration), 0), 1)
+    private func updateStoryProgress() {
+        // Visibility/playback transitions already pause the clock; idle ticks must not mutate @State.
+        guard isPlaying else { return }
+        mediaClock.tick(now: ProcessInfo.processInfo.systemUptime, itemCount: storyItems.count, loops: onMediaCompleted == nil)
+        if mediaClock.isComplete, !completionAttempted, let onMediaCompleted {
+            completionAttempted = true
+            completionAccepted = onMediaCompleted()
         }
     }
 
     private func resetStory() {
-        storyIndex = 0
-        storyProgress = 0
-        storyStartedAt = Date()
+        mediaClock = PlayerMediaPlaybackClock()
+        completionAccepted = false
+        completionAttempted = false
     }
 
     private var playerIdentityBlock: some View {
@@ -6589,7 +7633,8 @@ struct SwipeCard: View {
                 fitMetric(
                     icon: "mappin.circle.fill",
                     title: mode == .profilePreview ? L10n.string("Location", "Локация") : L10n.string("District", "Район"),
-                    value: mode == .profilePreview ? playerLocationText : (user.districtDisplayNames.first ?? user.distanceLabel)
+                    value: user.nearby.map { [user.city, $0.distanceLabel].compactMap { $0 }.joined(separator: " · ") }
+                        ?? (mode == .profilePreview ? playerLocationText : (user.districtDisplayNames.first ?? user.distanceLabel))
                 )
             }
 
@@ -6725,6 +7770,7 @@ struct SwipeCard: View {
     private var sportsBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             AutoScrollingSportChips(
+                isPlaying: isPlaying,
                 sports: Array(user.preferredSports.prefix(3)),
                 levelProvider: { sport in
                     user.sportLevels[sport.rawValue] ?? user.tennisLevel
@@ -6778,7 +7824,7 @@ struct SwipeCard: View {
         ZStack {
             PlayerCardStoryBackground(item: activeStoryItem, fallbackImagePath: user.profileHeroImagePath, accent: accentColor)
 
-            SwipeCardAmbientLayer(accent: accentColor, dragOffset: dragOffset, sports: user.preferredSports)
+            SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accentColor, dragOffset: dragOffset, sports: user.preferredSports)
 
             LinearGradient(
                 colors: [.black.opacity(0.12), .black.opacity(0.35), .black.opacity(0.9)],
@@ -6840,6 +7886,7 @@ struct SwipeCard: View {
 }
 
 private struct AutoScrollingSportChips: View {
+    let isPlaying: Bool
     let sports: [Sport]
     let levelProvider: (Sport) -> Int?
 
@@ -6849,10 +7896,17 @@ private struct AutoScrollingSportChips: View {
     private let spacing: CGFloat = 8
     private let pointsPerSecond: CGFloat = 14
 
+    private struct PlaybackKey: Equatable {
+        let isPlaying: Bool
+        let trackWidth: CGFloat
+        let availableWidth: CGFloat
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            let availableWidth = geometry.size.width
-            let needsAnimation = sports.count > 1 && trackWidth > availableWidth && availableWidth > 0
+            let rawWidth = geometry.size.width
+            let availableWidth = rawWidth.isFinite ? max(0, (rawWidth * 2).rounded() / 2) : 0
+            let needsAnimation = isPlaying && sports.count > 1 && trackWidth > availableWidth && availableWidth > 0
 
             Group {
                 if needsAnimation {
@@ -6865,14 +7919,15 @@ private struct AutoScrollingSportChips: View {
             }
             .frame(width: availableWidth, height: 38, alignment: .leading)
             .clipped()
-            .onAppear {
-                restartAnimationIfNeeded(availableWidth: availableWidth)
-            }
-            .onChange(of: trackWidth) { _ in
-                restartAnimationIfNeeded(availableWidth: availableWidth)
-            }
-            .onChange(of: availableWidth) { _ in
-                restartAnimationIfNeeded(availableWidth: availableWidth)
+            .task(id: PlaybackKey(isPlaying: isPlaying, trackWidth: trackWidth, availableWidth: availableWidth)) {
+                guard !Task.isCancelled else { return }
+                var reset = Transaction()
+                reset.disablesAnimations = true
+                withTransaction(reset) { if shouldAnimate { shouldAnimate = false } }
+                guard needsAnimation else { return }
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                shouldAnimate = true
             }
         }
         .frame(height: 38)
@@ -6892,6 +7947,7 @@ private struct AutoScrollingSportChips: View {
             }
         )
         .onPreferenceChange(SportChipTrackWidthPreferenceKey.self) { value in
+            guard value.isFinite, value > 0, abs(value - trackWidth) >= 0.5 else { return }
             trackWidth = value
         }
     }
@@ -6904,8 +7960,8 @@ private struct AutoScrollingSportChips: View {
         .offset(x: shouldAnimate ? -(trackWidth + spacing) : 0)
         .frame(width: availableWidth, alignment: .leading)
         .animation(
-            .linear(duration: max(Double((trackWidth + spacing) / pointsPerSecond), 14))
-                .repeatForever(autoreverses: false),
+            isPlaying ? .linear(duration: max(Double((trackWidth + spacing) / pointsPerSecond), 14))
+                .repeatForever(autoreverses: false) : nil,
             value: shouldAnimate
         )
     }
@@ -6921,19 +7977,6 @@ private struct AutoScrollingSportChips: View {
             startPoint: .leading,
             endPoint: .trailing
         )
-    }
-
-    private func restartAnimationIfNeeded(availableWidth: CGFloat) {
-        let needsAnimation = sports.count > 1 && trackWidth > availableWidth && availableWidth > 0
-        guard needsAnimation else {
-            shouldAnimate = false
-            return
-        }
-
-        shouldAnimate = false
-        DispatchQueue.main.async {
-            shouldAnimate = true
-        }
     }
 }
 
@@ -7109,6 +8152,7 @@ private struct SportChipTrackWidthPreferenceKey: PreferenceKey {
 }
 
 private struct SwipeCardAmbientLayer: View {
+    let isPlaying: Bool
     let accent: Color
     let dragOffset: CGSize
     let sports: [Sport]
@@ -7119,7 +8163,7 @@ private struct SwipeCardAmbientLayer: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 24, paused: false)) { timeline in
+        TimelineView(.animation(minimumInterval: 1 / 24, paused: !isPlaying)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             let horizontalBias = dragOffset.width * 0.04
 
@@ -9036,6 +10080,7 @@ private struct GameReportCompactSummary: View {
     let currentUserId: String?
     let isUpdating: Bool
     let onConfirm: ((String) async -> Void)?
+    @State private var selectedGalleryItem: ReportPhotoGalleryItem?
 
     private var previewUrls: [String] {
         Array(report.photoUrls.prefix(4))
@@ -9057,8 +10102,26 @@ private struct GameReportCompactSummary: View {
 
             if !previewUrls.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(previewUrls, id: \.self) { path in
-                        GameReportThumbnail(path: path)
+                    ForEach(Array(previewUrls.enumerated()), id: \.offset) { index, path in
+                        Button {
+                            selectedGalleryItem = ReportPhotoGalleryItem(
+                                photoPaths: report.photoUrls,
+                                initialIndex: index,
+                                title: L10n.string("Game photo report", "Фотоотчёт об игре"),
+                                subtitle: report.statusTitle,
+                                comment: report.comment
+                            )
+                        } label: {
+                            GameReportThumbnail(path: path)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(L10n.string(
+                            "Open photo \(index + 1) of \(report.photoUrls.count)",
+                            "Открыть фото \(index + 1) из \(report.photoUrls.count)"
+                        ))
+                        .accessibilityHint(L10n.string("Browse all photos in this report", "Просмотр всех фотографий отчёта"))
+                        .accessibilityIdentifier("game-report-\(report.id)-photo-\(index)")
                     }
                 }
             }
@@ -9080,6 +10143,9 @@ private struct GameReportCompactSummary: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+        .sheet(item: $selectedGalleryItem) { item in
+            ReportPhotoGallerySheet(item: item)
+        }
     }
 
 }
@@ -9091,6 +10157,7 @@ private struct PersonalActivityUpcomingCard: View {
     let onCompleteWithoutPhoto: (() async -> Void)?
     let onCancel: (() async -> Void)?
     let onOpenCourt: () -> Void
+    @State private var selectedGalleryItem: ReportPhotoGalleryItem?
 
     private var statusTitle: String {
         switch activity.status.lowercased() {
@@ -9162,8 +10229,26 @@ private struct PersonalActivityUpcomingCard: View {
 
             if !activity.photoUrls.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(Array(activity.photoUrls.prefix(4)), id: \.self) { path in
-                        GameReportThumbnail(path: path)
+                    ForEach(Array(activity.photoUrls.prefix(4).enumerated()), id: \.offset) { index, path in
+                        Button {
+                            selectedGalleryItem = ReportPhotoGalleryItem(
+                                photoPaths: activity.photoUrls,
+                                initialIndex: index,
+                                title: activity.sport.title,
+                                subtitle: L10n.string("Personal visit photo report", "Фотоотчёт личного визита"),
+                                comment: activity.reportComment
+                            )
+                        } label: {
+                            GameReportThumbnail(path: path)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(L10n.string(
+                            "Open photo \(index + 1) of \(activity.photoUrls.count)",
+                            "Открыть фото \(index + 1) из \(activity.photoUrls.count)"
+                        ))
+                        .accessibilityHint(L10n.string("Browse all photos from this visit", "Просмотр всех фотографий визита"))
+                        .accessibilityIdentifier("personal-activity-\(activity.id)-photo-\(index)")
                     }
                 }
             }
@@ -9229,6 +10314,9 @@ private struct PersonalActivityUpcomingCard: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
+        .sheet(item: $selectedGalleryItem) { item in
+            ReportPhotoGallerySheet(item: item)
+        }
     }
 }
 
@@ -10178,5 +11266,710 @@ private struct FlowLayout<Item: Hashable, Content: View>: View {
         stride(from: 0, to: array.count, by: size).map {
             Array(array[$0 ..< min($0 + size, array.count)])
         }
+    }
+}
+
+private enum SimilarPlayersDisplayMode: String, CaseIterable, Identifiable {
+    case cards
+    case grid
+
+    var id: String { rawValue }
+    var title: String {
+        self == .cards ? L10n.string("Card", "Карточка") : L10n.string("Grid", "Сетка")
+    }
+    var symbol: String { self == .cards ? "rectangle.portrait" : "square.grid.2x2" }
+}
+
+private struct SimilarPlayerGeometry: ViewModifier {
+    let id: String
+    let namespace: Namespace.ID
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.matchedGeometryEffect(id: "similar-player-\(id)", in: namespace)
+        } else {
+            content
+        }
+    }
+}
+
+private struct SimilarPlayerGridTile: View {
+    let user: DiscoverUser
+    let selectedSport: Sport?
+    let isSelected: Bool
+
+    private var sportSummary: String {
+        let sports = selectedSport.map { [$0] } ?? Array(user.preferredSports.prefix(2))
+        guard !sports.isEmpty else { return L10n.string("Sport not specified", "Спорт не указан") }
+        let summary = sports.map { sport in
+            let level = user.sportLevels[sport.rawValue] ?? (sport == .tennis ? user.tennisLevel : nil)
+            return sport.title + (level.map { " · \($0)/10" } ?? "")
+        }.joined(separator: "\n")
+        let remaining = selectedSport == nil ? max(0, user.preferredSports.count - sports.count) : 0
+        return summary + (remaining > 0 ? " · +\(remaining)" : "")
+    }
+    private var location: String {
+        let parts = [user.city, user.nearby?.distanceLabel ?? user.districtDisplayNames.first].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? L10n.string("Location not specified", "Место не указано") : parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(.clear)
+                .aspectRatio(1.05, contentMode: .fit)
+                .overlay {
+                    GeometryReader { proxy in
+                        AsyncImage(url: user.profileHeroImagePath.flatMap(resolveAppRemoteURL)) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().scaledToFill()
+                            } else {
+                                ZStack {
+                                    LinearGradient(colors: [AppTheme.court.opacity(0.75), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    Text(String(user.displayName.prefix(1)).uppercased())
+                                        .font(.largeTitle.weight(.bold))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                            }
+                        }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                    }
+                }
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(user.displayName)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(sportSummary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Label(location, systemImage: "mappin")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(white: 0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isSelected ? Color(red: 0.63, green: 0.93, blue: 0.75) : .white.opacity(0.09), lineWidth: isSelected ? 2 : 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([user.displayName, sportSummary, location].joined(separator: ", "))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - Player map membership projection
+// Memberships come only from the server; a home district never substitutes for consent.
+struct SimilarPlayersMapMembership: Identifiable {
+    let user: DiscoverUser
+    let area: DiscoverMapArea
+    // Length-prefixed components keep even separator-containing server IDs distinct.
+    var id: String { "\(user.id.utf8.count):\(user.id)\(area.mapID.utf8.count):\(area.mapID)" }
+}
+
+enum SimilarPlayersMapData {
+    static func filteredUsers(_ users: [DiscoverUser], sport: Sport?) -> [DiscoverUser] {
+        var seen = Set<String>()
+        return users.filter { user in
+            guard seen.insert(user.id).inserted else { return false }
+            return sport.map { user.preferredSports.contains($0) } ?? true
+        }
+    }
+
+    static func validAreas(for user: DiscoverUser) -> [DiscoverMapArea] {
+        guard user.showOnMap else { return [] }
+        var seen = Set<String>()
+        return user.mapAreas.filter { $0.isValid && seen.insert($0.mapID).inserted }
+    }
+
+    static func mapUsers(_ users: [DiscoverUser], sport: Sport?) -> [DiscoverUser] {
+        filteredUsers(users, sport: sport).filter { !validAreas(for: $0).isEmpty }
+    }
+
+    static func memberships(for users: [DiscoverUser], sport: Sport? = nil) -> [SimilarPlayersMapMembership] {
+        filteredUsers(users, sport: sport).flatMap { user in
+            validAreas(for: user).map { SimilarPlayersMapMembership(user: user, area: $0) }
+        }
+    }
+
+
+}
+// MARK: - End player map membership projection
+
+// MARK: - Schematic player map layout
+// These coordinates are presentation slots, never a player's personal location.
+enum SimilarPlayersDistrictLayout {
+    static func positions(
+        for memberships: [SimilarPlayersMapMembership],
+        polygon: (DiscoverMapArea) -> [CLLocationCoordinate2D]?
+    ) -> [String: CLLocationCoordinate2D] {
+        let groups = Dictionary(grouping: memberships, by: { $0.area.mapID })
+        var result: [String: CLLocationCoordinate2D] = [:]
+        for key in groups.keys.sorted() {
+            guard let group = groups[key] else { continue }
+            var seen = Set<String>()
+            let ordered = group.sorted { $0.user.id < $1.user.id }.filter { seen.insert($0.user.id).inserted }
+            guard let area = ordered.first?.area else { continue }
+            let anchor = CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude)
+            let slots = polygon(area).flatMap { interiorSlots(count: ordered.count, anchor: anchor, polygon: $0) }
+                ?? fallbackSlots(count: ordered.count, anchor: anchor)
+            for (membership, coordinate) in zip(ordered, slots) { result[membership.id] = coordinate }
+        }
+        return result
+    }
+
+    static func validatedPolygon(for area: DiscoverMapArea, polygonCity: String, coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D]? {
+        guard area.kind == "district", area.districtId?.isEmpty == false,
+              let areaCity = knownCity(area.cityName), areaCity == knownCity(polygonCity),
+              knownCity(area.cityId).map({ $0 == areaCity }) ?? true,
+              coordinates.count >= 3, coordinates.allSatisfy(CLLocationCoordinate2DIsValid),
+              let minLat = coordinates.map(\.latitude).min(), let maxLat = coordinates.map(\.latitude).max(),
+              let minLon = coordinates.map(\.longitude).min(), let maxLon = coordinates.map(\.longitude).max(),
+              minLat < maxLat, minLon < maxLon,
+              (minLat...maxLat).contains(area.latitude), (minLon...maxLon).contains(area.longitude),
+              contains(CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude), polygon: coordinates) else { return nil }
+        return coordinates
+    }
+
+    private static func knownCity(_ name: String) -> String? {
+        let normalized = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "ё", with: "е").replacingOccurrences(of: "-", with: " ")
+        switch normalized {
+        case "санкт петербург", "петербург", "спб", "saint petersburg", "st petersburg", "st. petersburg", "spb": return "spb"
+        case "москва", "moscow": return "moscow"
+        case "казань", "kazan": return "kazan"
+        default: return nil
+        }
+    }
+
+    static func contains(_ point: CLLocationCoordinate2D, polygon: [CLLocationCoordinate2D]) -> Bool {
+        guard polygon.count >= 3 else { return false }
+        var inside = false
+        var previous = polygon[polygon.count - 1]
+        for current in polygon {
+            if (current.latitude > point.latitude) != (previous.latitude > point.latitude) {
+                let crossingLongitude = (previous.longitude - current.longitude)
+                    * (point.latitude - current.latitude) / (previous.latitude - current.latitude) + current.longitude
+                if point.longitude < crossingLongitude { inside.toggle() }
+            }
+            previous = current
+        }
+        return inside
+    }
+
+    private static func interiorSlots(count: Int, anchor: CLLocationCoordinate2D, polygon: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D]? {
+        guard count > 0, polygon.count >= 3,
+              let minLat = polygon.map(\.latitude).min(), let maxLat = polygon.map(\.latitude).max(),
+              let minLon = polygon.map(\.longitude).min(), let maxLon = polygon.map(\.longitude).max(),
+              minLat < maxLat, minLon < maxLon else { return nil }
+        var resolution = max(6, Int(ceil(sqrt(Double(count)))) * 2)
+        var candidates: [CLLocationCoordinate2D] = []
+        // Bound work for malformed or extremely thin outlines; their safe fallback is schematic too.
+        while resolution <= 256 {
+            candidates = (0..<resolution).flatMap { row in
+                (0..<resolution).compactMap { column -> CLLocationCoordinate2D? in
+                    let point = CLLocationCoordinate2D(
+                        latitude: minLat + (maxLat - minLat) * (Double(row) + 0.5) / Double(resolution),
+                        longitude: minLon + (maxLon - minLon) * (Double(column) + 0.5) / Double(resolution))
+                    return contains(point, polygon: polygon) ? point : nil
+                }
+            }
+            if candidates.count >= count { break }
+            resolution *= 2
+        }
+        guard candidates.count >= count else { return nil }
+        let longitudeScale = max(0.01, cos(anchor.latitude * .pi / 180))
+        func distance(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+            let x = (a.longitude - b.longitude) * longitudeScale
+            let y = a.latitude - b.latitude
+            return x * x + y * y
+        }
+        // Spread slots through the outline, with deterministic ties and no random jitter.
+        var selected: [CLLocationCoordinate2D] = []
+        var nearest = candidates.map { distance($0, anchor) }
+        var next = nearest.indices.min { nearest[$0] < nearest[$1] } ?? 0
+        for _ in 0..<count {
+            let point = candidates[next]
+            selected.append(point)
+            for index in candidates.indices {
+                let value = distance(candidates[index], point)
+                nearest[index] = selected.count == 1 ? value : min(nearest[index], value)
+            }
+            nearest[next] = -1
+            next = nearest.indices.max { nearest[$0] < nearest[$1] } ?? 0
+        }
+        return selected.sorted { a, b in a.latitude == b.latitude ? a.longitude < b.longitude : a.latitude < b.latitude }
+    }
+
+    static func fallbackSlots(count: Int, anchor: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
+        guard count > 0 else { return [] }
+        let columns = Int(ceil(sqrt(Double(count))))
+        let rows = Int(ceil(Double(count) / Double(columns)))
+        let latitudeStep = 500.0 / 111_320.0
+        let longitudeStep = 700.0 / (111_320.0 * max(0.05, cos(anchor.latitude * .pi / 180)))
+        // Move the whole grid inward at the poles instead of clamping distinct slots together.
+        let halfHeight = Double(rows - 1) * latitudeStep / 2
+        let centerLatitude = min(89.999 - halfHeight, max(-89.999 + halfHeight, anchor.latitude))
+        return (0..<count).map { index in
+            let row = index / columns
+            let rowCount = min(columns, count - row * columns)
+            let longitude = anchor.longitude + (Double(index % columns) - Double(rowCount - 1) / 2) * longitudeStep
+            let wrappedLongitude = (longitude + 540).truncatingRemainder(dividingBy: 360) - 180
+            return CLLocationCoordinate2D(latitude: centerLatitude + (Double(row) - Double(rows - 1) / 2) * latitudeStep,
+                                          longitude: wrappedLongitude)
+        }
+    }
+}
+// MARK: - End schematic player map layout
+
+private struct SimilarPlayersMapGrid: View {
+    let users: [DiscoverUser]
+    let layoutUsers: [DiscoverUser]
+    let availableSports: [Sport]
+    let selectedSport: Sport?
+    let selectedPlayerID: String?
+    let namespace: Namespace.ID
+    let reduceMotion: Bool
+    let isEnabled: Bool
+    let onSelectSport: (Sport?) -> Void
+    let onSelectMapPlayer: (String) -> Void
+    let onShowCards: () -> Void
+    let onOpenPlayer: (DiscoverUser) -> Void
+
+    private var mapItems: [DiscoverPlayerMapItem] {
+        let positions = SimilarPlayersDistrictLayout.positions(
+            for: SimilarPlayersMapData.memberships(for: layoutUsers),
+            polygon: { area in
+                guard let districtID = area.districtId,
+                      let district = districtAreasByID[districtID] else { return nil }
+                return SimilarPlayersDistrictLayout.validatedPolygon(
+                    for: area, polygonCity: district.city.rawValue, coordinates: district.coordinates)
+            }
+        )
+        return SimilarPlayersMapData.memberships(for: users, sport: selectedSport).map { membership in
+            let user = membership.user
+            let area = membership.area
+            var levels = user.sportLevels
+            if levels[Sport.tennis.rawValue] == nil { levels[Sport.tennis.rawValue] = user.tennisLevel }
+            let sports = selectedSport.map { chosen in [chosen] + user.preferredSports.filter { $0 != chosen } } ?? user.preferredSports
+            return DiscoverPlayerMapItem(
+                id: membership.id,
+                userID: user.id,
+                areaID: area.mapID,
+                anchorCoordinate: CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude),
+                coordinate: positions[membership.id] ?? CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude),
+                areaLabel: area.kind == "city" ? area.cityName : "\(area.cityName) · \(area.label)",
+                displayName: user.displayName,
+                avatarPath: user.profileHeroImagePath,
+                sports: sports,
+                sportLevels: levels
+            )
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    sportChip(nil)
+                    ForEach(availableSports) { sport in sportChip(sport) }
+                }
+            }
+            .accessibilityIdentifier("similar-players-sport-filters")
+
+            SimilarPlayersPlayerMap(
+                items: mapItems,
+                selectedPlayerID: selectedPlayerID,
+                isEnabled: isEnabled,
+                onSelect: onSelectMapPlayer
+            )
+            Text(L10n.string("\(users.count) players on the map", "Игроков на карте: \(users.count)"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+            Text(L10n.string("Cards are placed schematically in convenient areas for playing.", "Карточки размещены условно в удобных районах для игры."))
+                .font(.caption).foregroundStyle(.white.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
+            if users.isEmpty {
+                VStack(spacing: 10) {
+                    Text(L10n.string("No players on the map for this selection yet", "По этому выбору пока нет игроков на карте"))
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    Button(L10n.string("Open player cards", "Открыть карточки игроков"), action: onShowCards)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(AppTheme.court)
+                        .disabled(!isEnabled)
+                        .accessibilityIdentifier("similar-players-map-open-cards")
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity).padding(16)
+            } else {
+                tiles
+            }
+        }
+    }
+
+    private func sportChip(_ sport: Sport?) -> some View {
+        Button { onSelectSport(sport) } label: {
+            Text(sport?.title ?? L10n.string("All sports", "Все виды"))
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .foregroundStyle(selectedSport == sport ? Color.black : .white.opacity(0.75))
+                .background(selectedSport == sport ? Color(red: 0.63, green: 0.93, blue: 0.75) : .white.opacity(0.07), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedSport == sport ? .isSelected : [])
+        .accessibilityIdentifier("similar-players-sport-\(sport?.rawValue ?? "all")")
+        .disabled(!isEnabled)
+    }
+
+    private var tiles: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 12) {
+            ForEach(users) { user in
+                Button { onOpenPlayer(user) } label: {
+                    SimilarPlayerGridTile(user: user, selectedSport: selectedSport, isSelected: selectedPlayerID == user.id)
+                        .modifier(SimilarPlayerGeometry(id: user.id, namespace: namespace, isEnabled: !reduceMotion))
+                }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled)
+                .accessibilityHint(L10n.string("Opens the full player card", "Открывает полную карточку игрока"))
+                .accessibilityIdentifier("similar-player-tile-\(user.id)")
+                .id("similar-player-\(user.id)")
+            }
+        }
+    }
+}
+
+private struct SimilarPlayersPlayerMap: View {
+    let items: [DiscoverPlayerMapItem]
+    let selectedPlayerID: String?
+    let isEnabled: Bool
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        Group {
+            if items.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "map")
+                        .font(.title2)
+                    Text(L10n.string("No players to show on the map yet", "Пока нет игроков на карте"))
+                        .font(.subheadline.weight(.semibold))
+                    Text(L10n.string("Players choose whether to appear on the map.", "Игроки сами выбирают, показываться ли на карте."))
+                        .font(.caption)
+                }
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(maxWidth: .infinity)
+                .background(.white.opacity(0.06))
+            } else {
+                DiscoverPlayersMap(
+                    items: items,
+                    selectedPlayerID: selectedPlayerID,
+                    isEnabled: isEnabled,
+                    onSelect: onSelect
+                )
+            }
+        }
+        .frame(height: 400)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.09), lineWidth: 1)
+        }
+        .accessibilityIdentifier("similar-players-map")
+    }
+}
+
+private struct SimilarPlayersFilteredEmptyState: View {
+    let onClearSport: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "person.2.slash")
+                .font(.title2)
+                .foregroundStyle(.white.opacity(0.5))
+            Text(L10n.string("No more players for this sport", "Игроки в этом виде спорта закончились"))
+                .font(.headline)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+            Button(L10n.string("Show all sports", "Показать все виды спорта"), action: onClearSport)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(red: 0.63, green: 0.93, blue: 0.75))
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("similar-players-clear-sport")
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct SimilarPlayersModeControl: View {
+    let mode: SimilarPlayersDisplayMode
+    let isEnabled: Bool
+    let onSelect: (SimilarPlayersDisplayMode) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(SimilarPlayersDisplayMode.allCases) { option in
+                Button { onSelect(option) } label: {
+                    Image(systemName: option.symbol)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(mode == option ? Color.black : .white.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                        .background {
+                            if mode == option {
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .fill(Color(red: 0.63, green: 0.93, blue: 0.75))
+                                    .padding(4)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.title)
+                .accessibilityAddTraits(mode == option ? .isSelected : [])
+                .accessibilityIdentifier("similar-players-mode-\(option.rawValue)")
+                .disabled(!isEnabled)
+            }
+        }
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .fixedSize()
+    }
+}
+
+private struct ViewedCardFlowModifier: AnimatableModifier {
+    let flight: ViewedCardFlight?
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        // Keep one content subtree throughout flight so media and playback stay mounted.
+        let sample = flight?.sample(at: progress)
+        content
+            .mask {
+                if let flight, let sample {
+                    RoundedRectangle(cornerRadius: sample.cornerRadius, style: .continuous)
+                        .frame(width: flight.source.width, height: sample.maskHeight)
+                } else {
+                    Rectangle()
+                }
+            }
+            .scaleEffect(sample?.scale ?? 1)
+            .offset(sample?.offset ?? .zero)
+    }
+}
+
+private struct ViewedCardFlightCover: View, Animatable {
+    let flight: ViewedCardFlight?
+    var progress: CGFloat
+    let playerName: String
+    let imagePath: String?
+    let containerOrigin: CGPoint
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        if let flight {
+            let sample = flight.sample(at: progress)
+            // Only the small hero-image cover crosses the scroll boundary. Keep this
+            // animatable wrapper mounted before flight begins so progress starts at zero.
+            RemoteAvatarView(name: playerName, path: imagePath, size: 46)
+                .scaleEffect(flight.source.width / 46)
+                .frame(width: flight.source.width, height: flight.source.height)
+                .mask {
+                    RoundedRectangle(cornerRadius: sample.cornerRadius, style: .continuous)
+                        .frame(width: flight.source.width, height: sample.maskHeight)
+                }
+                .scaleEffect(sample.scale)
+                .position(x: flight.source.midX - containerOrigin.x, y: flight.source.midY - containerOrigin.y)
+                .offset(sample.offset)
+                .opacity(sample.coverBlend)
+        }
+    }
+}
+
+private final class ViewedFlightEndpoints {
+    weak var source: UIView?
+    weak var destination: UIView?
+    var sourceUserID: String?
+    var destinationUserID: String?
+
+    func capture(for userID: String) -> ViewedCardFlight? {
+        guard let source, let destination, let window = source.window,
+              destination.window === window,
+              sourceUserID == userID, destinationUserID == userID else { return nil }
+        // A horizontal reset may still be settling. Do not target a clipped old position.
+        var ancestor = destination.superview
+        while let view = ancestor {
+            if let scrollView = view as? UIScrollView {
+                let slot = destination.convert(destination.bounds, to: scrollView)
+                guard slot.minX >= scrollView.bounds.minX - 0.5,
+                      slot.maxX <= scrollView.bounds.maxX + 0.5 else { return nil }
+                break
+            }
+            ancestor = view.superview
+        }
+        let sourceFrame = source.convert(source.bounds, to: window)
+        let destinationFrame = destination.convert(destination.bounds, to: window)
+        // The caller also checks that the landing slot is inside the shared card-and-tray viewport.
+        return ViewedCardFlight(source: sourceFrame, destination: destinationFrame)
+    }
+}
+
+private struct ViewedFlightFrameMarker: UIViewRepresentable {
+    enum Role { case source, destination }
+    let endpoints: ViewedFlightEndpoints
+    let role: Role
+    let userID: String
+
+    final class Coordinator {
+        weak var endpoints: ViewedFlightEndpoints?
+        let role: Role
+        init(endpoints: ViewedFlightEndpoints, role: Role) {
+            self.endpoints = endpoints
+            self.role = role
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(endpoints: endpoints, role: role) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        register(view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) { register(uiView) }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        guard let endpoints = coordinator.endpoints else { return }
+        if coordinator.role == .source, endpoints.source === uiView {
+            endpoints.source = nil
+            endpoints.sourceUserID = nil
+        } else if coordinator.role == .destination, endpoints.destination === uiView {
+            endpoints.destination = nil
+            endpoints.destinationUserID = nil
+        }
+    }
+
+    private func register(_ view: UIView) {
+        switch role {
+        case .source:
+            endpoints.source = view
+            endpoints.sourceUserID = userID
+        case .destination:
+            endpoints.destination = view
+            endpoints.destinationUserID = userID
+        }
+    }
+}
+
+private struct PlayerCardTouchObserver: UIViewRepresentable {
+    let onTouchChanged: (Bool) -> Void
+
+    func makeUIView(context: Context) -> PlayerCardTouchView {
+        let view = PlayerCardTouchView()
+        view.isUserInteractionEnabled = false
+        view.onTouchChanged = onTouchChanged
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerCardTouchView, context: Context) {
+        uiView.onTouchChanged = onTouchChanged
+    }
+
+    static func dismantleUIView(_ uiView: PlayerCardTouchView, coordinator: ()) {
+        uiView.detach()
+    }
+}
+
+private final class PlayerCardTouchView: UIView {
+    var onTouchChanged: ((Bool) -> Void)?
+    private var observer: PlayerCardTouchRecognizer?
+    private weak var observedWindow: UIWindow?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        detach()
+        guard let window else { return }
+        let observer = PlayerCardTouchRecognizer(target: nil, action: nil)
+        observer.cardView = self
+        observer.cancelsTouchesInView = false
+        observer.delaysTouchesBegan = false
+        observer.delaysTouchesEnded = false
+        window.addGestureRecognizer(observer)
+        self.observer = observer
+        observedWindow = window
+    }
+
+    func detach() {
+        if let observer { observedWindow?.removeGestureRecognizer(observer) }
+        observer = nil
+        observedWindow = nil
+    }
+}
+
+private final class PlayerCardTouchRecognizer: UIGestureRecognizer {
+    weak var cardView: PlayerCardTouchView?
+    private var heldTouches: Set<UITouch> = []
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let cardView else { state = .failed; return }
+        let inside = touches.filter { cardView.bounds.contains($0.location(in: cardView)) }
+        guard !inside.isEmpty else { if heldTouches.isEmpty { state = .failed }; return }
+        heldTouches.formUnion(inside)
+        cardView.onTouchChanged?(true)
+        state = .began
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        if !heldTouches.isEmpty { state = .changed }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        heldTouches.subtract(touches)
+        if heldTouches.isEmpty {
+            cardView?.onTouchChanged?(false)
+            state = .ended
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        heldTouches.removeAll()
+        cardView?.onTouchChanged?(false)
+        state = .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        if !heldTouches.isEmpty { cardView?.onTouchChanged?(false) }
+        heldTouches.removeAll()
     }
 }

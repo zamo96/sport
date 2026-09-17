@@ -6,10 +6,23 @@ private let appGroupIdentifier = "group.shop.sportsearch.app"
 private let payloadKey = "upcomingGamesWidget.payload.v1"
 private let currentUserIdKey = "upcomingGamesWidget.currentUserId.v1"
 private let sessionTokenKey = "SportSearch.sessionToken"
-private let postEventDisplayInterval: TimeInterval = 2 * 60 * 60
 private let countdownLeadTime: TimeInterval = 60 * 60
 private let countdownTimelineCadence: TimeInterval = 60
 private let maximumTimelineEntryCount = 90
+
+// Widget eligibility is independent of the in-app history and Live Activity grace period.
+private enum UpcomingGamesWidgetSchedule {
+    static func durationMinutes(_ value: Int?, fallback: Int) -> Int {
+        guard let value, value > 0, value <= 24 * 60 else { return fallback }
+        return value
+    }
+
+    static func isUpcoming(startsAt: Date?, durationMinutes: Int?, at referenceDate: Date) -> Bool {
+        guard let startsAt else { return false }
+        let duration = Self.durationMinutes(durationMinutes, fallback: 90)
+        return startsAt.addingTimeInterval(TimeInterval(duration) * 60) > referenceDate
+    }
+}
 
 struct UpcomingGamesWidgetPayload: Codable {
     let updatedAt: Date
@@ -28,6 +41,55 @@ struct UpcomingGamesWidgetGame: Codable, Identifiable {
     let courtAddress: String?
     let statusLabel: String
     let eventType: String?
+}
+
+private extension UpcomingGamesWidgetGame {
+    var resolvedDurationMinutes: Int {
+        let shortPersonalSports = ["Фитнес", "Бокс", "Йога", "Бадминтон", "Настольный теннис", "Сквош", "Бег", "Сапборд", "SUP", "Fitness", "Boxing", "Yoga", "Badminton", "Table tennis", "Table Tennis", "Squash", "Running", "SUP boarding", "SUP board"]
+        let fallback = eventType == "personal" && shortPersonalSports.contains(sportTitle) ? 60 : 90
+        return UpcomingGamesWidgetSchedule.durationMinutes(durationMinutes, fallback: fallback)
+    }
+
+    var endsAt: Date? {
+        startsAt?.addingTimeInterval(TimeInterval(resolvedDurationMinutes) * 60)
+    }
+
+    func dated(at referenceDate: Date) -> UpcomingGamesWidgetGame {
+        guard let startsAt else { return self }
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMM"
+        let dateLabel: String
+        if calendar.isDate(startsAt, inSameDayAs: referenceDate) {
+            dateLabel = "Сегодня"
+        } else if let tomorrow = calendar.date(byAdding: .day, value: 1, to: referenceDate),
+                  calendar.isDate(startsAt, inSameDayAs: tomorrow) {
+            dateLabel = "Завтра"
+        } else {
+            dateLabel = formatter.string(from: startsAt)
+        }
+        formatter.dateFormat = "HH:mm"
+        return UpcomingGamesWidgetGame(
+            id: id, title: title, sportTitle: sportTitle, startsAt: startsAt,
+            durationMinutes: resolvedDurationMinutes, dateText: dateLabel,
+            timeText: formatter.string(from: startsAt), courtName: courtName,
+            courtAddress: courtAddress, statusLabel: statusLabel, eventType: eventType
+        )
+    }
+}
+
+private extension UpcomingGamesWidgetPayload {
+    func upcoming(at referenceDate: Date) -> UpcomingGamesWidgetPayload {
+        let eligible = games.filter {
+            !["Отменена", "Отменён", "Игра прошла", "Не сыграли", "Визит завершён"].contains($0.statusLabel)
+                && UpcomingGamesWidgetSchedule.isUpcoming(
+                    startsAt: $0.startsAt, durationMinutes: $0.resolvedDurationMinutes, at: referenceDate)
+        }
+        return UpcomingGamesWidgetPayload(updatedAt: updatedAt, games: eligible
+            .sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
+            .prefix(3).map { $0.dated(at: referenceDate) })
+    }
 }
 
 struct UpcomingGamesEntry: TimelineEntry {
@@ -63,7 +125,8 @@ struct UpcomingGamesProvider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (UpcomingGamesEntry) -> Void) {
         Task {
             let payload = await loadRemotePayload() ?? loadPayload()
-            completion(UpcomingGamesEntry(date: Date(), payload: payload))
+            let referenceDate = Date()
+            completion(UpcomingGamesEntry(date: referenceDate, payload: payload.upcoming(at: referenceDate)))
         }
     }
 
@@ -72,81 +135,57 @@ struct UpcomingGamesProvider: TimelineProvider {
             let payload = await loadRemotePayload() ?? loadPayload()
             let referenceDate = Date()
             let entries = timelineEntries(for: payload, from: referenceDate)
-            let nextRefresh = nextRefreshDate(for: payload, from: entries.last?.date ?? referenceDate)
+            let nextRefresh = nextRefreshDate(for: payload, from: referenceDate)
             completion(Timeline(entries: entries, policy: .after(nextRefresh)))
         }
     }
 
     private func timelineEntries(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> [UpcomingGamesEntry] {
-        let dates = timelineRefreshDates(for: payload, from: referenceDate)
-        return dates.map { UpcomingGamesEntry(date: $0, payload: payload) }
+        timelineRefreshDates(for: payload, from: referenceDate).map {
+            UpcomingGamesEntry(date: $0, payload: payload.upcoming(at: $0))
+        }
     }
 
     private func timelineRefreshDates(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> [Date] {
-        let minimumDate = referenceDate.addingTimeInterval(-1)
-        var dates = Set<Date>()
-        dates.insert(referenceDate)
-
-        for game in payload.games {
-            guard let startsAt = game.startsAt else {
-                continue
-            }
-
-            let duration = TimeInterval((game.durationMinutes ?? 90) * 60)
-            let countdownStart = startsAt.addingTimeInterval(-countdownLeadTime)
-            [
-                startsAt.addingTimeInterval(-2 * 60 * 60),
-                countdownStart,
-                startsAt,
-                startsAt.addingTimeInterval(10 * 60),
-                startsAt.addingTimeInterval(duration),
-                startsAt.addingTimeInterval(duration + postEventDisplayInterval)
-            ]
-            .filter { $0 > minimumDate }
-            .forEach { dates.insert($0.roundedToWidgetMinute()) }
-
-            guard referenceDate < startsAt else {
-                continue
-            }
-
-            let firstCountdownDate = max(referenceDate, countdownStart).roundedUpToWidgetMinute()
-            var countdownDate = firstCountdownDate
-            while countdownDate <= startsAt {
-                dates.insert(countdownDate)
-                countdownDate = countdownDate.addingTimeInterval(countdownTimelineCadence)
-            }
+        let games = payload.upcoming(at: referenceDate).games
+        // Essential transitions must survive the countdown entry budget, including offline expiry.
+        var dates: Set<Date> = [referenceDate]
+        for game in games {
+            guard let startsAt = game.startsAt, let endsAt = game.endsAt else { continue }
+            [startsAt.addingTimeInterval(-2 * 60 * 60),
+             startsAt.addingTimeInterval(-countdownLeadTime), startsAt,
+             startsAt.addingTimeInterval(10 * 60), endsAt]
+                .filter { $0 > referenceDate && $0 <= endsAt }
+                .forEach { dates.insert($0) }
+            // Only these midnights can change this event's date label to Tomorrow or Today.
+            let dayStart = Calendar.current.startOfDay(for: startsAt)
+            [Calendar.current.date(byAdding: .day, value: -1, to: dayStart), dayStart,
+             Calendar.current.date(byAdding: .day, value: 1, to: dayStart)]
+                .compactMap { $0 }
+                .filter { $0 > referenceDate && $0 < endsAt }
+                .forEach { dates.insert($0) }
         }
 
-        return Array(dates)
-            .filter { $0 > minimumDate }
-            .sorted()
-            .prefix(maximumTimelineEntryCount)
-            .map { $0 }
+        var countdownDates = Set<Date>()
+        for game in games {
+            guard let startsAt = game.startsAt, referenceDate < startsAt else { continue }
+            var date = max(referenceDate, startsAt.addingTimeInterval(-countdownLeadTime)).roundedUpToWidgetMinute()
+            while date < startsAt {
+                if !dates.contains(date) { countdownDates.insert(date) }
+                date = date.addingTimeInterval(countdownTimelineCadence)
+            }
+        }
+        dates.formUnion(countdownDates.sorted().prefix(max(0, maximumTimelineEntryCount - dates.count)))
+        return dates.sorted()
     }
 
     private func nextRefreshDate(for payload: UpcomingGamesWidgetPayload, from referenceDate: Date) -> Date {
-        let fallback = Calendar.current.date(byAdding: .minute, value: 15, to: referenceDate) ?? referenceDate.addingTimeInterval(900)
-        let minimumRefreshDate = referenceDate.addingTimeInterval(5)
-
-        let candidates = payload.games
-            .flatMap { game -> [Date] in
-                guard let startsAt = game.startsAt else {
-                    return []
-                }
-
-                let duration = TimeInterval((game.durationMinutes ?? 90) * 60)
-                return [
-                    startsAt.addingTimeInterval(-2 * 60 * 60),
-                    startsAt.addingTimeInterval(-countdownLeadTime),
-                    startsAt,
-                    startsAt.addingTimeInterval(10 * 60),
-                    startsAt.addingTimeInterval(duration),
-                    startsAt.addingTimeInterval(duration + postEventDisplayInterval)
-                ]
-            }
-            .filter { $0 > minimumRefreshDate }
-
-        return candidates.min() ?? fallback
+        let fallback = referenceDate.addingTimeInterval(15 * 60)
+        let nextTransition = payload.upcoming(at: referenceDate).games
+            .flatMap { [$0.startsAt, $0.endsAt].compactMap { $0 } }
+            .filter { $0 > referenceDate }
+            .min()
+        return min(fallback, nextTransition ?? fallback)
     }
 
     private func loadPayload() -> UpcomingGamesWidgetPayload {
@@ -189,14 +228,13 @@ struct UpcomingGamesProvider: TimelineProvider {
                 personalActivitiesEnvelope = nil
             }
 
+            let referenceDate = Date()
             let games = gameRequestsEnvelope.gameRequests.widgetGames(currentUserId: defaults.string(forKey: currentUserIdKey))
             let personalActivities = personalActivitiesEnvelope?.personalActivities.widgetGames() ?? []
             let payload = UpcomingGamesWidgetPayload(
-                updatedAt: Date(),
-                games: Array((games + personalActivities)
-                    .sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
-                    .prefix(3))
-            )
+                updatedAt: referenceDate,
+                games: games + personalActivities
+            ).upcoming(at: referenceDate)
             if let encoded = try? JSONEncoder().encode(payload) {
                 defaults.set(encoded, forKey: payloadKey)
             }
@@ -209,6 +247,7 @@ struct UpcomingGamesProvider: TimelineProvider {
     private func authenticatedData(path: String, baseURL: URL, token: String) async throws -> Data {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "GET"
+        request.timeoutInterval = 10
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -289,16 +328,14 @@ private struct WidgetUser: Decodable, Identifiable {
 
 private extension Array where Element == WidgetGameRequest {
     func widgetGames(currentUserId: String?) -> [UpcomingGamesWidgetGame] {
-        filter { !$0.isArchivedForTimeline }
-            .sorted { ($0.proposedDate ?? .distantFuture) < ($1.proposedDate ?? .distantFuture) }
-            .prefix(3)
+        filter { !["cancelled", "canceled", "declined", "rejected", "withdrawn", "completed"].contains($0.status.lowercased()) && $0.outcome != "played" && $0.outcome != "not_played" }
             .map { request in
                 UpcomingGamesWidgetGame(
                     id: request.id,
                     title: request.displayTitle(currentUserId: currentUserId),
                     sportTitle: request.sportTitle,
                     startsAt: request.proposedDate,
-                    durationMinutes: request.durationMinutes,
+                    durationMinutes: UpcomingGamesWidgetSchedule.durationMinutes(request.durationMinutes, fallback: 90),
                     dateText: request.widgetDateText,
                     timeText: request.widgetTimeText,
                     courtName: request.proposedCourt?.name ?? request.venuePendingTitle,
@@ -312,14 +349,14 @@ private extension Array where Element == WidgetGameRequest {
 
 private extension Array where Element == WidgetPersonalActivity {
     func widgetGames() -> [UpcomingGamesWidgetGame] {
-        filter { !$0.isArchivedForTimeline }
+        filter { !["cancelled", "canceled", "completed"].contains($0.status.lowercased()) }
             .map { activity in
                 UpcomingGamesWidgetGame(
                     id: activity.id,
                     title: "Личный визит",
                     sportTitle: activity.sportTitle,
                     startsAt: activity.scheduledDate,
-                    durationMinutes: activity.durationMinutes,
+                    durationMinutes: UpcomingGamesWidgetSchedule.durationMinutes(activity.durationMinutes, fallback: activity.defaultDurationMinutes),
                     dateText: activity.widgetDateText,
                     timeText: activity.widgetTimeText,
                     courtName: activity.court?.name ?? activity.venuePendingTitle,
@@ -347,6 +384,8 @@ private extension WidgetGameRequest {
         case "boxing": return "Бокс"
         case "yoga": return "Йога"
         case "football": return "Футбол"
+        case "running": return "Бег"
+        case "supboard": return "Сапборд"
         default: return "Теннис"
         }
     }
@@ -430,20 +469,6 @@ private extension WidgetGameRequest {
         return "Игра подтверждена"
     }
 
-    var isArchivedForTimeline: Bool {
-        let rawStatus = status.lowercased()
-        if ["cancelled", "canceled", "declined", "rejected", "withdrawn"].contains(rawStatus) {
-            return true
-        }
-
-        guard let proposedDate else {
-            return false
-        }
-
-        let duration = TimeInterval((durationMinutes ?? 90) * 60)
-        return Date().timeIntervalSince(proposedDate) >= duration + postEventDisplayInterval
-    }
-
     private var outcomeLabel: String? {
         switch outcome {
         case "played": return "Игра прошла"
@@ -503,6 +528,8 @@ private extension WidgetPersonalActivity {
         case "boxing": return "Бокс"
         case "yoga": return "Йога"
         case "football": return "Футбол"
+        case "running": return "Бег"
+        case "supboard": return "Сапборд"
         default: return "Теннис"
         }
     }
@@ -558,20 +585,6 @@ private extension WidgetPersonalActivity {
         }
     }
 
-    var isArchivedForTimeline: Bool {
-        let rawStatus = status.lowercased()
-        if ["canceled", "cancelled"].contains(rawStatus) {
-            return true
-        }
-
-        guard let scheduledDate else {
-            return false
-        }
-
-        let duration = TimeInterval((durationMinutes ?? defaultDurationMinutes) * 60)
-        return Date().timeIntervalSince(scheduledDate) >= duration + postEventDisplayInterval
-    }
-
     private var hasEnded: Bool {
         guard let scheduledDate else {
             return false
@@ -581,9 +594,9 @@ private extension WidgetPersonalActivity {
         return Date().timeIntervalSince(scheduledDate) >= duration
     }
 
-    private var defaultDurationMinutes: Int {
+    var defaultDurationMinutes: Int {
         switch sport {
-        case "fitness", "boxing", "yoga":
+        case "fitness", "boxing", "yoga", "badminton", "table_tennis", "squash", "running", "supboard":
             return 60
         case "football", "volleyball":
             return 90
@@ -608,11 +621,6 @@ private extension String {
 }
 
 private extension Date {
-    func roundedToWidgetMinute() -> Date {
-        let interval = (timeIntervalSinceReferenceDate / countdownTimelineCadence).rounded() * countdownTimelineCadence
-        return Date(timeIntervalSinceReferenceDate: interval)
-    }
-
     func roundedUpToWidgetMinute() -> Date {
         let interval = ceil(timeIntervalSinceReferenceDate / countdownTimelineCadence) * countdownTimelineCadence
         return Date(timeIntervalSinceReferenceDate: interval)

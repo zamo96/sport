@@ -47,7 +47,8 @@ actor MockRepository: TennisRepository {
             distance: "4.2 км",
             score: 92,
             searches: [],
-            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 5", "Недалеко: 4.2 км"]
+            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 5", "Недалеко: 4.2 км"],
+            mapAreas: [mockMoscowDistrictMapArea]
         ),
         makeDiscoverUser(
             id: "u-maria",
@@ -91,7 +92,8 @@ actor MockRepository: TennisRepository {
                     responses: []
                 )
             ],
-            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 4", "Недалеко: 7.8 км", "Пересекается расписание"]
+            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 4", "Недалеко: 7.8 км", "Пересекается расписание"],
+            mapAreas: [mockCentralDistrictMapArea, mockMoscowDistrictMapArea]
         ),
         makeDiscoverUser(
             id: "u-sofia",
@@ -135,7 +137,8 @@ actor MockRepository: TennisRepository {
                     responses: []
                 )
             ],
-            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 5–6", "Недалеко: 2.9 км"]
+            reasons: ["Совпадает спорт: Теннис", "Уровень рядом: 5–6", "Недалеко: 2.9 км"],
+            mapAreas: [mockPetrogradDistrictMapArea]
         )
     ]
 
@@ -310,6 +313,7 @@ actor MockRepository: TennisRepository {
             availableTimeRanges: currentUser.availableTimeRanges,
             availabilityByDay: currentUser.availabilityByDay,
             isLookingForGame: currentUser.isLookingForGame,
+            showOnMap: currentUser.showOnMap,
             searchRadiusKm: currentUser.searchRadiusKm,
             onboardingCompleted: currentUser.onboardingCompleted,
             isVerified: currentUser.isVerified,
@@ -321,7 +325,7 @@ actor MockRepository: TennisRepository {
         return AuthChallenge(message: "Код подтверждения отправлен", debugCode: "111111")
     }
 
-    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
         guard userAgreementAccepted, userAgreementVersion == LegalDocuments.userAgreementVersion else {
             throw APIError.server(LegalDocuments.acceptanceError)
         }
@@ -333,7 +337,7 @@ actor MockRepository: TennisRepository {
         return SessionUser(id: currentUser.id, email: email, onboardingCompleted: currentUser.onboardingCompleted)
     }
 
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
         guard userAgreementAccepted, userAgreementVersion == LegalDocuments.userAgreementVersion else {
             throw APIError.server(LegalDocuments.acceptanceError)
         }
@@ -368,6 +372,7 @@ actor MockRepository: TennisRepository {
                 availableTimeRanges: currentUser.availableTimeRanges,
                 availabilityByDay: currentUser.availabilityByDay,
                 isLookingForGame: currentUser.isLookingForGame,
+                showOnMap: currentUser.showOnMap,
                 searchRadiusKm: currentUser.searchRadiusKm,
                 onboardingCompleted: currentUser.onboardingCompleted,
                 isVerified: true,
@@ -523,12 +528,35 @@ actor MockRepository: TennisRepository {
         "/uploads/mock/personal-activities/\(activityId)/\(UUID().uuidString)-\(fileName)"
     }
 
-    func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
+    #if DEBUG
+    private var hasLoadedDistrictPlayerCardsStressFixture = false
+    #endif
+
+    func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
+        #if DEBUG
+        if view == .swipe, !hasLoadedDistrictPlayerCardsStressFixture,
+           ProcessInfo.processInfo.arguments.contains("-district-player-cards-stress") {
+            hasLoadedDistrictPlayerCardsStressFixture = true
+            discoverUsers = (1...12).map { index in
+                makeDiscoverUser(
+                    id: String(format: "district-stress-%02d", index),
+                    name: String(format: "Игрок %02d", index), age: 25 + index,
+                    city: "Санкт-Петербург", district: "central", districtLabel: "Центральный",
+                    bio: "Тестовая карточка условного размещения в районе.",
+                    sports: index.isMultiple(of: 2) ? [.tennis, .padel] : [.tennis],
+                    levels: ["tennis": 3 + index % 5, "padel": 2 + index % 4],
+                    format: .both, surface: .any, days: ["saturday"], ranges: ["evening"],
+                    distance: "Центральный", score: Double(100 - index), searches: [],
+                    mapAreas: [mockCentralDistrictMapArea]
+                )
+            }
+        }
+        #endif
         switch view {
         case .upcoming:
             return discoverUsers.filter { !$0.gameSearches.isEmpty }
         case .swipe:
-            return discoverUsers
+            return discoverUsers.filter { user in sport.map { user.preferredSports.contains($0) } ?? true }
         case .likes:
             return incomingLikes
         case .seeking:
@@ -538,7 +566,7 @@ actor MockRepository: TennisRepository {
         }
     }
 
-    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser] {
+    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
         let effectiveView: DiscoverTab
         switch view {
         case .upcoming, .likes:
@@ -546,7 +574,7 @@ actor MockRepository: TennisRepository {
         default:
             effectiveView = view
         }
-        return try await fetchDiscoverUsers(view: effectiveView)
+        return try await fetchDiscoverUsers(view: effectiveView, sport: sport)
     }
 
     func swipe(userId: String, action: SwipeAction) async throws -> String? {
@@ -623,6 +651,8 @@ actor MockRepository: TennisRepository {
         matches.compactMap(\.latestGameRequest)
             .sorted { $0.proposedDatetime < $1.proposedDatetime }
     }
+
+    func acknowledgeChatMessages(scope: ChatReceiptScope, messageIds: [String], status: String) async throws {}
 
     func fetchMessages(matchId: String) async throws -> [ChatMessage] {
         messagesByMatch[matchId] ?? []
@@ -1626,7 +1656,8 @@ actor MockRepository: TennisRepository {
                 ranges: owner.availableTimeRanges,
                 distance: owner.distanceLabel,
                 score: owner.score ?? 80,
-                searches: [updatedSearch]
+                searches: [updatedSearch],
+                mapAreas: owner.mapAreas
             )
             discoverUsers[index] = owner
         }
@@ -2181,7 +2212,8 @@ actor MockRepository: TennisRepository {
         )
     }
 
-    func fetchCourts(city: String?) async throws -> [Court] {
+    func fetchCourts(city: String?, locationPlaceId: String?, sport: Sport?) async throws -> [Court] {
+        let courts = courts.filter { court in sport.map { court.supportedSports?.contains($0) == true } ?? true }
         let normalizedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let normalizedCity, !normalizedCity.isEmpty else {
             return courts
@@ -2321,7 +2353,7 @@ actor MockRepository: TennisRepository {
         InviteSummary(code: "K7M2QP", url: "https://sportsearch.shop/i/K7M2QP", visits: 4, registered: 2, joined: 1)
     }
 
-    func fetchEmptyDeckContent() async throws -> EmptyDeckContent {
+    func fetchEmptyDeckContent(city: String?, locationPlaceId: String?, sports: [Sport]?) async throws -> EmptyDeckContent {
         EmptyDeckContent(sections: [], invite: try await fetchInviteSummary())
     }
 }
@@ -2364,10 +2396,17 @@ private func makeDiscoverUser(
     distance: String,
     score: Double,
     searches: [GameSearch],
-    reasons: [String] = []
+    reasons: [String] = [],
+    mapAreas: [DiscoverMapArea] = []
 ) -> DiscoverUser {
     let payload: [String: Any] = [
         "id": id,
+        "showOnMap": !mapAreas.isEmpty,
+        "mapAreas": mapAreas.map { area -> [String: Any] in
+            ["id": area.id, "cityId": area.cityId, "cityName": area.cityName, "kind": area.kind,
+             "districtId": area.districtId.map { $0 as Any } ?? NSNull(), "label": area.label,
+             "latitude": area.latitude, "longitude": area.longitude]
+        },
         "name": name,
         "age": age.map { $0 as Any } ?? NSNull(),
         "city": city,
@@ -2498,3 +2537,17 @@ private func courtDictionary(_ court: Court) -> [String: Any] {
         "members": court.members.map(discoverUserDictionary)
     ]
 }
+
+// Explicit map consent and canonical coarse areas belong only to these synthetic demo players.
+private let mockCentralDistrictMapArea = DiscoverMapArea(
+    id: "mock-spb:district:central", cityId: "mock-spb", cityName: "Санкт-Петербург", kind: "district",
+    districtId: "central", label: "Центральный", latitude: 59.9343, longitude: 30.3351
+)
+private let mockMoscowDistrictMapArea = DiscoverMapArea(
+    id: "mock-spb:district:moskovsky", cityId: "mock-spb", cityName: "Санкт-Петербург", kind: "district",
+    districtId: "moskovsky", label: "Московский", latitude: 59.85, longitude: 30.32
+)
+private let mockPetrogradDistrictMapArea = DiscoverMapArea(
+    id: "mock-spb:district:petrogradsky", cityId: "mock-spb", cityName: "Санкт-Петербург", kind: "district",
+    districtId: "petrogradsky", label: "Петроградский", latitude: 59.965, longitude: 30.30
+)

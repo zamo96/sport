@@ -134,17 +134,23 @@ struct AuthView: View {
             }
             .task {
                 let savedDraft = appModel.guestDraft
-                let normalizedSavedDraft = normalizedDraft(savedDraft)
+                var normalizedSavedDraft = normalizedDraft(savedDraft)
+                if let user = appModel.currentUser, !user.isOnboardingComplete {
+                    normalizedSavedDraft.showOnMap = OnboardingMapVisibility.resolved(stored: user.showOnMap, draft: savedDraft.showOnMap, completed: false)
+                }
                 draft = normalizedSavedDraft
                 if normalizedSavedDraft != savedDraft {
                     appModel.updateGuestDraft(normalizedSavedDraft)
                 }
                 selectedLocationChoice = draft.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.preferredDistricts.isEmpty ? nil : .districts
-                if appModel.presentedAuthStep == .code {
+                if appModel.isAuthenticated && !appModel.isOnboardingComplete {
+                    step = draft.hasProfileBasics ? .availability : .profile
+                } else if appModel.presentedAuthStep == .code {
                     step = .code
                 }
                 await loadAppStats()
             }
+            .onChange(of: draft.showOnMap) { _ in persistDraft() }
             .onChange(of: appModel.presentedAuthStep) { newValue in
                 guard let newValue else {
                     return
@@ -152,8 +158,12 @@ struct AuthView: View {
                 step = newValue
             }
             .onChange(of: appModel.currentUser?.id) { newValue in
-                if newValue != nil && !embedded {
-                    dismiss()
+                if newValue != nil {
+                    if !appModel.isOnboardingComplete {
+                        draft = normalizedDraft(appModel.guestDraft)
+                        step = draft.hasProfileBasics ? .availability : .profile
+                    }
+                    if !embedded { dismiss() }
                 }
             }
             .sheet(item: $selectedLevelSport) { sport in
@@ -742,6 +752,8 @@ struct AuthView: View {
                             }
                         )
 
+                        ProfileMapVisibilityControl(isOn: $draft.showOnMap, isDark: true, isOnboarding: true, identifier: "onboarding-show-on-map")
+
                         HStack(spacing: 12) {
                             Button {
                                 persistDraft()
@@ -763,7 +775,7 @@ struct AuthView: View {
                             .buttonStyle(.plain)
 
                             Button {
-                                finishGuestOnboarding()
+                                Task { await finishGuestOnboarding() }
                             } label: {
                                 Text(embedded ? L10n.string("Browse players", "Смотреть игроков") : L10n.string("Continue", "Продолжить"))
                                     .font(.system(size: isCompact ? 18 : 20, weight: .black, design: .rounded))
@@ -894,7 +906,7 @@ struct AuthView: View {
     }
 
     private var canFinishAvailability: Bool {
-        draft.location != nil || isOnboardingCityAvailable(draft.city)
+        draft.hasRequiredOnboardingFields
     }
 
     private var seekingPlayersLine: String {
@@ -920,7 +932,7 @@ struct AuthView: View {
         }
     }
 
-    private func finishGuestOnboarding() {
+    private func finishGuestOnboarding() async {
         var completedDraft = normalizedDraft()
         guard completedDraft.hasProfileBasics else {
             draft = completedDraft
@@ -930,13 +942,13 @@ struct AuthView: View {
             }
             return
         }
-        guard completedDraft.location != nil || isOnboardingCityAvailable(completedDraft.city) else {
+        guard completedDraft.hasSelectedCity else {
             draft = completedDraft
             appModel.errorMessage = L10n.string("Choose a country and city.", "Выбери страну и город.")
             return
         }
         completedDraft.onboardingCompleted = true
-        appModel.updateGuestDraft(completedDraft)
+        guard await appModel.completeGuestOnboarding(completedDraft) else { return }
         appModel.queueDiscoverSimilarPlayersHint()
         guard !embedded else {
             return

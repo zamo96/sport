@@ -32,8 +32,50 @@ private struct ProfileCompletionStatus {
     let missingSteps: [String]
 }
 
+enum ProfileGameFeedItem: Identifiable {
+    case game(MatchGameRequest)
+    case visit(PersonalActivity)
+
+    var id: String {
+        switch self {
+        case .game(let request): return "game-\(request.id)"
+        case .visit(let activity): return "visit-\(activity.id)"
+        }
+    }
+
+    var date: Date {
+        switch self {
+        case .game(let request): return request.proposedDate ?? .distantPast
+        case .visit(let activity): return activity.scheduledDate ?? .distantPast
+        }
+    }
+
+    static func make(games: [MatchGameRequest], visits: [PersonalActivity], ownerID: String, referenceDate: Date = Date()) -> [ProfileGameFeedItem] {
+        let gameItems = games.filter { request in
+            guard request.hasEnded(referenceDate: referenceDate) else { return false }
+            if let report = request.report { return report.visibility == "profile" }
+            return request.outcome == "played"
+        }.map(ProfileGameFeedItem.game)
+        let visitItems = visits.filter { activity in
+            guard activity.userId == ownerID, activity.status.lowercased() == "completed",
+                  !activity.photoUrls.isEmpty, let date = activity.scheduledDate else { return false }
+            let duration = TimeInterval((activity.durationMinutes ?? activity.sport.defaultDurationMinutes) * 60)
+            return referenceDate.timeIntervalSince(date) >= duration
+        }.map(ProfileGameFeedItem.visit)
+        return Array((gameItems + visitItems).sorted { lhs, rhs in
+            lhs.date == rhs.date ? lhs.id < rhs.id : lhs.date > rhs.date
+        }.prefix(6))
+    }
+}
+
+private enum ProfileGameFeedSource {
+    case games
+    case visits
+}
+
 struct ProfileView: View {
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
 
@@ -55,7 +97,14 @@ struct ProfileView: View {
     @State private var pendingVideoTrimDraft: ProfileVideoTrimDraft?
     @State private var saveToastMessage: String?
     @State private var gameFeedRequests: [MatchGameRequest] = []
+    @State private var gameFeedVisits: [PersonalActivity] = []
     @State private var isGameFeedLoading = false
+    @State private var isVisitFeedLoading = false
+    @State private var gameFeedError: String?
+    @State private var visitFeedError: String?
+    @State private var gameFeedAccountID: String?
+    @State private var gameFeedRequestToken: UUID?
+    @State private var visitFeedRequestToken: UUID?
     @State private var isDeleteConfirmationPresented = false
     @State private var isEditorPresented = false
     @State private var profileScreenMode: ProfileScreenMode = .editing
@@ -84,6 +133,7 @@ struct ProfileView: View {
                     .id(profileTopAnchor)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .refreshable { await loadProfileGameFeed() }
                 .onChange(of: profileScreenMode) { _ in
                     withAnimation(.easeInOut(duration: 0.22)) {
                         scrollProxy.scrollTo(profileTopAnchor, anchor: .top)
@@ -114,8 +164,16 @@ struct ProfileView: View {
             }
             guestDraft = appModel.guestDraft
             await notificationManager.refreshAuthorizationStatus()
-            if appModel.isAuthenticated {
-                await loadProfileGameFeed()
+            await loadProfileGameFeed()
+        }
+        .onChange(of: appModel.currentUser?.id) { _ in
+            resetProfileGameFeed()
+            draft = appModel.currentUser
+            Task { await loadProfileGameFeed() }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                Task { await loadProfileGameFeed() }
             }
         }
         .onChange(of: selectedAvatarItem) { newValue in
@@ -231,10 +289,15 @@ struct ProfileView: View {
                 )
 
                 ProfileGameFeedSection(
-                    requests: profileGameFeedRequests,
+                    items: profileGameFeedItems,
                     currentUserId: appModel.currentUser?.id,
-                    isLoading: isGameFeedLoading
+                    isLoading: isGameFeedLoading || isVisitFeedLoading,
+                    gameError: gameFeedError,
+                    visitError: visitFeedError,
+                    onRetryGames: { Task { await loadProfileGameFeed(source: .games) } },
+                    onRetryVisits: { Task { await loadProfileGameFeed(source: .visits) } }
                 )
+                .id(appModel.currentUser?.id)
 
                 ProfileMenuGroup {
                     NavigationLink {
@@ -465,7 +528,7 @@ struct ProfileView: View {
                     }
 
                     ProfileEmbeddedLightCard(title: L10n.string("Visibility", "Видимость"), subtitle: L10n.string("You can temporarily hide from active player recommendations.", "Можно временно скрыться из активной подборки игроков.")) {
-                        ToggleCard(title: L10n.string("Looking for a game now", "Ищу игру сейчас"), subtitle: L10n.string("Show you in active player recommendations.", "Показывать тебя в активной подборке игроков."), isOn: profile.isLookingForGame)
+                        profileVisibilitySection(for: profile)
                     }
                 }
             }
@@ -719,6 +782,7 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func profileVisibilitySection(for profile: Binding<UserProfile>) -> some View {
+        ProfileMapVisibilityControl(isOn: profile.showOnMap)
         ToggleCard(title: L10n.string("Looking for a game now", "Ищу игру сейчас"), subtitle: L10n.string("Show you in active player recommendations.", "Показывать тебя в активной подборке игроков."), isOn: profile.isLookingForGame)
     }
 
@@ -862,33 +926,92 @@ struct ProfileView: View {
         )
     }
 
-    private var profileGameFeedRequests: [MatchGameRequest] {
-        Array(
-            gameFeedRequests
-                .filter { request in
-                    guard request.hasEnded() else { return false }
-                    if let report = request.report {
-                        return report.visibility == "profile"
-                    }
-                    return request.outcome == "played"
-                }
-                .sorted { ($0.proposedDate ?? .distantPast) > ($1.proposedDate ?? .distantPast) }
-                .prefix(6)
-        )
+    private var profileGameFeedItems: [ProfileGameFeedItem] {
+        guard let ownerID = appModel.currentUser?.id, gameFeedAccountID == ownerID else { return [] }
+        return ProfileGameFeedItem.make(games: gameFeedRequests, visits: gameFeedVisits, ownerID: ownerID)
     }
 
-    private func loadProfileGameFeed() async {
-        guard !isGameFeedLoading else { return }
-        isGameFeedLoading = true
-        defer { isGameFeedLoading = false }
+    @MainActor
+    private func resetProfileGameFeed() {
+        gameFeedRequestToken = nil
+        visitFeedRequestToken = nil
+        gameFeedAccountID = appModel.currentUser?.id
+        gameFeedRequests = []
+        gameFeedVisits = []
+        gameFeedError = nil
+        visitFeedError = nil
+        isGameFeedLoading = false
+        isVisitFeedLoading = false
+    }
 
-        do {
-            gameFeedRequests = try await appModel.repository.fetchMyGameRequests()
-        } catch {
-            guard !error.isCancellationLike else {
-                return
+    @MainActor
+    private func loadProfileGameFeed(source: ProfileGameFeedSource? = nil) async {
+        guard appModel.isAuthenticated, let accountID = appModel.currentUser?.id else {
+            resetProfileGameFeed()
+            return
+        }
+        if gameFeedAccountID != accountID { resetProfileGameFeed() }
+        if let source {
+            switch source {
+            case .games: await loadProfileGames(accountID: accountID)
+            case .visits: await loadProfileVisits(accountID: accountID)
             }
-            gameFeedRequests = []
+        } else {
+            async let games: Void = loadProfileGames(accountID: accountID)
+            async let visits: Void = loadProfileVisits(accountID: accountID)
+            _ = await (games, visits)
+        }
+    }
+
+    @MainActor
+    private func loadProfileGames(accountID: String) async {
+        guard !Task.isCancelled, !isGameFeedLoading,
+              gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+              appModel.isAuthenticated else { return }
+        let token = UUID()
+        gameFeedRequestToken = token
+        isGameFeedLoading = true
+        gameFeedError = nil
+        defer {
+            if gameFeedRequestToken == token { isGameFeedLoading = false }
+        }
+        do {
+            let requests = try await appModel.repository.fetchMyGameRequests()
+            guard !Task.isCancelled, gameFeedRequestToken == token,
+                  gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+                  appModel.isAuthenticated else { return }
+            gameFeedRequests = requests
+        } catch {
+            guard !error.isCancellationLike, gameFeedRequestToken == token,
+                  gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+                  appModel.isAuthenticated else { return }
+            gameFeedError = L10n.string("Could not refresh games. Try again.", "Не удалось обновить игры. Попробуй ещё раз.")
+        }
+    }
+
+    @MainActor
+    private func loadProfileVisits(accountID: String) async {
+        guard !Task.isCancelled, !isVisitFeedLoading,
+              gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+              appModel.isAuthenticated else { return }
+        let token = UUID()
+        visitFeedRequestToken = token
+        isVisitFeedLoading = true
+        visitFeedError = nil
+        defer {
+            if visitFeedRequestToken == token { isVisitFeedLoading = false }
+        }
+        do {
+            let visits = try await appModel.repository.fetchPersonalActivities()
+            guard !Task.isCancelled, visitFeedRequestToken == token,
+                  gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+                  appModel.isAuthenticated else { return }
+            gameFeedVisits = visits
+        } catch {
+            guard !error.isCancellationLike, visitFeedRequestToken == token,
+                  gameFeedAccountID == accountID, appModel.currentUser?.id == accountID,
+                  appModel.isAuthenticated else { return }
+            visitFeedError = L10n.string("Could not refresh personal visits. Try again.", "Не удалось обновить личные визиты. Попробуй ещё раз.")
         }
     }
 
@@ -2710,10 +2833,14 @@ private struct ProfileCompletenessCard: View {
 }
 
 private struct ProfileGameFeedSection: View {
-    let requests: [MatchGameRequest]
+    let items: [ProfileGameFeedItem]
     let currentUserId: String?
     let isLoading: Bool
-    @State private var selectedReport: GameReport?
+    let gameError: String?
+    let visitError: String?
+    let onRetryGames: () -> Void
+    let onRetryVisits: () -> Void
+    @State private var selectedGallery: ReportPhotoGalleryItem?
 
     var body: some View {
         ProfileDarkPanel {
@@ -2723,16 +2850,15 @@ private struct ProfileGameFeedSection: View {
                         Text(L10n.string("Game feed", "Лента игр"))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(.white)
-                        Text(feedSubtitle)
+                        Text(L10n.string("Games and your personal visit reports", "Игры и фотоотчёты твоих личных визитов"))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.white.opacity(0.58))
                     }
                     Spacer()
                     if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    } else if !requests.isEmpty {
-                        Text("\(requests.count)")
+                        ProgressView().tint(.white)
+                    } else if !items.isEmpty {
+                        Text("\(items.count)")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.court)
                             .padding(.horizontal, 9)
@@ -2741,120 +2867,156 @@ private struct ProfileGameFeedSection: View {
                     }
                 }
 
-                if requests.isEmpty && !isLoading {
-                    Text(L10n.string("Add a photo report after a completed game and it will appear here.", "После завершённой игры добавь фотоотчёт — она появится здесь."))
+                if let gameError { sourceError(gameError, onRetry: onRetryGames, identifier: "profile-feed-retry-games") }
+                if let visitError { sourceError(visitError, onRetry: onRetryVisits, identifier: "profile-feed-retry-visits") }
+
+                if items.isEmpty && !isLoading && gameError == nil && visitError == nil {
+                    Text(L10n.string("Completed games and photo reports from your personal visits will appear here.", "Здесь появятся завершённые игры и фотоотчёты твоих личных визитов."))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(requests) { request in
-                            ProfileGameFeedRow(
-                                request: request,
-                                currentUserId: currentUserId,
-                                onOpenReport: { selectedReport = $0 }
-                            )
-                        }
+                }
+                VStack(spacing: 10) {
+                    ForEach(items) { item in
+                        ProfileGameFeedRow(item: item, currentUserId: currentUserId) { selectedGallery = $0 }
                     }
                 }
             }
         }
-        .sheet(item: $selectedReport) { report in
-            GameReportPhotoGallerySheet(report: report)
-        }
+        .accessibilityIdentifier("profile-game-feed")
+        .sheet(item: $selectedGallery) { ReportPhotoGallerySheet(item: $0) }
     }
 
-    private var feedSubtitle: String {
-        if requests.isEmpty {
-            return L10n.string("Photo reports and confirmed sessions", "Фотоотчёты и подтверждённые тренировки")
+    private func sourceError(_ message: String, onRetry: @escaping () -> Void, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(message).font(.caption).foregroundStyle(.white.opacity(0.75))
+            Button(L10n.string("Try again", "Повторить"), action: onRetry)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.court)
+                .frame(minHeight: 44)
+                .disabled(isLoading)
+                .accessibilityIdentifier(identifier)
         }
-        let reportCount = requests.filter { $0.report != nil }.count
-        return L10n.string("\(requests.count) games · \(reportCount) photo reports", "\(requests.count) игр · \(reportCount) фотоотчётов")
     }
 }
 
 private struct ProfileGameFeedRow: View {
-    let request: MatchGameRequest
+    let item: ProfileGameFeedItem
     let currentUserId: String?
-    let onOpenReport: (GameReport) -> Void
+    let onOpenGallery: (ReportPhotoGalleryItem) -> Void
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ProfileGameFeedPreview(report: request.report, sport: request.sport)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    SportIconView(sport: request.sport, color: AppTheme.court, size: 16)
-                    Text("\(request.sport.title) · \(request.proposedDatetime.formattedDateTime())")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.82)
-                }
-
-                Text(feedDetails)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(2)
-
-                if let report = request.report {
-                    HStack(spacing: 8) {
-                        Text(report.statusTitle)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(report.status.lowercased() == "confirmed" ? AppTheme.court : Color.orange)
-
-                        if !report.photoUrls.isEmpty {
-                            Label(L10n.string("\(report.photoUrls.count) photos", "\(report.photoUrls.count) фото"), systemImage: "photo.stack")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.white.opacity(0.72))
-                        }
-                    }
-                } else if let outcome = request.outcomeLabel {
-                    Text(outcome)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.court)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.white.opacity(0.07), lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onTapGesture {
-            guard let report = request.report, !report.photoUrls.isEmpty else { return }
-            onOpenReport(report)
+    private var sport: Sport {
+        switch item {
+        case .game(let request): return request.sport
+        case .visit(let activity): return activity.sport
         }
     }
 
-    private var feedDetails: String {
-        let people = request.participantNamesLine(currentUserId: currentUserId)
-        let court = request.proposedCourt?.name
-        return [court, people].compactMap { value in
-            guard let value, !value.isEmpty else { return nil }
-            return value
-        }.joined(separator: " · ")
+    private var photoPaths: [String] {
+        switch item {
+        case .game(let request): return request.report?.photoUrls ?? []
+        case .visit(let activity): return activity.photoUrls
+        }
+    }
+
+    private var dateTitle: String {
+        switch item {
+        case .game(let request): return request.proposedDatetime.formattedDateTime()
+        case .visit(let activity): return activity.scheduledAt.formattedDateTime()
+        }
+    }
+
+    private var details: String {
+        switch item {
+        case .game(let request):
+            return [request.proposedCourt?.name, request.participantNamesLine(currentUserId: currentUserId)]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case .visit(let activity):
+            return [L10n.string("Personal visit", "Личный визит"), activity.court?.name]
+                .compactMap { $0 }.joined(separator: " · ")
+        }
+    }
+
+    private var statusTitle: String {
+        switch item {
+        case .game(let request): return request.report?.statusTitle ?? request.outcomeLabel ?? ""
+        case .visit: return L10n.string("Visit photo report", "Фотоотчёт визита")
+        }
+    }
+
+    private var statusColor: Color {
+        switch item {
+        case .game(let request):
+            if let report = request.report, report.status.lowercased() != "confirmed" { return .orange }
+            return AppTheme.court
+        case .visit: return AppTheme.court
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProfileGameFeedPreview(allPhotoPaths: photoPaths, sport: sport, onOpenPhoto: openPhoto)
+            Button { openPhoto(0) } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        SportIconView(sport: sport, color: AppTheme.court, size: 16)
+                        Text("\(sport.title) · \(dateTitle)")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                    }
+                    Text(details)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(2)
+                    Text(statusTitle).font(.caption.weight(.bold)).foregroundStyle(statusColor)
+                    if !photoPaths.isEmpty {
+                        Label(L10n.string("\(photoPaths.count) photos", "\(photoPaths.count) фото"), systemImage: "photo.stack")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(photoPaths.isEmpty)
+            .accessibilityHint(photoPaths.isEmpty ? "" : L10n.string("Opens the photo report", "Открывает фотоотчёт"))
+        }
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
+        .accessibilityIdentifier("profile-feed-\(item.id)")
+    }
+
+    private func openPhoto(_ index: Int) {
+        guard !photoPaths.isEmpty else { return }
+        let comment: String?
+        switch item {
+        case .game(let request): comment = request.report?.comment
+        case .visit(let activity): comment = activity.reportComment
+        }
+        onOpenGallery(ReportPhotoGalleryItem(
+            photoPaths: photoPaths,
+            initialIndex: index,
+            title: L10n.string("Photo report", "Фотоотчёт"),
+            subtitle: "\(sport.title) · \(dateTitle) · \(statusTitle)",
+            comment: comment
+        ))
     }
 }
 
 private struct ProfileGameFeedPreview: View {
-    let report: GameReport?
+    let allPhotoPaths: [String]
     let sport: Sport
+    let onOpenPhoto: (Int) -> Void
 
-    private var photoPaths: [String] {
-        Array((report?.photoUrls ?? []).prefix(4))
-    }
-
-    private var extraPhotoCount: Int {
-        max((report?.photoUrls.count ?? 0) - 4, 0)
-    }
+    private var photoPaths: [String] { Array(allPhotoPaths.prefix(4)) }
+    private var extraPhotoCount: Int { max(allPhotoPaths.count - 4, 0) }
 
     var body: some View {
         ZStack {
@@ -2884,37 +3046,37 @@ private struct ProfileGameFeedPreview: View {
 
             switch photoPaths.count {
             case 1:
-                photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
             case 2:
                 HStack(spacing: gap) {
-                    photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                    photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
                         .frame(width: halfWidth, height: geometry.size.height)
-                    photoTile(path: photoPaths[1], showsMoreOverlay: extraPhotoCount > 0)
+                    photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: extraPhotoCount > 0)
                         .frame(width: halfWidth, height: geometry.size.height)
                 }
             case 3:
                 HStack(spacing: gap) {
-                    photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                    photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
                         .frame(width: halfWidth, height: geometry.size.height)
                     VStack(spacing: gap) {
-                        photoTile(path: photoPaths[1], showsMoreOverlay: false)
+                        photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: false)
                             .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[2], showsMoreOverlay: extraPhotoCount > 0)
+                        photoTile(path: photoPaths[2], index: 2, showsMoreOverlay: extraPhotoCount > 0)
                             .frame(width: halfWidth, height: halfHeight)
                     }
                 }
             default:
                 VStack(spacing: gap) {
                     HStack(spacing: gap) {
-                        photoTile(path: photoPaths[0], showsMoreOverlay: false)
+                        photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
                             .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[1], showsMoreOverlay: false)
+                        photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: false)
                             .frame(width: halfWidth, height: halfHeight)
                     }
                     HStack(spacing: gap) {
-                        photoTile(path: photoPaths[2], showsMoreOverlay: false)
+                        photoTile(path: photoPaths[2], index: 2, showsMoreOverlay: false)
                             .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[3], showsMoreOverlay: extraPhotoCount > 0)
+                        photoTile(path: photoPaths[3], index: 3, showsMoreOverlay: extraPhotoCount > 0)
                             .frame(width: halfWidth, height: halfHeight)
                     }
                 }
@@ -2922,7 +3084,8 @@ private struct ProfileGameFeedPreview: View {
         }
     }
 
-    private func photoTile(path: String, showsMoreOverlay: Bool) -> some View {
+    private func photoTile(path: String, index: Int, showsMoreOverlay: Bool) -> some View {
+        Button { onOpenPhoto(index) } label: {
         ZStack {
             if let url = resolveAppRemoteURL(path) {
                 AsyncImage(url: url) { phase in
@@ -2947,133 +3110,9 @@ private struct ProfileGameFeedPreview: View {
             }
         }
         .clipped()
-    }
-}
-
-private struct GameReportPhotoGallerySheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let report: GameReport
-    @State private var selectedIndex = 0
-
-    private var photoUrls: [String] {
-        report.photoUrls
-    }
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                header
-
-                if photoUrls.isEmpty {
-                    emptyState
-                } else {
-                    TabView(selection: $selectedIndex) {
-                        ForEach(Array(photoUrls.enumerated()), id: \.offset) { index, path in
-                            GameReportGalleryPhoto(path: path)
-                                .tag(index)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                }
-
-                footer
-            }
         }
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(L10n.string("Photo report", "Фотоотчёт"))
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                Text(report.statusTitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.mint)
-            }
-
-            Spacer()
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(.white.opacity(0.10), in: Circle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 10)
-    }
-
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !photoUrls.isEmpty {
-                HStack {
-                    Text("\(selectedIndex + 1) / \(photoUrls.count)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.78))
-                    Spacer()
-                    Image(systemName: "photo.stack")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.mint)
-                }
-            }
-
-            if let comment = report.comment, !comment.isEmpty {
-                Text(comment)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(18)
-        .background(.black.opacity(0.82))
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "photo")
-                .font(.system(size: 44, weight: .semibold))
-            Text(L10n.string("Photos unavailable", "Фото недоступны"))
-                .font(.headline.weight(.bold))
-        }
-        .foregroundStyle(.white.opacity(0.74))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct GameReportGalleryPhoto: View {
-    let path: String
-
-    var body: some View {
-        ZStack {
-            if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    default:
-                        ProgressView()
-                            .tint(.white)
-                    }
-                }
-            } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.62))
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 12)
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("Open photo \(index + 1) of \(allPhotoPaths.count)", "Открыть фото \(index + 1) из \(allPhotoPaths.count)"))
     }
 }
 

@@ -35,7 +35,9 @@ struct TennisSearchIOSApp: App {
                 .environment(\.locale, localeStore.locale)
                 .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.pendingLocaleRecommendation)
                 .task {
-                    await appModel.bootstrap()
+                    if !SportsActivityFeedPreview.isEnabled {
+                        await appModel.bootstrap()
+                    }
                 }
                 .onOpenURL { url in
                     appModel.handleIncomingURL(url)

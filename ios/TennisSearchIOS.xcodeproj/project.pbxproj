@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A100000000000000000001B0 /* ReportPhotoGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002B0 /* ReportPhotoGallery.swift */; };
+		A100000000000000000001A0 /* DiscoverPlayersMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002A0 /* DiscoverPlayersMap.swift */; };
+		A1000000000000000000019F /* SportsActivityFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000029F /* SportsActivityFeedView.swift */; };
 		A10000000000000000000101 /* TennisSearchIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000201 /* TennisSearchIOSApp.swift */; };
 		A10000000000000000000102 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000202 /* AppModel.swift */; };
 		A10000000000000000000123 /* LocaleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000228 /* LocaleStore.swift */; };
@@ -76,6 +79,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A100000000000000000002B0 /* ReportPhotoGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPhotoGallery.swift; sourceTree = "<group>"; };
+		A100000000000000000002A0 /* DiscoverPlayersMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverPlayersMap.swift; sourceTree = "<group>"; };
+		A1000000000000000000029F /* SportsActivityFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportsActivityFeedView.swift; sourceTree = "<group>"; };
 		A10000000000000000000201 /* TennisSearchIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TennisSearchIOSApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000202 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		A10000000000000000000228 /* LocaleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocaleStore.swift; sourceTree = "<group>"; };
@@ -226,11 +232,14 @@
 				A10000000000000000000208 /* ContentView.swift */,
 				A10000000000000000000209 /* AuthView.swift */,
 				A1000000000000000000020A /* DiscoverView.swift */,
+				A100000000000000000002A0 /* DiscoverPlayersMap.swift */,
+				A1000000000000000000029F /* SportsActivityFeedView.swift */,
 				A1000000000000000000020B /* MatchesView.swift */,
 				A1000000000000000000020C /* SearchesView.swift */,
 				A1000000000000000000029E /* EmptyDeckView.swift */,
 				A1000000000000000000020D /* CourtsView.swift */,
 				A1000000000000000000020E /* ProfileView.swift */,
+				A100000000000000000002B0 /* ReportPhotoGallery.swift */,
 				A10000000000000000000227 /* LocationPickerView.swift */,
 				A10000000000000000000214 /* NotificationsView.swift */,
 			);
@@ -399,11 +408,14 @@
 				A10000000000000000000108 /* ContentView.swift in Sources */,
 				A10000000000000000000109 /* AuthView.swift in Sources */,
 				A1000000000000000000010A /* DiscoverView.swift in Sources */,
+				A100000000000000000001A0 /* DiscoverPlayersMap.swift in Sources */,
+				A1000000000000000000019F /* SportsActivityFeedView.swift in Sources */,
 				A1000000000000000000010B /* MatchesView.swift in Sources */,
 				A1000000000000000000010C /* SearchesView.swift in Sources */,
 				A1000000000000000000019E /* EmptyDeckView.swift in Sources */,
 				A1000000000000000000010D /* CourtsView.swift in Sources */,
 				A1000000000000000000010E /* ProfileView.swift in Sources */,
+				A100000000000000000001B0 /* ReportPhotoGallery.swift in Sources */,
 				A10000000000000000000122 /* LocationPickerView.swift in Sources */,
 				A1000000000000000000010F /* NotificationManager.swift in Sources */,
 				A10000000000000000000110 /* NotificationsView.swift in Sources */,
@@ -472,7 +484,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026090401;
+				CURRENT_PROJECT_VERSION = 2026090901;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -482,11 +494,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
 				PRODUCT_NAME = SportSearch;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -497,7 +510,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026090401;
+				CURRENT_PROJECT_VERSION = 2026090901;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -507,7 +520,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
 				PRODUCT_NAME = SportSearch;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -523,7 +536,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026090401;
+				CURRENT_PROJECT_VERSION = 2026090901;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
@@ -533,7 +546,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
 				PRODUCT_NAME = UpcomingGamesWidget;
 				SKIP_INSTALL = YES;
@@ -550,7 +563,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026090401;
+				CURRENT_PROJECT_VERSION = 2026090901;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
@@ -560,7 +573,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
 				PRODUCT_NAME = UpcomingGamesWidget;
 				SKIP_INSTALL = YES;

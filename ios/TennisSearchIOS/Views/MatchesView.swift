@@ -968,6 +968,7 @@ struct ChatView: View {
 
     @State private var currentMatch: MatchSummary
     @State private var messages: [ChatMessage] = []
+    @State private var messagesLoadRevision = 0
     @State private var gameRequests: [MatchGameRequest] = []
     @State private var selectedGameRequestID: String?
     @State private var text = ""
@@ -978,6 +979,7 @@ struct ChatView: View {
     @State private var lastActiveChatPresenceRefresh = Date.distantPast
     @State private var selectedAvatarPreview: AvatarPreviewItem?
     @State private var selectedGameReport: GameReport?
+    @State private var isChatPhotoPickerPresented = false
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var pendingPhotos: [PendingMatchChatPhoto] = []
     @State private var selectedMediaAttachment: ChatMediaAttachment?
@@ -1013,45 +1015,49 @@ struct ChatView: View {
                         ForEach(messages) { message in
                             let isMine = message.senderUserId == appModel.currentUser?.id
                             let presentation = chatMessagePresentation(for: message)
-                            if message.isGameReportSystemEvent {
-                                let report = gameReport(for: message)
-                                ChatSystemEventRow(
-                                    title: message.gameReportSystemTitle,
-                                    timestamp: message.createdAt.formattedDateTime(),
-                                    onTap: report.map { report in
-                                        {
-                                            selectedGameReport = report
+                            Group {
+                                if message.isGameReportSystemEvent {
+                                    let report = gameReport(for: message)
+                                    ChatSystemEventRow(
+                                        title: message.gameReportSystemTitle,
+                                        timestamp: message.createdAt.formattedDateTime(),
+                                        onTap: report.map { report in
+                                            {
+                                                selectedGameReport = report
+                                            }
                                         }
-                                    }
-                                )
-                                .id(message.id)
-                            } else {
-                                ChatBubble(
-                                    text: presentation.text,
-                                    attachments: message.attachments,
-                                    timestamp: message.createdAt.formattedDateTime(),
-                                    sender: message.senderUser?.name ?? currentMatch.otherUser.displayName,
-                                    avatarPath: isMine ? nil : (message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl),
-                                    isMine: isMine,
-                                    actionTitle: presentation.action?.title,
-                                    actionSystemImage: presentation.action?.systemImage,
-                                    onAction: presentation.action.map { action in
-                                        {
-                                            appModel.navigate(to: action.target)
-                                        }
-                                    },
-                                    onAvatarTap: isMine
-                                        ? nil
-                                        : {
-                                            selectedAvatarPreview = AvatarPreviewItem(
-                                                name: message.senderUser?.name ?? currentMatch.otherUser.displayName,
-                                                path: message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl
-                                            )
+                                    )
+                                    .id(message.id)
+                                } else {
+                                    ChatBubble(
+                                        text: presentation.text,
+                                        attachments: message.attachments,
+                                        timestamp: message.createdAt.formattedDateTime(),
+                                        sender: message.senderUser?.name ?? currentMatch.otherUser.displayName,
+                                        avatarPath: isMine ? nil : (message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl),
+                                        isMine: isMine,
+                                        receipt: message.receipt,
+                                        actionTitle: presentation.action?.title,
+                                        actionSystemImage: presentation.action?.systemImage,
+                                        onAction: presentation.action.map { action in
+                                            {
+                                                appModel.navigate(to: action.target)
+                                            }
                                         },
-                                    onAttachmentTap: { selectedMediaAttachment = $0 }
-                                )
-                                .id(message.id)
+                                        onAvatarTap: isMine
+                                            ? nil
+                                            : {
+                                                selectedAvatarPreview = AvatarPreviewItem(
+                                                    name: message.senderUser?.name ?? currentMatch.otherUser.displayName,
+                                                    path: message.senderUser?.avatarUrl ?? currentMatch.otherUser.avatarUrl
+                                                )
+                                            },
+                                        onAttachmentTap: { selectedMediaAttachment = $0 }
+                                    )
+                                    .id(message.id)
+                                }
                             }
+                            .chatReceiptRow(id: message.id)
                         }
 
                         Color.clear
@@ -1062,6 +1068,11 @@ struct ChatView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 20)
                 }
+                .chatReceiptViewport(
+                    incomingIDs: messages.filter { $0.senderUserId != appModel.currentUser?.id }.map(\.id),
+                    isUncovered: !isChatPhotoPickerPresented && !isProfilePresented && selectedProposalMatch == nil && selectedAvatarPreview == nil && selectedGameReport == nil && selectedMediaAttachment == nil,
+                    scope: .match(currentMatch.id), repository: appModel.repository
+                )
                 .scrollDismissesKeyboard(.interactively)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -1127,16 +1138,15 @@ struct ChatView: View {
             }
 
             HStack(alignment: .bottom, spacing: 10) {
-                PhotosPicker(
-                    selection: $photoPickerItems,
-                    maxSelectionCount: 4,
-                    matching: .images
-                ) {
+                Button {
+                    isChatPhotoPickerPresented = true
+                } label: {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 18, weight: .semibold))
                         .frame(width: 46, height: 58)
                         .foregroundStyle(AppTheme.court)
                 }
+                .photosPicker(isPresented: $isChatPhotoPickerPresented, selection: $photoPickerItems, maxSelectionCount: 4, matching: .images)
                 .disabled(isSendingMessage)
 
                 FieldShell {
@@ -2074,11 +2084,13 @@ struct ChatView: View {
     }
 
     private func loadMessages(showErrors: Bool = true) async {
+        messagesLoadRevision += 1
+        let revision = messagesLoadRevision
         do {
             let fetchedMessages = try await appModel.repository.fetchMessages(matchId: currentMatch.id)
-            if fetchedMessages.map(\.id) != messages.map(\.id) {
-                messages = fetchedMessages
-            }
+            guard revision == messagesLoadRevision else { return }
+            // IDs may stay the same while receipts advance; stale responses cannot regress them.
+            messages = mergeChatReceipts(current: messages, fetched: fetchedMessages)
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -2256,6 +2268,7 @@ struct ChatView: View {
                 text: trimmed,
                 attachmentIds: attachmentIds
             )
+            messagesLoadRevision += 1 // Invalidate history requests that began before this send completed.
             if !messages.contains(where: { $0.id == message.id }) {
                 messages.append(message)
             }
@@ -2349,6 +2362,7 @@ private struct ChatBubble: View {
     let sender: String
     let avatarPath: String?
     let isMine: Bool
+    let receipt: ChatReceipt?
     let actionTitle: String?
     let actionSystemImage: String?
     let onAction: (() -> Void)?
@@ -2410,9 +2424,12 @@ private struct ChatBubble: View {
                     .buttonStyle(.plain)
                 }
 
-                Text(timestamp)
-                    .font(.caption2)
-                    .foregroundStyle(isMine ? .white.opacity(0.72) : AppTheme.ink.opacity(0.42))
+                HStack(spacing: 6) {
+                    Text(timestamp)
+                        .font(.caption2)
+                        .foregroundStyle(isMine ? .white.opacity(0.72) : AppTheme.ink.opacity(0.42))
+                    if isMine { ChatReceiptLabel(receipt: receipt) }
+                }
             }
             .padding(14)
             .background(

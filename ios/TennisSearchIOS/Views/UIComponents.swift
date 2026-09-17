@@ -2682,31 +2682,26 @@ struct UserSafetyMenuButton: View {
     let displayName: String
     let context: UserSafetyContext
     let onBlocked: () -> Void
+    var onPresentationChanged: ((Bool) -> Void)? = nil
 
     @State private var mode: SafetyActionMode?
+    @State private var isMenuPresented = false
+
+    private var isSafetyPresented: Bool { isMenuPresented || mode != nil }
 
     var body: some View {
-        Menu {
-            Button {
-                mode = .report
-            } label: {
-                Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+        Group {
+            if onPresentationChanged != nil {
+                Button { isMenuPresented = true } label: { menuLabel }
+                    .confirmationDialog("Безопасность профиля", isPresented: $isMenuPresented, titleVisibility: .visible) {
+                        safetyActions
+                        Button("Отмена", role: .cancel) {}
+                    }
+            } else {
+                Menu { safetyActions } label: { menuLabel }
             }
-
-            Button(role: .destructive) {
-                mode = .block
-            } label: {
-                Label("Заблокировать и пожаловаться", systemImage: "person.crop.circle.badge.xmark")
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 42, height: 42)
-                .background(.black.opacity(0.48), in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                .accessibilityLabel("Безопасность профиля")
         }
+        .onChange(of: isSafetyPresented) { onPresentationChanged?($0) }
         .sheet(item: $mode) { selectedMode in
             UserSafetyReportSheet(
                 userId: userId,
@@ -2720,6 +2715,27 @@ struct UserSafetyMenuButton: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(32)
         }
+    }
+
+    private var safetyActions: some View {
+        Group {
+            Button { mode = .report } label: {
+                Label("Пожаловаться", systemImage: "exclamationmark.bubble")
+            }
+            Button(role: .destructive) { mode = .block } label: {
+                Label("Заблокировать и пожаловаться", systemImage: "person.crop.circle.badge.xmark")
+            }
+        }
+    }
+
+    private var menuLabel: some View {
+        Image(systemName: "ellipsis")
+            .font(.headline.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 42, height: 42)
+            .background(.black.opacity(0.48), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+            .accessibilityLabel("Безопасность профиля")
     }
 }
 
@@ -2873,5 +2889,200 @@ private struct UserSafetyReportSheet: View {
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
         }
+    }
+}
+
+/// Compact map preference shared by onboarding and the saved profile editor.
+struct ProfileMapVisibilityControl: View {
+    @Binding var isOn: Bool
+    var isDark = false
+    var isForNewProfile = false
+    var isOnboarding = false
+    var identifier = "profile-show-on-map"
+    @State private var isInfoPresented = false
+
+    private var title: String { L10n.string("My profile on the map", "Мой профиль на карте") }
+
+    private var explanation: String {
+        var text = L10n.string(
+            "You see players in the areas where they prefer to play, and your card appears in the areas you choose. With no districts selected, you appear in all city districts, or at city level where districts are unavailable. Your exact location is not shown. You can switch this off now or later in profile settings.",
+            "Ты видишь игроков в удобных им районах, а свою карточку показываешь в выбранных тобой. Если районы не выбраны — во всех районах города, а где районов нет — на уровне города. Точная геопозиция не показывается. Можно выключить сейчас или позже в настройках профиля."
+        )
+        if isOnboarding {
+            text += "\n\n" + L10n.string("Map visibility is on by default for a new profile.", "Для новой анкеты показ на карте включён по умолчанию.")
+        }
+        if isForNewProfile {
+            text += "\n\n" + L10n.string("Applies when creating a new profile. Signing in to an existing profile keeps its saved setting.", "Для новой анкеты. При входе в существующую анкету сохраняется её настройка.")
+        }
+        return text
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: $isOn) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .tint(AppTheme.court)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier(identifier)
+
+            Button { isInfoPresented = true } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 19, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("About profile visibility on the map", "О показе профиля на карте"))
+            .accessibilityHint(L10n.string("Opens an explanation without changing the switch", "Открывает объяснение и не меняет переключатель"))
+            .accessibilityIdentifier(identifier + "-info")
+        }
+        .foregroundStyle(isDark ? Color.white : AppTheme.ink)
+        .padding(12)
+        .background((isDark ? Color.white : AppTheme.court).opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .alert(title, isPresented: $isInfoPresented) {
+            Button(L10n.string("Got it", "Понятно"), role: .cancel) {}
+        } message: {
+            Text(explanation)
+        }
+    }
+}
+
+// Receipt acknowledgements use actual row geometry, never ScrollView/VStack appearance alone.
+private struct ChatReceiptRowFrames: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct ChatReceiptViewportFrame: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+@MainActor
+private final class ChatReceiptAcknowledgements: ObservableObject {
+    var state = ChatReceiptAcknowledgementState()
+    private var isSending = false
+
+    func flush(repository: TennisRepository, scope: ChatReceiptScope) async {
+        guard !isSending else { return }
+        isSending = true
+        defer { isSending = false }
+        for status in ["delivered", "read"] {
+            while !Task.isCancelled {
+                let ids = state.pendingIDs(status: status)
+                guard !ids.isEmpty else { break }
+                do {
+                    try await repository.acknowledgeChatMessages(scope: scope, messageIds: ids, status: status)
+                    state.confirm(ids, status: status)
+                } catch {
+                    // Keep unsuccessful IDs pending for the next poll without disrupting the chat.
+                    return
+                }
+            }
+        }
+    }
+}
+
+private struct ChatReceiptViewportModifier: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var acknowledgements = ChatReceiptAcknowledgements()
+    @State private var viewport = CGRect.zero
+    @State private var rows: [String: CGRect] = [:]
+    @State private var isPresented = false
+    let incomingIDs: [String]
+    let isUncovered: Bool
+    let scope: ChatReceiptScope
+    let repository: TennisRepository
+
+    func body(content: Content) -> some View {
+        content
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: ChatReceiptViewportFrame.self, value: geometry.frame(in: .global))
+            })
+            .onPreferenceChange(ChatReceiptRowFrames.self) { value in
+                rows = value
+                updateAcknowledgements()
+            }
+            .onPreferenceChange(ChatReceiptViewportFrame.self) { value in
+                viewport = value
+                updateAcknowledgements()
+            }
+            .onChange(of: incomingIDs) { _ in updateAcknowledgements() }
+            .onChange(of: isUncovered) { _ in updateAcknowledgements() }
+            .onChange(of: scenePhase) { _ in updateAcknowledgements() }
+            .onAppear {
+                isPresented = true
+                updateAcknowledgements()
+            }
+            .onDisappear {
+                isPresented = false
+                acknowledgements.state.isActive = false
+            }
+            .onReceive(Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()) { _ in
+                // A fresh body closure keeps current visibility and incoming IDs across updates.
+                updateAcknowledgements()
+            }
+    }
+
+    private func updateState() {
+        acknowledgements.state.incomingIDs = Set(incomingIDs)
+        acknowledgements.state.visibleIDs = Set(rows.compactMap { id, row in
+            ChatReceiptAcknowledgementState.isVisible(row: row, viewport: viewport) ? id : nil
+        })
+        acknowledgements.state.isActive = isPresented && isUncovered && scenePhase == .active
+    }
+
+    private func updateAcknowledgements() {
+        updateState()
+        Task { await acknowledgements.flush(repository: repository, scope: scope) }
+    }
+}
+
+extension View {
+    func chatReceiptRow(id: String) -> some View {
+        background(GeometryReader { geometry in
+            Color.clear.preference(key: ChatReceiptRowFrames.self, value: [id: geometry.frame(in: .global)])
+        })
+    }
+
+    func chatReceiptViewport(incomingIDs: [String], isUncovered: Bool, scope: ChatReceiptScope, repository: TennisRepository) -> some View {
+        modifier(ChatReceiptViewportModifier(incomingIDs: incomingIDs, isUncovered: isUncovered, scope: scope, repository: repository))
+    }
+}
+
+struct ChatReceiptLabel: View {
+    let receipt: ChatReceipt?
+    var isGroup = false
+
+    private var label: String {
+        switch receipt?.status {
+        case "read":
+            return isGroup
+                ? L10n.string("Read by \(receipt?.readCount ?? 0)", "Прочитали: \(receipt?.readCount ?? 0)")
+                : L10n.string("Read", "Прочитано")
+        case "delivered":
+            return isGroup
+                ? L10n.string("Delivered to \(receipt?.deliveredCount ?? 0)", "Доставлено: \(receipt?.deliveredCount ?? 0)")
+                : L10n.string("Delivered", "Доставлено")
+        default:
+            return L10n.string("Sent", "Отправлено")
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(receipt?.status == "read" || receipt?.status == "delivered" ? "✓✓" : "✓")
+                .fontWeight(.semibold)
+            Text(label)
+        }
+        .font(.caption2)
+        .foregroundStyle(receipt?.status == "read" ? Color.white : Color.white.opacity(0.72))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
     }
 }

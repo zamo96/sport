@@ -2,8 +2,8 @@ import Foundation
 
 protocol TennisRepository {
     func requestCode(email: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> AuthChallenge
-    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser
-    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
     func clearAuthSession()
     func fetchCurrentUser() async throws -> UserProfile
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile
@@ -17,14 +17,15 @@ protocol TennisRepository {
     func removeProfileMedia(mediaUrl: String) async throws -> ProfileMediaUploadResult
     func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment
     func fetchChatMedia(path: String) async throws -> Data
-    func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser]
-    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser]
+    func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser]
+    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser]
     func swipe(userId: String, action: SwipeAction) async throws -> String?
     func reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport
     func blockUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport
     func fetchMatches() async throws -> [MatchSummary]
     func ensureMatch(userId: String) async throws -> MatchSummary
     func fetchMyGameRequests() async throws -> [MatchGameRequest]
+    func acknowledgeChatMessages(scope: ChatReceiptScope, messageIds: [String], status: String) async throws
     func fetchMessages(matchId: String) async throws -> [ChatMessage]
     func sendMessage(matchId: String, text: String, attachmentIds: [String]) async throws -> ChatMessage
     func createGameRequest(matchId: String, draft: GameProposalDraft) async throws -> MatchGameRequest
@@ -60,9 +61,9 @@ protocol TennisRepository {
     func withdrawSearchResponse(responseId: String) async throws -> SearchResponse
     func updateSearchResponseStatus(responseId: String, status: String) async throws -> SearchResponseUpdateResult
     func simulateRegularSearchActivity(searchId: String) async throws -> SearchSimulationResult
-    func fetchCourts(city: String?) async throws -> [Court]
+    func fetchCourts(city: String?, locationPlaceId: String?, sport: Sport?) async throws -> [Court]
     func fetchInviteSummary() async throws -> InviteSummary
-    func fetchEmptyDeckContent() async throws -> EmptyDeckContent
+    func fetchEmptyDeckContent(city: String?, locationPlaceId: String?, sports: [Sport]?) async throws -> EmptyDeckContent
     func fetchCourt(courtId: String) async throws -> Court
     func fetchAddressSuggestions(query: String, city: String?) async throws -> [AddressSuggestion]
     func setCourtMembership(courtId: String, isMember: Bool) async throws -> Court
@@ -78,8 +79,24 @@ protocol TennisRepository {
 }
 
 extension TennisRepository {
-    func fetchCourts() async throws -> [Court] {
-        try await fetchCourts(city: nil)
+    func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+        try await verifyCode(email: email, code: code, userAgreementAccepted: userAgreementAccepted, userAgreementVersion: userAgreementVersion, showOnMap: nil)
+    }
+    func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String) async throws -> SessionUser {
+        try await signInWithApple(identityToken: identityToken, email: email, givenName: givenName, familyName: familyName, userAgreementAccepted: userAgreementAccepted, userAgreementVersion: userAgreementVersion, showOnMap: nil)
+    }
+
+    func fetchDiscoverUsers(view: DiscoverTab) async throws -> [DiscoverUser] {
+        try await fetchDiscoverUsers(view: view, sport: nil)
+    }
+    func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab) async throws -> [DiscoverUser] {
+        try await fetchGuestDiscoverUsers(draft: draft, view: view, sport: nil)
+    }
+    func fetchCourts(city: String? = nil) async throws -> [Court] {
+        try await fetchCourts(city: city, locationPlaceId: nil, sport: nil)
+    }
+    func fetchEmptyDeckContent() async throws -> EmptyDeckContent {
+        try await fetchEmptyDeckContent(city: nil, locationPlaceId: nil, sports: nil)
     }
 }
 

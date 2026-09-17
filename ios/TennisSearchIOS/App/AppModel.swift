@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
     private let guestDraftStore = GuestDraftStore()
     private let discoverHintStore = DiscoverHintStore()
     private var guestDraftSaveTask: Task<Void, Never>?
+    // Presentation-only, bounded to the last dismissal in this app session.
+    private var dismissedDiscoverSummary: (accountID: String?, signature: String)?
 
     init(localeStore: LocaleStore = LocaleStore()) {
         self.localeStore = localeStore
@@ -112,8 +114,12 @@ final class AppModel: ObservableObject {
         currentUser != nil
     }
 
+    var isOnboardingComplete: Bool {
+        currentUser?.isOnboardingComplete == true
+    }
+
     var isGuestModeAvailable: Bool {
-        !isAuthenticated && guestDraft.hasProfileBasics && guestDraft.onboardingCompleted
+        !isAuthenticated && guestDraft.isOnboardingComplete
     }
 
     func bootstrap() async {
@@ -124,7 +130,9 @@ final class AppModel: ObservableObject {
         }
 
         do {
-            currentUser = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            let user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            prepareOnboardingDraft(for: user)
+            currentUser = user
             notificationManager.startMonitoring(repository: repository)
         } catch {
             currentUser = nil
@@ -203,21 +211,23 @@ final class AppModel: ObservableObject {
         defer { isBusy = false }
 
         do {
-            let session = try await repository.verifyCode(
+            _ = try await repository.verifyCode(
                 email: authEmail,
                 code: code,
                 userAgreementAccepted: userAgreementAccepted,
-                userAgreementVersion: userAgreementVersion
+                userAgreementVersion: userAgreementVersion,
+                showOnMap: guestDraft.showOnMap
             )
             var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
 
-            if !session.onboardingCompleted && guestDraft.hasProfileBasics {
-                user = try await repository.updateProfile(makeProfileFromGuestDraft(userId: user.id, email: user.email))
+            if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
+                user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
             }
 
+            prepareOnboardingDraft(for: user)
             currentUser = user
             notificationManager.startMonitoring(repository: repository)
-            resetGuestDraft()
+            if user.isOnboardingComplete { resetGuestDraft() }
             authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
@@ -249,23 +259,25 @@ final class AppModel: ObservableObject {
                 authEmail = email
             }
 
-            let session = try await repository.signInWithApple(
+            _ = try await repository.signInWithApple(
                 identityToken: identityToken,
                 email: email,
                 givenName: givenName,
                 familyName: familyName,
                 userAgreementAccepted: userAgreementAccepted,
-                userAgreementVersion: userAgreementVersion
+                userAgreementVersion: userAgreementVersion,
+                showOnMap: guestDraft.showOnMap
             )
             var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
 
-            if !session.onboardingCompleted && guestDraft.hasProfileBasics {
-                user = try await repository.updateProfile(makeProfileFromGuestDraft(userId: user.id, email: user.email))
+            if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
+                user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
             }
 
+            prepareOnboardingDraft(for: user)
             currentUser = user
             notificationManager.startMonitoring(repository: repository)
-            resetGuestDraft()
+            if user.isOnboardingComplete { resetGuestDraft() }
             authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
@@ -292,7 +304,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func isDiscoverSummaryDismissed(_ signature: String) -> Bool {
+        guard let dismissal = dismissedDiscoverSummary else { return false }
+        return dismissal.accountID == currentUser?.id && dismissal.signature == signature
+    }
+
+    func dismissDiscoverSummary(_ signature: String) {
+        dismissedDiscoverSummary = (currentUser?.id, signature)
+    }
+
     func logout() {
+        dismissedDiscoverSummary = nil
         guestDraftSaveTask?.cancel()
         notificationManager.stopMonitoring()
         repository.clearAuthSession()
@@ -438,39 +460,79 @@ final class AppModel: ObservableObject {
         pendingHighlightedGameRequestID = nil
     }
 
-    private func makeProfileFromGuestDraft(userId: String, email: String?) -> UserProfile {
-        UserProfile(
-            id: userId,
-            email: email,
-            name: guestDraft.name.trimmingCharacters(in: .whitespacesAndNewlines),
-            age: guestDraft.age,
-            gender: guestDraft.gender,
-            city: guestDraft.city,
-            location: guestDraft.location,
-            coverage: guestDraft.location?.coverage ?? .unavailable,
-            locationSource: guestDraft.locationSource,
-            district: guestDraft.preferredDistricts.first ?? guestDraft.district,
-            preferredDistricts: guestDraft.preferredDistricts,
-            bio: nil,
-            avatarUrl: nil,
-            tennisLevel: guestDraft.sportLevels[guestDraft.preferredSports.first?.rawValue ?? ""] ?? 5,
-            preferredSports: guestDraft.preferredSports,
-            sportLevels: guestDraft.sportLevels,
-            preferredPlayFormat: guestDraft.preferredPlayFormat,
-            preferredSurface: guestDraft.preferredSurface,
-            availableDays: guestDraft.availableDays,
-            availableTimeRanges: guestDraft.availableTimeRanges,
-            availabilityByDay: guestDraft.availabilityByDay,
-            isLookingForGame: guestDraft.isLookingForGame,
-            searchRadiusKm: guestDraft.searchRadiusKm,
-            onboardingCompleted: true,
-            isVerified: true,
-            notificationMatches: true,
-            notificationMessages: true,
-            notificationGames: true,
-            notificationSound: true
-        )
+    @discardableResult
+    func completeGuestOnboarding(_ draft: GuestOnboardingDraft) async -> Bool {
+        guard draft.hasRequiredOnboardingFields else {
+            errorMessage = L10n.string("Enter your name, an age from 18 to 100, a sport, and a city.", "Укажи имя, возраст от 18 до 100, вид спорта и город.")
+            return false
+        }
+        var completedDraft = draft
+        completedDraft.onboardingCompleted = true
+        updateGuestDraft(completedDraft)
+        guard let user = currentUser else { return true }
+        guard !user.isOnboardingComplete else { return true }
+        let saved = await saveProfile(makeProfileFromGuestDraft(user))
+        if saved { resetGuestDraft() }
+        return saved
     }
+
+    private func prepareOnboardingDraft(for user: UserProfile) {
+        guard !user.isOnboardingComplete else { return }
+        var draft = guestDraft
+        if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 {
+            draft.name = user.name ?? draft.name
+        }
+        if !(18 ... 100).contains(draft.age) { draft.age = user.age ?? draft.age }
+        if draft.gender == nil { draft.gender = user.gender }
+        if draft.preferredSports.isEmpty {
+            draft.preferredSports = user.preferredSports
+            draft.sportLevels = user.sportLevels
+            draft.preferredPlayFormat = user.preferredPlayFormat
+            draft.preferredSurface = user.preferredSurface
+        }
+        if draft.availableDays.isEmpty && draft.availableTimeRanges.isEmpty && draft.availabilityByDay.isEmpty {
+            draft.availableDays = user.availableDays
+            draft.availableTimeRanges = user.availableTimeRanges
+            draft.availabilityByDay = user.availabilityByDay
+        }
+        if !draft.hasSelectedCity {
+            draft.city = user.location?.coverage.legacyCity ?? user.location?.city ?? user.city ?? draft.city
+            draft.location = user.location
+            draft.locationSource = user.locationSource
+            draft.district = user.district
+            draft.preferredDistricts = user.preferredDistricts
+        }
+        draft.showOnMap = OnboardingMapVisibility.resolved(stored: user.showOnMap, draft: draft.showOnMap, completed: user.isOnboardingComplete)
+        draft.onboardingCompleted = false
+        updateGuestDraft(draft)
+    }
+
+    private func makeProfileFromGuestDraft(_ user: UserProfile) -> UserProfile {
+        var profile = user
+        profile.name = guestDraft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.age = guestDraft.age
+        profile.gender = guestDraft.gender
+        profile.city = guestDraft.location?.coverage.legacyCity ?? guestDraft.location?.city ?? guestDraft.city
+        profile.location = guestDraft.location
+        profile.coverage = guestDraft.location?.coverage ?? .unavailable
+        profile.locationSource = guestDraft.locationSource
+        profile.district = guestDraft.preferredDistricts.first ?? guestDraft.district
+        profile.preferredDistricts = guestDraft.preferredDistricts
+        profile.tennisLevel = guestDraft.sportLevels[guestDraft.preferredSports.first?.rawValue ?? ""] ?? 5
+        profile.preferredSports = guestDraft.preferredSports
+        profile.sportLevels = guestDraft.sportLevels
+        profile.preferredPlayFormat = guestDraft.preferredPlayFormat
+        profile.preferredSurface = guestDraft.preferredSurface
+        profile.availableDays = guestDraft.availableDays
+        profile.availableTimeRanges = guestDraft.availableTimeRanges
+        profile.availabilityByDay = guestDraft.availabilityByDay
+        profile.isLookingForGame = guestDraft.isLookingForGame
+        profile.showOnMap = OnboardingMapVisibility.resolved(stored: user.showOnMap, draft: guestDraft.showOnMap, completed: user.isOnboardingComplete)
+        profile.searchRadiusKm = guestDraft.searchRadiusKm
+        profile.onboardingCompleted = true
+        return profile
+    }
+
 }
 
 /// Предзаполнение формы создания поиска из пуша «сходить на тренировку».

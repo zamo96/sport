@@ -13,15 +13,28 @@ enum UpcomingGamesWidgetStore {
         personalActivities: [PersonalActivity] = [],
         currentUserId: String?
     ) {
+        write(makePayload(gameRequests: gameRequests, personalActivities: personalActivities, currentUserId: currentUserId))
+        if let currentUserId {
+            UserDefaults(suiteName: appGroupIdentifier)?.set(currentUserId, forKey: currentUserIdKey)
+        }
+        UpcomingGameLiveActivityManager.sync(gameRequests: gameRequests, currentUserId: currentUserId)
+    }
+
+    private static func makePayload(
+        gameRequests: [MatchGameRequest],
+        personalActivities: [PersonalActivity],
+        currentUserId: String?,
+        referenceDate: Date = Date()
+    ) -> UpcomingGamesWidgetPayload {
         let gameItems = gameRequests
-            .filter { !$0.isArchivedForTimeline }
+            .filter { !["cancelled", "canceled", "declined", "rejected", "withdrawn", "completed"].contains($0.status.lowercased()) && $0.outcome != "played" && $0.outcome != "not_played" }
             .map { request in
                 UpcomingGamesWidgetGame(
                     id: request.id,
                     title: request.upcomingDisplayName(currentUserId: currentUserId),
                     sportTitle: request.sport.title,
                     startsAt: request.proposedDate,
-                    durationMinutes: request.durationMinutes,
+                    durationMinutes: UpcomingGamesWidgetSchedule.durationMinutes(request.durationMinutes, fallback: 90),
                     dateText: widgetDateText(for: request.proposedDate),
                     timeText: widgetTimeText(for: request.proposedDate),
                     courtName: request.proposedCourt?.name ?? request.sport.venuePendingTitle,
@@ -32,14 +45,14 @@ enum UpcomingGamesWidgetStore {
             }
 
         let personalItems = personalActivities
-            .filter { !$0.isArchivedForTimeline }
+            .filter { !["cancelled", "canceled", "completed"].contains($0.status.lowercased()) }
             .map { activity in
                 UpcomingGamesWidgetGame(
                     id: activity.id,
                     title: "Личный визит",
                     sportTitle: activity.sport.title,
                     startsAt: activity.scheduledDate,
-                    durationMinutes: activity.durationMinutes,
+                    durationMinutes: UpcomingGamesWidgetSchedule.durationMinutes(activity.durationMinutes, fallback: activity.sport.defaultDurationMinutes),
                     dateText: widgetDateText(for: activity.scheduledDate),
                     timeText: widgetTimeText(for: activity.scheduledDate),
                     courtName: activity.court?.name ?? activity.sport.venuePendingTitle,
@@ -50,14 +63,11 @@ enum UpcomingGamesWidgetStore {
             }
 
         let games = (gameItems + personalItems)
+            .filter { UpcomingGamesWidgetSchedule.isUpcoming(startsAt: $0.startsAt, durationMinutes: $0.durationMinutes, at: referenceDate) }
             .sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
             .prefix(3)
 
-        write(UpcomingGamesWidgetPayload(updatedAt: Date(), games: Array(games)))
-        if let currentUserId {
-            UserDefaults(suiteName: appGroupIdentifier)?.set(currentUserId, forKey: currentUserIdKey)
-        }
-        UpcomingGameLiveActivityManager.sync(gameRequests: gameRequests, currentUserId: currentUserId)
+        return UpcomingGamesWidgetPayload(updatedAt: referenceDate, games: Array(games))
     }
 
     static func clear() {
@@ -104,6 +114,20 @@ enum UpcomingGamesWidgetStore {
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
+    }
+}
+
+// Widget eligibility is independent of the in-app history and Live Activity grace period.
+private enum UpcomingGamesWidgetSchedule {
+    static func durationMinutes(_ value: Int?, fallback: Int) -> Int {
+        guard let value, value > 0, value <= 24 * 60 else { return fallback }
+        return value
+    }
+
+    static func isUpcoming(startsAt: Date?, durationMinutes: Int?, at referenceDate: Date) -> Bool {
+        guard let startsAt else { return false }
+        let duration = Self.durationMinutes(durationMinutes, fallback: 90)
+        return startsAt.addingTimeInterval(TimeInterval(duration) * 60) > referenceDate
     }
 }
 

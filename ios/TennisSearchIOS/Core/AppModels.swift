@@ -758,7 +758,7 @@ enum DiscoverTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static var userVisibleCases: [DiscoverTab] {
-        [.upcoming, .hot, .swipe, .likes]
+        [.swipe, .upcoming, .hot]
     }
 
     var title: String {
@@ -899,6 +899,32 @@ struct AuthChallenge: Codable {
     let debugCode: String?
 }
 
+// MARK: - Required onboarding fields
+
+enum OnboardingRequirements {
+    static func hasProfileBasics(name: String?, age: Int?, hasSports: Bool) -> Bool {
+        (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+            && (18 ... 100).contains(age ?? 0)
+            && hasSports
+    }
+
+    static func hasSelectedCity(city: String?, locationPlaceID: String?, locationCity: String?) -> Bool {
+        // A resolved global place is valid even outside the legacy city catalog.
+        if let locationPlaceID {
+            return locationPlaceID.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+                && !(locationCity ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard let city = SupportedCity.resolve(city) else { return false }
+        return SupportedCity.selectableCases.contains(city)
+    }
+
+    static func isComplete(completed: Bool, hasProfileBasics: Bool, hasSelectedCity: Bool) -> Bool {
+        completed && hasProfileBasics && hasSelectedCity
+    }
+}
+
+// MARK: - End required onboarding fields
+
 struct GuestOnboardingDraft: Codable, Equatable {
     var name: String
     var age: Int
@@ -914,6 +940,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
     var preferredSurface: Surface
     var searchRadiusKm: Int
     var isLookingForGame: Bool
+    var showOnMap: Bool
     var availableDays: [String]
     var availableTimeRanges: [String]
     var availabilityByDay: [String: [String]]
@@ -934,6 +961,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
         preferredSurface: Surface,
         searchRadiusKm: Int,
         isLookingForGame: Bool,
+        showOnMap: Bool = true,
         availableDays: [String],
         availableTimeRanges: [String],
         availabilityByDay: [String: [String]],
@@ -953,6 +981,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
         self.preferredSurface = preferredSurface
         self.searchRadiusKm = searchRadiusKm
         self.isLookingForGame = isLookingForGame
+        self.showOnMap = showOnMap
         self.availableDays = availableDays
         self.availableTimeRanges = availableTimeRanges
         self.availabilityByDay = availabilityByDay
@@ -981,7 +1010,19 @@ struct GuestOnboardingDraft: Codable, Equatable {
     )
 
     var hasProfileBasics: Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && (18 ... 100).contains(age) && !preferredSports.isEmpty
+        OnboardingRequirements.hasProfileBasics(name: name, age: age, hasSports: !preferredSports.isEmpty)
+    }
+
+    var hasSelectedCity: Bool {
+        OnboardingRequirements.hasSelectedCity(city: city, locationPlaceID: location?.id, locationCity: location?.city)
+    }
+
+    var hasRequiredOnboardingFields: Bool {
+        hasProfileBasics && hasSelectedCity
+    }
+
+    var isOnboardingComplete: Bool {
+        OnboardingRequirements.isComplete(completed: onboardingCompleted, hasProfileBasics: hasProfileBasics, hasSelectedCity: hasSelectedCity)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -999,6 +1040,7 @@ struct GuestOnboardingDraft: Codable, Equatable {
         case preferredSurface
         case searchRadiusKm
         case isLookingForGame
+        case showOnMap
         case availableDays
         case availableTimeRanges
         case availabilityByDay
@@ -1021,10 +1063,17 @@ struct GuestOnboardingDraft: Codable, Equatable {
         preferredSurface = try container.decodeIfPresent(Surface.self, forKey: .preferredSurface) ?? .any
         searchRadiusKm = try container.decodeIfPresent(Int.self, forKey: .searchRadiusKm) ?? 20
         isLookingForGame = try container.decodeIfPresent(Bool.self, forKey: .isLookingForGame) ?? true
+        showOnMap = try container.decodeIfPresent(Bool.self, forKey: .showOnMap) ?? true
         availableDays = try container.decodeIfPresent([String].self, forKey: .availableDays) ?? []
         availableTimeRanges = try container.decodeIfPresent([String].self, forKey: .availableTimeRanges) ?? []
         availabilityByDay = try container.decodeFlexibleStringArrayDictionary(forKey: .availabilityByDay)
         onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted) ?? false
+    }
+}
+
+enum OnboardingMapVisibility {
+    static func resolved(stored: Bool, draft: Bool, completed: Bool) -> Bool {
+        completed ? stored : stored && draft
     }
 }
 
@@ -1053,6 +1102,7 @@ struct UserProfile: Codable, Identifiable {
     var availableTimeRanges: [String]
     var availabilityByDay: [String: [String]]
     var isLookingForGame: Bool
+    var showOnMap: Bool
     var searchRadiusKm: Int
     var onboardingCompleted: Bool
     var isVerified: Bool
@@ -1061,6 +1111,14 @@ struct UserProfile: Codable, Identifiable {
     var notificationGames: Bool
     var notificationSound: Bool
     var localeOverride: String?
+
+    var isOnboardingComplete: Bool {
+        OnboardingRequirements.isComplete(
+            completed: onboardingCompleted,
+            hasProfileBasics: OnboardingRequirements.hasProfileBasics(name: name, age: age, hasSports: !preferredSports.isEmpty),
+            hasSelectedCity: OnboardingRequirements.hasSelectedCity(city: city, locationPlaceID: location?.id, locationCity: location?.city)
+        )
+    }
 
     init(
         id: String,
@@ -1087,6 +1145,7 @@ struct UserProfile: Codable, Identifiable {
         availableTimeRanges: [String] = [],
         availabilityByDay: [String: [String]] = [:],
         isLookingForGame: Bool = true,
+        showOnMap: Bool = false,
         searchRadiusKm: Int = 20,
         onboardingCompleted: Bool = false,
         isVerified: Bool = false,
@@ -1120,6 +1179,7 @@ struct UserProfile: Codable, Identifiable {
         self.availableTimeRanges = availableTimeRanges
         self.availabilityByDay = availabilityByDay
         self.isLookingForGame = isLookingForGame
+        self.showOnMap = showOnMap
         self.searchRadiusKm = searchRadiusKm
         self.onboardingCompleted = onboardingCompleted
         self.isVerified = isVerified
@@ -1155,6 +1215,7 @@ struct UserProfile: Codable, Identifiable {
         case availableTimeRanges
         case availabilityByDay
         case isLookingForGame
+        case showOnMap
         case searchRadiusKm
         case onboardingCompleted
         case isVerified
@@ -1193,6 +1254,7 @@ struct UserProfile: Codable, Identifiable {
         availableTimeRanges = try container.decodeIfPresent([String].self, forKey: .availableTimeRanges) ?? []
         availabilityByDay = try container.decodeFlexibleStringArrayDictionary(forKey: .availabilityByDay)
         isLookingForGame = try container.decodeIfPresent(Bool.self, forKey: .isLookingForGame) ?? true
+        showOnMap = try container.decodeIfPresent(Bool.self, forKey: .showOnMap) ?? false
         searchRadiusKm = try container.decodeIfPresent(Int.self, forKey: .searchRadiusKm) ?? 20
         onboardingCompleted = try container.decodeIfPresent(Bool.self, forKey: .onboardingCompleted) ?? false
         isVerified = try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false
@@ -1204,8 +1266,46 @@ struct UserProfile: Codable, Identifiable {
     }
 }
 
+struct NearbyResult: Codable {
+    let originCity: String
+    let radiusKm: Double
+    let distanceKm: Double
+
+    var areaLabel: String {
+        L10n.string("Within \(Int(radiusKm)) km of \(originCity)", "В радиусе \(Int(radiusKm)) км от \(originCity)")
+    }
+
+    var distanceLabel: String {
+        let value = String(format: "%.1f", distanceKm)
+        return L10n.string("\(value) km in a straight line", "\(value) км по прямой")
+    }
+}
+
+/// Server-authoritative coarse areas. Never reconstruct these from a home district or device location.
+struct DiscoverMapArea: Codable, Identifiable, Equatable {
+    let id: String
+    let cityId: String
+    let cityName: String
+    let kind: String
+    let districtId: String?
+    let label: String
+    let latitude: Double
+    let longitude: Double
+
+    var mapID: String { "\(cityId)::\(id)" }
+
+    var isValid: Bool {
+        !id.isEmpty && !cityId.isEmpty && !cityName.isEmpty && !label.isEmpty
+            && (kind == "city" || (kind == "district" && districtId?.isEmpty == false))
+            && latitude.isFinite && longitude.isFinite
+            && (-90...90).contains(latitude) && (-180...180).contains(longitude)
+    }
+}
+
 struct DiscoverUser: Codable, Identifiable {
     let id: String
+    let showOnMap: Bool
+    let mapAreas: [DiscoverMapArea]
     let name: String?
     let age: Int?
     let city: String?
@@ -1225,12 +1325,15 @@ struct DiscoverUser: Codable, Identifiable {
     let availableDays: [String]
     let availableTimeRanges: [String]
     let distanceLabel: String
+    var nearby: NearbyResult? = nil
     let score: Double?
     let explainabilityReasons: [String]
     let gameSearches: [GameSearch]
 
     enum CodingKeys: String, CodingKey {
         case id
+        case showOnMap
+        case mapAreas
         case name
         case age
         case city
@@ -1250,6 +1353,7 @@ struct DiscoverUser: Codable, Identifiable {
         case availableDays
         case availableTimeRanges
         case distanceLabel
+        case nearby
         case score
         case explainabilityReasons
         case gameSearches
@@ -1258,6 +1362,8 @@ struct DiscoverUser: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        showOnMap = try container.decodeIfPresent(Bool.self, forKey: .showOnMap) ?? false
+        mapAreas = showOnMap ? (try container.decodeIfPresent([DiscoverMapArea].self, forKey: .mapAreas) ?? []) : []
         name = try container.decodeIfPresent(String.self, forKey: .name)
         age = try container.decodeIfPresent(Int.self, forKey: .age)
         city = try container.decodeIfPresent(String.self, forKey: .city)
@@ -1277,6 +1383,7 @@ struct DiscoverUser: Codable, Identifiable {
         availableDays = try container.decodeIfPresent([String].self, forKey: .availableDays) ?? []
         availableTimeRanges = try container.decodeIfPresent([String].self, forKey: .availableTimeRanges) ?? []
         distanceLabel = try container.decodeIfPresent(String.self, forKey: .distanceLabel) ?? L10n.string("Nearby", "Рядом")
+        nearby = try container.decodeIfPresent(NearbyResult.self, forKey: .nearby)
         score = try container.decodeFlexibleDoubleIfPresent(forKey: .score)
         explainabilityReasons = try container.decodeIfPresent([String].self, forKey: .explainabilityReasons) ?? []
         gameSearches = try container.decodeIfPresent([GameSearch].self, forKey: .gameSearches) ?? []
@@ -1286,6 +1393,8 @@ struct DiscoverUser: Codable, Identifiable {
 extension DiscoverUser {
     init(profile: UserProfile) {
         id = profile.id
+        showOnMap = profile.showOnMap
+        mapAreas = []
         name = profile.name
         age = profile.age
         city = profile.city
@@ -1356,7 +1465,7 @@ struct MatchSummary: Codable, Identifiable {
     let latestGameRequest: MatchGameRequest?
 }
 
-struct ChatMessage: Codable, Identifiable {
+struct ChatMessage: Codable, Identifiable, ChatReceiptMessage {
     let id: String
     let senderUserId: String
     let gameRequestId: String?
@@ -1364,6 +1473,7 @@ struct ChatMessage: Codable, Identifiable {
     let createdAt: String
     let senderUser: ChatSender?
     let attachments: [ChatMediaAttachment]
+    var receipt: ChatReceipt?
 
     init(
         id: String,
@@ -1372,7 +1482,8 @@ struct ChatMessage: Codable, Identifiable {
         text: String,
         createdAt: String,
         senderUser: ChatSender?,
-        attachments: [ChatMediaAttachment] = []
+        attachments: [ChatMediaAttachment] = [],
+        receipt: ChatReceipt? = nil
     ) {
         self.id = id
         self.senderUserId = senderUserId
@@ -1381,10 +1492,11 @@ struct ChatMessage: Codable, Identifiable {
         self.createdAt = createdAt
         self.senderUser = senderUser
         self.attachments = attachments
+        self.receipt = receipt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, senderUserId, gameRequestId, text, createdAt, senderUser, attachments
+        case id, senderUserId, gameRequestId, text, createdAt, senderUser, attachments, receipt
     }
 
     init(from decoder: Decoder) throws {
@@ -1396,6 +1508,7 @@ struct ChatMessage: Codable, Identifiable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         senderUser = try container.decodeIfPresent(ChatSender.self, forKey: .senderUser)
         attachments = try container.decodeIfPresent([ChatMediaAttachment].self, forKey: .attachments) ?? []
+        receipt = try container.decodeIfPresent(ChatReceipt.self, forKey: .receipt)
     }
 }
 
@@ -1435,13 +1548,14 @@ struct SearchStatusUpdate: Codable {
     let isActive: Bool?
 }
 
-struct SearchLobbyMessage: Codable, Identifiable {
+struct SearchLobbyMessage: Codable, Identifiable, ChatReceiptMessage {
     let id: String
     let senderUserId: String
     let text: String
     let createdAt: String
     let senderUser: ChatSender?
     let attachments: [ChatMediaAttachment]
+    var receipt: ChatReceipt?
 
     init(
         id: String,
@@ -1449,7 +1563,8 @@ struct SearchLobbyMessage: Codable, Identifiable {
         text: String,
         createdAt: String,
         senderUser: ChatSender?,
-        attachments: [ChatMediaAttachment] = []
+        attachments: [ChatMediaAttachment] = [],
+        receipt: ChatReceipt? = nil
     ) {
         self.id = id
         self.senderUserId = senderUserId
@@ -1457,10 +1572,11 @@ struct SearchLobbyMessage: Codable, Identifiable {
         self.createdAt = createdAt
         self.senderUser = senderUser
         self.attachments = attachments
+        self.receipt = receipt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, senderUserId, text, createdAt, senderUser, attachments
+        case id, senderUserId, text, createdAt, senderUser, attachments, receipt
     }
 
     init(from decoder: Decoder) throws {
@@ -1471,6 +1587,7 @@ struct SearchLobbyMessage: Codable, Identifiable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         senderUser = try container.decodeIfPresent(ChatSender.self, forKey: .senderUser)
         attachments = try container.decodeIfPresent([ChatMediaAttachment].self, forKey: .attachments) ?? []
+        receipt = try container.decodeIfPresent(ChatReceipt.self, forKey: .receipt)
     }
 }
 
@@ -1540,7 +1657,7 @@ struct SearchLobbyGameSearch: Codable, Identifiable {
     let scheduledCourt: Court?
     let activeSlotProposal: SearchSlotProposalSummary?
     let responses: [SearchResponse]
-    let messages: [SearchLobbyMessage]
+    var messages: [SearchLobbyMessage]
 
     var preferredDistrictsLabel: String {
         let names = preferredDistricts.compactMap(localizedDistrictName)
@@ -2281,6 +2398,8 @@ struct EmptyDeckSection: Codable, Identifiable {
 }
 
 struct EmptyDeckCourt: Codable, Identifiable {
+    var city: String? = nil
+    var nearby: NearbyResult? = nil
     let id: String
     let name: String
     let distanceLabel: String?
@@ -2297,7 +2416,7 @@ struct EmptyDeckSearcher: Codable, Identifiable {
 
 struct EmptyDeckContent: Codable {
     let sections: [EmptyDeckSection]
-    let invite: InviteSummary
+    let invite: InviteSummary?
 }
 
 /// Личная ссылка-приглашение и её счётчики.
@@ -2317,6 +2436,7 @@ struct Court: Codable, Identifiable {
     let district: String?
     let locationLat: Double
     let locationLng: Double
+    var nearby: NearbyResult? = nil
     let distanceLabel: String?
     let nearestMetroName: String?
     let metroNames: [String]
@@ -2460,6 +2580,7 @@ struct Court: Codable, Identifiable {
         case district
         case locationLat
         case locationLng
+        case nearby
         case distanceLabel
         case nearestMetroName
         case metroNames
@@ -2494,6 +2615,7 @@ struct Court: Codable, Identifiable {
         district = try container.decodeIfPresent(String.self, forKey: .district)
         locationLat = try container.decode(Double.self, forKey: .locationLat)
         locationLng = try container.decode(Double.self, forKey: .locationLng)
+        nearby = try container.decodeIfPresent(NearbyResult.self, forKey: .nearby)
         distanceLabel = try container.decodeIfPresent(String.self, forKey: .distanceLabel)
         let decodedNearestMetroName = try container.decodeIfPresent(String.self, forKey: .nearestMetroName)
         let decodedMetroNames = (try? container.decode([String].self, forKey: .metroNames)) ?? []
@@ -3339,3 +3461,66 @@ private extension KeyedDecodingContainer {
         return nil
     }
 }
+
+// MARK: - Chat receipt state
+protocol ChatReceiptMessage: Identifiable where ID == String {
+    var receipt: ChatReceipt? { get set }
+}
+
+func mergeChatReceipts<Message: ChatReceiptMessage>(current: [Message], fetched: [Message]) -> [Message] {
+    let previous = Dictionary(current.map { ($0.id, $0.receipt) }, uniquingKeysWith: { _, latest in latest })
+    return fetched.map { message in
+        var updated = message
+        updated.receipt = ChatReceipt.merged(previous[message.id] ?? nil, message.receipt)
+        return updated
+    }
+}
+
+struct ChatReceipt: Codable, Equatable {
+    let status: String
+    let deliveredCount: Int
+    let readCount: Int
+
+    static func merged(_ previous: ChatReceipt?, _ next: ChatReceipt?) -> ChatReceipt? {
+        guard let previous else { return next }
+        guard let next else { return previous }
+        let readCount = max(previous.readCount, next.readCount)
+        let deliveredCount = max(previous.deliveredCount, next.deliveredCount, readCount)
+        let status = previous.status == "read" || next.status == "read" || readCount > 0
+            ? "read" : (previous.status == "delivered" || next.status == "delivered" || deliveredCount > 0 ? "delivered" : "sent")
+        return ChatReceipt(status: status, deliveredCount: deliveredCount, readCount: readCount)
+    }
+}
+
+enum ChatReceiptScope: Equatable {
+    case match(String)
+    case search(String)
+}
+
+struct ChatReceiptAcknowledgementState {
+    var incomingIDs: Set<String> = []
+    var visibleIDs: Set<String> = []
+    var isActive = false
+    private(set) var deliveredIDs: Set<String> = []
+    private(set) var readIDs: Set<String> = []
+
+    func pendingIDs(status: String) -> [String] {
+        let candidates = status == "read"
+            ? (isActive ? incomingIDs.intersection(visibleIDs).subtracting(readIDs) : [])
+            : incomingIDs.subtracting(deliveredIDs)
+        return Array(candidates.sorted().prefix(200))
+    }
+
+    mutating func confirm(_ ids: [String], status: String) {
+        deliveredIDs.formUnion(ids)
+        if status == "read" { readIDs.formUnion(ids) }
+    }
+
+    static func isVisible(row: CGRect, viewport: CGRect) -> Bool {
+        guard !row.isEmpty, !viewport.isEmpty, !row.isNull, !viewport.isNull else { return false }
+        let intersection = row.intersection(viewport)
+        return !intersection.isNull && intersection.width > 0
+            && intersection.height >= min(row.height, viewport.height) * 0.5
+    }
+}
+// MARK: - End chat receipt state

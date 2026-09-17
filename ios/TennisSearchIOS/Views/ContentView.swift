@@ -6,10 +6,10 @@ struct ContentView: View {
     var body: some View {
         AppScreen {
             Group {
-                if appModel.isAuthenticated || appModel.isGuestModeAvailable {
+                if appModel.isOnboardingComplete || appModel.isGuestModeAvailable {
                     MainTabView()
                 } else {
-                    AuthView(initialStep: .intro, embedded: true)
+                    AuthView(initialStep: appModel.isAuthenticated ? (appModel.guestDraft.hasProfileBasics ? .availability : .profile) : .intro, embedded: true)
                 }
             }
         }
@@ -142,7 +142,16 @@ private struct MainTabView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
     @EnvironmentObject private var localeStore: LocaleStore
-    @State private var selectedTab: MainTab = .discover
+    @State private var selectedTab: MainTab = {
+        #if DEBUG
+        if AppConfig.useMockData,
+           ProcessInfo.processInfo.arguments.contains("-centers-map-preview")
+            || ProcessInfo.processInfo.arguments.contains("-centers-list-preview") {
+            return .courts
+        }
+        #endif
+        return .discover
+    }()
     @State private var discoverStackID = UUID()
     @State private var matchesStackID = UUID()
     @State private var searchesStackID = UUID()
@@ -157,17 +166,42 @@ private struct MainTabView: View {
     @State private var tabDragLocationX: CGFloat?
     @State private var pendingTab: MainTab?
 
+    private var usesBoundedTabViewport: Bool {
+        selectedTab == .courts || selectedTab == .discover
+    }
+
     var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
+        Group {
+            if usesBoundedTabViewport {
+                // Keep maps and Discover's viewed-player dock physically above the menu.
+                // Nested navigation stacks do not consistently inherit a custom inset.
+                VStack(spacing: 0) {
+                    currentTabScreen
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .overlay {
+                            if shouldShowTabLoading {
+                                MenuTabLoadingOverlay(title: selectedTab.loadingTitle(locale: localeStore.effectiveLocale))
+                                    .transition(.opacity)
+                            }
+                        }
+                        .clipped()
 
-            currentTabScreen
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    bottomBar
+                        .animation(.spring(response: 0.32, dampingFraction: 0.84), value: appModel.bottomBarDisplayMode)
+                }
+            } else {
+                ZStack {
+                    Color.black
+                        .ignoresSafeArea()
 
-            if shouldShowTabLoading {
-                MenuTabLoadingOverlay(title: selectedTab.loadingTitle(locale: localeStore.effectiveLocale))
-                    .transition(.opacity)
+                    currentTabScreen
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                    if shouldShowTabLoading {
+                        MenuTabLoadingOverlay(title: selectedTab.loadingTitle(locale: localeStore.effectiveLocale))
+                            .transition(.opacity)
+                    }
+                }
             }
         }
         .background(Color.black.ignoresSafeArea())
@@ -188,8 +222,10 @@ private struct MainTabView: View {
             appModel.navigate(to: target)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomBar
-                .animation(.spring(response: 0.32, dampingFraction: 0.84), value: appModel.bottomBarDisplayMode)
+            if !usesBoundedTabViewport {
+                bottomBar
+                    .animation(.spring(response: 0.32, dampingFraction: 0.84), value: appModel.bottomBarDisplayMode)
+            }
         }
     }
 
