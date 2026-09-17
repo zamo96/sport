@@ -1,6 +1,6 @@
 import { GameRequestStatus } from "@prisma/client";
 
-import { sendPushToUser } from "@/lib/apns";
+import { sendPushToUser } from "@/lib/push";
 import { prisma } from "@/lib/prisma";
 import { getRealtimeRedis, publishRealtimeEventToUsers } from "@/server/realtime";
 

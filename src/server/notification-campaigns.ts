@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { sendPushToUser } from "@/lib/apns";
+import { sendPushToUser } from "@/lib/push";
 import {
   DEFAULT_LOCALE,
   recommendLocaleForConfirmedCountry,

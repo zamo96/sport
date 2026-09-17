@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { GameReportConfirmationStatus, GameReportStatus } from "@prisma/client";
 
-import { sendPushToUser } from "@/lib/apns";
+import { sendPushToUser } from "@/lib/push";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";

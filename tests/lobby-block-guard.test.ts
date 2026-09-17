@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: mocks.transaction
   }
 }));
-vi.mock("@/lib/apns", () => ({ sendPushToUser: vi.fn() }));
+vi.mock("@/lib/push", () => ({ sendPushToUser: vi.fn() }));
 vi.mock("@/server/realtime", () => ({ isUserActiveInChat: vi.fn(), publishRealtimeEventToUsers: vi.fn() }));
 vi.mock("@/server/chat-media", () => ({
   claimGameSearchMessageAttachments: vi.fn(),

@@ -2,7 +2,7 @@ import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestOutcome, GameRequestStatus } from "@prisma/client";
 
-import { sendPushToUser } from "@/lib/apns";
+import { sendPushToUser } from "@/lib/push";
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";

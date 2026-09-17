@@ -2,7 +2,7 @@ import { recordUserEvent, recordUserEventsOnce } from "@/server/user-events";
 import { NextRequest } from "next/server";
 
 import { requireSessionUser } from "@/lib/auth";
-import { sendPushToUser } from "@/lib/apns";
+import { sendPushToUser } from "@/lib/push";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { swipeSchema } from "@/lib/validators";

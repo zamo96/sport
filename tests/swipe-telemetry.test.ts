@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => ({ requireSessionUser: mocks.session }));
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: mocks.transaction } }));
-vi.mock("@/lib/apns", () => ({ sendPushToUser: mocks.push }));
+vi.mock("@/lib/push", () => ({ sendPushToUser: mocks.push }));
 vi.mock("@/server/user-events", () => ({ recordUserEvent: mocks.record, recordUserEventsOnce: mocks.once }));
 vi.mock("@/server/matching", () => ({ createSwipeAndMaybeMatch: mocks.swipe }));
 vi.mock("@/server/account-status", () => ({ lockActiveUsersForMutation: mocks.lock }));

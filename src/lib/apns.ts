@@ -2,18 +2,9 @@ import { connect as http2Connect, constants as http2Constants } from "http2";
 import { createPrivateKey, createSign, randomUUID } from "crypto";
 
 import { prisma } from "@/lib/prisma";
-import { publishRealtimeEvent } from "@/server/realtime";
+import type { PushPayload } from "@/lib/push-payload";
 
 type PushEnvironment = "development" | "production";
-
-type PushPayload = {
-  userId: string;
-  title: string;
-  body: string;
-  href: string;
-  sound?: boolean;
-  deliveryId?: string;
-};
 
 type APNSConfig = {
   teamId: string;
@@ -217,31 +208,11 @@ async function deliverAPNSToDevice(
   });
 }
 
-export async function sendPushToUser(payload: PushPayload) {
-  const activeUser = await prisma.user.findFirst({
-    where: {
-      id: payload.userId,
-      accountStatus: "active"
-    },
-    select: { id: true }
-  });
-
-  if (!activeUser) {
-    console.warn("Push skipped: user account is not active", {
-      userId: payload.userId,
-      href: payload.href
-    });
-    return;
-  }
-
-  await publishRealtimeEvent(payload.userId, {
-    type: "notification",
-    title: payload.title,
-    body: payload.body,
-    href: payload.href,
-    deliveryId: payload.deliveryId
-  });
-
+/**
+ * Delivers one notification to a user's iOS devices. Never throws: a device
+ * that fails is recorded, and a token APNs has dropped is retired.
+ */
+export async function deliverAPNSPush(payload: PushPayload) {
   const devices = await prisma.pushDevice.findMany({
     where: {
       userId: payload.userId,

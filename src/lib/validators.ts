@@ -749,6 +749,26 @@ export const registerPushDeviceSchema = z.object({
     .transform((value) => normalizeSupportedLocale(value))
 });
 
+// FCM registration tokens are not hex like APNs ones: they carry ":" and the
+// base64url alphabet, so they need their own shape.
+export const registerFCMDeviceSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_:.-]{64,4096}$/, "Некорректный FCM token"),
+  platform: z.literal("android").default("android"),
+  environment: z.enum(["development", "production"]),
+  bundleId: z.string().trim().min(3).max(200),
+  deviceName: z.string().trim().max(120).optional().nullable(),
+  locale: z
+    .string()
+    .trim()
+    .max(35)
+    .optional()
+    .nullable()
+    .transform((value) => normalizeSupportedLocale(value))
+});
+
 const publicReportReasonSchema = z.enum([
   ContentReportReason.harassment,
   ContentReportReason.hate_speech,
