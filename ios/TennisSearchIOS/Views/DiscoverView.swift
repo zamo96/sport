@@ -2155,7 +2155,10 @@ struct DiscoverView: View {
                 cancelPlayerAutoAdvance()
                 AppHaptics.selection()
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                    isViewedPlayersExpanded = shouldExpand && !viewedSimilarUsers.isEmpty
+                    // Тот же список, по которому кнопка включается: пока карточка
+                    // летит в историю, зафиксированный ещё пуст, и первое
+                    // нажатие пропадало впустую.
+                    isViewedPlayersExpanded = shouldExpand && !viewedTrayUsers.isEmpty
                 }
             } label: {
                 HStack(spacing: 8) {
