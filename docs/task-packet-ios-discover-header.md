@@ -1,0 +1,122 @@
+## Current September 17 revision: original card size and single-line tabs
+
+Request: restore the former full player card dimensions/padding; all three full tab names must be horizontal single-line; put Wants to play in the notification island instead of a separate row. Preserve original system typography, right-hand mode buttons, and viewed history without overlaying cards.
+
+Product/architecture: Mobile owns DiscoverView only. Use the original SwipeCard layout and 440–500pt deck minimum; vertical card scrolling remains available in the bounded ScrollView above the separate history row. Header-only inset8pt and smaller gaps provide more space without changing card margins; preserve17pt semibold standard font, full single-line names and constant88pt mode slot after Searches. Constrained widths may fit text proportionally, without condensed type or truncation. Likes already appear first in typedAttentionItems sourced from notificationManager.summary.incomingLikesCount; remove duplicate Players chip and keep All players return inside Likes. Existing bell/notification navigation remains a durable route after island timeout. Preserve six-second/tap/session dismissal and existing flight/replay behavior.
+
+Acceptance: original full card layout, full single-line stable tab labels/no horizontal scroll, immediate mode controls, no duplicate Likes row, island opens incoming interests and dismisses as before, history remains separate and replay works. Root owns build/runtime/packet, Product+Architect scope review complete, independent QA owns final source/check review. iOS presentation and notification entry points only; no changes to profile, sport/level, geolocation, availability, request/search lifecycle, ranking, unread state, push devices, reliability or premium. No backend/web/schema/API changes. Validation pending.
+
+## Current revision: stable right-hand modes and separate viewed row
+
+User rejected the covering dock and selection-dependent header wrapping. Latest acceptance supersedes those details below: all three labels remain in fixed positions without horizontal scroll or changing wrap when selecting; mode buttons live in a permanently reserved88pt slot AFTER Searches. User explicitly rejected the smaller/condensed font: restore original17pt systemsemibold standard, with Upcoming always two lines across selections; preserve original card fonts too. Cards move slightly higher through smaller real spacing. Viewed players occupy a separate row below the card scrolling region and above navigation; normal card content cannot render beneath an opaque dock.
+
+Architecture: retain bounded Discover+main-menu containment in ContentView. Discover uses a VStack with clipped ScrollView and a real sibling viewed row, reserving row height while card candidates exist independently of first pending/history insertion. Move only the existing46pt flying avatar cover to a noninteractive ancestor layer spanning the two regions; preserve the original source transform, queue/token, path and measured landing. Playback visibility uses the card ScrollView viewport; landing validation uses the combined region. No duplicate media clocks or SwipeCard instances. Remove overlay-background transparency workarounds. Root owns build/runtime/doc, Mobile owns Discover implementation, QA independently verifies.
+
+Scope: iOS presentation only; same domain exclusions and unchanged API/schema/backend contracts. Implementation reserves a112pt scaled sibling row and explicit black parent background (first runtime exposed a white empty row). Optional-flight ancestor cover remains mounted for continuous interpolation. Section spacing16→10/top6→2 raises cards. Only two similar-player SwipeCard callsites opt into compactLayout: original fonts retained, tighter padding/gaps, two-line bio, compact metrics/actions with44pt targets. Other SwipeCard callers keep defaultfalse. Local deck minimum320–360 derives from trueviewport; other deck sizing restored. Independent previous-overlay motion sampling passed. Compact name row additionally reserves56pt beside the safety action, without changing metadata/fonts. Final source42e095f932e321517823944880c339602f45d5fb2dea5a0f521e9d4edcb83354. Final Debug simulator build PASS (`/tmp/tennissearch-font-restored-final-20260913.log`), with no later product edits. Native production-source harnesses PASS: 485 auto-advance and 84 player-map assertions; scoped diff whitespace check PASS. Independent final source QA PASS, including the resolved name/safety-action overlap. Web lint/test/build and Prisma checks are not applicable to this native-only revision.
+
+Final runtime PASS on iPhone17 Pro simulator: original header font, black empty/history region with no white band, all three tab labels remain in place across selection, both mode buttons visible directly after Searches, and Upcoming retains an empty control slot. Multiple viewed-card arrivals complete; tapping a viewed thumbnail reopens that player. The complete card bottom and both actions remain above the separate history row, including with one incoming-like chip present. Preview: `docs/previews/discover-restored-font-20260913.png`; final recording: `/tmp/tennissearch-restored-font-20260913.mp4`. ContentView remains `24b11b3e0ed66d5a8d4434a52a4d418cd79fb264c18efe3721e8140272ed7dc4`.
+
+Residual coverage limits: physical devices, 320pt width/largest accessibility text, precise cancellation timing and runtime Reduce Motion remain manual follow-up. Mock simulator data was used; no backend, schema or API changes. Older revision screenshots and overlay behavior below are superseded by this separate-row implementation.
+
+## Active September 13 revision: all tabs visible and viewed players above navigation
+
+The latest request supersedes the scrolling header approach: all three primary tabs must fit without any horizontal scroll; the two original mode buttons remain immediately beside the selected title on the same row. Hide Want to play when the authenticated incomingLikesCount is zero, while retaining All players inside Likes. In parallel, the user wants the liked viewed-card flight preserved but its destination/history always visible above main navigation.
+
+Product/architecture design: Mobile owns DiscoverView.swift and the narrow main-screen containment branch in ContentView.swift. Replace the header ScrollView/measurement preferences with intrinsic ViewThatFits rows: full-size, two-line Upcoming, 15pt compact, 13pt condensed, and flexible multiline accessibility fallback. Retain 44pt mode targets; all rows contain all three tabs. Use existing tabBadgeCount(.likes) as source of truth; collapse absent secondary-control spacing. Use the existing Courts containment pattern in MainTabView for Discover too: a bounded NavigationStack with bottomBar as its VStack sibling, excluding Discover from the separate outer safeAreaInset. Runtime showed the nested ScrollView did not receive the custom navigation inset, so overlay positioning alone still clipped avatars. Move the existing viewed tray into a bottom overlay inside that bounded viewport, accounting for measured system safe-area bottom; reserve stable content-tail space independent of the first pending player so auto-advance is not cancelled by viewport resizing. Preserve queue/replay/landing markers. Temporarily clear the dock backdrop during the existing flight so it does not obscure the source animation; validate destination visibility. Do not add a hardcoded main-nav offset.
+
+Acceptance: all three titles and active mode buttons fit on every selection; no horizontal header scroll; Likes zero removes button and row gap; Likes back remains; first and later viewed arrivals land visibly above navigation, thumbnails can be tapped to replay and horizontally browsed; card actions can scroll above the dock; no dock on map/other tabs; empty history creates no fake players. Preserve auto-advance, Reduce Motion and cancellation behavior, and island dismissal.
+
+Domains: iOS discovery presentation and local viewed-history presentation only. No changes to profile, sport/level, geolocation/districts, availability, proposal/search/lobby lifecycle, ranking, chat/unread, push devices, reliability/no-show or premium; no backend/web/API/schema changes. Root owns integration/build/runtime; QA independent review. Mobile syntax/diff checks PASS; fresh native harnesses PASS (485 auto-advance and 84 player-map assertions). Independent dock source review PASS; no viewport resize on first insertion and no queue/replay change. Initial build passed but runtime exposed partial overlap with navigation and compressed header labels; those observations blocked closure. Follow-up intrinsic row measurement fixed header overlap, and bounded main-screen containment addresses navigation overlap. Discover SHA-256 `e6d79e99443ad50b25b33dc77c9d55359d4a590196832294b5bf562dd3b170de`; ContentView SHA-256 `24b11b3e0ed66d5a8d4434a52a4d418cd79fb264c18efe3721e8140272ed7dc4`. Final structural Debug simulator build PASS (`/tmp/tennissearch-discover-bounded-20260913.log`), no source edits after build. Native actual-source checks: 485 auto-advance assertions rechecked after the safe-area correction, 84 player-map assertions passed on the same unchanged map logic. Syntax and final scoped whitespace checks PASS; web lint/test/build and Prisma are not relevant to this native-only revision.
+
+Runtime: final iPhone17 Pro/iOS26.3 mock recording confirms repeated automatic advances and the viewed strip fully above main navigation, including avatar and name. All three primary labels fit in the Players header with its two mode icons; Upcoming is two lines. Durable screenshot `docs/previews/discover-viewed-dock-20260913.png` is an extracted verified frame at22s from `/tmp/tennissearch-viewed-bounded-20260913.mp4`. The prior same-Discover-code runtime also showed the likes entry absent when the incoming count became zero. Source review confirms the back entry remains in Likes.
+
+Limitations: concurrent external simulator input prevented clean final replay and pushed-navigation smoke checks (screen changed without root action and freshly read control IDs became invalid). Those unchanged handlers and the bounded parent routing were source-reviewed. Physical devices,320pt width/largest accessibility sizes, precise cancellation timing and runtime Reduce Motion remain manual follow-up; the fixed-size99+ count in the largest-text fallback and fixed76pt thumbnail row need particular attention. Final independent QA visual/source PASS:14.8–16.2s recording samples show first pending slot, continuous shrink/landing above menu and count0→1 commit without cancellation;16.35s and22s retain full avatar/name. QA re-ran485 auto-advance +84 map assertions successfully. Remaining manual limits are stated above.
+
+# iOS discover header — 2026-09-09
+
+## Request and scope
+
+Try the supplied visual reference in the native iOS discovery header: Игроки → Ближайшие игры → Поиски, visible text labels, mint active underline and live count, dark circular search/notification actions. Reference image supplies visual direction only.
+
+## Acceptance
+
+- Exactly three primary tabs in the requested order; no hardcoded reference count.
+- Selected text white, other labels muted, mint underline; readable at compact widths and accessible text sizes.
+- Existing likes screen stays reachable through secondary player controls; deep links remain valid.
+- Existing two-icon player and search display switches appear directly beside the selected title in the same primary horizontal tab row; all titles directly switch tabs.
+- Keep existing search action, notification unread state, guest authentication, and summary content.
+- Keep the attention island above the primary tabs (user follow-up); preserve sticky primary tabs without restoring the known lazy view measurement regression.
+- No chevrons, popovers or separate switch row: the active title and its original switch are sibling controls in one group. Horizontal scrolling keeps full titles readable and brings the complete selected group into view. The secondary row retains only likes/back.
+- Show the island for six seconds, then collapse it completely. Changed summary content can show again; unchanged refresh/tab selection does not restart a dismissed presentation. Keep notification data and actions intact.
+- Tapping the island dismisses it immediately and preserves its original destination. Dismissal survives navigation-driven screen recreation during the current account session.
+- Preserve existing unrelated working-tree edits.
+
+## Ownership and sequence
+
+Orchestrator: packet, integration, builds and visual check. Product Analyst: scope and edge cases. Solution Architect: contract/design review. Mobile Agent: scoped iOS implementation. QA Agent: independent final acceptance review.
+
+## Approved design
+
+Mobile owns `Views/DiscoverView.swift` and `Core/AppModels.swift`. `DiscoverTab.userVisibleCases` becomes `[.swipe, .upcoming, .hot]`, also setting neighbor gesture order. Keep every enum case for existing routes. A view-only primary selection maps `.likes` to Players and `.seeking` to Searches. Player counts remain `similarPlayersBadgeCount`, upcoming counts remain active requests plus personal activities; zero badges stay hidden. Secondary likes entry remains available without a summary or badge. Keep native navigation visibility for pushed destinations and use dark circular action labels. Preserve the iOS 17 eager stack and visual pin offset; no API changes.
+
+Primary visible count is Players only to fit the reference; Upcoming count remains in accessibility. Always-visible switches reuse existing mode state/actions, guards, haptics and search-map location request. The player's internal `.grid` is the existing schematic player map, not a new mode.
+
+Island presentation is separate from summary data and haptic tracking. A structured task keyed to summary signature, foreground and VoiceOver cancels stale timers; dismissal validates the current signature. Both attention and upcoming summary variants are transient. VoiceOver keeps the visible island available until explicit tap; Reduce Motion skips the collapse animation. Background time does not consume initial viewing opportunity. Summary signatures use counts and some IDs: a replacement event with identical signature will not re-show the island.
+
+September 10 correction: AppModel owns one session-only dismissed record (account ID + signature), recorded on tap and timeout, cleared on logout. Screen recreation and temporary idle hydration do not clear this record. This is necessary because ContentView resets the Discover identity on summary navigation. No persistence migration or notification read-state change.
+
+## Domain coverage
+
+Presentation/navigation affected: discover screen, game searches and upcoming-game entry points, incoming interests, notification action. Existing data remains the source of truth. No changes to profile, sport/level rules, geolocation or districts, availability, proposal/search lifecycle, ranking/recommendations, chat/unread logic, push devices, cancellation/no-show/reliability, premium gates, backend or web. No schema migration or API contract change.
+
+## September 13: reveal complete Searches control after selection
+
+User reports that selecting Searches pushes its display controls beyond the right edge and requires another swipe. Acceptance: first and repeated Players → Searches, Upcoming → Searches, and Likes → Players show the selected title and both existing mode buttons together on the same horizontal row, with no extra swipe. Keep the original mode actions and accessibility. Changing text size or available width must realign the selected group without a scroll-feedback loop.
+
+Product/architecture review identified a timing risk: the current selectedTab observer scrolls before the newly expanded group is measured. Mobile owns a narrow DiscoverView header change to reveal the complete group from post-layout measurements, using a right anchor for Searches and left anchor for Players. Measurement must not depend on viewport scroll offset; arbitrary delays are excluded. Root owns build/runtime checks, QA owns independent final review.
+
+Scope is iOS header presentation only. No domain state, notifications/island behavior, search lifecycle, matching, backend, web, schema or API changes. Implementation uses the actual selectedTab plus the selected group’s content-local frame and viewport width as a post-layout preference. Searches aligns trailing, Players leading, Upcoming centered. Inner header content suppresses inherited insertion/resize animation; scroll animation respects Reduce Motion. Independent QA source review PASS: no stale-selection or scroll-offset feedback issue found, original sibling buttons and island code preserved.
+
+Fresh native harnesses PASS: 485 player auto-advance assertions and 84 player-map assertions. Swift syntax and scoped diff whitespace checks PASS. Debug simulator build PASS (`/tmp/tennissearch-header-scroll-20260913.log`); fresh mock install and first Players → Searches show both icons fully beside the title. Runtime coverage limitation: repeated-transition checks were interrupted by concurrent input (selection/cards changed without root action; CUA explicitly reported the user changed Simulator). Further simulator actions were stopped to avoid interfering. Repeated transitions, larger text, viewport changes and physical-device behavior remain manual follow-up; their source paths were reviewed. No new test suite was added for this narrow presentation-only fix. Web lint/test/build and Prisma checks are not applicable to this iOS-only revision. Source SHA-256: `9bd444a7439ba8b6d16b01a923374e0a03bf3551e7b31741c763b11c6962fa3b`.
+
+## Validation and risks
+
+### September 13 alignment verification
+
+User reiterated direct horizontal adjacency. Current Discover source still matches `6149f8d491d07e935489b45b6d46d7f8a87a7b6adc3410c981e50fe31c32d657`: title and switch are sibling HStack children with an 8pt gap and matching 9pt bottom padding, placing their content centers on one horizontal line. Independent QA found no layout correction necessary; application source was not changed. Fresh Debug simulator build PASS (`/tmp/tennissearch-header-alignment-20260913.log`). After restarting a stalled simulator install, fresh runtime screenshot confirmed inline alignment. Durable preview: `docs/previews/discover-header-20260913.png`. Device-installed version was not verified; optional user clarification about where the differing layout is visible remains unanswered.
+
+### Final placement beside the selected title
+
+Only `DiscoverView.swift` layout changed in this final correction. The active title button and two-icon control are siblings within the same horizontal tab group. The group owns the scroll target; individual buttons retain their accessibility labels, IDs and selected states. The selectedTab observer covers Likes → Players even when the primary heading does not change. Island dismissal/session behavior is unchanged.
+
+- Debug simulator build PASS: `/tmp/tennissearch-header-beside-title-build.log`.
+- Fresh auto-advance harness PASS: 485 assertions. Syntax and `git diff --check` PASS.
+- Runtime PASS: initial Players shows both icons directly beside its title; first Search tap reveals its title and both icons fully in the same row; map selection works with one tap. Upcoming has no switch. Likes → clicking Players restores the complete inline group.
+- Screenshot: `/tmp/tennissearch-header-beside-title-players.png`.
+- Final Discover source SHA-256: `6149f8d491d07e935489b45b6d46d7f8a87a7b6adc3410c981e50fe31c32d657`; AppModel remains `4d00c71786506db69344fbbc7e176abf8d8959c0b25fab0a89fd4f7139093a1c` from the preceding verified correction.
+- Horizontal scrolling is intentional: inactive labels can extend offscreen while the complete selected title/switch group is visible. Physical-device, compact/largest-text and vertical-sticky runtime coverage remain limited; no new domain, data or contract changes.
+
+### September 10 final correction
+
+- Changed files: `ios/TennisSearchIOS/Views/DiscoverView.swift`, `ios/TennisSearchIOS/App/AppModel.swift`, this packet. `Core/AppModels.swift` retains only the earlier header ordering change; no new edit in this correction.
+- Debug simulator build PASS: `/tmp/tennissearch-header-inline-20260910-build.log`.
+- Fresh production-source harnesses PASS: 485 player auto-advance assertions and 84 player-map assertions. Swift syntax and `git diff --check` PASS. Web lint/test/build and Prisma checks remain not applicable to this native-only change.
+- Final simulator PASS: controls visible immediately on initial Players and Searches; one tap changes each to map and updates selected styling. No title click, chevron or popover needed.
+- Final simulator PASS: tapping the attention island opens its existing likes destination and immediately removes the island. Returning through bottom Home recreates Discover again and does not re-show the dismissed summary.
+- Screenshot `/tmp/tennissearch-header-inline-20260910.png` shows the final visible switch and reclaimed island space. No code changed after the successful build.
+- Independent QA found no blocking source issue. Account-key isolation, changed-summary reappearance, logout clearing, VoiceOver/Reduce Motion and timeout cancellation were source-reviewed; fresh runtime coverage focused on tap/remount and immediate controls. Physical-device, compact-width/largest-text and scrolling coverage remain limited as described below.
+- Final SHA-256: Discover `c417b8b1fac9cae1db1c01aad5ccf51fdb4f4ef8f2c5ca88b3421677b1ffcbe7`; AppModel `4d00c71786506db69344fbbc7e176abf8d8959c0b25fab0a89fd4f7139093a1c`.
+
+### Earlier version verification
+
+The following records describe the preceding September 9 iterations, superseded by the final correction above.
+
+Initial implementation: Debug simulator build PASS; native harnesses PASS (485 auto-advance, 84 player-map, 29 chat-receipt, 36 onboarding assertions). Web lint/tests/build and Prisma generation are not relevant: no web/shared/schema changes. Initial simulator checks PASS for all three tabs, searches cards/map, notifications navigation, likes/back. Coordinate scroll automation returned `noWindowsAvailable`; pinned scrolling was source-reviewed only. Runtime compact widths, largest text sizes, guest actions and iOS 16.4 remain limited coverage.
+
+Auto-hide build PASS (`/tmp/tennissearch-header-autohide-build.log`); runtime PASS: visible after mock login, later removed from accessibility and layout, no repeat after Upcoming → Players. Independent QA reviewed cancellation, signature checks and accessibility behavior.
+
+Final Debug simulator build PASS (`/tmp/tennissearch-header-toggle-final-build.log`). Final icon popovers verified: Players opens the original two-icon switch, selecting map closes it and renders the existing schematic player map. Searches opens its original icon switch, selecting map closes it and renders the map; reopening marks Map selected; Cards returns to list. Screenshot: `/tmp/tennissearch-header-mode-control-final.png`. No code edits after this build. Final `git diff --check` PASS. Native actual-source harnesses total 634 assertions PASS; auto-advance was rechecked after auto-hide changes (485 assertions).
+
+Touched product files: `ios/TennisSearchIOS/Views/DiscoverView.swift`, `ios/TennisSearchIOS/Core/AppModels.swift`; this task packet is the only documentation addition. Source SHA-256: Discover `944b79e2d921b9dde0fce84cba217b569cbc9c81380babbf4063d729060608d8`; AppModels `88456136613cf1462fd2bc63249a338002d2b10d081b75328972acb40d3cb1a2`.
+
+Residual low UI coverage risks: compact widths/largest text sizes, actual pinned scrolling, VoiceOver/Reduce Motion runtime, iOS 16.4 compatibility and physical-device frame pacing require manual device verification. Independent source review found no blocking defect. Backend/API/schema and matching inputs are unchanged.

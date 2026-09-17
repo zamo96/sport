@@ -13,6 +13,7 @@ TennisSearch is a mobile-first sports partner app for finding players, joining g
 - Yandex Maps JS API v3 for sports center maps
 - Installable PWA with an offline shell
 - SwiftUI iOS app and WidgetKit upcoming games widget
+- Kotlin and Jetpack Compose Android app sharing the same REST backend
 
 ## Product Scope
 
@@ -43,6 +44,7 @@ TennisSearch is a mobile-first sports partner app for finding players, joining g
 - `tests` - Vitest coverage for domain rules
 - `ios/TennisSearchIOS` - SwiftUI iOS app
 - `ios/TennisSearchUpcomingWidget` - WidgetKit upcoming games extension
+- `android` - Kotlin/Jetpack Compose Android client, a 1:1 port of the iOS design
 - `docs` - product briefs, QA notes, deployment docs, import templates, and operating model notes
 
 ## Local Development
