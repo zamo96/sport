@@ -1,3 +1,4 @@
+import { recordUserEvents } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestStatus } from "@prisma/client";
 
@@ -153,6 +154,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return createdRequests;
     });
 
+    await recordUserEvents(sharedGameRequests.map((gameRequest) => ({ userId: user.id, type: "request_created", entityType: "game_request", entityId: gameRequest.id })));
     await Promise.all(
       sharedGameRequests.map((gameRequest) =>
         publishRealtimeEventToUsers([user.id, gameRequest.matchedUserId], {

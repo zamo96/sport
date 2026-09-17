@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, GameSearchType, Prisma } from "@prisma/client";
 
@@ -167,6 +168,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       }
     }
 
+    const acceptedRequestIds: string[] = [];
     const result = await prisma.$transaction(async (tx) => {
       if (body.status === GameSearchResponseStatus.approved) {
         await assertActiveCourtIds(tx, [response.gameSearch.preferredCourtId]);
@@ -289,6 +291,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                   sharedRootId: true
                 }
               }));
+
+            if (!existingGameRequest) acceptedRequestIds.push(gameRequest.id);
 
             if (!rootRequestId) {
               rootRequestId = gameRequest.sharedRootId ?? gameRequest.id;
@@ -503,6 +507,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               });
             }
 
+            if (existingGameRequest?.status !== GameRequestStatus.accepted) acceptedRequestIds.push(createdGame.id);
             gameRequestId = createdGame.id;
 
             if (!existingGameRequest) {
@@ -571,6 +576,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                 });
               }
 
+              if (!existingGameRequest) acceptedRequestIds.push(createdGame.id);
               rootRequestId = rootRequestId ?? createdGame.sharedRootId ?? createdGame.id;
 
               if (createdGame.id !== rootRequestId && createdGame.sharedRootId !== rootRequestId) {
@@ -702,6 +708,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
       return { updated, matchId, gameRequestId, regularPairId, gameSearchStatus, gameSearchIsActive };
     });
+
+    await recordGameRequestMilestones(acceptedRequestIds, "request_accepted", "search");
 
     if (
       (body.status === GameSearchResponseStatus.approved || body.status === GameSearchResponseStatus.rejected) &&

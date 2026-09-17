@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestOutcome, GameRequestStatus } from "@prisma/client";
 
@@ -571,6 +572,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return result;
     });
 
+    if (updated.status === GameRequestStatus.accepted && gameRequest.status !== GameRequestStatus.accepted) {
+      await recordGameRequestMilestones([updated.id], "request_accepted", "proposal");
+    }
+    if (updated.outcome === GameRequestOutcome.played && gameRequest.outcome !== GameRequestOutcome.played) {
+      await recordGameRequestMilestones([updated.id], "game_played", "outcome");
+    }
     if (notificationTargets.length === 0) {
       const recipientUserId = isCreator ? gameRequest.matchedUserId : gameRequest.createdByUserId;
       if (recipientUserId && ((statusRequested && !statusNoOp) || (outcomeRequested && !outcomeNoOp) || (editableRequested && !editableNoOp))) {

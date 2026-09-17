@@ -1,3 +1,4 @@
+import { recordUserEvent } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestStatus } from "@prisma/client";
 
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       return created;
     });
 
+    await recordUserEvent({ userId: user.id, type: "request_created", entityType: "game_request", entityId: gameRequest.id, context: { sport: gameRequest.sport, format: gameRequest.format } });
     const recipient = await prisma.user.findUnique({
       where: { id: matchedUserId },
       select: {

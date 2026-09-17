@@ -64,7 +64,11 @@ export default async function AdminPage({
             </p>
           </div>
           <div className="flex flex-col gap-2 text-sm text-ink/65 md:items-end">
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-wrap gap-2">
+              <Link href="/admin/analytics" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#126A4A] px-4 font-semibold text-white">
+                <BarChart3 className="h-4 w-4" />
+                Аналитика и конверсия
+              </Link>
               <Link
                 href="/admin/players"
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-semibold text-white"

@@ -1,3 +1,4 @@
+import { recordUserEvent } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
       return created;
     });
 
+    await recordUserEvent({ userId: user.id, type: "search_created", entityType: "game_search", entityId: gameSearch.id, context: { sport: gameSearch.sport, searchType: gameSearch.searchType, format: gameSearch.format } });
     return ok({
       gameSearch: {
         ...gameSearch,

@@ -1,3 +1,4 @@
+import { recordUserEvent } from "@/server/user-events";
 import { NextRequest } from "next/server";
 
 import { sendPushToUser } from "@/lib/apns";
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       });
     });
 
+    await recordUserEvent({ userId: user.id, type: "message_sent", entityType: "chat_message", entityId: message.id });
     const recipientUserId = gameRequest.createdByUserId === user.id ? gameRequest.matchedUserId : gameRequest.createdByUserId;
     const recipient = await prisma.user.findUnique({
       where: { id: recipientUserId },

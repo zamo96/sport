@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, Prisma } from "@prisma/client";
 
@@ -13,6 +14,7 @@ import { updateGameSearchSchema } from "@/lib/validators";
 import { ensureMatchForUsers } from "@/server/matching";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { assertActiveCourtIds } from "@/server/court-status";
+import { gameSearchMessageAttachmentsInclude, serializeChatMessage } from "@/server/chat-media";
 
 type RouteSearchSource = {
   sport: string;
@@ -156,6 +158,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           ? gameSearch.runningRoutePoints
           : null;
 
+    const acceptedRequestIds: string[] = [];
     const { updated, confirmedGameRequestId } = await prisma.$transaction(async (tx) => {
       await assertActiveCourtIds(tx, [
         body.preferredCourtId !== undefined ? body.preferredCourtId : null,
@@ -412,6 +415,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             });
           }
 
+          if (shouldAnnounceGame) acceptedRequestIds.push(gameRequest.id);
+
           if (rootRequestId == null) {
             rootRequestId = gameRequest.id;
             confirmedGameRequestId = gameRequest.id;
@@ -528,6 +533,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             }
           }));
 
+        if (!existingConfirmed) acceptedRequestIds.push(gameRequest.id);
         confirmedGameRequestId = gameRequest.id;
 
         if (!existingConfirmed) {
@@ -675,6 +681,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                   }
                 }));
 
+              if (!existingConfirmed) acceptedRequestIds.push(gameRequest.id);
               confirmedGameRequestId = gameRequest.id;
 
               if (!existingConfirmed) {
@@ -758,6 +765,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                   });
                 }
 
+                if (existingPending?.status !== GameRequestStatus.accepted) acceptedRequestIds.push(scheduledRequest.id);
+
                 if (rootRequestId == null) {
                   rootRequestId = scheduledRequest.id;
                   if (scheduledRequest.sharedRootId == null) {
@@ -813,6 +822,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
       return { updated, confirmedGameRequestId };
     });
+
+    await recordGameRequestMilestones(acceptedRequestIds, "request_accepted", "search");
 
     if (updated.regularPair?.id) {
       await syncRegularPairOccurrences(prisma, updated.regularPair.id);
@@ -887,8 +898,15 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
         },
         createdByUser: true,
         messages: {
+          where: {
+            senderUser: {
+              blockedUsers: { none: { blockedUserId: user.id } },
+              blockingUsers: { none: { blockerUserId: user.id } }
+            }
+          },
           include: {
-            senderUser: true
+            senderUser: true,
+            ...gameSearchMessageAttachmentsInclude
           },
           orderBy: {
             createdAt: "asc"
@@ -913,6 +931,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     return ok({
       gameSearch: {
         ...gameSearch,
+        messages: gameSearch.messages.map(serializeChatMessage),
         preferredDistricts: stringArray(gameSearch.preferredDistricts),
         preferredDays: stringArray(gameSearch.preferredDays),
         preferredTimeRanges: stringArray(gameSearch.preferredTimeRanges),

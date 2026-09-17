@@ -1,4 +1,10 @@
 export const USER_EVENT_TYPES = [
+  "registration_completed",
+  "profile_completed",
+  "request_created",
+  "request_accepted",
+  "game_played",
+  "message_sent",
   "app_open",
   "onboarding_step",
   "discover_view",

@@ -8,7 +8,23 @@ import { recordUserEvents } from "@/server/user-events";
 export async function POST(request: Request) {
   try {
     const user = await requireSessionUser();
-    const payload = userEventsSchema.parse(await request.json());
+    const maxBytes = 16 * 1024;
+    if (Number(request.headers.get("content-length")) > maxBytes) return fail("Слишком большой пакет событий", 413);
+    const reader = request.body?.getReader();
+    if (!reader) return fail("Пустой пакет событий");
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        return fail("Слишком большой пакет событий", 413);
+      }
+      chunks.push(value);
+    }
+    const payload = userEventsSchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     const now = new Date();
 
     await recordUserEvents(

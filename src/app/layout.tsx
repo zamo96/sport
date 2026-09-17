@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 
+import { WebActivityTracker } from "@/components/analytics/web-activity-tracker";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SWRegister } from "@/components/layout/sw-register";
 import { LocaleProvider } from "@/components/i18n/locale-provider";
@@ -43,6 +44,7 @@ export default function RootLayout({
       <body className={`${bodyFont.variable} ${headingFont.variable} font-sans`}>
         <LocaleProvider initialLocale={initialLocale}>
           <SWRegister />
+          <WebActivityTracker />
           {children}
           <BottomNav />
         </LocaleProvider>
