@@ -219,6 +219,12 @@ final class AppModel: ObservableObject {
                 showOnMap: guestDraft.showOnMap
             )
             var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            // The session token is already stored, so the account has to be
+            // adopted before anything that can throw. Assigning it only after the
+            // profile save left `currentUser` nil on failure while the token was
+            // live: the app fell back to guest mode and still sent authenticated
+            // requests, which is how a draft profile managed to send a like.
+            currentUser = user
 
             if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
@@ -269,6 +275,12 @@ final class AppModel: ObservableObject {
                 showOnMap: guestDraft.showOnMap
             )
             var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            // The session token is already stored, so the account has to be
+            // adopted before anything that can throw. Assigning it only after the
+            // profile save left `currentUser` nil on failure while the token was
+            // live: the app fell back to guest mode and still sent authenticated
+            // requests, which is how a draft profile managed to send a like.
+            currentUser = user
 
             if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
