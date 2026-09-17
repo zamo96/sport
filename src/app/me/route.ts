@@ -1,3 +1,4 @@
+import { recordUserEventsOnce } from "@/server/user-events";
 import { NextRequest } from "next/server";
 
 import { destroySession, getSessionUser, requireSessionUser } from "@/lib/auth";
@@ -38,7 +39,9 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const currentUser = await requireSessionUser();
-    const body = updateMeSchema.parse(await request.json());
+    const rawBody = await request.json();
+    const body = updateMeSchema.parse(rawBody);
+    const updatesDistricts = Object.prototype.hasOwnProperty.call(rawBody, "preferredDistricts");
     const preservesCurrentGlobalLocation = shouldPreserveCurrentGlobalLocation(
       body.locationPlaceId,
       currentUser.locationPlaceId
@@ -54,10 +57,26 @@ export async function PATCH(request: NextRequest) {
       return fail("Выбранный город не найден. Выполните поиск города ещё раз", 404);
     }
 
-    const submittedDistricts = body.preferredDistricts ?? [];
+    // Only an actual empty array may explicitly expand map visibility to the whole city.
+    // Validate the original payload because the legacy multi-value parser drops malformed values.
+    if (updatesDistricts && selectedPlace.coverage.districtsEnabled && (body.showOnMap ?? currentUser.showOnMap) === true) {
+      const rawDistricts: unknown = rawBody.preferredDistricts;
+      if (!Array.isArray(rawDistricts)
+        || rawDistricts.some((district) => typeof district !== "string" || district.trim().length === 0)
+        || (rawDistricts.length > 0 && body.preferredDistricts.length === 0)) {
+        return fail("Передайте список районов или пустой список, чтобы показываться по всему городу");
+      }
+    }
+
+    const submittedDistricts: unknown[] = updatesDistricts
+      ? body.preferredDistricts ?? []
+      : Array.isArray(currentUser.preferredDistricts) ? currentUser.preferredDistricts : [];
     const preferredDistricts = selectedPlace.coverage.districtsEnabled
-      ? submittedDistricts.filter((district) => isDistrictCompatible(selectedPlace.coverage.legacyCity, district))
+      ? submittedDistricts.filter((district): district is string => typeof district === "string" && isDistrictCompatible(selectedPlace.coverage.legacyCity, district))
       : [];
+    if (selectedPlace.coverage.districtsEnabled && (body.showOnMap ?? currentUser.showOnMap) === true && submittedDistricts.length > 0 && preferredDistricts.length === 0) {
+      return fail("Выберите районы выбранного города или очистите список районов, чтобы показываться по всему городу");
+    }
     const requestedPrimaryDistrict = preferredDistricts[0] ?? body.district ?? null;
     const primaryDistrict =
       selectedPlace.coverage.districtsEnabled && isDistrictCompatible(selectedPlace.coverage.legacyCity, requestedPrimaryDistrict)
@@ -95,7 +114,8 @@ export async function PATCH(request: NextRequest) {
             ? currentUser.locationSource
             : "legacy",
         district: primaryDistrict,
-        preferredDistricts,
+        preferredDistricts: !updatesDistricts && selectedPlace.coverage.districtsEnabled && !Array.isArray(currentUser.preferredDistricts)
+          ? undefined : preferredDistricts,
         homeLat,
         homeLng,
         timezone: resolveTimezoneFromCoordinates(homeLat, homeLng) ?? currentUser.timezone,
@@ -120,6 +140,8 @@ export async function PATCH(request: NextRequest) {
         availableTimeSlots: availableDays.flatMap((day) =>
           (availabilityByDay[day] ?? availableTimeRanges).map((timeRange) => `${day}-${timeRange}`)
         ),
+        // Omission from older clients preserves the existing explicit choice.
+        showOnMap: body.showOnMap,
         isLookingForGame: body.isLookingForGame ?? currentUser.isLookingForGame,
         notificationGames: body.notificationGames ?? currentUser.notificationGames,
         notificationDigest: body.notificationDigest ?? currentUser.notificationDigest,
@@ -131,6 +153,9 @@ export async function PATCH(request: NextRequest) {
       include: { location: { include: { serviceArea: true } } }
     });
 
+    if (!currentUser.onboardingCompleted && user.onboardingCompleted) {
+      await recordUserEventsOnce([{ userId: user.id, type: "profile_completed", entityType: "user", entityId: user.id }]);
+    }
     const requestLocale = resolveRequestLocale({ acceptLanguage: request.headers.get("accept-language") });
     return ok({ user: serializeMe(user, requestLocale) });
   } catch (error) {

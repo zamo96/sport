@@ -1,11 +1,14 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { MapVisibilityField } from "@/components/forms/map-visibility-field";
 import { useRouter } from "next/navigation";
 import { PlayFormat, Surface, type Gender, type Sport, type User } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
-import { saveGuestOnboardingDraft, type GuestOnboardingDraft } from "@/lib/guest-draft";
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES } from "@/lib/upload-limits";
+import { normalizeProfilePreferredDistricts } from "@/lib/profile-map-preferences";
+import { clearGuestOnboardingDraft, guestDraftFieldsForOnboarding, loadGuestOnboardingDraft, saveGuestOnboardingDraft, selectedOnboardingSports, type GuestOnboardingDraft } from "@/lib/guest-draft";
 import {
   AVAILABLE_CITIES,
   DEFAULT_CITY,
@@ -44,11 +47,13 @@ type ProfilePayload = Pick<
   | "preferredSurface"
   | "bio"
   | "avatarUrl"
+  | "showOnMap"
   | "isLookingForGame"
   | "notificationGames"
   | "notificationMatches"
   | "notificationMessages"
 > & {
+  locationPlaceId?: string;
   district: DistrictOption | null;
   preferredDistricts: DistrictOption[];
   preferredSports: SportOption[];
@@ -96,17 +101,22 @@ export function ProfileForm({
   const { t } = useLocale();
   const isOnboarding = mode === "onboarding";
   const isGuest = mode === "guest";
-  const initialPreferredSports = normalizeSports(user.preferredSports) as SportOption[];
-  const initialSportLevels = normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5) as Partial<
+  const initialPreferredSports = (isOnboarding || isGuest
+    ? selectedOnboardingSports(user.preferredSports)
+    : normalizeSports(user.preferredSports)) as SportOption[];
+  const initialSportLevels = (initialPreferredSports.length > 0
+    ? normalizeSportLevels(user.sportLevels, initialPreferredSports, user.tennisLevel ?? 5)
+    : {}) as Partial<
     Record<SportOption, SportLevelValue>
   >;
-  const initialPreferredDistricts = normalizeDistricts(user.preferredDistricts, user.district);
+  const initialPreferredDistricts = normalizeProfilePreferredDistricts(user.preferredDistricts);
   const initialAvailabilityByDay = normalizeAvailabilityByDay(user.availabilityByDay, user.availableDays, user.availableTimeRanges);
   const [form, setForm] = useState<ProfilePayload>({
     name: user.name ?? "",
     age: user.age ?? 28,
     gender: (user.gender as Gender | null | undefined) ?? null,
-    city: DEFAULT_CITY,
+    city: user.city ?? (isOnboarding || isGuest ? "" : DEFAULT_CITY),
+    locationPlaceId: user.locationPlaceId ?? undefined,
     district: initialPreferredDistricts[0] ?? (user.district as ProfilePayload["district"]) ?? null,
     preferredDistricts: initialPreferredDistricts,
     tennisLevel: getPrimarySportLevel(initialPreferredSports, initialSportLevels, user.tennisLevel ?? 5),
@@ -123,6 +133,7 @@ export function ProfileForm({
       ? user.availableTimeRanges.filter((slot): slot is string => typeof slot === "string")
       : [],
     availabilityByDay: initialAvailabilityByDay,
+    showOnMap: typeof user.showOnMap === "boolean" ? user.showOnMap : isGuest,
     isLookingForGame: user.isLookingForGame ?? true,
     notificationGames: user.notificationGames ?? true,
     notificationMatches: user.notificationMatches ?? true,
@@ -132,6 +143,7 @@ export function ProfileForm({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restoredDraft = useRef(false);
   const primaryDistrict = form.preferredDistricts[0] ?? form.district ?? null;
   const selectedDistrictCenter = getDistrictArea(primaryDistrict)?.center ?? DEFAULT_CITY_COORDINATES;
   const searchCenterLat = selectedDistrictCenter.lat;
@@ -141,6 +153,18 @@ export function ProfileForm({
   function setField<Key extends keyof ProfilePayload>(key: Key, value: ProfilePayload[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
+
+  useEffect(() => {
+    if (!isOnboarding || restoredDraft.current) return;
+    restoredDraft.current = true;
+    const draft = loadGuestOnboardingDraft();
+    if (!draft) return;
+    const fields = guestDraftFieldsForOnboarding(user, draft);
+    setForm((current) => {
+      const restored = { ...current, ...fields, locationPlaceId: fields.locationPlaceId ?? current.locationPlaceId };
+      return { ...restored, tennisLevel: getPrimarySportLevel(restored.preferredSports, restored.sportLevels, current.tennisLevel ?? 5) };
+    });
+  }, [isOnboarding, user]);
 
   useEffect(() => {
     if (!isGuest) {
@@ -227,12 +251,21 @@ export function ProfileForm({
   const hasAvailability = Object.keys(form.availabilityByDay).length > 0;
   const canContinueBasics =
     (form.name ?? "").trim().length >= 2 &&
-    (form.city ?? "").trim().length >= 2 &&
+    (form.city ?? "").trim().length > 0 &&
     (form.age ?? 0) >= 18 &&
     (form.age ?? 0) <= 100;
   const hasSports = Array.isArray(form.preferredSports) && form.preferredSports.length > 0;
+  const canCompleteOnboarding = canContinueBasics && hasSports;
+
+  function validateRequiredFields() {
+    if (canCompleteOnboarding) return true;
+    setError(t("profile.error.requiredFields"));
+    if (isOnboarding) setStep(canContinueBasics ? 2 : 1);
+    return false;
+  }
 
   function nextStep() {
+    if ((step === 1 && !canContinueBasics) || (step === 2 && !hasSports)) return;
     setStep((current) => (current < 3 ? ((current + 1) as 1 | 2 | 3) : current));
   }
 
@@ -243,6 +276,11 @@ export function ProfileForm({
   async function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(IMAGE_SIZE_ERROR);
+      event.target.value = "";
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -266,6 +304,7 @@ export function ProfileForm({
   }
 
   async function finishOnboarding(skipAvailability = false) {
+    if (!validateRequiredFields()) return;
     setLoading(true);
     setError(null);
 
@@ -280,6 +319,7 @@ export function ProfileForm({
           availabilityByDay: skipAvailability ? {} : form.availabilityByDay
         })
       });
+      clearGuestOnboardingDraft();
       router.push("/discover");
       router.refresh();
     } catch (requestError) {
@@ -293,12 +333,16 @@ export function ProfileForm({
     event.preventDefault();
 
     if (isOnboarding) {
-      event.preventDefault();
+      if (step < 3) {
+        nextStep();
+        return;
+      }
       await finishOnboarding(false);
       return;
     }
 
     if (isGuest) {
+      if (!validateRequiredFields()) return;
       saveGuestOnboardingDraft(toGuestDraft(form));
       router.push(authRequiredHref ?? "/auth?step=email&continue=/profile");
       return;
@@ -387,11 +431,14 @@ export function ProfileForm({
                 <Field label={t("profile.field.city")} className="col-span-2">
                   <select
                     required
-                    value={form.city ?? DEFAULT_CITY}
-                    onChange={(event) => setField("city", event.target.value)}
-                    className="input cursor-not-allowed bg-line/50 text-ink/70"
-                    disabled
+                    value={form.city ?? ""}
+                    onChange={(event) => setForm((current) => ({ ...current, city: event.target.value, locationPlaceId: undefined, district: null, preferredDistricts: [] }))}
+                    className="input"
                   >
+                    <option value="">{t("profile.city.placeholder")}</option>
+                    {form.city && !AVAILABLE_CITIES.some((city) => city === form.city) ? (
+                      <option value={form.city}>{form.city}</option>
+                    ) : null}
                     {AVAILABLE_CITIES.map((city) => (
                       <option key={city} value={city}>
                         {city}
@@ -438,6 +485,14 @@ export function ProfileForm({
                   </div>
                   <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.districts.onboardingHint")}</div>
                 </Field>
+
+                <MapVisibilityField
+                  checked={form.showOnMap}
+                  onChange={(checked) => setField("showOnMap", checked)}
+                  title={t("profile.mapVisibility.title")}
+                  hint={t("profile.mapVisibility.hint")}
+                  infoLabel={t("profile.mapVisibility.info")}
+                />
 
                 <div className="rounded-[24px] bg-cream p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -517,11 +572,11 @@ export function ProfileForm({
                   fullWidth
                   variant="ghost"
                   onClick={() => finishOnboarding(true)}
-                  disabled={loading}
+                  disabled={loading || !canCompleteOnboarding}
                 >
                   {t("profile.action.skip")}
                 </Button>
-                <Button type="submit" fullWidth disabled={loading}>
+                <Button type="submit" fullWidth disabled={loading || !canCompleteOnboarding}>
                   {loading ? t("profile.action.saving") : t("profile.action.start")}
                 </Button>
               </>
@@ -589,12 +644,16 @@ export function ProfileForm({
               <Field label={t("profile.field.city")}>
                 <select
                   required
-                  value={form.city ?? DEFAULT_CITY}
-                  onChange={(event) => setField("city", event.target.value)}
-                  className="input cursor-not-allowed bg-line/50 text-ink/70"
-                  disabled
+                  value={form.city ?? ""}
+                  onChange={(event) => setForm((current) => ({ ...current, city: event.target.value, locationPlaceId: undefined, district: null, preferredDistricts: [] }))}
+                  className={isGuest ? "input" : "input cursor-not-allowed bg-line/50 text-ink/70"}
+                  disabled={!isGuest}
                 >
-                  {AVAILABLE_CITIES.map((city) => (
+                  <option value="">{t("profile.city.placeholder")}</option>
+                    {form.city && !AVAILABLE_CITIES.some((city) => city === form.city) ? (
+                      <option value={form.city}>{form.city}</option>
+                    ) : null}
+                    {AVAILABLE_CITIES.map((city) => (
                     <option key={city} value={city}>
                       {city}
                   </option>
@@ -634,7 +693,20 @@ export function ProfileForm({
                 })}
               </div>
               <div className="mt-2 text-xs leading-5 text-ink/55">{t("profile.districts.hint")}</div>
+              {form.preferredDistricts.length > 0 ? (
+                <button type="button" className="mt-2 min-h-11 text-sm font-semibold text-court" onClick={() => {
+                  setForm((current) => ({ ...current, preferredDistricts: [], district: null }));
+                }}>{t("profile.mapVisibility.clearDistricts")}</button>
+              ) : null}
             </Field>
+
+            <MapVisibilityField
+              checked={form.showOnMap}
+              onChange={(checked) => setField("showOnMap", checked)}
+              title={t("profile.mapVisibility.title")}
+              hint={t("profile.mapVisibility.hint")}
+              infoLabel={t("profile.mapVisibility.info")}
+            />
 
             <Field label={t("profile.field.districtMap")} className="mt-3">
               {form.preferredDistricts.length > 0 ? (
@@ -713,7 +785,7 @@ export function ProfileForm({
             </Field>
           </Panel>
 
-          <Button type="submit" fullWidth disabled={loading || uploading}>
+          <Button type="submit" fullWidth disabled={loading || uploading || (isGuest && !canCompleteOnboarding)}>
             {loading
               ? t("profile.action.saving")
               : isGuest
@@ -733,34 +805,20 @@ function toGuestDraft(form: ProfilePayload): GuestOnboardingDraft {
     name: form.name ?? "",
     age: form.age ?? 28,
     gender: form.gender ?? null,
-    city: form.city ?? DEFAULT_CITY,
+    city: form.city ?? "",
+    locationPlaceId: form.locationPlaceId,
     district: form.preferredDistricts[0] ?? form.district,
     preferredDistricts: form.preferredDistricts,
     preferredSports: form.preferredSports,
     sportLevels: form.sportLevels,
     preferredPlayFormat: form.preferredPlayFormat,
     preferredSurface: form.preferredSurface,
+    showOnMap: form.showOnMap,
     isLookingForGame: form.isLookingForGame,
     availableDays: form.availableDays,
     availableTimeRanges: form.availableTimeRanges,
     availabilityByDay: form.availabilityByDay
   };
-}
-
-function normalizeDistricts(value: unknown, fallbackDistrict?: string | null) {
-  const districts = Array.isArray(value)
-    ? value.filter((district): district is DistrictOption => typeof district === "string" && DISTRICT_OPTIONS.includes(district as DistrictOption))
-    : [];
-
-  if (districts.length > 0) {
-    return districts;
-  }
-
-  if (fallbackDistrict && DISTRICT_OPTIONS.includes(fallbackDistrict as DistrictOption)) {
-    return [fallbackDistrict as DistrictOption];
-  }
-
-  return [];
 }
 
 function normalizeAvailabilityByDay(availabilityByDay: unknown, availableDays: unknown, availableTimeRanges: unknown) {

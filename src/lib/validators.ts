@@ -101,12 +101,14 @@ export const requestLinkSchema = z.object({
 });
 
 export const verifySchema = z.object({
+  showOnMap: z.boolean().optional(),
   email: z.string().email().transform((value) => value.toLowerCase()),
   code: z.string().length(6),
   userAgreement: userAgreementAcceptanceSchema
 });
 
 export const appleAuthSchema = z.object({
+  showOnMap: z.boolean().optional(),
   identityToken: z.string().min(1),
   email: z
     .string()
@@ -156,6 +158,7 @@ export const updateMeSchema = z.object({
   avatarUrl: z.string().max(300).optional().nullable(),
   profilePhotoUrls: z.array(z.string().min(1).max(600)).max(6).optional(),
   profileVideoUrls: z.array(z.string().min(1).max(600)).max(4).optional(),
+  showOnMap: z.boolean().optional(),
   isLookingForGame: z.boolean().optional(),
   notificationMatches: z.boolean().optional(),
   notificationMessages: z.boolean().optional(),
@@ -176,6 +179,7 @@ export const adminPlayersQuerySchema = z.object({
 
 const adminPlayerProfileFieldsSchema = z
   .object({
+    onboardingCompleted: z.boolean().optional(),
     name: z.string().trim().min(2).max(40).nullable().optional(),
     age: z.number().int().min(18).max(100).nullable().optional(),
     gender: z.nativeEnum(Gender).nullable().optional(),
@@ -349,7 +353,8 @@ export const discoverFiltersSchema = z.object({
   levelMin: z.coerce.number().int().min(1).max(10).optional(),
   levelMax: z.coerce.number().int().min(1).max(10).optional(),
   distanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: z.preprocess((value) => parseOptionalText(value), cityEnum.optional()),
+  city: z.preprocess((value) => parseOptionalText(value), z.string().trim().min(1).max(120).optional()),
+  locationPlaceId: z.preprocess((value) => parseOptionalText(value), z.string().trim().min(1).max(160).optional()),
   gender: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Gender)).default([])),
   sport: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(Sport)).default([])),
   format: z.preprocess((value) => parseMultiValue(value), z.array(z.nativeEnum(PlayFormat)).default([])),
@@ -400,7 +405,8 @@ export const courtsQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   district: z.enum(DISTRICT_OPTIONS).optional(),
   maxDistanceKm: z.coerce.number().int().min(1).max(100).optional(),
-  city: cityEnum.optional()
+  city: z.string().trim().min(1).max(120).optional(),
+  locationPlaceId: z.string().trim().min(1).max(160).optional()
 });
 
 export const createGameRequestSchema = z
@@ -787,7 +793,14 @@ export const userEventSchema = z.object({
   entityType: z.string().trim().max(60).optional(),
   entityId: z.string().trim().max(200).optional(),
   deliveryId: z.string().trim().max(200).optional(),
-  context: z.record(z.string().max(60), z.union([z.string().max(200), z.number(), z.boolean()])).optional()
+  context: z.object({
+    platform: z.enum(["web", "ios", "android"]).optional(),
+    screen: z.enum(["app", "onboarding", "discover", "play", "inbox", "profile", "settings", "activity"]).optional(),
+    step: z.number().int().min(0).max(20).optional(),
+    view: z.enum(["players", "likes", "hot", "regular", "searches", "map", "cards", "list"]).optional(),
+    count: z.number().int().min(0).max(10000).optional(),
+    empty: z.boolean().optional()
+  }).strict().optional()
 }).strict();
 
 export const userEventsSchema = z.object({

@@ -7,7 +7,7 @@ import { Compass, MessageCircle, Settings2, Trophy, User2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
 import { useLocale } from "@/components/i18n/locale-provider";
-import { buildGuestAuthHref, loadGuestOnboardingDraft, guestDraftHasProfileBasics } from "@/lib/guest-draft";
+import { buildGuestAuthHref, loadGuestOnboardingDraft, guestDraftCanCompleteOnboarding } from "@/lib/guest-draft";
 import { cn } from "@/lib/utils";
 
 const hiddenRoutes = ["/admin", "/auth", "/onboarding", "/offline", "/legal", "/support", "/users"];
@@ -53,7 +53,7 @@ export function BottomNav() {
 
   useEffect(() => {
     const draft = loadGuestOnboardingDraft();
-    setHasGuestDraft(Boolean(draft && guestDraftHasProfileBasics(draft)));
+    setHasGuestDraft(Boolean(draft && guestDraftCanCompleteOnboarding(draft)));
   }, [pathname]);
 
   useEffect(() => {

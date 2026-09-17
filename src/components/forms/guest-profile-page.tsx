@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/i18n/locale-provider";
 import {
   buildGuestAuthHref,
-  guestDraftHasProfileBasics,
+  guestDraftCanCompleteOnboarding,
   loadGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
@@ -22,7 +22,7 @@ export function GuestProfilePage() {
   useEffect(() => {
     const savedDraft = loadGuestOnboardingDraft();
 
-    if (!savedDraft || !guestDraftHasProfileBasics(savedDraft)) {
+    if (!savedDraft || !guestDraftCanCompleteOnboarding(savedDraft)) {
       router.replace("/auth");
       return;
     }

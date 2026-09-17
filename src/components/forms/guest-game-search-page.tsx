@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import {
   buildGuestAuthHref,
-  guestDraftHasProfileBasics,
+  guestDraftCanCompleteOnboarding,
   loadGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
@@ -40,7 +40,7 @@ export function GuestGameSearchPage({
   useEffect(() => {
     const savedDraft = loadGuestOnboardingDraft();
 
-    if (!savedDraft || !guestDraftHasProfileBasics(savedDraft)) {
+    if (!savedDraft || !guestDraftCanCompleteOnboarding(savedDraft)) {
       router.replace("/auth");
       return;
     }

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   const locale = getServerRequestLocale(request);
   try {
     const body = verifySchema.parse(await request.json());
-    const user = await verifyAuthCode(body.email, body.code);
+    const user = await verifyAuthCode(body.email, body.code, body.showOnMap);
 
     if (!user) {
       return fail(translateServer(locale, "auth.error.invalidCode"), 401, "AUTH_INVALID_CODE");
@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
       user: {
         id: userWithAgreement.id,
         email: userWithAgreement.email,
-        onboardingCompleted: userWithAgreement.onboardingCompleted
+        onboardingCompleted: userWithAgreement.onboardingCompleted,
+        showOnMap: userWithAgreement.showOnMap === true
       },
       sessionToken
     });

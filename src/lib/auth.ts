@@ -1,3 +1,4 @@
+import { recordUserEventsOnce } from "@/server/user-events";
 import { AccountStatus, Gender, PlayFormat, Prisma, Sport, Surface } from "@prisma/client";
 import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type JsonWebKey as CryptoJsonWebKey } from "crypto";
 
@@ -34,6 +35,7 @@ type AppleJwk = CryptoJsonWebKey & {
 };
 
 type AppleAuthProfile = {
+  showOnMap?: boolean;
   email?: string;
   givenName?: string;
   familyName?: string;
@@ -197,7 +199,7 @@ export function isAppReviewDemoEmail(email: string) {
   return credentials?.email === email.trim().toLowerCase();
 }
 
-async function ensureAppReviewDemoUser(email: string) {
+async function ensureAppReviewDemoUser(email: string, showOnMap = true) {
   return prisma.user.upsert({
     where: { email },
     update: {
@@ -233,6 +235,7 @@ async function ensureAppReviewDemoUser(email: string) {
     },
     create: {
       email,
+      showOnMap,
       name: "Apple Review",
       age: 29,
       gender: Gender.other,
@@ -315,10 +318,10 @@ export async function createAuthCode(email: string, userId?: string) {
   return code;
 }
 
-export async function verifyAuthCode(email: string, code: string) {
+export async function verifyAuthCode(email: string, code: string, showOnMap = true) {
   const demoCredentials = getAppReviewDemoCredentials();
   if (demoCredentials?.email === email.trim().toLowerCase() && demoCredentials.code === code.trim()) {
-    return ensureAppReviewDemoUser(demoCredentials.email);
+    return ensureAppReviewDemoUser(demoCredentials.email, showOnMap);
   }
 
   const authCode = await prisma.authCode.findFirst({
@@ -352,9 +355,11 @@ export async function verifyAuthCode(email: string, code: string) {
     user = await prisma.user.create({
       data: {
         email,
+        showOnMap,
         isVerified: true
       }
     });
+    await recordUserEventsOnce([{ userId: user.id, type: "registration_completed", entityType: "user", entityId: user.id, context: { method: "email" } }]);
     await attributeInviteFromCookie(user.id);
   } else if (!user.isVerified) {
     user = await prisma.user.update({
@@ -404,11 +409,13 @@ export async function signInWithAppleIdentityToken(identityToken: string, profil
     user = await prisma.user.create({
       data: {
         email,
+        showOnMap: profile?.showOnMap ?? true,
         appleSubject,
         name: displayName,
         isVerified: true
       }
     });
+    await recordUserEventsOnce([{ userId: user.id, type: "registration_completed", entityType: "user", entityId: user.id, context: { method: "apple" } }]);
     await attributeInviteFromCookie(user.id);
   } else {
     const nextData: {

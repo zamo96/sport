@@ -11,17 +11,21 @@ import { apiFetch } from "@/lib/client-api";
 import {
   clearGuestOnboardingDraft,
   createDefaultGuestOnboardingDraft,
+  guestDraftCanCompleteOnboarding,
   guestDraftHasProfileBasics,
   loadGuestOnboardingDraft,
+  mapVisibilityForGuestPromotion,
   saveGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
+import { AVAILABLE_CITIES } from "@/lib/constants";
 import { getPrimarySportLevel, type SportLevelValue } from "@/lib/sport-levels";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportLevelGuideSheet } from "@/components/forms/sport-level-guide-sheet";
 import { YandexAuthDemoMap } from "@/components/maps/yandex-auth-demo-map";
+import { MapVisibilityField } from "@/components/forms/map-visibility-field";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { SportPicker } from "@/components/forms/sport-picker";
@@ -124,6 +128,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   }, [draftHydrated, searchParams]);
 
   const hasProfileBasics = guestDraftHasProfileBasics(draft);
+  const canCompleteOnboarding = guestDraftCanCompleteOnboarding(draft);
   const hasAvailability = Object.keys(draft.availabilityByDay).length > 0;
 
   function setDraftField<Key extends keyof DraftProfile>(key: Key, value: DraftProfile[Key]) {
@@ -218,16 +223,18 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     setError(null);
 
     try {
-      const data = await apiFetch<{ user: { onboardingCompleted: boolean } }>("/auth/verify", {
+      const data = await apiFetch<{ user: { onboardingCompleted: boolean; showOnMap?: boolean } }>("/auth/verify", {
         method: "POST",
         body: JSON.stringify({
           email,
           code,
+          showOnMap: draft.showOnMap,
           userAgreement: buildLatestUserAgreementPayload()
         })
       });
 
-      if (!data.user.onboardingCompleted && guestDraftHasProfileBasics(draft)) {
+      let onboardingCompleted = data.user.onboardingCompleted;
+      if (!onboardingCompleted && guestDraftCanCompleteOnboarding(draft)) {
         await apiFetch("/me", {
           method: "PATCH",
           body: JSON.stringify({
@@ -235,6 +242,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             age: draft.age,
             gender: draft.gender ?? null,
             city: draft.city,
+            locationPlaceId: draft.locationPlaceId ?? undefined,
             district: draft.preferredDistricts[0] ?? draft.district ?? null,
             preferredDistricts: draft.preferredDistricts,
             tennisLevel: getPrimarySportLevel(draft.preferredSports, draft.sportLevels, draft.sportLevels[draft.preferredSports[0]] ?? 5),
@@ -247,6 +255,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             availableDays: draft.availableDays,
             availableTimeRanges: draft.availableTimeRanges,
             availabilityByDay: draft.availabilityByDay,
+            showOnMap: mapVisibilityForGuestPromotion(data.user.showOnMap, draft.showOnMap),
             isLookingForGame: draft.isLookingForGame,
             notificationGames: true,
             notificationMatches: true,
@@ -254,10 +263,11 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             notificationSound: true
           })
         });
+        onboardingCompleted = true;
       }
 
-      clearGuestOnboardingDraft();
-      router.push(continueHref);
+      if (onboardingCompleted) clearGuestOnboardingDraft();
+      router.push(onboardingCompleted ? continueHref : "/onboarding");
       router.refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : t("auth.error.verify"));
@@ -398,6 +408,14 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               />
             </Field>
 
+            <MapVisibilityField
+              checked={draft.showOnMap}
+              onChange={(checked) => setDraftField("showOnMap", checked)}
+              title={t("profile.mapVisibility.title")}
+              hint={t("profile.mapVisibility.hint")}
+              infoLabel={t("profile.mapVisibility.info")}
+            />
+
             <div className="rounded-[20px] bg-white/72 p-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -421,7 +439,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
             <Button type="button" fullWidth variant="ghost" className="min-h-10 rounded-[20px]" onClick={() => setStep("intro")}>
               {t("auth.action.back")}
             </Button>
-            <Button type="button" fullWidth className="min-h-10 rounded-[20px]" onClick={() => setStep("availability")} disabled={!hasProfileBasics}>
+            <Button type="button" fullWidth className="min-h-10 rounded-[20px]" onClick={() => { if (hasProfileBasics) setStep("availability"); }} disabled={!hasProfileBasics}>
               {t("auth.action.next")}
             </Button>
           </div>
@@ -442,6 +460,23 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               title={t("auth.availability.title")}
               subtitle={t("auth.availability.subtitle")}
             />
+
+            <Field label={t("profile.field.city")}>
+              <select
+                required
+                value={draft.city}
+                onChange={(event) => setDraft((current) => ({
+                  ...current, city: event.target.value, locationPlaceId: null, district: null, preferredDistricts: []
+                }))}
+                className="input"
+              >
+                <option value="">{t("profile.city.placeholder")}</option>
+                {draft.city && !AVAILABLE_CITIES.some((city) => city === draft.city) ? (
+                  <option value={draft.city}>{draft.city}</option>
+                ) : null}
+                {AVAILABLE_CITIES.map((city) => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </Field>
 
             <Field label={t("auth.availability.field")}>
               <AvailabilityPicker
@@ -479,9 +514,14 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               fullWidth
               className="min-h-10 rounded-[20px]"
               onClick={() => {
+                if (!guestDraftCanCompleteOnboarding(draft)) {
+                  setError(t("profile.error.requiredFields"));
+                  return;
+                }
                 saveGuestOnboardingDraft(draft);
                 router.push("/discover");
               }}
+              disabled={!canCompleteOnboarding}
             >
               {t("auth.availability.viewPlayers")}
             </Button>

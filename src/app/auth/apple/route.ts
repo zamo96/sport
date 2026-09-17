@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     phase = "apple";
     const user = await signInWithAppleIdentityToken(body.identityToken, {
       email: body.email,
+      showOnMap: body.showOnMap,
       givenName: body.givenName,
       familyName: body.familyName
     });
@@ -47,7 +48,8 @@ export async function POST(request: NextRequest) {
       user: {
         id: userWithAgreement.id,
         email: userWithAgreement.email,
-        onboardingCompleted: userWithAgreement.onboardingCompleted
+        onboardingCompleted: userWithAgreement.onboardingCompleted,
+        showOnMap: userWithAgreement.showOnMap === true
       },
       sessionToken
     });
