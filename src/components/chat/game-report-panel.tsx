@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { apiFetch } from "@/lib/client-api";
+import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES, MAX_IMAGE_MEGABYTES } from "@/lib/upload-limits";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
@@ -104,9 +105,13 @@ export function GameReportPanel({
 
   function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []).slice(0, 5);
+    event.currentTarget.value = "";
+    if (files.some((file) => file.size > MAX_IMAGE_BYTES)) {
+      setError(IMAGE_SIZE_ERROR);
+      return;
+    }
     setSelectedFiles(files);
     setError(null);
-    event.currentTarget.value = "";
   }
 
   async function submitReport() {
@@ -214,7 +219,7 @@ export function GameReportPanel({
               <span className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-court/35 bg-mint/25 px-4 py-5 text-center text-sm font-semibold text-court transition hover:bg-mint/40">
                 <Upload className="h-5 w-5" />
                 Выбрать фото
-                <span className="text-xs font-medium text-ink/50">JPG, PNG, WEBP или GIF · до 5 МБ</span>
+                <span className="text-xs font-medium text-ink/50">JPG, PNG, WEBP или GIF · до {MAX_IMAGE_MEGABYTES} МБ</span>
               </span>
             </label>
 

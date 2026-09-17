@@ -1,0 +1,70 @@
+{
+  "archive": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/НаТреню_Юридические_документы_2026-09-08.zip",
+  "documents": [
+    {
+      "file": "00_Инструкция_и_сведения_для_РКН.docx",
+      "pages": 6,
+      "bytes": 50403,
+      "sha256": "3080ee6529346b7d0eed3eeb74f53fa44ba98175ad25fc993d8a5b193d5d1127",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "01_Пользовательское_соглашение.docx",
+      "pages": 3,
+      "bytes": 44160,
+      "sha256": "28179b34a89485fab1dde3fa2b88ef7ec6a47f02593613c30341cc6fc839a370",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "02_Политика_обработки_данных.docx",
+      "pages": 5,
+      "bytes": 48076,
+      "sha256": "12888e44c36c6840d34e10453451fdf0f1fabc7c2d780f3049ea2da4985c8aa0",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "03_Согласия_на_обработку_данных.docx",
+      "pages": 3,
+      "bytes": 42702,
+      "sha256": "28e1fb36b949265ad7fcfd8f1047544e449457be75417bb436e2c183adde16a3",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "04_Согласие_на_распространение.docx",
+      "pages": 3,
+      "bytes": 43537,
+      "sha256": "e473128bba35b947146b06de86f6ff5c58ed49644ac278efca6af9978b9fbb16",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "05_Правила_рекомендаций.docx",
+      "pages": 2,
+      "bytes": 42304,
+      "sha256": "2afd4f45ea0dad776d952fb1229439f0944b861ee4e472d75cca285d7af8cf8a",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "06_Внутренний_порядок_обработки_данных.docx",
+      "pages": 5,
+      "bytes": 46801,
+      "sha256": "ce6b6a0cd82007ac9fb36b9b1361ec9560b396926447f5c6dbf78676de03ebba",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    },
+    {
+      "file": "07_Формы_обращений_и_ответов.docx",
+      "pages": 3,
+      "bytes": 42799,
+      "sha256": "9b66d032f2895b9599d938e8436788518748fdc92d0a28a7d1d096ea21ef199c",
+      "docx_integrity": "PASS",
+      "visual_review": "PASS"
+    }
+  ],
+  "total_pages": 30
+}

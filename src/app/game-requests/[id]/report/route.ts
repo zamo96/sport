@@ -1,3 +1,4 @@
+import { recordGameRequestMilestones } from "@/server/user-events";
 import { NextRequest } from "next/server";
 import { GameReportStatus, GameRequestOutcome, GameRequestStatus } from "@prisma/client";
 
@@ -113,6 +114,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return { report: createdReport, refreshedGameRequest: refreshed, chatMessage: createdChatMessage };
     });
 
+    if (gameRequest.outcome !== GameRequestOutcome.played) {
+      await recordGameRequestMilestones([gameRequest.id], "game_played", "report");
+    }
     const recipientIds = participantIds.filter((participantId) => participantId !== user.id);
 
     const realtimeUserIds = Array.from(new Set([user.id, ...recipientIds]));
