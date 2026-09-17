@@ -10,3 +10,5 @@
 local.defaults.properties
 local.defaults.properties.*
 /app/build
+# Firebase project config: per-project secret, fetched from the console.
+app/google-services.json
