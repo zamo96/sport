@@ -1,7 +1,8 @@
 import { Gender, PlayFormat, Sport, Surface, type User } from "@prisma/client";
 
-import { SPORT_LABELS } from "@/lib/constants";
+import { SPORT_LABELS, SPORT_OPTIONS } from "@/lib/constants";
 import { haversineDistanceKm } from "@/lib/geo";
+import { validCoordinates } from "@/lib/nearby";
 import { getSharedSports, getSportLevel, normalizeSports } from "@/lib/sport-levels";
 
 export type CandidateUser = Pick<
@@ -25,11 +26,14 @@ export type CandidateUser = Pick<
   | "availableTimeSlots"
   | "isLookingForGame"
 > & {
+  showOnMap?: User["showOnMap"];
   locationPlaceId?: User["locationPlaceId"] | null;
   district?: User["district"] | null;
   preferredDistricts?: User["preferredDistricts"] | null;
   lastActiveAt?: User["lastActiveAt"] | null;
   createdAt?: User["createdAt"] | null;
+  /** Во вкладках «Срочно» и «Ищут игру» карточка — это поиск, а не профиль. */
+  gameSearches?: unknown;
 };
 
 export type DiscoverFilters = {
@@ -37,6 +41,7 @@ export type DiscoverFilters = {
   levelMax?: number;
   distanceKm?: number;
   city?: string;
+  locationPlaceId?: string;
   gender?: Gender[];
   sport?: Sport[];
   format?: PlayFormat[];
@@ -307,17 +312,46 @@ export function scoreCandidates<T extends CandidateUser>(
     .sort((left, right) => right.score - left.score || (left.distanceKm ?? 999) - (right.distanceKm ?? 999));
 }
 
+/** Виды спорта активных поисков кандидата — только там, где карточка это поиск. */
+function withSearchSports(profileSports: Sport[], gameSearches: unknown, view: DiscoverFilters["view"]) {
+  if (view !== "hot" && view !== "seeking") {
+    return profileSports;
+  }
+  if (!Array.isArray(gameSearches)) {
+    return profileSports;
+  }
+
+  const searchSports = gameSearches
+    .map((search) => (search as { sport?: unknown } | null)?.sport)
+    .filter((sport): sport is Sport => typeof sport === "string" && SPORT_OPTIONS.includes(sport as Sport));
+
+  return searchSports.length > 0 ? Array.from(new Set([...profileSports, ...searchSports])) : profileSports;
+}
+
 export function scoreCandidate<T extends CandidateUser>(
   viewer: CandidateUser,
   candidate: T,
-  filters: DiscoverFilters = {}
+  filters: DiscoverFilters = {},
+  geography: "city" | "nearby" = "city"
 ) {
-  if (!isCityEligible(viewer.city, candidate.city, filters, viewer.locationPlaceId, candidate.locationPlaceId)) {
+  if (geography === "city" && !isCityEligible(viewer.city, candidate.city, filters, viewer.locationPlaceId, candidate.locationPlaceId)) {
     return null;
   }
 
+  if (geography === "nearby" && (!validCoordinates({ lat: viewer.homeLat!, lng: viewer.homeLng! }) ||
+      viewer.homeLat == null || viewer.homeLng == null || candidate.homeLat == null || candidate.homeLng == null ||
+      !validCoordinates({ lat: candidate.homeLat, lng: candidate.homeLng }))) return null;
+
   const viewerSports = normalizeSports(viewer.preferredSports);
-  const candidateSports = normalizeSports(candidate.preferredSports);
+  // Во вкладках «Срочно» и «Ищут игру» показывается сам поиск, поэтому его вид
+  // спорта учитывается наравне с профилем автора. Иначе игрок, у которого в
+  // профиле бадминтон, а поиск создан по теннису, получал уведомление у всех
+  // теннисистов и не попадал ни к кому из них в ленту.
+  const candidateSports = withSearchSports(
+    normalizeSports(candidate.preferredSports),
+    candidate.gameSearches,
+    filters.view
+  );
   const relevantSports = getSharedSports(viewerSports, candidateSports, filters.sport);
   const distanceKm = haversineDistanceKm(
     viewer.homeLat != null && viewer.homeLng != null ? { lat: viewer.homeLat, lng: viewer.homeLng } : null,
@@ -476,4 +510,27 @@ export function formatCompatible(first: PlayFormat, second: PlayFormat) {
 
 export function surfaceCompatible(first: Surface, second: Surface) {
   return first === "any" || second === "any" || first === second;
+}
+
+/**
+ * Зеркало условий, при которых `scoreCandidate` вообще способен вернуть
+ * кандидата: нужен хотя бы один вид спорта и место. Плюс завершённый онбординг.
+ *
+ * Без этой проверки лайк от незаполненного профиля создавал уведомление, за
+ * которым в «Хотят с тобой» никого нет — `scoreCandidate` такого отправителя
+ * всегда отбрасывает. Совпадает с `hasCompletedOnboarding` у обоих клиентов.
+ */
+export function isProfileReadyForMatching(user: {
+  onboardingCompleted: boolean;
+  preferredSports: unknown;
+  city: string | null;
+  locationPlaceId?: string | null;
+}) {
+  // Не через `normalizeSports`: он подставляет теннис для пустого списка, чтобы
+  // выдаче было что показывать. Здесь важно, выбрал ли игрок спорт сам.
+  const chosenSports = Array.isArray(user.preferredSports)
+    ? user.preferredSports.filter((sport): sport is Sport => typeof sport === "string" && SPORT_OPTIONS.includes(sport as Sport))
+    : [];
+
+  return user.onboardingCompleted && chosenSports.length > 0 && Boolean(user.locationPlaceId || user.city);
 }
