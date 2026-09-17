@@ -2,7 +2,15 @@ FROM node:20-bullseye-slim AS base
 
 WORKDIR /app
 
-RUN apt-get update \
+# Живые зеркала bullseye разъезжаются: индекс называет версию ca-certificates,
+# которой уже нет в пуле, и сборка падает с 404. Образ сам предлагает снимок
+# архива — он неизменяемый, поэтому индекс и файлы там всегда согласованы.
+# Release-файл снимка просрочен по определению, отсюда Check-Valid-Until=false.
+RUN sed -i \
+      -e 's|^# deb http://snapshot|deb http://snapshot|' \
+      -e 's|^deb http://deb.debian.org|# deb http://deb.debian.org|' \
+      /etc/apt/sources.list \
+  && apt-get -o Acquire::Check-Valid-Until=false update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
