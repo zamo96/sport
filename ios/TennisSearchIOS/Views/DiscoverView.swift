@@ -722,19 +722,21 @@ struct DiscoverView: View {
             )
         )
         .background(Color.black.ignoresSafeArea())
-        // Пока никого не просмотрели, строки нет вовсе: пустое меню только
-        // занимало место. Появляется вместе с первой уходящей карточкой —
-        // pendingViewedPlayerID ставится до полёта, так что назначение успевает
-        // смонтироваться, а если нет, полёт мягко заменяется растворением.
-        if isViewedPlayersDockEligible, !viewedTrayUsers.isEmpty {
+        if isViewedPlayersDockEligible, !visibleSimilarUsers.isEmpty {
+            // Место под строку держим всегда, а пустую прячем прозрачностью.
+            // Это несущее условие, а не косметика: если строка вставляется в
+            // раскладку в момент ухода карточки, колода сжимается, проверка
+            // isDeckInViewport на миг проваливается, и onChange отменяет
+            // автопереход — карточка крутит медиа по кругу и не уходит.
             viewedPlayersTray
                 .padding(.horizontal, 16)
                 .frame(height: isViewedPlayersExpanded ? viewedPlayersTrayHeight : 44, alignment: .top)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .opacity(viewedTrayUsers.isEmpty ? 0 : 1)
+                .allowsHitTesting(!viewedTrayUsers.isEmpty)
+                .accessibilityHidden(viewedTrayUsers.isEmpty)
                 .id("discover-viewed-players-tray")
         }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: viewedTrayUsers.isEmpty)
         .background(Color.black)
         .overlay {
             GeometryReader { viewport in
