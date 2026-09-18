@@ -16,6 +16,19 @@ const DAY_MS = 24 * HOUR_MS;
 
 export { DEFAULT_TIMEZONE, resolveLocalHour };
 
+/**
+ * Достижимый игрок — это любое активное устройство, а не только iOS:
+ * `sendPushToUser` доставляет и в APNs, и в FCM, а Android регистрирует токен
+ * через `/devices/fcm`. Фильтр живёт здесь один на все кампании — когда у
+ * каждой была своя копия с `platform: "ios"`, движок и аудитория разъехались,
+ * и Android молча не получал ни одной рассылки.
+ */
+export const ACTIVE_PUSH_DEVICE = { isActive: true } satisfies Prisma.PushDeviceWhereInput;
+
+export const HAS_ACTIVE_PUSH_DEVICE = {
+  pushDevices: { some: ACTIVE_PUSH_DEVICE }
+} satisfies Prisma.UserWhereInput;
+
 /** Частотные лимиты по умолчанию для lifecycle-кампаний. */
 export const DEFAULT_MAX_PER_DAY = 1;
 export const DEFAULT_MAX_PER_WEEK = 3;
@@ -98,6 +111,21 @@ export const CAMPAIGNS = {
     preferenceKey: "notificationGames",
     maxPerDay: 2,
     maxPerWeek: 10
+  },
+  // Напоминания о висящем действии: транзакционные, потому что это не рассылка,
+  // а долг перед конкретным человеком, который ждёт ответа. Общий дневной лимит
+  // они не тратят и не занимают; повтор ограничен ключом дедупа на сутки.
+  search_response_waiting: {
+    category: "transactional",
+    cooldownHours: 24,
+    preferenceKey: "notificationGames",
+    respectQuietHours: true
+  },
+  game_outcome_pending: {
+    category: "transactional",
+    cooldownHours: 24,
+    preferenceKey: "notificationGames",
+    respectQuietHours: true
   }
 } as const satisfies Record<string, CampaignDefinition>;
 
@@ -156,6 +184,13 @@ export function evaluateCampaignEligibility(input: CampaignEligibilityInput): Ca
   }
 
   if (campaign.category === "transactional") {
+    // По умолчанию транзакционный пуш идёт в любое время: он про событие,
+    // которое случилось прямо сейчас. Напоминание — другое дело: долг подождёт
+    // до утра, поэтому такая кампания включает тихие часы явно.
+    if (campaign.respectQuietHours === true && isQuietHour(input.localHour)) {
+      return { allowed: false, reason: "quiet_hours" };
+    }
+
     return { allowed: true, reason: "ok" };
   }
 
@@ -232,6 +267,29 @@ export type CampaignSendResult = {
   preview?: CampaignPreview;
 };
 
+/**
+ * Разбивка прогона кампании: одна и та же форма у lifecycle-рассылок и у
+ * напоминаний, поэтому ответ `/maintenance/game-requests` читается одинаково.
+ */
+export type CampaignStats = Record<CampaignSendStatus, number> & {
+  scanned: number;
+  samples: Array<{ userId: string } & CampaignPreview>;
+};
+
+const MAX_SAMPLES = 5;
+
+export function emptyCampaignStats(): CampaignStats {
+  return { sent: 0, holdout: 0, duplicate: 0, skipped: 0, failed: 0, scanned: 0, samples: [] };
+}
+
+export function collectCampaignResult(stats: CampaignStats, userId: string, result: CampaignSendResult) {
+  stats[result.status] += 1;
+
+  if (result.preview && stats.samples.length < MAX_SAMPLES) {
+    stats.samples.push({ userId, ...result.preview });
+  }
+}
+
 export type CampaignContent = {
   title: string;
   body: string;
@@ -304,7 +362,7 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
       notificationMatches: true,
       notificationMessages: true,
       pushDevices: {
-        where: { platform: "ios", isActive: true },
+        where: ACTIVE_PUSH_DEVICE,
         select: { locale: true },
         orderBy: { lastRegisteredAt: "desc" },
         take: 3
@@ -312,10 +370,7 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
       _count: {
         select: {
           pushDevices: {
-            where: {
-              platform: "ios",
-              isActive: true
-            }
+            where: ACTIVE_PUSH_DEVICE
           }
         }
       }
@@ -375,7 +430,9 @@ export async function sendCampaignPush(input: CampaignSendInput): Promise<Campai
 
   const locale = resolveUserLocale(user);
   const content = typeof input.content === "function" ? input.content(locale) : input.content;
-  const variant = resolveLifecycleVariant(user.id);
+  // Холдаут — инструмент измерения lifecycle-рассылок. Транзакционное
+  // напоминание молча съесть нельзя: на том конце человек ждёт ответа.
+  const variant = campaign.category === "lifecycle" ? resolveLifecycleVariant(user.id) : "treatment";
 
   if (input.dryRun) {
     const existing = await prisma.notificationDelivery.findUnique({
@@ -473,6 +530,16 @@ export async function markCampaignConversion(
   campaignKeys: CampaignKey[] = LIFECYCLE_CAMPAIGN_KEYS,
   now = new Date()
 ) {
+  try {
+    return await findAndMarkConversion(userId, campaignKeys, now);
+  } catch (error) {
+    // Разметка для будущих моделей не стоит упавшего действия игрока.
+    console.warn("Failed to mark campaign conversion", { userId, campaignKeys, error });
+    return null;
+  }
+}
+
+async function findAndMarkConversion(userId: string, campaignKeys: CampaignKey[], now: Date) {
   const delivery = await prisma.notificationDelivery.findFirst({
     where: {
       userId,

@@ -32,7 +32,20 @@ export const notificationMessages = defineServerMessages(
     "push.winBack.title": "It has been a while",
     "push.winBack.body.one": "{count} player is looking for a game near you",
     "push.winBack.body.few": "{count} players are looking for a game near you",
-    "push.winBack.body.many": "{count} players are looking for a game near you"
+    "push.winBack.body.many": "{count} players are looking for a game near you",
+    "push.player.fallback": "A player",
+    "push.searchResponseWaiting.title.one": "{name} is waiting for your answer",
+    "push.searchResponseWaiting.title.few": "{count} responses are waiting for your answer",
+    "push.searchResponseWaiting.title.many": "{count} responses are waiting for your answer",
+    "push.searchResponseWaiting.body.one": "A response to your search — confirm or decline",
+    "push.searchResponseWaiting.body.few": "Open the search and decide who you play with",
+    "push.searchResponseWaiting.body.many": "Open the search and decide who you play with",
+    "push.gameOutcome.title.one": "How did the game go?",
+    "push.gameOutcome.title.few": "{count} games are waiting for a result",
+    "push.gameOutcome.title.many": "{count} games are waiting for a result",
+    "push.gameOutcome.body.one": "{when} · {opponent} — mark whether you played",
+    "push.gameOutcome.body.few": "Mark which of them happened, starting with {when}",
+    "push.gameOutcome.body.many": "Mark which of them happened, starting with {when}"
   },
   {
     "push.hotDigest.title.one": "Есть срочная игра рядом",
@@ -65,7 +78,22 @@ export const notificationMessages = defineServerMessages(
     "push.winBack.title": "Давно вас не было",
     "push.winBack.body.one": "Рядом игру ищет {count} игрок",
     "push.winBack.body.few": "Рядом игру ищут {count} игрока",
-    "push.winBack.body.many": "Рядом игру ищут {count} игроков"
+    "push.winBack.body.many": "Рядом игру ищут {count} игроков",
+    "push.player.fallback": "Игрок",
+    // Пол игрока неизвестен, поэтому имя стоит в именительном, а глагол — в
+    // форме без родового окончания: «Аня ждёт», «Иван ждёт».
+    "push.searchResponseWaiting.title.one": "{name} ждёт вашего ответа",
+    "push.searchResponseWaiting.title.few": "{count} отклика ждут ответа",
+    "push.searchResponseWaiting.title.many": "{count} откликов ждут ответа",
+    "push.searchResponseWaiting.body.one": "Отклик на ваш поиск — подтвердите или отклоните",
+    "push.searchResponseWaiting.body.few": "Откройте поиск и решите, с кем играете",
+    "push.searchResponseWaiting.body.many": "Откройте поиск и решите, с кем играете",
+    "push.gameOutcome.title.one": "Как прошла игра?",
+    "push.gameOutcome.title.few": "{count} игры ждут отметки",
+    "push.gameOutcome.title.many": "{count} игр ждут отметки",
+    "push.gameOutcome.body.one": "{when} · {opponent} — отметьте, сыграли вы или нет",
+    "push.gameOutcome.body.few": "Отметьте, какие из них состоялись, начиная с {when}",
+    "push.gameOutcome.body.many": "Отметьте, какие из них состоялись, начиная с {when}"
   }
 );
 

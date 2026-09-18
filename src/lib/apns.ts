@@ -227,11 +227,10 @@ export async function deliverAPNSPush(payload: PushPayload) {
     }
   });
 
+  // Silent, like the FCM side: both transports run for every push, so a user
+  // with no iOS device is the normal case for an Android-only account, not a
+  // problem worth a warning on every notification.
   if (devices.length === 0) {
-    console.warn("APNs push skipped: no active iOS devices", {
-      userId: payload.userId,
-      href: payload.href
-    });
     return;
   }
 

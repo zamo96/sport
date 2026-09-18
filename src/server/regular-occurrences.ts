@@ -5,7 +5,7 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { formatLocalDateTime } from "@/lib/timezone";
+import { formatLocalDateTime, getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
 
 type DBLike = Prisma.TransactionClient | typeof prisma;
 type TimePreferenceSlot = { hour: number; minute: number; day?: string };
@@ -53,25 +53,31 @@ function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+/**
+ * Ближайшие две недели слотов пары. Расписание хранится как «вечер понедельника
+ * в 19:00», то есть в стенных часах пары, поэтому и календарь, и час берутся в
+ * её зоне: `setHours` в UTC-контейнере ставил слот на 19:00 UTC, и москвич
+ * видел 22:00. Зону применяет `localDateTimeToUtc`, так что перевод часов
+ * учитывается сам.
+ */
 function buildOccurrenceSchedule({
   preferredDays,
   preferredTimeRanges,
+  timezone,
   now = new Date()
 }: {
   preferredDays: string[];
   preferredTimeRanges: string[];
+  timezone: string | null | undefined;
   now?: Date;
 }) {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-
+  const today = getLocalDateParts(timezone, now);
   const result: Date[] = [];
 
   for (let offset = 0; offset < 14; offset += 1) {
-    const dayDate = new Date(start);
-    dayDate.setDate(start.getDate() + offset);
-
-    const weekday = dayDate.getDay();
+    // Арифметика по календарю, без зоны: «дата пары плюс N дней».
+    const dayDate = new Date(Date.UTC(today.year, today.month - 1, today.day + offset));
+    const weekday = dayDate.getUTCDay();
     const dayMatch = preferredDays.some((day) => DAY_INDEX[day] === weekday);
     if (!dayMatch) {
       continue;
@@ -86,8 +92,14 @@ function buildOccurrenceSchedule({
         continue;
       }
 
-      const scheduledAt = new Date(dayDate);
-      scheduledAt.setHours(slot.hour, slot.minute, 0, 0);
+      const scheduledAt = localDateTimeToUtc(
+        timezone,
+        dayDate.getUTCFullYear(),
+        dayDate.getUTCMonth() + 1,
+        dayDate.getUTCDate(),
+        slot.hour,
+        slot.minute
+      );
 
       if (scheduledAt.getTime() <= now.getTime()) {
         continue;
@@ -104,6 +116,9 @@ export async function syncRegularPairOccurrences(db: DBLike, regularPairId: stri
   const regularPair = await db.regularPair.findUnique({
     where: { id: regularPairId },
     include: {
+      // Зона организатора — зона пары: расписание пишут в ней же, когда
+      // закрывают опрос по слотам.
+      createdByUser: { select: { timezone: true } },
       occurrences: {
         include: {
           confirmations: true,
@@ -121,7 +136,8 @@ export async function syncRegularPairOccurrences(db: DBLike, regularPairId: stri
   const preferredTimeRanges = normalizeStringArray(regularPair.preferredTimeRanges);
   const desiredSchedule = buildOccurrenceSchedule({
     preferredDays,
-    preferredTimeRanges
+    preferredTimeRanges,
+    timezone: regularPair.createdByUser?.timezone ?? null
   });
   const desiredKeys = new Set(desiredSchedule.map((date) => date.toISOString()));
 

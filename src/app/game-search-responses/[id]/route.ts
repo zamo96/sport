@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { isRouteSport } from "@/lib/sport-semantics";
 import { updateGameSearchResponseSchema } from "@/lib/validators";
 import { ensureMatchForUsers } from "@/server/matching";
+import { markCampaignConversion } from "@/server/notification-campaigns";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { assertActiveCourtIds } from "@/server/court-status";
 
@@ -711,6 +712,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     });
 
     await recordGameRequestMilestones(acceptedRequestIds, "request_accepted", "search");
+
+    if (body.status === GameSearchResponseStatus.approved || body.status === GameSearchResponseStatus.rejected) {
+      // Целевое действие напоминания: автор наконец ответил откликнувшемуся.
+      await markCampaignConversion(user.id, ["search_response_waiting"]);
+    }
 
     if (
       (body.status === GameSearchResponseStatus.approved || body.status === GameSearchResponseStatus.rejected) &&

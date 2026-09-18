@@ -8764,21 +8764,8 @@ private struct MapCourtThumbnail: View {
     let size: CGFloat
 
     var body: some View {
-        ZStack {
-            if let url = resolveAppRemoteURL(court.primaryPhotoUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        fallback
-                    }
-                }
-            } else {
-                fallback
-            }
+        RemoteImage(url: resolveAppRemoteURL(court.primaryPhotoUrl)) { _ in
+            fallback
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

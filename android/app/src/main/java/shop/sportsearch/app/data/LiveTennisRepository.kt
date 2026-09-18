@@ -822,9 +822,9 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
         client.request(path = "me/invite", deserializer = InviteEnvelope.serializer()).invite
 
     /**
-     * The backend currently exposes only `devices/apns` (see src/app/devices).
-     * A matching `devices/fcm` route has to land before Android push works;
-     * until then nothing in the app calls this.
+     * Registers the FCM token with `devices/fcm` (see src/app/devices), the
+     * Android twin of the APNs route: same `PushDevice` table, only the token
+     * shape and platform differ.
      */
     override suspend fun registerPushDevice(
         token: String,

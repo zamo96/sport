@@ -129,24 +129,17 @@ private struct ReportGalleryPhoto: View {
     var body: some View {
         Group {
             if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView(L10n.string("Loading photo", "Загружаем фото"))
-                            .tint(.white)
-                    case .success(let image):
-                        image.resizable().scaledToFit()
-                            .accessibilityLabel(L10n.string("Photo \(index + 1) of \(count)", "Фото \(index + 1) из \(count)"))
-                    case .failure:
+                RemoteImage(url: url, contentMode: .fit, indicator: .spinner) { phase in
+                    if phase == .failed {
                         VStack(spacing: 14) {
                             ReportGalleryUnavailableView()
                             Button(L10n.string("Try again", "Повторить")) { retryID = UUID() }
                                 .frame(minHeight: 44)
                         }
-                    @unknown default:
-                        ReportGalleryUnavailableView()
                     }
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(L10n.string("Photo \(index + 1) of \(count)", "Фото \(index + 1) из \(count)"))
                 .id(retryID)
             } else {
                 ReportGalleryUnavailableView()

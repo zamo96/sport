@@ -152,3 +152,18 @@ export function localDateTimeToUtc(
 
   return new Date(result);
 }
+
+/** Ключи дней недели в порядке `Date.getDay()`. */
+export const WEEKDAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+export type WeekdayKey = (typeof WEEKDAY_KEYS)[number];
+
+/**
+ * День недели в календаре игрока. Считается по локальной дате, а не через
+ * `getDay()`: контейнер работает в UTC, и понедельничная ночь по Москве там
+ * всё ещё воскресенье — слот уезжал на день назад.
+ */
+export function getLocalWeekdayKey(timezone: string | null | undefined, date: Date): WeekdayKey {
+  const { year, month, day } = getLocalDateParts(timezone, date);
+  return WEEKDAY_KEYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+}

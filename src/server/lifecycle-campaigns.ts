@@ -1,5 +1,3 @@
-import { Prisma } from "@prisma/client";
-
 import { DAY_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { translateServer } from "@/lib/i18n/server";
 import { pluralKeySuffix } from "@/lib/i18n/server/notifications";
@@ -11,12 +9,13 @@ import { countDiscoverCandidates, summarizeDiscoverCandidates } from "@/server/d
 import {
   CAMPAIGNS,
   DEFAULT_MAX_PER_DAY,
+  collectCampaignResult as collect,
+  emptyCampaignStats as emptyStats,
+  HAS_ACTIVE_PUSH_DEVICE as HAS_ACTIVE_DEVICE,
   sendCampaignPush,
   type CampaignDefinition,
   type CampaignKey,
-  type CampaignPreview,
-  type CampaignSendInput,
-  type CampaignSendStatus
+  type CampaignSendInput
 } from "@/server/notification-campaigns";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -55,15 +54,6 @@ const USER_BATCH_SIZE = 200;
 /** Подсчёт кандидатов идёт в памяти, поэтому ограничиваем работу одного прогона. */
 const MAX_SCORED_USERS_PER_RUN = 200;
 
-const HAS_ACTIVE_DEVICE = {
-  pushDevices: {
-    some: {
-      platform: "ios",
-      isActive: true
-    }
-  }
-} satisfies Prisma.UserWhereInput;
-
 export type CampaignRunOptions = {
   /** Прогон без отправки: считает аудиторию и собирает примеры текстов. */
   dryRun?: boolean;
@@ -75,31 +65,12 @@ export type CampaignRunOptions = {
   simulatedDeliveries?: Map<string, number>;
 };
 
-type CampaignStats = Record<CampaignSendStatus, number> & {
-  scanned: number;
-  samples: Array<{ userId: string } & CampaignPreview>;
-};
-
-const MAX_SAMPLES = 5;
-
-function emptyStats(): CampaignStats {
-  return { sent: 0, holdout: 0, duplicate: 0, skipped: 0, failed: 0, scanned: 0, samples: [] };
-}
-
-function collect(stats: CampaignStats, userId: string, result: Awaited<ReturnType<typeof sendCampaignPush>>) {
-  stats[result.status] += 1;
-
-  if (result.preview && stats.samples.length < MAX_SAMPLES) {
-    stats.samples.push({ userId, ...result.preview });
-  }
-}
-
 /**
  * Отправка с учётом лимитов. В боевом прогоне их считает движок по записанным
  * доставкам; в dry-run записей нет, поэтому дневной лимит держим в памяти.
  */
 async function dispatch(
-  stats: CampaignStats,
+  stats: ReturnType<typeof emptyStats>,
   options: CampaignRunOptions,
   input: Omit<CampaignSendInput, "dryRun">
 ) {

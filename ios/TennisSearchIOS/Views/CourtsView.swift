@@ -1510,15 +1510,8 @@ struct CourtImageTile: View {
     }
 
     private func photo(_ url: URL) -> some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-            default:
-                fallback
-            }
+        RemoteImage(url: url) { _ in
+            fallback
         }
         .frame(width: size, height: size)
         .clipped()
@@ -2693,15 +2686,8 @@ private struct CourtPhotoHero: View {
             } else {
                 TabView {
                     ForEach(Array(urls.enumerated()), id: \.offset) { _, url in
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            default:
-                                CourtImageTile(court: court, size: UIScreen.main.bounds.width - 36, showsCarousel: false)
-                            }
+                        RemoteImage(url: url, indicator: .shimmerAndSpinner) { _ in
+                            CourtImageTile(court: court, size: UIScreen.main.bounds.width - 36, showsCarousel: false)
                         }
                     }
                 }

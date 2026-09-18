@@ -93,7 +93,8 @@ function createStore() {
 describe("regular pair occurrence confirmation synchronization", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    // Local date matches the schedule builder's existing local-time behavior.
+    // A Thursday: the pair plays on Friday, so two slots fall in the next
+    // fortnight. Slot times live in tests/regular-schedule-timezone.test.ts.
     vi.setSystemTime(new Date(2026, 8, 10, 12));
   });
 

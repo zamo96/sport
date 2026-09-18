@@ -12,6 +12,7 @@ import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { updateGameRequestSchema } from "@/lib/validators";
 import { ensureGroupSearchLobby } from "@/server/game-request-lobbies";
 import { canTransitionGameRequest, canUpdateGameRequestOutcome } from "@/server/matching";
+import { markCampaignConversion } from "@/server/notification-campaigns";
 import { publishRealtimeEventToUsers } from "@/server/realtime";
 import { serializeGameRequest } from "@/server/serializers";
 import { assertActiveCourtIds } from "@/server/court-status";
@@ -588,6 +589,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           matchId: gameRequest.matchId
         });
       }
+    }
+
+    if (outcomeRequested && !outcomeNoOp && nextOutcome) {
+      // Целевое действие напоминания: игру наконец отметили.
+      await markCampaignConversion(user.id, ["game_outcome_pending"]);
     }
 
     if ((statusRequested && !statusNoOp) || (outcomeRequested && !outcomeNoOp) || (editableRequested && !editableNoOp)) {

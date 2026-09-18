@@ -5,37 +5,10 @@ import { requireSessionUser } from "@/lib/auth";
 import { formatLocalDateTime } from "@/lib/timezone";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { buildWeeklySchedule } from "@/lib/game-search";
 import { voteGameSearchSlotProposalSchema } from "@/lib/validators";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { assertActiveCourtIds } from "@/server/court-status";
-
-const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-
-function formatTimeSlot(date: Date) {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
-function buildWeeklySchedule(options: { scheduledAt: Date }[]) {
-  const days = new Set<string>();
-  const timePreferences = new Set<string>();
-
-  for (const option of options) {
-    const day = DAY_KEYS[option.scheduledAt.getDay()];
-    days.add(day);
-    timePreferences.add(`${day}@${formatTimeSlot(option.scheduledAt)}`);
-  }
-
-  return {
-    preferredDays: DAY_ORDER.filter((day) => days.has(day)),
-    preferredTimeRanges: Array.from(timePreferences).sort((left, right) => {
-      const [leftDay, leftTime] = left.split("@");
-      const [rightDay, rightTime] = right.split("@");
-      const dayDiff = DAY_ORDER.indexOf(leftDay) - DAY_ORDER.indexOf(rightDay);
-      return dayDiff || (leftTime ?? "").localeCompare(rightTime ?? "");
-    })
-  };
-}
 
 function commonCourtId(options: { proposedCourtId?: string | null }[]) {
   const courtIds = Array.from(
@@ -72,6 +45,8 @@ export async function PUT(
           select: {
             id: true,
             preferredCourtId: true,
+            // Голосует участник, но расписание пары живёт в зоне организатора.
+            createdByUser: { select: { timezone: true } },
             responses: {
               where: {
                 status: GameSearchResponseStatus.approved
@@ -155,7 +130,7 @@ export async function PUT(
         return updated;
       }
 
-      const weeklySchedule = buildWeeklySchedule(finalizedOptions);
+      const weeklySchedule = buildWeeklySchedule(finalizedOptions, proposal.gameSearch.createdByUser?.timezone);
       const proposedRegularCourtId = commonCourtId(finalizedOptions) ?? proposal.gameSearch.preferredCourtId ?? null;
 
       await tx.gameSearch.update({

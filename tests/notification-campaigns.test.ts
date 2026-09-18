@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  ACTIVE_PUSH_DEVICE,
+  CAMPAIGNS,
   DEFAULT_MAX_PER_DAY,
   DEFAULT_MAX_PER_WEEK,
   evaluateCampaignEligibility,
   getHoldoutBucket,
+  HAS_ACTIVE_PUSH_DEVICE,
   isQuietHour,
+  LIFECYCLE_CAMPAIGN_KEYS,
   lifecycleCampaignsEnabled,
   resolveLifecycleVariant,
   resolveLocalHour,
@@ -94,6 +98,55 @@ describe("campaign eligibility", () => {
     });
 
     expect(result.reason).toBe("campaign_cooldown");
+  });
+});
+
+describe("reminder campaigns", () => {
+  const reminderInput: CampaignEligibilityInput = {
+    ...baseInput,
+    campaignKey: "search_response_waiting"
+  };
+
+  it("ignores the shared lifecycle caps and cooldown", () => {
+    expect(
+      evaluateCampaignEligibility({
+        ...reminderInput,
+        lifecycleDeliveriesLast24h: DEFAULT_MAX_PER_DAY,
+        lifecycleDeliveriesLast7d: DEFAULT_MAX_PER_WEEK,
+        hoursSinceLastCampaignDelivery: 0
+      })
+    ).toEqual({ allowed: true, reason: "ok" });
+  });
+
+  it("still waits out the night: the debt keeps until morning", () => {
+    expect(evaluateCampaignEligibility({ ...reminderInput, localHour: 3 }).reason).toBe("quiet_hours");
+    expect(evaluateCampaignEligibility({ ...reminderInput, localHour: 10 }).allowed).toBe(true);
+    expect(
+      evaluateCampaignEligibility({ ...reminderInput, campaignKey: "game_outcome_pending", localHour: 23 }).reason
+    ).toBe("quiet_hours");
+  });
+
+  it("keeps honouring the notification toggle", () => {
+    expect(evaluateCampaignEligibility({ ...reminderInput, preferenceEnabled: false }).reason).toBe("opted_out");
+    expect(evaluateCampaignEligibility({ ...reminderInput, hasActiveDevice: false }).reason).toBe("no_device");
+  });
+
+  it("stays out of the lifecycle holdout and of the lifecycle budget", () => {
+    for (const key of ["search_response_waiting", "game_outcome_pending"] as const) {
+      expect(CAMPAIGNS[key].category).toBe("transactional");
+      expect(LIFECYCLE_CAMPAIGN_KEYS).not.toContain(key);
+      expect(CAMPAIGNS[key].preferenceKey).toBe("notificationGames");
+    }
+  });
+});
+
+describe("reachable audience", () => {
+  it("counts any active device, not only an iOS one", () => {
+    // У Android свой транспорт (`/devices/fcm` → FCM), но тот же `sendPushToUser`.
+    // Когда фильтр требовал `platform: "ios"`, Android молча не получал ни одной
+    // кампании — фильтр обязан оставаться платформенно-нейтральным.
+    expect(ACTIVE_PUSH_DEVICE).toEqual({ isActive: true });
+    expect(HAS_ACTIVE_PUSH_DEVICE).toEqual({ pushDevices: { some: { isActive: true } } });
   });
 });
 

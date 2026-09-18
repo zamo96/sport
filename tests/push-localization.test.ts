@@ -73,6 +73,16 @@ describe("locale for a push", () => {
 });
 
 describe("locale from the device", () => {
+  it("reads the language off an Android device just like off an iOS one", () => {
+    expect(
+      resolveUserLocale({
+        localeOverride: null,
+        location: { countryCode: "AE" },
+        pushDevices: [{ locale: "ru" }]
+      })
+    ).toBe("ru");
+  });
+
   it("prefers the app language over the country when no explicit choice", () => {
     expect(
       resolveUserLocale({

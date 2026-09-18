@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeSports } from "@/lib/sport-levels";
 import { DEFAULT_TIMEZONE, getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
 import {
+  HAS_ACTIVE_PUSH_DEVICE,
   sendCampaignPush,
   type CampaignPreview,
   type CampaignSendStatus
@@ -63,12 +64,7 @@ const DIGEST_AUDIENCE = {
   onboardingCompleted: true,
   isVerified: true,
   notificationGames: true,
-  pushDevices: {
-    some: {
-      platform: "ios",
-      isActive: true
-    }
-  }
+  ...HAS_ACTIVE_PUSH_DEVICE
 } satisfies Prisma.UserWhereInput;
 
 /**

@@ -245,20 +245,8 @@ private struct GameReportViewerPhoto: View {
     let path: String
 
     var body: some View {
-        ZStack {
-            if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    default:
-                        ProgressView()
-                            .tint(.white)
-                    }
-                }
-            } else {
+        RemoteImage(url: resolveAppRemoteURL(path), contentMode: .fit, indicator: .spinner) { phase in
+            if phase != .loading {
                 Image(systemName: "photo")
                     .font(.system(size: 44, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.62))
@@ -977,92 +965,14 @@ struct ActivityShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-struct MutedLoopingVideoView: UIViewRepresentable {
-    let url: URL
-    var videoGravity: AVLayerVideoGravity = .resizeAspectFill
-
-    func makeUIView(context: Context) -> LoopingPlayerLayerView {
-        let view = LoopingPlayerLayerView()
-        view.playerLayer.videoGravity = videoGravity
-        configure(view)
-        return view
-    }
-
-    func updateUIView(_ view: LoopingPlayerLayerView, context: Context) {
-        view.playerLayer.videoGravity = videoGravity
-        guard view.currentURL != url else {
-            view.playerLayer.player?.play()
-            return
-        }
-        configure(view)
-    }
-
-    static func dismantleUIView(_ view: LoopingPlayerLayerView, coordinator: ()) {
-        NotificationCenter.default.removeObserver(view)
-        view.playerLayer.player?.pause()
-        view.playerLayer.player = nil
-    }
-
-    private func configure(_ view: LoopingPlayerLayerView) {
-        NotificationCenter.default.removeObserver(view)
-        let player = AVPlayer(url: url)
-        player.isMuted = true
-        player.actionAtItemEnd = .none
-        view.currentURL = url
-        view.playerLayer.player = player
-        NotificationCenter.default.addObserver(
-            view,
-            selector: #selector(LoopingPlayerLayerView.loopVideo),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem
-        )
-        player.play()
-    }
-}
-
-final class LoopingPlayerLayerView: UIView {
-    var currentURL: URL?
-
-    override static var layerClass: AnyClass {
-        AVPlayerLayer.self
-    }
-
-    var playerLayer: AVPlayerLayer {
-        layer as! AVPlayerLayer
-    }
-
-    @objc func loopVideo() {
-        playerLayer.player?.seek(to: .zero)
-        playerLayer.player?.play()
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        playerLayer.player?.pause()
-    }
-}
-
 struct RemoteAvatarView: View {
     let name: String
     let path: String?
     var size: CGFloat = 76
 
     var body: some View {
-        Group {
-            if let url = resolvedURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        initialsView
-                    }
-                }
-            } else {
-                initialsView
-            }
+        RemoteImage(url: resolvedURL, indicator: .shimmer(AppTheme.court.opacity(0.7))) { _ in
+            initialsView
         }
         .frame(width: size, height: size)
         .clipped()
@@ -1102,34 +1012,24 @@ struct RemoteChatMediaImage: View {
     let path: String
     var contentMode: ContentMode = .fill
 
-    @State private var image: UIImage?
-    @State private var failed = false
-
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else if failed {
-                Image(systemName: "photo")
-                    .foregroundStyle(.secondary)
-            } else {
-                ProgressView()
-            }
-        }
-        .task(id: path) {
-            image = nil
-            failed = false
-            do {
-                let data = try await appModel.repository.fetchChatMedia(path: path)
-                guard let loadedImage = UIImage(data: data) else {
-                    failed = true
-                    return
+        let repository = appModel.repository
+        RemoteImage(
+            source: RemoteImageSource(key: "chat-media:\(path)") { _ in
+                try await repository.fetchChatMedia(path: path)
+            },
+            contentMode: contentMode,
+            // Fitted images open in the black full-screen viewer, where a spinner reads better than a shimmer.
+            indicator: contentMode == .fit ? .spinner : .shimmer
+        ) { phase in
+            ZStack {
+                if contentMode == .fill {
+                    Color.secondary.opacity(0.14)
                 }
-                image = loadedImage
-            } catch {
-                failed = true
+                if phase == .failed {
+                    Image(systemName: "photo")
+                        .foregroundStyle(contentMode == .fit ? Color.white.opacity(0.62) : Color.secondary)
+                }
             }
         }
     }
@@ -1162,6 +1062,7 @@ struct AvatarPreviewSheet: View {
 struct PlayerMediaPreviewSheet: View {
     let item: PlayerMediaItem
     @State private var player: AVPlayer?
+    @State private var isVideoWaiting = true
 
     var body: some View {
         ZStack {
@@ -1170,15 +1071,9 @@ struct PlayerMediaPreviewSheet: View {
             if let url = resolveAppRemoteURL(item.path) {
                 switch item.kind {
                 case .photo:
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                        default:
-                            ProgressView()
-                                .tint(.white)
+                    RemoteImage(url: url, contentMode: .fit, indicator: .spinner) { phase in
+                        if phase == .failed {
+                            unavailableView
                         }
                     }
                     .padding(16)
@@ -1187,19 +1082,20 @@ struct PlayerMediaPreviewSheet: View {
                         VideoPlayer(player: player)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                             .padding(14)
+                            .overlay {
+                                if isVideoWaiting {
+                                    MediaSpinner()
+                                }
+                            }
+                            .onReceive(player.publisher(for: \.timeControlStatus).receive(on: DispatchQueue.main)) { status in
+                                isVideoWaiting = status == .waitingToPlayAtSpecifiedRate
+                            }
                     } else {
-                        ProgressView()
-                            .tint(.white)
+                        MediaSpinner()
                     }
                 }
             } else {
-                VStack(spacing: 12) {
-                    Image(systemName: item.kind == .video ? "play.circle.fill" : "photo")
-                        .font(.system(size: 52, weight: .semibold))
-                    Text("Медиа недоступно")
-                        .font(.headline)
-                }
-                .foregroundStyle(.white.opacity(0.82))
+                unavailableView
             }
         }
         .onAppear {
@@ -1215,39 +1111,52 @@ struct PlayerMediaPreviewSheet: View {
             player = nil
         }
     }
+
+    private var unavailableView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: item.kind == .video ? "play.circle.fill" : "photo")
+                .font(.system(size: 52, weight: .semibold))
+            Text("Медиа недоступно")
+                .font(.headline)
+        }
+        .foregroundStyle(.white.opacity(0.82))
+    }
 }
 
 struct VideoThumbnailView: View {
     let url: URL
 
-    @State private var thumbnail: UIImage?
-    @State private var loadedURL: URL?
-    @State private var didFinishLoading = false
+    @State private var thumbnail: (url: URL, image: UIImage)?
+    @State private var failedURL: URL?
+
+    private var cacheKey: String {
+        "video-thumbnail:\(url.absoluteString)"
+    }
 
     var body: some View {
+        let image = thumbnail?.url == url ? thumbnail?.image : RemoteImagePipeline.shared.cachedImage(forKey: cacheKey)
+
         ZStack {
-            if let thumbnail {
-                Image(uiImage: thumbnail)
+            if let image {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .transition(.opacity)
             } else {
                 LinearGradient(
                     colors: [AppTheme.court.opacity(0.52), .black.opacity(0.35)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                .overlay(
-                    Group {
-                        if didFinishLoading {
-                            Image(systemName: "play.rectangle.fill")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.82))
-                        } else {
-                            ProgressView()
-                                .tint(.white)
-                        }
+                .overlay {
+                    if failedURL == url {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.82))
                     }
-                )
+                }
+                .mediaLoadingOverlay(.shimmer, isActive: failedURL != url)
+                .transition(.opacity)
             }
         }
         .task(id: url) {
@@ -1256,40 +1165,25 @@ struct VideoThumbnailView: View {
     }
 
     private func loadThumbnail() async {
-        guard loadedURL != url || thumbnail == nil else {
+        let url = url
+        let key = cacheKey
+        guard RemoteImagePipeline.shared.cachedImage(forKey: key) == nil else {
             return
         }
 
-        loadedURL = url
-        thumbnail = nil
-        didFinishLoading = false
-
-        let generatedImage = await generateThumbnail(for: url)
-        guard loadedURL == url else {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 720, height: 720)
+        guard let (cgImage, _) = try? await generator.image(at: CMTime(seconds: 0.25, preferredTimescale: 600)) else {
+            if !Task.isCancelled { failedURL = url }
             return
         }
-        thumbnail = generatedImage
-        didFinishLoading = true
-    }
 
-    private func generateThumbnail(for url: URL) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let asset = AVURLAsset(url: url)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 720, height: 720)
-
-                do {
-                    let image = try generator.copyCGImage(
-                        at: CMTime(seconds: 0.25, preferredTimescale: 600),
-                        actualTime: nil
-                    )
-                    continuation.resume(returning: UIImage(cgImage: image))
-                } catch {
-                    continuation.resume(returning: nil)
-                }
-            }
+        let image = UIImage(cgImage: cgImage)
+        RemoteImagePipeline.shared.store(image, forKey: key)
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.28)) {
+            thumbnail = (url, image)
         }
     }
 }

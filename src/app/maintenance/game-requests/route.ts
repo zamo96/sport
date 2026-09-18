@@ -4,6 +4,7 @@ import { fail, ok } from "@/lib/http";
 import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { runHotSearchDigestMaintenance } from "@/server/hot-search-digest";
 import { runLifecycleCampaigns } from "@/server/lifecycle-campaigns";
+import { runPendingActionReminders } from "@/server/pending-action-reminders";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,8 +44,11 @@ async function handleMaintenance(request: NextRequest) {
   // лимит у дайджеста и кампаний один на игрока.
   const simulatedDeliveries = new Map<string, number>();
   const gameRequests = dryRun ? null : await runGameRequestMaintenance();
+  // Напоминания транзакционные: общий дневной лимит они не расходуют, поэтому
+  // их порядок относительно рассылок ни на что не влияет.
+  const pendingActionReminders = await runPendingActionReminders(now, { dryRun });
   const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun, simulatedDeliveries });
   const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun, simulatedDeliveries });
 
-  return ok({ success: true, dryRun, gameRequests, hotSearchDigest, lifecycleCampaigns });
+  return ok({ success: true, dryRun, gameRequests, pendingActionReminders, hotSearchDigest, lifecycleCampaigns });
 }

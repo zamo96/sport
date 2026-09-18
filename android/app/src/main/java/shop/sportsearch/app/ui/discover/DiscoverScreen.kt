@@ -651,11 +651,20 @@ fun DiscoverScreen(
                     },
                     selected = selectedTab,
                     badgeFor = { tab ->
-                        when (tab) {
-                            DiscoverTab.UPCOMING -> upcomingRequests.size.takeIf { it > 0 && appModel.isAuthenticated }
-                            DiscoverTab.LIKES -> appModel.activitySummary.incomingLikesCount.takeIf {
-                                it > 0 && appModel.isAuthenticated
-                            }
+                        if (!appModel.isAuthenticated) {
+                            null
+                        } else when (tab) {
+                            // Only the games waiting on this player. Counting every scheduled
+                            // game gives a badge that never reaches zero, and one of those is
+                            // ignored. Mirrors `tabBadgeCount` in DiscoverView.swift.
+                            DiscoverTab.UPCOMING -> upcomingRequests
+                                .count { !it.isArchivedForTimeline && it.isPendingForRecipient(appModel.currentUser?.id) }
+                                .takeIf { it > 0 }
+                            DiscoverTab.LIKES -> appModel.activitySummary.incomingLikesCount.takeIf { it > 0 }
+                            // Server-side count of hot events newer than lastNotificationsSeenAt.
+                            DiscoverTab.HOT -> appModel.activitySummary.hotBadgeCount.takeIf { it > 0 }
+                            // The similar-players feed has no honest "new since last visit"
+                            // number: it is fetched only while its own tab is open.
                             else -> null
                         }
                     },
@@ -1142,7 +1151,9 @@ private fun DiscoverTabBar(
                     }
                 }
 
-                badgeFor(tab)?.let { count ->
+                // A badge exists to pull the player to a tab they are not on; on the
+                // open tab it is noise. Same rule as `discoverPrimaryTabLabel`.
+                badgeFor(tab).takeIf { !isSelected }?.let { count ->
                     Text(
                         minOf(count, 99).toString(),
                         style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
@@ -1150,10 +1161,7 @@ private fun DiscoverTabBar(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(top = 0.dp)
-                            .background(
-                                if (isSelected) Color.White.copy(alpha = 0.25f) else AppTheme.clay,
-                                RoundedCornerShape(percent = 50),
-                            )
+                            .background(AppTheme.clay, RoundedCornerShape(percent = 50))
                             .padding(horizontal = 6.dp, vertical = 3.dp),
                     )
                 }

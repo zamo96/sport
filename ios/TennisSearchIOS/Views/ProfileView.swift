@@ -2588,23 +2588,8 @@ private struct ProfileHeroImage: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                if let url = resolveAppRemoteURL(path) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: geometry.size.width, height: height)
-                                .clipped()
-                        default:
-                            fallback
-                        }
-                    }
-                } else {
-                    fallback
-                }
+            RemoteImage(url: resolveAppRemoteURL(path)) { _ in
+                fallback
             }
             .frame(width: geometry.size.width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -2688,34 +2673,31 @@ private struct ProfileMediaTile: View {
     @ViewBuilder
     private var thumbnail: some View {
         if item.kind == .video, let url = resolveAppRemoteURL(item.path) {
-            MutedLoopingVideoView(url: url)
+            RemoteLoopingVideo(url: url, indicator: .shimmer) {
+                tileFallback(showsIcon: false)
+            }
         } else if item.kind == .photo, let url = resolveAppRemoteURL(item.path) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    tileFallback
-                }
+            RemoteImage(url: url) { phase in
+                tileFallback(showsIcon: phase != .loading)
             }
         } else {
-            tileFallback
+            tileFallback(showsIcon: true)
         }
     }
 
-    private var tileFallback: some View {
+    private func tileFallback(showsIcon: Bool) -> some View {
         LinearGradient(
             colors: [AppTheme.court.opacity(0.28), Color.white.opacity(0.08)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-        .overlay(
-            Image(systemName: item.kind == .video ? "play.rectangle.fill" : "photo.fill")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.8))
-        )
+        .overlay {
+            if showsIcon {
+                Image(systemName: item.kind == .video ? "play.rectangle.fill" : "photo.fill")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
     }
 }
 
@@ -3087,19 +3069,10 @@ private struct ProfileGameFeedPreview: View {
     private func photoTile(path: String, index: Int, showsMoreOverlay: Bool) -> some View {
         Button { onOpenPhoto(index) } label: {
         ZStack {
-            if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        fallbackIcon
-                    }
+            RemoteImage(url: resolveAppRemoteURL(path), indicator: .shimmer(AppTheme.court.opacity(0.4))) { phase in
+                if phase != .loading {
+                    fallbackIcon
                 }
-            } else {
-                fallbackIcon
             }
 
             if showsMoreOverlay {

@@ -9,14 +9,11 @@ import {
 } from "@prisma/client";
 
 import { requireSessionUser } from "@/lib/auth";
-import { formatLocalDateTime } from "@/lib/timezone";
+import { buildWeeklySchedule } from "@/lib/game-search";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { assertActiveCourtIds } from "@/server/court-status";
-
-const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 const SIM_USERS = [
   { name: "Елена", level: 5, district: "petrogradsky" },
@@ -30,31 +27,6 @@ function isSimulationEnabled() {
 
 function normalizeStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function formatTimeSlot(date: Date, timezone: string | null | undefined) {
-  return formatLocalDateTime(timezone, date, { hour: "2-digit", minute: "2-digit" });
-}
-
-function buildWeeklySchedule(options: { scheduledAt: Date }[], timezone: string | null | undefined) {
-  const days = new Set<string>();
-  const timePreferences = new Set<string>();
-
-  for (const option of options) {
-    const day = DAY_KEYS[option.scheduledAt.getDay()];
-    days.add(day);
-    timePreferences.add(`${day}@${formatTimeSlot(option.scheduledAt, timezone)}`);
-  }
-
-  return {
-    preferredDays: DAY_ORDER.filter((day) => days.has(day)),
-    preferredTimeRanges: Array.from(timePreferences).sort((left, right) => {
-      const [leftDay, leftTime] = left.split("@");
-      const [rightDay, rightTime] = right.split("@");
-      const dayDiff = DAY_ORDER.indexOf(leftDay) - DAY_ORDER.indexOf(rightDay);
-      return dayDiff || (leftTime ?? "").localeCompare(rightTime ?? "");
-    })
-  };
 }
 
 function commonCourtId(options: { proposedCourtId?: string | null }[]) {

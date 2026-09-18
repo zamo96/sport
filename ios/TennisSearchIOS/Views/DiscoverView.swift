@@ -176,7 +176,11 @@ struct DiscoverView: View {
     @State private var isHotSearchComposerPresented = false
     @State private var isUpcomingChatPresented = false
     @State private var mySearches: [GameSearch] = []
-    @State private var similarPlayersBadgeCount = 0
+    // Badge pulses are owned here, not by the badge view: on the open tab the badge is
+    // hidden, so a view-local "did it grow" would be lost and every tab switch would
+    // read as news.
+    @State private var lastBadgeCounts: [DiscoverTab: Int] = [:]
+    @State private var pulsingBadgeTabs: Set<DiscoverTab> = []
     @State private var selectedTab: DiscoverTab = .swipe
     @State private var isLoading = false
     @State private var emptyDeckSections: [EmptyDeckSection] = []
@@ -718,18 +722,19 @@ struct DiscoverView: View {
             )
         )
         .background(Color.black.ignoresSafeArea())
-        if isViewedPlayersDockEligible, !visibleSimilarUsers.isEmpty {
-            // A real sibling row keeps card content above history. Its footprint is
-            // stable before the first arrival, so playback geometry never jumps.
+        // Пока никого не просмотрели, строки нет вовсе: пустое меню только
+        // занимало место. Появляется вместе с первой уходящей карточкой —
+        // pendingViewedPlayerID ставится до полёта, так что назначение успевает
+        // смонтироваться, а если нет, полёт мягко заменяется растворением.
+        if isViewedPlayersDockEligible, !viewedTrayUsers.isEmpty {
             viewedPlayersTray
                 .padding(.horizontal, 16)
                 .frame(height: isViewedPlayersExpanded ? viewedPlayersTrayHeight : 44, alignment: .top)
-                .opacity(viewedTrayUsers.isEmpty ? 0 : 1)
-                .allowsHitTesting(!viewedTrayUsers.isEmpty)
-                .accessibilityHidden(viewedTrayUsers.isEmpty)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .id("discover-viewed-players-tray")
         }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: viewedTrayUsers.isEmpty)
         .background(Color.black)
         .overlay {
             GeometryReader { viewport in
@@ -964,10 +969,14 @@ struct DiscoverView: View {
                 .presentationCornerRadius(32)
                 .presentationBackground(Color.black)
         }
+        .onChange(of: badgeCountSignature) { _ in
+            refreshBadgePulses()
+        }
         .onChange(of: selectedTab) { _ in
             appModel.lastSelectedDiscoverTab = selectedTab
             onTabChanged?(selectedTab)
             resetSwipeInteraction(animated: false)
+            pulsingBadgeTabs.remove(primarySelectedTab)
             markHotEventsSeenIfNeeded()
             Task {
                 await loadDiscover()
@@ -1588,6 +1597,9 @@ struct DiscoverView: View {
         flexible: Bool
     ) -> some View {
         let isSelected = primarySelectedTab == tab
+        // A badge exists to pull the player to a tab they are not on; on the open tab
+        // it is noise. Hiding it there also keeps at most two badges in the row.
+        let badgeCount = isSelected ? nil : tabBadgeCount(for: tab)
         return HStack(spacing: 4) {
             Text(tab == .swipe ? L10n.string("Players", "Игроки") : tab.title)
                 .foregroundStyle(isSelected ? .white : Color(white: 0.48))
@@ -1600,6 +1612,22 @@ struct DiscoverView: View {
         .frame(minWidth: 44, minHeight: 44)
         .padding(.bottom, 9)
         .contentShape(Rectangle())
+        .overlay(alignment: .topTrailing) {
+            if let badgeCount {
+                // An overlay leaves the row's measured width alone, so titles keep the
+                // fixed-width fit and never shift when a badge comes or goes. The 4pt
+                // overhang stays inside the 8pt gap to the next title.
+                DiscoverTabBadge(
+                    count: badgeCount,
+                    tint: tabBadgeTint(for: tab),
+                    foreground: tabBadgeForeground(for: tab),
+                    isPulsing: pulsingBadgeTabs.contains(tab)
+                ) {
+                    pulsingBadgeTabs.remove(tab)
+                }
+                .offset(x: 4)
+            }
+        }
         .overlay(alignment: .bottom) {
             Capsule()
                 .fill(isSelected ? headerAccent : Color.clear)
@@ -1668,19 +1696,60 @@ struct DiscoverView: View {
             guard appModel.isAuthenticated else {
                 return nil
             }
-            count = activeUpcomingGameRequests.count + activePersonalActivities.count
+            // Only the games waiting on this player. Counting every scheduled game
+            // gives a badge that never reaches zero, and one of those is ignored.
+            count = pendingConfirmationCount
         case .swipe:
-            count = similarPlayersBadgeCount
+            // No honest "new since last visit" number exists for the similar-players
+            // feed: it is fetched only while its own tab is open, and there the badge
+            // is hidden anyway. Needs a server-side seen-at marker to become real.
+            return nil
         case .likes:
             guard appModel.isAuthenticated else {
                 return nil
             }
             count = notificationManager.summary.incomingLikesCount
-        case .seeking, .hot:
+        case .hot:
+            guard appModel.isAuthenticated else {
+                return nil
+            }
+            // Server-side count of hot events newer than lastNotificationsSeenAt,
+            // zeroed by markHotEventsSeenIfNeeded() as soon as the tab opens.
+            count = notificationManager.summary.hotBadgeCount
+        case .seeking:
             return nil
         }
 
         return count > 0 ? count : nil
+    }
+
+    /// Changes whenever any tab's real count changes, whether or not its badge is on screen.
+    private var badgeCountSignature: String {
+        DiscoverTab.userVisibleCases
+            .map { "\($0.rawValue):\(tabBadgeCount(for: $0) ?? 0)" }
+            .joined(separator: "|")
+    }
+
+    private func refreshBadgePulses() {
+        for tab in DiscoverTab.userVisibleCases {
+            let current = tabBadgeCount(for: tab) ?? 0
+            let previous = lastBadgeCounts[tab] ?? 0
+            lastBadgeCounts[tab] = current
+            // Growth seen while the tab was open is not news: the player watched it
+            // arrive in the list, so it must not pulse once they leave.
+            if current > previous, tab != primarySelectedTab {
+                pulsingBadgeTabs.insert(tab)
+            }
+        }
+    }
+
+    private func tabBadgeTint(for tab: DiscoverTab) -> Color {
+        // Red means the player is the one holding something up; green is just news.
+        tab == .upcoming ? .red : headerAccent
+    }
+
+    private func tabBadgeForeground(for tab: DiscoverTab) -> Color {
+        tab == .upcoming ? .white : Color(red: 0.02, green: 0.20, blue: 0.16)
     }
 
     // Bound runtime view metadata at the tab boundary instead of combining every tab's generic tree.
@@ -2152,7 +2221,7 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 let shouldExpand = !isViewedPlayersExpanded
-                cancelPlayerAutoAdvance()
+                finishPlayerAutoAdvanceNow()
                 AppHaptics.selection()
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                     // Тот же список, по которому кнопка включается: пока карточка
@@ -2265,11 +2334,14 @@ struct DiscoverView: View {
         .accessibilityHint(L10n.string("Show this player's card from the beginning", "Открыть карточку этого игрока с начала"))
     }
 
+    // Таймер автоперехода здесь не условие: раньше, пока он тикал, аватарки
+    // молча не реагировали, а стиль .plain выключенность никак не показывает.
     private var canReplayViewedPlayer: Bool {
-        isDeckPresentationReady && autoAdvanceToken == nil
+        isDeckPresentationReady
     }
 
     private func replayViewedPlayer(_ userID: String) {
+        finishPlayerAutoAdvanceNow()
         guard canReplayViewedPlayer,
               viewedSimilarUsers.contains(where: { $0.id == userID }) else { return }
         AppHaptics.selection()
@@ -3247,6 +3319,33 @@ struct DiscoverView: View {
         return true
     }
 
+    /// Нажатие человека главнее таймера автоперехода — но выбрасывать переход
+    /// нельзя: игрок попадает в историю только в его конце, и отмена теряла
+    /// того, кого человек только что просмотрел. Поэтому доводим сразу.
+    private func finishPlayerAutoAdvanceNow() {
+        guard autoAdvanceToken != nil, let userID = pendingViewedPlayerID else {
+            cancelPlayerAutoAdvance()
+            return
+        }
+
+        autoAdvanceTask?.cancel()
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            viewedPlayers.deferPlayer(userID)
+            selectedSimilarPlayerID = nil
+            isAutoAdvanceExiting = false
+            isAutoAdvanceFading = false
+            autoAdvanceToken = nil
+            autoAdvanceTask = nil
+            viewedCardFlight = nil
+            viewedFlightProgress = 0
+            pendingViewedPlayerID = nil
+        }
+        autoAdvanceReplayID += 1
+        clearViewedArrivalHighlight()
+    }
+
     private func cancelPlayerAutoAdvance() {
         clearViewedArrivalHighlight()
         viewedCardFlight = nil
@@ -3401,7 +3500,6 @@ struct DiscoverView: View {
                 let fetchedUsers = try await discoverRequest
                 guard !Task.isCancelled, requestContext == emptyDeckContextKey, requestTab == selectedTab else { return }
                 users = reorderedUsers(fetchedUsers)
-                updateSimilarPlayersBadgeIfNeeded()
                 await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             } else {
                 upcomingMatches = []
@@ -3413,7 +3511,6 @@ struct DiscoverView: View {
                 let fetchedUsers = try await appModel.repository.fetchGuestDiscoverUsers(draft: appModel.guestDraft, view: selectedTab, sport: requestSport)
                 guard !Task.isCancelled, requestContext == emptyDeckContextKey, requestTab == selectedTab else { return }
                 users = reorderedUsers(fetchedUsers)
-                updateSimilarPlayersBadgeIfNeeded()
             }
         } catch {
             guard !error.isCancellationLike else {
@@ -3433,13 +3530,6 @@ struct DiscoverView: View {
         }
 
         return source
-    }
-
-    private func updateSimilarPlayersBadgeIfNeeded() {
-        guard selectedTab == .swipe else {
-            return
-        }
-        similarPlayersBadgeCount = users.count
     }
 
     private func reorderedGameRequests(_ source: [MatchGameRequest]) -> [MatchGameRequest] {
@@ -3605,7 +3695,6 @@ struct DiscoverView: View {
         if !appModel.isAuthenticated {
             users.removeAll { $0.id == activeUser.id }
             viewedPlayers.remove(activeUser.id)
-            updateSimilarPlayersBadgeIfNeeded()
             resetSwipeInteraction()
             return
         }
@@ -3613,7 +3702,6 @@ struct DiscoverView: View {
         if action == .dislike {
             users.removeAll { $0.id == activeUser.id }
             viewedPlayers.remove(activeUser.id)
-            updateSimilarPlayersBadgeIfNeeded()
             resetSwipeInteraction()
 
             Task {
@@ -3629,7 +3717,6 @@ struct DiscoverView: View {
                   appModel.isAuthenticated == sourceIsAuthenticated else { return }
             users.removeAll { $0.id == activeUser.id }
             viewedPlayers.remove(activeUser.id)
-            updateSimilarPlayersBadgeIfNeeded()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             guard !Task.isCancelled, selectedTab == sourceTab,
                   appModel.currentUser?.id == sourceAccountID,
@@ -6233,19 +6320,59 @@ private struct RefreshProgressObserver: UIViewRepresentable {
 private struct DiscoverToolbarBadge: View {
     let text: String
     let tint: Color
+    var foreground: Color = .white
+    var height: CGFloat = 18
 
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .bold))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .foregroundStyle(.white)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 5)
             .frame(maxWidth: 36)
-            .frame(height: 18)
+            .frame(height: height)
             .background(tint, in: Capsule())
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+}
+
+/// Superscript counter over a Discover tab title. Sized to clear the 17pt title
+/// inside its 44pt hit area. Whether it pulses is decided by DiscoverView, which
+/// outlives the badge: this view is rebuilt every time its tab is left, so it
+/// cannot tell a real increase from simply reappearing.
+private struct DiscoverTabBadge: View {
+    let count: Int
+    let tint: Color
+    let foreground: Color
+    let isPulsing: Bool
+    let onPulseStarted: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scale: CGFloat = 1
+
+    var body: some View {
+        DiscoverToolbarBadge(text: "\(min(count, 99))", tint: tint, foreground: foreground, height: 16)
+            .scaleEffect(scale)
+            // Both hooks are needed: the pulse flag can be raised before this view is
+            // inserted (0 → 1) or while it is already on screen (1 → 2).
+            .onAppear { pulseIfRequested(isPulsing) }
+            .onChange(of: isPulsing) { pulseIfRequested($0) }
+    }
+
+    private func pulseIfRequested(_ requested: Bool) {
+        guard requested else { return }
+        onPulseStarted()
+        guard !reduceMotion else { return }
+
+        scale = 1
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.5)) {
+            scale = 1.28
+        }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.72).delay(0.2)) {
+            scale = 1
+        }
     }
 }
 
@@ -7342,6 +7469,7 @@ struct SwipeCard: View {
     @State private var isTouchHeld = false
     @State private var isSafetyPresented = false
     @State private var isCardVisible = false
+    @State private var isStoryMediaLoading = false
 
     private var storyIndex: Int { mediaClock.itemIndex }
     private var storyProgress: CGFloat { CGFloat(mediaClock.progress) }
@@ -7473,6 +7601,7 @@ struct SwipeCard: View {
             mediaClock.pause()
             if playing && !completionAccepted { completionAttempted = false }
         }
+        .onChange(of: isStoryMediaLoading) { _ in mediaClock.pause() }
         .onChange(of: mediaCompletionRetryID) { _ in
             if mediaClock.isComplete {
                 completionAccepted = false
@@ -7556,6 +7685,15 @@ struct SwipeCard: View {
                             .fill(.white)
                             .frame(width: proxy.size.width * storyFillProgress(for: itemIndex))
                     }
+                    .overlay {
+                        // The held segment glimmers so the pause reads as "loading", not "stuck".
+                        if isStoryMediaLoading, itemIndex == storyIndex {
+                            MediaShimmer(tint: .white)
+                                .clipShape(Capsule())
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.25), value: isStoryMediaLoading)
                 }
                 .frame(height: 5)
             }
@@ -7583,7 +7721,8 @@ struct SwipeCard: View {
 
     private func updateStoryProgress() {
         // Visibility/playback transitions already pause the clock; idle ticks must not mutate @State.
-        guard isPlaying else { return }
+        // A story that is still loading holds the timer, so a slow photo is not skipped unseen.
+        guard isPlaying, !isStoryMediaLoading else { return }
         mediaClock.tick(now: ProcessInfo.processInfo.systemUptime, itemCount: storyItems.count, loops: onMediaCompleted == nil)
         if mediaClock.isComplete, !completionAttempted, let onMediaCompleted {
             completionAttempted = true
@@ -7884,7 +8023,13 @@ struct SwipeCard: View {
 
     private var cardBackground: some View {
         ZStack {
-            PlayerCardStoryBackground(item: activeStoryItem, fallbackImagePath: user.profileHeroImagePath, accent: accentColor)
+            PlayerCardStoryBackground(
+                item: activeStoryItem,
+                fallbackImagePath: user.profileHeroImagePath,
+                accent: accentColor,
+                prefetchItems: index == 0 ? storyItems : [],
+                onLoadingChange: { isStoryMediaLoading = $0 }
+            )
 
             SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accentColor, dragOffset: dragOffset, sports: user.preferredSports)
 
@@ -8046,6 +8191,12 @@ private struct PlayerCardStoryBackground: View {
     let item: PlayerMediaItem?
     let fallbackImagePath: String?
     let accent: Color
+    /// Photos warmed up in the background so the next story appears without a wait.
+    var prefetchItems: [PlayerMediaItem] = []
+    /// Reports whether the current story is still loading, so the card can hold its timer.
+    var onLoadingChange: ((Bool) -> Void)?
+
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { proxy in
@@ -8053,26 +8204,28 @@ private struct PlayerCardStoryBackground: View {
 
             Group {
                 if let item, item.kind == .video, let url = resolveAppRemoteURL(item.path) {
-                    MutedStoryVideoView(url: url)
+                    RemoteLoopingVideo(url: url, onPhaseChange: { phase in
+                        onLoadingChange?(phase == .loading || phase == .buffering)
+                    }) {
+                        fallback
+                    }
+                    .id(url)
                 } else if let imagePath = item?.path ?? fallbackImagePath, let url = resolveAppRemoteURL(imagePath) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: size.width, height: size.height)
-                                .clipped()
-                        default:
-                            fallback
-                        }
+                    RemoteImage(url: url, indicator: .shimmerAndSpinner, onPhaseChange: { phase in
+                        onLoadingChange?(phase == .loading)
+                    }) { _ in
+                        fallback
                     }
                 } else {
                     fallback
+                        .onAppear { onLoadingChange?(false) }
                 }
             }
             .frame(width: size.width, height: size.height)
             .clipped()
+            .task(id: prefetchItems.map(\.path).joined(separator: "|") + "@\(size.width)x\(size.height)") {
+                prefetch(size: size)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
@@ -8085,60 +8238,14 @@ private struct PlayerCardStoryBackground: View {
             endPoint: .bottomTrailing
         )
     }
-}
 
-private struct MutedStoryVideoView: UIViewRepresentable {
-    let url: URL
-
-    func makeUIView(context: Context) -> PlayerLayerView {
-        let view = PlayerLayerView()
-        view.playerLayer.videoGravity = .resizeAspectFill
-        configure(view)
-        return view
-    }
-
-    func updateUIView(_ view: PlayerLayerView, context: Context) {
-        guard view.currentURL != url else { return }
-        configure(view)
-    }
-
-    private func configure(_ view: PlayerLayerView) {
-        NotificationCenter.default.removeObserver(view)
-        let player = AVPlayer(url: url)
-        player.isMuted = true
-        player.actionAtItemEnd = .none
-        view.currentURL = url
-        view.playerLayer.player = player
-
-        NotificationCenter.default.addObserver(
-            view,
-            selector: #selector(PlayerLayerView.loopVideo),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem
-        )
-        player.play()
-    }
-
-    final class PlayerLayerView: UIView {
-        var currentURL: URL?
-
-        override static var layerClass: AnyClass {
-            AVPlayerLayer.self
-        }
-
-        var playerLayer: AVPlayerLayer {
-            layer as! AVPlayerLayer
-        }
-
-        @objc func loopVideo() {
-            playerLayer.player?.seek(to: .zero)
-            playerLayer.player?.play()
-        }
-
-        deinit {
-            NotificationCenter.default.removeObserver(self)
-            playerLayer.player?.pause()
-        }
+    private func prefetch(size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        let requests = prefetchItems
+            .filter { $0.kind == .photo }
+            .compactMap { resolveAppRemoteURL($0.path) }
+            .map { RemoteImageRequest(source: .url($0), pointSize: size, scale: displayScale, contentMode: .fill) }
+        RemoteImagePipeline.shared.prefetch(requests)
     }
 }
 
@@ -8176,32 +8283,27 @@ private struct DiscoverPlayerMediaTile: View {
         if item.kind == .video, let url = resolveAppRemoteURL(item.path) {
             VideoThumbnailView(url: url)
         } else if item.kind == .photo, let url = resolveAppRemoteURL(item.path) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    fallback
-                }
+            RemoteImage(url: url) { phase in
+                fallback(showsIcon: phase != .loading)
             }
         } else {
-            fallback
+            fallback(showsIcon: true)
         }
     }
 
-    private var fallback: some View {
+    private func fallback(showsIcon: Bool) -> some View {
         LinearGradient(
             colors: [AppTheme.court.opacity(0.52), .black.opacity(0.35)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-        .overlay(
-            Image(systemName: item.kind == .video ? "play.rectangle.fill" : "photo.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.82))
-        )
+        .overlay {
+            if showsIcon {
+                Image(systemName: item.kind == .video ? "play.rectangle.fill" : "photo.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+        }
     }
 }
 
@@ -10390,21 +10492,11 @@ private struct GameReportThumbnail: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(0.08))
 
-            if let url = resolveAppRemoteURL(path) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        Image(systemName: "photo")
-                            .foregroundStyle(.white.opacity(0.46))
-                    }
+            RemoteImage(url: resolveAppRemoteURL(path)) { phase in
+                if phase != .loading {
+                    Image(systemName: "photo")
+                        .foregroundStyle(.white.opacity(0.46))
                 }
-            } else {
-                Image(systemName: "photo")
-                    .foregroundStyle(.white.opacity(0.46))
             }
         }
         .frame(height: 58)
@@ -11384,16 +11476,12 @@ private struct SimilarPlayerGridTile: View {
                 .aspectRatio(1.05, contentMode: .fit)
                 .overlay {
                     GeometryReader { proxy in
-                        AsyncImage(url: user.profileHeroImagePath.flatMap(resolveAppRemoteURL)) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().scaledToFill()
-                            } else {
-                                ZStack {
-                                    LinearGradient(colors: [AppTheme.court.opacity(0.75), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    Text(String(user.displayName.prefix(1)).uppercased())
-                                        .font(.largeTitle.weight(.bold))
-                                        .foregroundStyle(.white.opacity(0.9))
-                                }
+                        RemoteImage(url: user.profileHeroImagePath.flatMap(resolveAppRemoteURL)) { _ in
+                            ZStack {
+                                LinearGradient(colors: [AppTheme.court.opacity(0.75), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                Text(String(user.displayName.prefix(1)).uppercased())
+                                    .font(.largeTitle.weight(.bold))
+                                    .foregroundStyle(.white.opacity(0.9))
                             }
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)

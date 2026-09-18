@@ -1,7 +1,7 @@
 import { HotSearchWindow, type GameSearchStatus, type GameSearchType } from "@prisma/client";
 
 import { DAY_OPTIONS } from "@/lib/constants";
-import { getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
+import { formatLocalTime, getLocalDateParts, getLocalWeekdayKey, localDateTimeToUtc } from "@/lib/timezone";
 
 const DAY_MAP = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 
@@ -62,6 +62,46 @@ export function resolveHotSearchStartAt(hotWindow: HotSearchWindow, time: string
     hours,
     minutes
   );
+}
+
+const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+/**
+ * Недельное расписание регулярной пары из выбранных слотов. И день, и час
+ * берутся в зоне пары: подпись «monday@19:00» потом разбирают обратно в момент
+ * времени, и если писать её в зоне сервера, слот уезжает на смещение зоны.
+ *
+ * Раньше эта функция была скопирована в трёх роутах, и починка одной копии
+ * разводила их между собой.
+ */
+export function buildWeeklySchedule(
+  options: Array<{ scheduledAt: Date | string }>,
+  timezone?: string | null
+) {
+  const days = new Set<string>();
+  const timePreferences = new Set<string>();
+
+  for (const option of options) {
+    const date = option.scheduledAt instanceof Date ? option.scheduledAt : new Date(option.scheduledAt);
+
+    if (Number.isNaN(date.getTime())) {
+      continue;
+    }
+
+    const day = getLocalWeekdayKey(timezone, date);
+    days.add(day);
+    timePreferences.add(`${day}@${formatLocalTime(timezone, date)}`);
+  }
+
+  return {
+    preferredDays: DAY_ORDER.filter((day) => days.has(day)),
+    preferredTimeRanges: Array.from(timePreferences).sort((left, right) => {
+      const [leftDay, leftTime] = left.split("@");
+      const [rightDay, rightTime] = right.split("@");
+      const dayDiff = DAY_ORDER.indexOf(leftDay) - DAY_ORDER.indexOf(rightDay);
+      return dayDiff || (leftTime ?? "").localeCompare(rightTime ?? "");
+    })
+  };
 }
 
 export function isExpiredHotSearch(startsAt: string | Date | null | undefined) {

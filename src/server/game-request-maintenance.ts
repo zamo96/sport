@@ -1,12 +1,23 @@
-import { GameRequestStatus } from "@prisma/client";
+import { GameRequestStatus, Prisma } from "@prisma/client";
 
 import { sendPushToUser } from "@/lib/push";
-import { formatLocalDateTime } from "@/lib/timezone";
+import { formatLocalDateTime, getLocalDateParts } from "@/lib/timezone";
 import { prisma } from "@/lib/prisma";
 import { getRealtimeRedis, publishRealtimeEventToUsers } from "@/server/realtime";
 
 const REMINDER_KEY_PREFIX = "tennis:game-request-reminder";
 const REMINDER_KEY_TTL_SECONDS = 60 * 60 * 36;
+
+/**
+ * Два окна в локальной зоне игрока, а не в московской: общий серверный слот
+ * «до 15:00 / после» открывался в полночь по Москве и будил половину карты.
+ * Часы выбраны в промежутках между слотами дайджеста (12:00 и 18:00), а конец
+ * окна — до 22:00, чтобы догоняющий запуск не вылез в тихие часы.
+ */
+const REMINDER_WINDOWS = [
+  { slot: "morning", startHour: 10, endHour: 12 },
+  { slot: "evening", startHour: 20, endHour: 22 }
+] as const;
 
 export async function runGameRequestMaintenance(options: { sendReminders?: boolean } = {}) {
   await expirePendingGameRequests();
@@ -170,14 +181,57 @@ async function expirePendingGameRequests() {
   );
 }
 
-async function sendPendingGameRequestReminders() {
+/**
+ * Окно считается в зоне игрока и возвращает ключ его календарного дня: иначе
+ * и час отправки, и граница суток брались бы с сервера.
+ */
+export function resolveReminderWindow(now: Date, timezone: string | null | undefined) {
+  const parts = getLocalDateParts(timezone, now);
+  const open = REMINDER_WINDOWS.find((window) => parts.hour >= window.startHour && parts.hour < window.endHour);
+
+  return open ? { dateKey: parts.dateKey, slot: open.slot } : null;
+}
+
+/**
+ * Cron ходит каждые 5 минут, а окна локальные: сначала дешёвым группирующим
+ * запросом выясняем, у кого сейчас вообще открыто окно. В большинстве прогонов
+ * дальше идти не нужно, и заодно `take` не тратится на игроков, у которых ночь.
+ */
+async function resolveOpenZoneFilter(now: Date): Promise<Prisma.UserWhereInput | null> {
+  const zones = await prisma.user.groupBy({
+    by: ["timezone"],
+    where: { notificationGames: true }
+  });
+  const openZones = zones
+    .map((zone) => zone.timezone)
+    .filter((timezone) => resolveReminderWindow(now, timezone) !== null);
+
+  if (openZones.length === 0) {
+    return null;
+  }
+
+  const namedZones = openZones.filter((timezone): timezone is string => timezone !== null);
+
+  // Пустая зона — это откат на Москву, поэтому такие игроки идут вместе с ней.
+  if (openZones.length === namedZones.length) {
+    return { timezone: { in: namedZones } };
+  }
+
+  return { OR: [{ timezone: { in: namedZones } }, { timezone: null }] };
+}
+
+export async function sendPendingGameRequestReminders(now = new Date()) {
   const redis = getRealtimeRedis();
   if (!redis) {
     return;
   }
 
-  const now = new Date();
-  const { dayKey, slot } = getMoscowReminderWindow(now);
+  const zoneFilter = await resolveOpenZoneFilter(now);
+
+  if (!zoneFilter) {
+    return;
+  }
+
   const pendingRequests = await prisma.gameRequest.findMany({
     where: {
       status: GameRequestStatus.pending,
@@ -185,7 +239,8 @@ async function sendPendingGameRequestReminders() {
         gt: now
       },
       matchedUser: {
-        notificationGames: true
+        notificationGames: true,
+        ...zoneFilter
       }
     },
     include: {
@@ -193,8 +248,8 @@ async function sendPendingGameRequestReminders() {
       matchedUser: {
         select: {
           id: true,
-          name: true,
-          notificationSound: true
+          notificationSound: true,
+          timezone: true
         }
       }
     },
@@ -206,7 +261,15 @@ async function sendPendingGameRequestReminders() {
 
   await Promise.all(
     pendingRequests.map(async (request) => {
-      const key = `${REMINDER_KEY_PREFIX}:${request.id}:${dayKey}:${slot}`;
+      // Окно проверяем до похода в Redis: в большинстве прогонов у игрока
+      // сейчас не то время суток, и ключ трогать незачем.
+      const window = resolveReminderWindow(now, request.matchedUser.timezone);
+
+      if (!window) {
+        return;
+      }
+
+      const key = `${REMINDER_KEY_PREFIX}:${request.id}:${window.dateKey}:${window.slot}`;
       const shouldSend = await redis.set(key, "1", "EX", REMINDER_KEY_TTL_SECONDS, "NX");
 
       if (shouldSend !== "OK") {
@@ -216,35 +279,10 @@ async function sendPendingGameRequestReminders() {
       await sendPushToUser({
         userId: request.matchedUserId,
         title: "Подтверди игру",
-        body: `${request.proposedCourt?.name ?? "Место уточняется"} · ${formatLocalDateTime(null, request.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+        body: `${request.proposedCourt?.name ?? "Место уточняется"} · ${formatLocalDateTime(request.matchedUser.timezone, request.proposedDatetime, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
         href: `/play/games/${request.id}`,
         sound: request.matchedUser.notificationSound ?? true
       });
     })
   );
-}
-
-function getMoscowReminderWindow(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false
-  })
-    .formatToParts(date)
-    .reduce<Record<string, string>>((acc, part) => {
-      if (part.type !== "literal") {
-        acc[part.type] = part.value;
-      }
-      return acc;
-    }, {});
-
-  const hour = Number(parts.hour ?? "0");
-
-  return {
-    dayKey: `${parts.year}-${parts.month}-${parts.day}`,
-    slot: hour < 15 ? "morning" : "evening"
-  };
 }
