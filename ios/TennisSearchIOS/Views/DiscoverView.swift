@@ -722,18 +722,18 @@ struct DiscoverView: View {
             )
         )
         .background(Color.black.ignoresSafeArea())
-        if isViewedPlayersDockEligible, !visibleSimilarUsers.isEmpty {
-            // Место под строку держим всегда, а пустую прячем прозрачностью.
-            // Это несущее условие, а не косметика: если строка вставляется в
-            // раскладку в момент ухода карточки, колода сжимается, проверка
-            // isDeckInViewport на миг проваливается, и onChange отменяет
-            // автопереход — карточка крутит медиа по кругу и не уходит.
+        // Строка появляется только когда игрок уже записан в историю — по
+        // viewedSimilarUsers, а не по viewedTrayUsers. Второй включает
+        // летящего игрока, то есть вставлял бы строку посреди автоперехода:
+        // колода сжималась, isDeckInViewport на миг проваливался, и onChange
+        // отменял переход — карточка крутила медиа по кругу. После записи
+        // автоперехода уже нет, и сдвиг раскладки ничего не отменяет.
+        // Первому игроку лететь некуда, и он растворяется — код это умеет.
+        if isViewedPlayersDockEligible, !viewedSimilarUsers.isEmpty {
             viewedPlayersTray
                 .padding(.horizontal, 16)
                 .frame(height: isViewedPlayersExpanded ? viewedPlayersTrayHeight : 44, alignment: .top)
-                .opacity(viewedTrayUsers.isEmpty ? 0 : 1)
-                .allowsHitTesting(!viewedTrayUsers.isEmpty)
-                .accessibilityHidden(viewedTrayUsers.isEmpty)
+                .transition(.opacity)
                 .id("discover-viewed-players-tray")
         }
         }
