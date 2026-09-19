@@ -1809,16 +1809,25 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private var tabContentContainer: some View {
-        let content = selectedTabContent
-            .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if showsTabLoadingSpinner {
+                DiscoverTabLoadingView()
+                    .transition(.asymmetric(insertion: .opacity, removal: .opacity.animation(.easeOut(duration: 0.15))))
+            } else {
+                let content = selectedTabContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-        if selectedTab == .swipe || selectedTab == .likes || isSearchMapActive {
-            content
-        } else {
-            content
-                .contentShape(Rectangle())
-                .gesture(tabSwitchGesture)
+                if selectedTab == .swipe || selectedTab == .likes || isSearchMapActive {
+                    content
+                } else {
+                    content
+                        .contentShape(Rectangle())
+                        .gesture(tabSwitchGesture)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.24), value: showsTabLoadingSpinner)
     }
 
     @ViewBuilder
@@ -2377,8 +2386,13 @@ struct DiscoverView: View {
 
     // Таймер автоперехода здесь не условие: раньше, пока он тикал, аватарки
     // молча не реагировали, а стиль .plain выключенность никак не показывает.
+    // isDeckPresentationReady тоже не годится целиком: лайк ждёт ответа сети
+    // (dragOffset и isSubmittingSwipe держатся весь round-trip), и всё это
+    // время аватарка в трее молча не отвечала на нажатие — "через раз".
+    // Переход к уже просмотренному не читает текущий dragOffset/сабмит, так
+    // что этим двум состояние текущей карточки не помеха.
     private var canReplayViewedPlayer: Bool {
-        isDeckPresentationReady
+        isDeckContextStable
     }
 
     private func replayViewedPlayer(_ userID: String) {
@@ -3263,11 +3277,14 @@ struct DiscoverView: View {
         isForeground && !isNotificationsPresented
     }
 
-    private var isDeckPresentationReady: Bool {
+    // Общая часть готовности колоды: никаких модалок/оверлеев над ней и вкладка
+    // на месте. Не включает состояние текущей карточки (драг/сабмит) — то,
+    // что зависит именно от неё, добавляется в isDeckPresentationReady, а
+    // canReplayViewedPlayer использует эту часть напрямую.
+    private var isDeckContextStable: Bool {
         isDiscoverForeground && isDiscoverVisible && scenePhase == .active && selectedTab == .swipe
             && similarPlayersDisplayMode == .cards
             && !isLoading && !isSystemRefreshing && pullRefreshProgress < 0.01
-            && !isSubmittingSwipe && dragOffset == .zero && !isCardInteracting
             && !isSimilarPlayersHintPresented && !isFirstInterestHintPresented
             && appModel.presentedAuthStep == nil && appModel.errorMessage == nil
             && !appModel.isBusy && appModel.serverRecoveryNotice == nil
@@ -3278,6 +3295,10 @@ struct DiscoverView: View {
             && selectedPhotoReportRequest == nil && selectedPersonalActivityReport == nil
             && selectedEditGameRequest == nil && selectedShareRequest == nil
             && selectedNextProposalMatch == nil && !isWidgetHelpPresented
+    }
+
+    private var isDeckPresentationReady: Bool {
+        isDeckContextStable && !isSubmittingSwipe && dragOffset == .zero && !isCardInteracting
     }
 
     private func canCompletePlayerAutoAdvance(token: UUID, context: String, userID: String) -> Bool {
@@ -3429,6 +3450,29 @@ struct DiscoverView: View {
         return [activeUser] + orderedSimilarUsers.filter { $0.id != activeUser.id }.prefix(1)
     }
 
+    /// Whether the currently selected tab has nothing of its own to show yet — the state
+    /// a fresh tab switch lands in before `loadDiscover()` returns.
+    private var isSelectedTabContentEmpty: Bool {
+        switch selectedTab {
+        case .swipe, .likes:
+            return topStack.isEmpty
+        case .upcoming:
+            return activeUpcomingGameRequests.isEmpty && activePersonalActivities.isEmpty
+        case .hot, .seeking:
+            return filteredActiveHotSearchItems.isEmpty
+        }
+    }
+
+    /// A tab that only ever shows a static sign-in prompt for guests has nothing to
+    /// wait on, so the spinner would just flash without meaning anything.
+    private var showsTabLoadingSpinner: Bool {
+        guard isLoading, !isSearchMapActive else { return false }
+        if (selectedTab == .upcoming || selectedTab == .likes), !appModel.isAuthenticated {
+            return false
+        }
+        return isSelectedTabContentEmpty
+    }
+
     private var discoverLocationKey: String {
         let user = appModel.currentUser
         let draft = appModel.guestDraft
@@ -3504,6 +3548,13 @@ struct DiscoverView: View {
                 appModel.setTabContentLoading("discover", isLoading: false)
             }
         }
+        #if DEBUG
+        // `-DiscoverTabLoadDebugDelay 2` slows this down to review the tab-switch spinner.
+        let debugDelay = UserDefaults.standard.double(forKey: "DiscoverTabLoadDebugDelay")
+        if debugDelay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(debugDelay * 1_000_000_000))
+        }
+        #endif
 
         do {
             if appModel.isAuthenticated {
@@ -6707,6 +6758,23 @@ private struct ElasticIslandButtonStyle: ButtonStyle {
     }
 }
 
+/// Shown in place of a tab's content while it has nothing of its own yet — the moment
+/// right after switching to Players / Upcoming games / Searches, before the fetch
+/// lands. Reuses the same branded loader as photo/video loading elsewhere in the app.
+private struct DiscoverTabLoadingView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            MediaSpinner(diameter: 60)
+            Text(L10n.string("Loading", "Загружаем"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 64)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct SwipeHintBar: View {
     var leftTitle = L10n.string("Left — skip", "Влево — пропустить")
     var rightTitle = L10n.string("Right — ready to play", "Вправо — можно сыграть")
@@ -8096,7 +8164,10 @@ struct SwipeCard: View {
                 onLoadingChange: { isStoryMediaLoading = $0 }
             )
 
-            SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accentColor, dragOffset: dragOffset, sports: user.preferredSports)
+            // No dragOffset here on purpose: it used to feed a tiny parallax bias into
+            // this view's two blurred circles, forcing a real-time Gaussian blur redraw
+            // on every drag pixel — the actual source of the remaining swipe jank.
+            SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accentColor, sports: user.preferredSports)
 
             LinearGradient(
                 colors: [.black.opacity(0.12), .black.opacity(0.35), .black.opacity(0.9)],
@@ -8383,7 +8454,6 @@ private struct SportChipTrackWidthPreferenceKey: PreferenceKey {
 private struct SwipeCardAmbientLayer: View {
     let isPlaying: Bool
     let accent: Color
-    let dragOffset: CGSize
     let sports: [Sport]
 
     private var floatingSymbols: [String] {
@@ -8394,7 +8464,6 @@ private struct SwipeCardAmbientLayer: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 24, paused: !isPlaying)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let horizontalBias = dragOffset.width * 0.04
 
             ZStack {
                 Circle()
@@ -8402,7 +8471,7 @@ private struct SwipeCardAmbientLayer: View {
                     .frame(width: 220, height: 220)
                     .blur(radius: 26)
                     .offset(
-                        x: -124 + CGFloat(sin(time * 0.7)) * 18 + horizontalBias,
+                        x: -124 + CGFloat(sin(time * 0.7)) * 18,
                         y: -112 + CGFloat(cos(time * 0.9)) * 12
                     )
 
@@ -8411,7 +8480,7 @@ private struct SwipeCardAmbientLayer: View {
                     .frame(width: 170, height: 170)
                     .blur(radius: 22)
                     .offset(
-                        x: 132 + CGFloat(cos(time * 0.56)) * 14 - horizontalBias * 0.4,
+                        x: 132 + CGFloat(cos(time * 0.56)) * 14,
                         y: 118 + CGFloat(sin(time * 0.82)) * 10
                     )
 
