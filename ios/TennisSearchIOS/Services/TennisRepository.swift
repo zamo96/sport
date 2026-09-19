@@ -71,6 +71,7 @@ protocol TennisRepository {
     func fetchActivitySummary() async throws -> ActivitySummary
     func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error>
     func fetchAppStats() async throws -> AppStats
+    func fetchAppVersionInfo() async throws -> AppVersionInfo
     func markInboxSeen() async throws
     func markNotificationsSeen() async throws
     func setActiveChat(matchId: String?, gameRequestId: String?, isActive: Bool) async throws

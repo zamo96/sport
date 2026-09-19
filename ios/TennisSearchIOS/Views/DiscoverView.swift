@@ -4238,7 +4238,16 @@ struct DiscoverView: View {
                     return
                 }
                 dragOffset = CGSize(width: value.translation.width, height: 0)
-                dragDecision = currentDecision(for: value.translation)
+                let newDecision = currentDecision(for: value.translation)
+                if newDecision != dragDecision {
+                    // A light tick the moment the drag crosses into a like/skip zone,
+                    // before release — the stronger success/warning haptic still fires
+                    // on commit in submitSwipe.
+                    if newDecision != nil {
+                        AppHaptics.selection()
+                    }
+                    dragDecision = newDecision
+                }
             }
             .onEnded { value in
                 guard autoAdvanceToken == nil, !isSubmittingSwipe, !isSimilarPlayersHintPresented, !isFirstInterestHintPresented,
@@ -7632,6 +7641,10 @@ struct SwipeCard: View {
                 )
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Flatten the card into one layer before rotating/shadowing it, otherwise SwiftUI
+        // re-shadows every translucent sublayer (story media, blur, gradients) on each
+        // drag frame, which is what caused the swipe to feel janky.
+        .compositingGroup()
         .rotationEffect(.degrees(index == 0 ? Double(dragOffset.width / 22) : 0))
         .offset(dragOffset)
         .shadow(color: AppTheme.ink.opacity(index == 0 ? 0.18 : 0.08), radius: 24, x: 0, y: 14)

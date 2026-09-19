@@ -21,6 +21,12 @@ final class AppModel: ObservableObject {
         var id: String { locale.rawValue }
     }
 
+    enum UpdateStatus: Equatable {
+        case upToDate
+        case softUpdateAvailable(latestVersion: String)
+        case hardUpdateRequired
+    }
+
     @Published var currentUser: UserProfile?
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
@@ -45,12 +51,15 @@ final class AppModel: ObservableObject {
     @Published var hasActiveUpcomingGameRequests = false
     @Published var serverRecoveryNotice: ServerRecoveryNotice?
     @Published var pendingLocaleRecommendation: LocaleRecommendation?
+    @Published private(set) var updateStatus: UpdateStatus = .upToDate
     @Published private(set) var tabContentLoadingKeys: Set<String> = []
 
     let repository: TennisRepository
     let isUsingMockData: Bool
     let notificationManager = NotificationManager()
     let localeStore: LocaleStore
+
+    private static let dismissedUpdateVersionKey = "SportSearch.dismissedUpdateVersion"
 
     private let guestDraftStore = GuestDraftStore()
     private let discoverHintStore = DiscoverHintStore()
@@ -105,6 +114,38 @@ final class AppModel: ObservableObject {
         pendingLocaleRecommendation = nil
     }
 
+    var pendingUpdateBanner: String? {
+        guard case .softUpdateAvailable(let latestVersion) = updateStatus else { return nil }
+        return latestVersion
+    }
+
+    func dismissUpdateBanner() {
+        guard case .softUpdateAvailable(let latestVersion) = updateStatus else { return }
+        UserDefaults.standard.set(latestVersion, forKey: Self.dismissedUpdateVersionKey)
+        updateStatus = .upToDate
+    }
+
+    private func checkForAppUpdate() async {
+        guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+            return
+        }
+        do {
+            let info = try await repository.fetchAppVersionInfo()
+            if AppVersion.isOlder(currentVersion, than: info.minVersion) {
+                updateStatus = .hardUpdateRequired
+            } else if AppVersion.isOlder(currentVersion, than: info.latestVersion) {
+                let dismissedVersion = UserDefaults.standard.string(forKey: Self.dismissedUpdateVersionKey)
+                updateStatus = dismissedVersion == info.latestVersion
+                    ? .upToDate
+                    : .softUpdateAvailable(latestVersion: info.latestVersion)
+            } else {
+                updateStatus = .upToDate
+            }
+        } catch {
+            // A failed version check should never block app usage.
+        }
+    }
+
     func setManualLocale(_ locale: AppLocale) {
         localeStore.setManualOverride(locale)
         if currentUser != nil {
@@ -127,6 +168,7 @@ final class AppModel: ObservableObject {
 
     func bootstrap() async {
         await notificationManager.configure()
+        await checkForAppUpdate()
 
         guard !isUsingMockData else {
             return
@@ -1021,5 +1063,24 @@ extension Error {
         }
 
         return parts.joined(separator: "\n")
+    }
+}
+
+enum AppVersion {
+    static func isOlder(_ lhs: String, than rhs: String) -> Bool {
+        let lhsParts = components(lhs)
+        let rhsParts = components(rhs)
+        for index in 0 ..< max(lhsParts.count, rhsParts.count) {
+            let left = index < lhsParts.count ? lhsParts[index] : 0
+            let right = index < rhsParts.count ? rhsParts[index] : 0
+            if left != right {
+                return left < right
+            }
+        }
+        return false
+    }
+
+    private static func components(_ version: String) -> [Int] {
+        version.split(separator: ".").map { Int($0) ?? 0 }
     }
 }

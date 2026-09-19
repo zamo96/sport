@@ -1032,6 +1032,10 @@ final class LiveTennisRepository: TennisRepository {
         try await client.request(path: "app/stats")
     }
 
+    func fetchAppVersionInfo() async throws -> AppVersionInfo {
+        try await client.request(path: "app/version")
+    }
+
     func markInboxSeen() async throws {
         let _: SuccessEnvelope = try await client.request(path: "activity/inbox-seen", method: "POST", body: EmptyRequest())
     }

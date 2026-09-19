@@ -52,6 +52,7 @@
 		A20000000000000000000102 /* UpcomingGamesWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000203 /* UpcomingGamesWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A20000000000000000000103 /* UpcomingGameLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000223 /* UpcomingGameLiveActivity.swift */; };
 		A10000000000000000000121 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000226 /* PrivacyInfo.xcprivacy */; };
+		76CA98F1157F4DE984FC23B8 /* AppUpdateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8401D381843B43318D57300C /* AppUpdateViews.swift */; };
 		A20000000000000000000104 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000226 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -95,6 +96,7 @@
 		A10000000000000000000205 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000206 /* MockRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRepository.swift; sourceTree = "<group>"; };
 		A10000000000000000000207 /* UIComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIComponents.swift; sourceTree = "<group>"; };
+		8401D381843B43318D57300C /* AppUpdateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateViews.swift; sourceTree = "<group>"; };
 		A10000000000000000000208 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A10000000000000000000209 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020A /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
@@ -245,6 +247,7 @@
 				A100000000000000000002C0 /* RemoteMedia.swift */,
 				A10000000000000000000227 /* LocationPickerView.swift */,
 				A10000000000000000000214 /* NotificationsView.swift */,
+				8401D381843B43318D57300C /* AppUpdateViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -426,6 +429,7 @@
 				A10000000000000000000111 /* AppDelegate.swift in Sources */,
 				A1000000000000000000011D /* UpcomingGamesWidgetStore.swift in Sources */,
 				A1000000000000000000011E /* UpcomingGameLiveActivity.swift in Sources */,
+				76CA98F1157F4DE984FC23B8 /* AppUpdateViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

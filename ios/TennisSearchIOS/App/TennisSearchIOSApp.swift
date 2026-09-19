@@ -15,17 +15,31 @@ struct TennisSearchIOSApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack(alignment: .top) {
-                ContentView()
+                if appModel.updateStatus == .hardUpdateRequired {
+                    AppUpdateRequiredView()
+                } else {
+                    ContentView()
 
-                if let recommendation = appModel.pendingLocaleRecommendation {
-                    LocaleRecommendationBanner(
-                        recommendation: recommendation,
-                        onAccept: appModel.acceptLocaleRecommendation,
-                        onDismiss: appModel.dismissLocaleRecommendation
-                    )
+                    VStack(spacing: 10) {
+                        if let recommendation = appModel.pendingLocaleRecommendation {
+                            LocaleRecommendationBanner(
+                                recommendation: recommendation,
+                                onAccept: appModel.acceptLocaleRecommendation,
+                                onDismiss: appModel.dismissLocaleRecommendation
+                            )
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
+                        if let latestVersion = appModel.pendingUpdateBanner {
+                            AppUpdateBanner(
+                                latestVersion: latestVersion,
+                                onDismiss: appModel.dismissUpdateBanner
+                            )
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
-                    .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
                 }
             }
@@ -34,6 +48,7 @@ struct TennisSearchIOSApp: App {
                 .environmentObject(localeStore)
                 .environment(\.locale, localeStore.locale)
                 .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.pendingLocaleRecommendation)
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.pendingUpdateBanner)
                 .task {
                     if !SportsActivityFeedPreview.isEnabled {
                         await appModel.bootstrap()

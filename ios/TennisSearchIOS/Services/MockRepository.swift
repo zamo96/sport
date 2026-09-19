@@ -2343,6 +2343,11 @@ actor MockRepository: TennisRepository {
         )
     }
 
+    func fetchAppVersionInfo() async throws -> AppVersionInfo {
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        return AppVersionInfo(latestVersion: currentVersion, minVersion: currentVersion)
+    }
+
     private var unseenInboxThreadIDs: Set<String> {
         var identifiers: Set<String> = []
         for match in matches where match.status == "active" {

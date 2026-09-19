@@ -2809,6 +2809,11 @@ struct AppStats: Codable {
     let seekingPlayersCount: Int
 }
 
+struct AppVersionInfo: Codable {
+    let latestVersion: String
+    let minVersion: String
+}
+
 enum APNSEnvironment: String, Codable {
     case development
     case production
