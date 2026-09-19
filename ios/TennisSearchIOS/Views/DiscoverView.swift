@@ -604,12 +604,29 @@ struct DiscoverView: View {
         if isTransientSummaryIslandVisible { return summaryCardState }
         // Likes remain actionable after the transient summary expires or is dismissed.
         // Keep this fallback likes-only so unrelated notes still disappear on schedule.
-        guard let item = incomingLikesAttentionItem else { return nil }
+        guard let item = persistentLikesAttentionItem else { return nil }
         return .attention(count: item.count, title: attentionTitle(for: [item]), subtitle: item.subtitle)
     }
 
     private var displayedSummaryNavigationTarget: AppNavigationTarget? {
-        isTransientSummaryIslandVisible ? summaryNavigationTarget : incomingLikesAttentionItem?.target
+        isTransientSummaryIslandVisible ? summaryNavigationTarget : persistentLikesAttentionItem?.target
+    }
+
+    // Лайки, которые пользователь уже открыл, плашку больше не держат —
+    // она вернётся, только если придёт новый.
+    private var persistentLikesAttentionItem: DiscoverSummaryAttentionItem? {
+        guard let item = incomingLikesAttentionItem,
+              !appModel.areIncomingLikesAcknowledged(item.count) else { return nil }
+        return item
+    }
+
+    private func acknowledgeIncomingLikesIfNeeded() {
+        guard selectedTab == .likes else { return }
+        let count = notificationManager.summary.incomingLikesCount
+        guard count > 0, !appModel.areIncomingLikesAcknowledged(count) else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+            appModel.acknowledgeIncomingLikes(count)
+        }
     }
 
     private var summaryAttentionIconName: String {
@@ -671,7 +688,13 @@ struct DiscoverView: View {
                 .onChange(of: frame) { updateDeckViewport($0) }
                 .onDisappear { if deckViewport != .zero { deckViewport = .zero } }
         })
-        .onAppear { isDiscoverVisible = true }
+        .onAppear {
+            isDiscoverVisible = true
+            acknowledgeIncomingLikesIfNeeded()
+        }
+        .onChange(of: notificationManager.summary.incomingLikesCount) { _ in
+            acknowledgeIncomingLikesIfNeeded()
+        }
         .onChange(of: isDiscoverForeground) { active in
             if !active { cancelPlayerAutoAdvance() }
         }
@@ -975,6 +998,7 @@ struct DiscoverView: View {
             refreshBadgePulses()
         }
         .onChange(of: selectedTab) { _ in
+            acknowledgeIncomingLikesIfNeeded()
             appModel.lastSelectedDiscoverTab = selectedTab
             onTabChanged?(selectedTab)
             resetSwipeInteraction(animated: false)
@@ -1662,6 +1686,21 @@ struct DiscoverView: View {
     }
 
     private var discoverLikesControl: some View {
+        HStack(spacing: 12) {
+            discoverLikesBackButton
+            if selectedTab == .likes {
+                Text(L10n.string("Want to play with you", "Хотят с тобой поиграть"))
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var discoverLikesBackButton: some View {
         Button {
             selectTab(selectedTab == .likes ? .swipe : .likes)
         } label: {
@@ -3582,6 +3621,17 @@ struct DiscoverView: View {
         guard let target else { return }
         if case .discover(.hot, _, _, _) = target {
             notificationManager.markHotEventsOpened()
+        }
+        // Мы уже на главной: переключаем вкладку на месте. navigate(to:)
+        // пересоздаёт весь экран, и переход выходит рывком.
+        if case .discover(let tab, nil, nil, nil) = target {
+            if tab == .likes {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+                    appModel.acknowledgeIncomingLikes(notificationManager.summary.incomingLikesCount)
+                }
+            }
+            selectTab(tab)
+            return
         }
         appModel.navigate(to: target)
     }
@@ -6186,7 +6236,7 @@ private struct SportRefreshIndicator: View {
     }
 }
 
-private struct TennisBallIcon: View {
+struct TennisBallIcon: View {
     var body: some View {
         ZStack {
             Circle()

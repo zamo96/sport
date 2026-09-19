@@ -57,6 +57,9 @@ final class AppModel: ObservableObject {
     private var guestDraftSaveTask: Task<Void, Never>?
     // Presentation-only, bounded to the last dismissal in this app session.
     private var dismissedDiscoverSummary: (accountID: String?, signature: String)?
+    // Сколько входящих лайков пользователь уже открыл. Плашка «хочет сыграть»
+    // прячется, пока их число не вырастет. Живёт в пределах сессии приложения.
+    @Published private var acknowledgedIncomingLikes: (accountID: String?, count: Int)?
 
     init(localeStore: LocaleStore = LocaleStore()) {
         self.localeStore = localeStore
@@ -325,8 +328,20 @@ final class AppModel: ObservableObject {
         dismissedDiscoverSummary = (currentUser?.id, signature)
     }
 
+    func areIncomingLikesAcknowledged(_ count: Int) -> Bool {
+        guard let acknowledged = acknowledgedIncomingLikes,
+              acknowledged.accountID == currentUser?.id else { return false }
+        return count <= acknowledged.count
+    }
+
+    func acknowledgeIncomingLikes(_ count: Int) {
+        guard !areIncomingLikesAcknowledged(count) else { return }
+        acknowledgedIncomingLikes = (currentUser?.id, count)
+    }
+
     func logout() {
         dismissedDiscoverSummary = nil
+        acknowledgedIncomingLikes = nil
         guestDraftSaveTask?.cancel()
         notificationManager.stopMonitoring()
         repository.clearAuthSession()
