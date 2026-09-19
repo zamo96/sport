@@ -8155,26 +8155,21 @@ struct SwipeCard: View {
     }
 
     private var cardBackground: some View {
-        ZStack {
-            PlayerCardStoryBackground(
-                item: activeStoryItem,
-                fallbackImagePath: user.profileHeroImagePath,
-                accent: accentColor,
-                prefetchItems: index == 0 ? storyItems : [],
-                onLoadingChange: { isStoryMediaLoading = $0 }
-            )
-
-            // No dragOffset here on purpose: it used to feed a tiny parallax bias into
-            // this view's two blurred circles, forcing a real-time Gaussian blur redraw
-            // on every drag pixel — the actual source of the remaining swipe jank.
-            SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accentColor, sports: user.preferredSports)
-
-            LinearGradient(
-                colors: [.black.opacity(0.12), .black.opacity(0.35), .black.opacity(0.9)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        // .equatable() is the actual point: cardBackground is a computed property, so
+        // without it SwiftUI re-invokes this whole video/blur/gradient stack on every
+        // single drag pixel just because SwipeCard.body re-ran (dragOffset changed),
+        // even though none of THESE inputs did. That re-render — not the blur or the
+        // shadow alone — is what was still costing frames after the earlier fixes.
+        SwipeCardBackgroundLayer(
+            item: activeStoryItem,
+            fallbackImagePath: user.profileHeroImagePath,
+            accent: accentColor,
+            prefetchItems: index == 0 ? storyItems : [],
+            isPlaying: isPlaying,
+            sports: user.preferredSports,
+            onLoadingChange: { isStoryMediaLoading = $0 }
+        )
+        .equatable()
     }
 
     private var fallbackBackground: some View {
@@ -8448,6 +8443,51 @@ private struct SportChipTrackWidthPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Groups the card's photo/video background, ambient blur layer and shading gradient
+/// behind one Equatable boundary. SwipeCard.body re-runs on every drag pixel (rotation
+/// and offset need that), and without this, SwiftUI has no way to tell that this whole
+/// subtree's actual inputs are unchanged — it would re-diff the video/image layout and
+/// blur circles that many times a second. The custom `==` ignores `onLoadingChange`
+/// (a fresh closure every render) since it never affects what's drawn.
+private struct SwipeCardBackgroundLayer: View, Equatable {
+    let item: PlayerMediaItem?
+    let fallbackImagePath: String?
+    let accent: Color
+    let prefetchItems: [PlayerMediaItem]
+    let isPlaying: Bool
+    let sports: [Sport]
+    let onLoadingChange: (Bool) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.item == rhs.item
+            && lhs.fallbackImagePath == rhs.fallbackImagePath
+            && lhs.accent == rhs.accent
+            && lhs.prefetchItems == rhs.prefetchItems
+            && lhs.isPlaying == rhs.isPlaying
+            && lhs.sports == rhs.sports
+    }
+
+    var body: some View {
+        ZStack {
+            PlayerCardStoryBackground(
+                item: item,
+                fallbackImagePath: fallbackImagePath,
+                accent: accent,
+                prefetchItems: prefetchItems,
+                onLoadingChange: onLoadingChange
+            )
+
+            SwipeCardAmbientLayer(isPlaying: isPlaying, accent: accent, sports: sports)
+
+            LinearGradient(
+                colors: [.black.opacity(0.12), .black.opacity(0.35), .black.opacity(0.9)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
     }
 }
 
