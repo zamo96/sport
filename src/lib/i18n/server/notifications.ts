@@ -34,6 +34,7 @@ export const notificationMessages = defineServerMessages(
     "push.winBack.body.few": "{count} players are looking for a game near you",
     "push.winBack.body.many": "{count} players are looking for a game near you",
     "push.player.fallback": "A player",
+    "push.court.fallback": "Venue to be confirmed",
     "push.searchResponseWaiting.title.one": "{name} is waiting for your answer",
     "push.searchResponseWaiting.title.few": "{count} responses are waiting for your answer",
     "push.searchResponseWaiting.title.many": "{count} responses are waiting for your answer",
@@ -45,7 +46,13 @@ export const notificationMessages = defineServerMessages(
     "push.gameOutcome.title.many": "{count} games are waiting for a result",
     "push.gameOutcome.body.one": "{when} · {opponent} — mark whether you played",
     "push.gameOutcome.body.few": "Mark which of them happened, starting with {when}",
-    "push.gameOutcome.body.many": "Mark which of them happened, starting with {when}"
+    "push.gameOutcome.body.many": "Mark which of them happened, starting with {when}",
+    "push.regularSlotWaiting.title.one": "{name} is waiting for your confirmation",
+    "push.regularSlotWaiting.title.few": "{count} regular slots are waiting for you",
+    "push.regularSlotWaiting.title.many": "{count} regular slots are waiting for you",
+    "push.regularSlotWaiting.body.one": "{when} · {court} — confirm if the time works",
+    "push.regularSlotWaiting.body.few": "Starting with {when} — mark the slots that work",
+    "push.regularSlotWaiting.body.many": "Starting with {when} — mark the slots that work"
   },
   {
     "push.hotDigest.title.one": "Есть срочная игра рядом",
@@ -80,6 +87,7 @@ export const notificationMessages = defineServerMessages(
     "push.winBack.body.few": "Рядом игру ищут {count} игрока",
     "push.winBack.body.many": "Рядом игру ищут {count} игроков",
     "push.player.fallback": "Игрок",
+    "push.court.fallback": "Место уточняется",
     // Пол игрока неизвестен, поэтому имя стоит в именительном, а глагол — в
     // форме без родового окончания: «Аня ждёт», «Иван ждёт».
     "push.searchResponseWaiting.title.one": "{name} ждёт вашего ответа",
@@ -93,7 +101,14 @@ export const notificationMessages = defineServerMessages(
     "push.gameOutcome.title.many": "{count} игр ждут отметки",
     "push.gameOutcome.body.one": "{when} · {opponent} — отметьте, сыграли вы или нет",
     "push.gameOutcome.body.few": "Отметьте, какие из них состоялись, начиная с {when}",
-    "push.gameOutcome.body.many": "Отметьте, какие из них состоялись, начиная с {when}"
+    "push.gameOutcome.body.many": "Отметьте, какие из них состоялись, начиная с {when}",
+    // Имя партнёра в именительном, глагол без родового окончания: «Аня ждёт».
+    "push.regularSlotWaiting.title.one": "{name} ждёт вашего подтверждения",
+    "push.regularSlotWaiting.title.few": "{count} слота регулярной пары ждут вас",
+    "push.regularSlotWaiting.title.many": "{count} слотов регулярной пары ждут вас",
+    "push.regularSlotWaiting.body.one": "{when} · {court} — подтвердите, если время подходит",
+    "push.regularSlotWaiting.body.few": "Начиная с {when} — отметьте, какие слоты подходят",
+    "push.regularSlotWaiting.body.many": "Начиная с {when} — отметьте, какие слоты подходят"
   }
 );
 

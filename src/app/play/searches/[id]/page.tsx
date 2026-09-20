@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Sport } from "@prisma/client";
 
@@ -5,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { buildGuestAuthHref } from "@/lib/guest-draft";
 import { prisma } from "@/lib/prisma";
 import { PageShell } from "@/components/layout/page-shell";
+import { Panel } from "@/components/ui/panel";
 import { SectionTitle } from "@/components/ui/section-title";
 import { GameSearchLobby } from "@/components/chat/game-search-lobby";
 import { getCourtsForUser } from "@/server/app-data";
@@ -68,6 +70,19 @@ export default async function SearchLobbyPage({ params }: { params: { id: string
         title="Состав и общий чат"
         subtitle="Здесь видны все откликнувшиеся, обсуждение по набору и действие организатора: закрыть поиск и назначить игру."
       />
+      {gameSearch.regularPair ? (
+        // Пуш о слоте ведёт в поиск — в приложении карточка пары с кнопками
+        // «Смогу / Не смогу» лежит прямо здесь, а на вебе она на странице пары.
+        <Panel className="mb-4 space-y-2">
+          <div className="text-sm text-ink/70">Ближайшие слоты регулярной пары подтверждаются на её странице.</div>
+          <Link
+            href={`/play/regular/${gameSearch.regularPair.id}`}
+            className="inline-flex rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white"
+          >
+            Подтвердить слоты
+          </Link>
+        </Panel>
+      ) : null}
       <GameSearchLobby
         currentUserId={user.id}
         search={{

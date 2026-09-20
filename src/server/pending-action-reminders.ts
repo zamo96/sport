@@ -1,4 +1,11 @@
-import { GameRequestStatus, GameSearchResponseStatus, GameSearchStatus, Prisma } from "@prisma/client";
+import {
+  GameRequestStatus,
+  GameSearchResponseStatus,
+  GameSearchStatus,
+  Prisma,
+  RegularPairOccurrenceConfirmationStatus,
+  RegularPairOccurrenceStatus
+} from "@prisma/client";
 
 import { translateServer } from "@/lib/i18n/server";
 import { pluralKeySuffix } from "@/lib/i18n/server/notifications";
@@ -32,6 +39,16 @@ const RESPONSE_MAX_AGE_MS = 2 * DAY_MS;
 const OUTCOME_GRACE_MS = 4 * HOUR_MS;
 const OUTCOME_MAX_AGE_MS = 2 * DAY_MS;
 
+/** Мгновенный пуш о слоте уже ушёл — здесь напоминание, если человек молчит. */
+const SLOT_WAIT_MS = 3 * HOUR_MS;
+const SLOT_MAX_AGE_MS = 2 * DAY_MS;
+/**
+ * Расписание пары нарезано на две недели вперёд, но слот через двенадцать дней
+ * никому не срочен: напоминаем только про ближайшую неделю, иначе пуш
+ * превращается в фоновый шум, на который перестают смотреть.
+ */
+const SLOT_HORIZON_MS = 7 * DAY_MS;
+
 /** Прогон идёт каждые 5 минут, поэтому одной пачки с запасом хватает. */
 const BATCH_SIZE = 200;
 
@@ -62,14 +79,16 @@ export async function runPendingActionReminders(now = new Date(), options: Pendi
     return {
       enabled: false,
       searchResponseWaiting: emptyCampaignStats(),
-      gameOutcomePending: emptyCampaignStats()
+      gameOutcomePending: emptyCampaignStats(),
+      regularSlotConfirmationWaiting: emptyCampaignStats()
     };
   }
 
   return {
     enabled: true,
     searchResponseWaiting: await runSearchResponseWaiting(now, options),
-    gameOutcomePending: await runGameOutcomePending(now, options)
+    gameOutcomePending: await runGameOutcomePending(now, options),
+    regularSlotConfirmationWaiting: await runRegularSlotConfirmationWaiting(now, options)
   };
 }
 
@@ -369,6 +388,172 @@ export async function runGameOutcomePending(now = new Date(), options: PendingAc
       // неотмеченную игру, остальные видно там же, в ленте ближайших.
       href: `/play/games/${bucket.oldestRequestId}`,
       context: { requestIds: bucket.requestIds },
+      now,
+      dryRun: options.dryRun
+    });
+
+    collectCampaignResult(stats, userId, result);
+  }
+
+  return stats;
+}
+
+/**
+ * Слот регулярной пары, который ждёт ответа именно этого игрока: второй уже
+ * ответил — подтвердил слот или предложил новое время, — а здесь тишина.
+ * Автосгенерированные слоты, где молчат оба, не долг ни перед кем: про них
+ * напоминать не за что, поэтому требуется чужое `confirmed`.
+ */
+export async function runRegularSlotConfirmationWaiting(
+  now = new Date(),
+  options: PendingActionRunOptions = {}
+) {
+  const stats = emptyCampaignStats();
+
+  const confirmations = await prisma.regularPairOccurrenceConfirmation.findMany({
+    where: {
+      status: RegularPairOccurrenceConfirmationStatus.pending,
+      user: {
+        accountStatus: "active",
+        notificationGames: true,
+        ...HAS_ACTIVE_PUSH_DEVICE
+      },
+      occurrence: {
+        status: RegularPairOccurrenceStatus.pending,
+        scheduledAt: {
+          gt: now,
+          lte: new Date(now.getTime() + SLOT_HORIZON_MS)
+        },
+        // Пара на паузе или закрытая слоты не играет, и экран их не покажет.
+        regularPair: {
+          status: "active",
+          createdByUser: { accountStatus: "active" },
+          partnerUser: { accountStatus: "active" }
+        },
+        confirmations: {
+          some: {
+            status: RegularPairOccurrenceConfirmationStatus.confirmed,
+            respondedAt: {
+              lte: new Date(now.getTime() - SLOT_WAIT_MS),
+              gte: new Date(now.getTime() - SLOT_MAX_AGE_MS)
+            }
+          }
+        }
+      }
+    },
+    select: {
+      id: true,
+      userId: true,
+      user: { select: { timezone: true } },
+      occurrence: {
+        select: {
+          id: true,
+          scheduledAt: true,
+          proposedCourt: { select: { name: true } },
+          regularPair: {
+            select: {
+              id: true,
+              gameSearchId: true,
+              createdByUserId: true,
+              partnerUserId: true,
+              createdByUser: { select: { name: true } },
+              partnerUser: { select: { name: true } },
+              preferredCourt: { select: { name: true } }
+            }
+          }
+        }
+      }
+    },
+    orderBy: { occurrence: { scheduledAt: "asc" } },
+    take: BATCH_SIZE
+  });
+
+  if (confirmations.length === 0) {
+    return stats;
+  }
+
+  const isBlockedPair = await loadBlockedPairs(
+    Array.from(
+      new Set(
+        confirmations.flatMap((confirmation) => [
+          confirmation.occurrence.regularPair.createdByUserId,
+          confirmation.occurrence.regularPair.partnerUserId
+        ])
+      )
+    )
+  );
+
+  type SlotBucket = {
+    timezone: string | null;
+    /** Ближайший слот: с него и начинаем разговор. */
+    nearestScheduledAt: Date;
+    nearestCourtName: string | null;
+    partnerName: string | null;
+    searchIds: Set<string>;
+    firstSearchId: string;
+    occurrenceIds: string[];
+  };
+
+  const players = new Map<string, SlotBucket>();
+
+  for (const confirmation of confirmations) {
+    const pair = confirmation.occurrence.regularPair;
+    const partner = pair.createdByUserId === confirmation.userId ? pair.partnerUser : pair.createdByUser;
+
+    if (isBlockedPair(pair.createdByUserId, pair.partnerUserId)) {
+      continue;
+    }
+
+    const bucket = players.get(confirmation.userId) ?? {
+      timezone: confirmation.user.timezone,
+      // Слоты отсортированы по времени, поэтому первый и есть ближайший.
+      nearestScheduledAt: confirmation.occurrence.scheduledAt,
+      nearestCourtName: confirmation.occurrence.proposedCourt?.name ?? pair.preferredCourt?.name ?? null,
+      partnerName: partner.name,
+      searchIds: new Set<string>(),
+      firstSearchId: pair.gameSearchId,
+      occurrenceIds: []
+    };
+
+    bucket.searchIds.add(pair.gameSearchId);
+    bucket.occurrenceIds.push(confirmation.occurrence.id);
+    players.set(confirmation.userId, bucket);
+  }
+
+  for (const [userId, bucket] of players) {
+    stats.scanned += 1;
+
+    const count = bucket.occurrenceIds.length;
+    const suffix = (locale: SupportedLocale) => pluralKeySuffix(locale, count);
+    // Кнопки «Смогу / Не смогу» живут в карточке пары внутри её поиска: одна
+    // пара — прямо в неё, несколько — в список поисков.
+    const href = bucket.searchIds.size === 1 ? `/play/searches/${bucket.firstSearchId}` : "/play/searches";
+
+    const result = await sendCampaignPush({
+      userId,
+      campaignKey: "regular_slot_confirmation_waiting",
+      dedupeKey: `regular_slot_confirmation_waiting:${userId}:${getLocalDateParts(bucket.timezone, now).dateKey}`,
+      content: (locale) => {
+        const when = formatLocalDateTime(
+          bucket.timezone,
+          bucket.nearestScheduledAt,
+          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
+          intlLocale(locale)
+        );
+        const values = {
+          count,
+          when,
+          name: playerName(locale, bucket.partnerName),
+          court: bucket.nearestCourtName?.trim() || translateServer(locale, "push.court.fallback")
+        };
+
+        return {
+          title: translateServer(locale, `push.regularSlotWaiting.title.${suffix(locale)}`, values),
+          body: translateServer(locale, `push.regularSlotWaiting.body.${suffix(locale)}`, values)
+        };
+      },
+      href,
+      context: { occurrenceIds: bucket.occurrenceIds, searchIds: Array.from(bucket.searchIds) },
       now,
       dryRun: options.dryRun
     });

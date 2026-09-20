@@ -11,6 +11,11 @@ import {
   updateRegularPairOccurrenceProposal
 } from "@/server/regular-occurrences";
 import { assertActiveCourtIds } from "@/server/court-status";
+import { markCampaignConversion } from "@/server/notification-campaigns";
+import {
+  notifyRegularOccurrencePartner,
+  type RegularOccurrenceChange
+} from "@/server/regular-occurrence-notifications";
 
 export async function PATCH(
   request: NextRequest,
@@ -40,6 +45,16 @@ export async function PATCH(
     }
 
     const acceptedRequestIds: string[] = [];
+    // Что сообщить второму игроку, решаем по запросу: перенос он видит как новое
+    // предложение, а «смогу / не смогу» — как ответ на текущее.
+    const change: RegularOccurrenceChange =
+      body.status === "declined"
+        ? "declined"
+        : body.scheduledAt !== undefined ||
+            body.proposedCourtId !== undefined ||
+            body.durationMinutes !== undefined
+          ? "proposal"
+          : "confirmed";
     const updated = await prisma.$transaction(async (tx) => {
       if (body.proposedCourtId !== undefined) {
         await assertActiveCourtIds(tx, [body.proposedCourtId]);
@@ -54,7 +69,8 @@ export async function PATCH(
         nextOccurrence = await updateRegularPairOccurrenceProposal(tx, params.occurrenceId, {
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : undefined,
           proposedCourtId: body.proposedCourtId,
-          durationMinutes: body.durationMinutes
+          durationMinutes: body.durationMinutes,
+          proposedByUserId: user.id
         });
       }
 
@@ -79,6 +95,18 @@ export async function PATCH(
     }
 
     await recordGameRequestMilestones(acceptedRequestIds, "request_accepted", "regular");
+    // Подтверждения ждут от второго игрока — значит и уведомление идёт ему.
+    await notifyRegularOccurrencePartner({
+      occurrenceId: params.occurrenceId,
+      actorUserId: user.id,
+      change
+    });
+
+    if (body.status) {
+      // Целевое действие напоминания: слот наконец получил ответ.
+      await markCampaignConversion(user.id, ["regular_slot_confirmation_waiting"]);
+    }
+
     return ok({
       occurrence: {
         ...updated,

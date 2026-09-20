@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
+import { syncRegularPairOccurrences, updateRegularPairOccurrenceProposal } from "@/server/regular-occurrences";
 
 type Confirmation = {
   occurrenceId: string;
@@ -162,5 +162,81 @@ describe("regular pair occurrence confirmation synchronization", () => {
     store.db.regularPairOccurrenceConfirmation.createMany.mockRejectedValueOnce(failure);
 
     await expect(store.sync()).rejects.toBe(failure);
+  });
+});
+
+describe("moving a slot", () => {
+  /**
+   * Перенос слота сбрасывает подтверждения — но не автору переноса: его новое
+   * время подтверждено самим переносом, иначе долг висел бы на обоих и
+   * напоминание ушло бы тому, кто это время и предложил.
+   */
+  function createProposalDb() {
+    const confirmations = new Map<string, Confirmation>([
+      ["organizer", { occurrenceId: "occurrence-1", userId: "organizer", status: "confirmed", respondedAt: new Date(2026, 8, 9) }],
+      ["partner", { occurrenceId: "occurrence-1", userId: "partner", status: "confirmed", respondedAt: new Date(2026, 8, 9) }]
+    ]);
+
+    return {
+      confirmations,
+      db: {
+        regularPairOccurrence: {
+          findUnique: vi.fn(async () => ({
+            id: "occurrence-1",
+            regularPairId: "pair-1",
+            scheduledAt: new Date(2026, 8, 11, 19),
+            scheduleAnchor: null,
+            status: "confirmed"
+          })),
+          findFirst: vi.fn(async () => null),
+          update: vi.fn(async () => ({ id: "occurrence-1" }))
+        },
+        regularPairOccurrenceConfirmation: {
+          updateMany: vi.fn(async ({ where, data }: {
+            where: { occurrenceId: string; userId?: string | { not: string } };
+            data: Partial<Confirmation>;
+          }) => {
+            for (const [userId, confirmation] of confirmations) {
+              const target = where.userId;
+              const matches =
+                target === undefined
+                  ? true
+                  : typeof target === "string"
+                    ? userId === target
+                    : userId !== target.not;
+              if (matches) {
+                Object.assign(confirmation, data);
+              }
+            }
+            return { count: confirmations.size };
+          })
+        }
+      }
+    };
+  }
+
+  it("keeps the mover's confirmation and asks only the partner again", async () => {
+    const store = createProposalDb();
+
+    await updateRegularPairOccurrenceProposal(
+      store.db as unknown as Parameters<typeof updateRegularPairOccurrenceProposal>[0],
+      "occurrence-1",
+      { scheduledAt: new Date(2026, 8, 12, 19), proposedByUserId: "organizer" }
+    );
+
+    expect(store.confirmations.get("organizer")?.status).toBe("confirmed");
+    expect(store.confirmations.get("partner")).toMatchObject({ status: "pending", respondedAt: null });
+  });
+
+  it("resets both answers when the mover is unknown", async () => {
+    const store = createProposalDb();
+
+    await updateRegularPairOccurrenceProposal(
+      store.db as unknown as Parameters<typeof updateRegularPairOccurrenceProposal>[0],
+      "occurrence-1",
+      { scheduledAt: new Date(2026, 8, 12, 19) }
+    );
+
+    expect([...store.confirmations.values()].every((item) => item.status === "pending")).toBe(true);
   });
 });

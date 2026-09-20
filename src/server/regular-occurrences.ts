@@ -252,6 +252,8 @@ export async function updateRegularPairOccurrenceProposal(
     scheduledAt?: Date;
     proposedCourtId?: string | null;
     durationMinutes?: number | null;
+    /** Кто переносит слот: его подтверждение переносом и выдаётся. */
+    proposedByUserId?: string;
   }
 ) {
   const occurrence = await db.regularPairOccurrence.findUnique({
@@ -278,15 +280,32 @@ export async function updateRegularPairOccurrenceProposal(
     }
   }
 
+  // Перенос сбрасывает подтверждения, но не автору переноса: своё же новое
+  // время он подтверждает самим переносом. Иначе слот висел бы на обоих, и
+  // напоминание пошло бы в том числе тому, кто его и предложил.
   await db.regularPairOccurrenceConfirmation.updateMany({
     where: {
-      occurrenceId
+      occurrenceId,
+      ...(updates.proposedByUserId ? { userId: { not: updates.proposedByUserId } } : {})
     },
     data: {
       status: RegularPairOccurrenceConfirmationStatus.pending,
       respondedAt: null
     }
   });
+
+  if (updates.proposedByUserId) {
+    await db.regularPairOccurrenceConfirmation.updateMany({
+      where: {
+        occurrenceId,
+        userId: updates.proposedByUserId
+      },
+      data: {
+        status: RegularPairOccurrenceConfirmationStatus.confirmed,
+        respondedAt: new Date()
+      }
+    });
+  }
 
   await db.regularPairOccurrence.update({
     where: { id: occurrenceId },

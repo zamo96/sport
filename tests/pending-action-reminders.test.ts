@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   gameSearchResponseFindMany: vi.fn(),
   gameRequestFindMany: vi.fn(),
+  occurrenceConfirmationFindMany: vi.fn(),
   blockFindMany: vi.fn(),
   sendCampaignPush: vi.fn()
 }));
@@ -11,6 +12,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     gameSearchResponse: { findMany: mocks.gameSearchResponseFindMany },
     gameRequest: { findMany: mocks.gameRequestFindMany },
+    regularPairOccurrenceConfirmation: { findMany: mocks.occurrenceConfirmationFindMany },
     block: { findMany: mocks.blockFindMany }
   }
 }));
@@ -23,6 +25,7 @@ vi.mock("@/server/notification-campaigns", async (importOriginal) => {
 import {
   runGameOutcomePending,
   runPendingActionReminders,
+  runRegularSlotConfirmationWaiting,
   runSearchResponseWaiting
 } from "@/server/pending-action-reminders";
 
@@ -66,10 +69,41 @@ function gameRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Слот ждёт ответа партнёра: организатор уже подтвердил, поэтому долг висит на
+ * `partner-1` — именно ему и адресовано напоминание.
+ */
+function slotConfirmation(overrides: Record<string, unknown> = {}) {
+  const { occurrence, ...rest } = overrides;
+
+  return {
+    id: "confirmation-1",
+    userId: "partner-1",
+    user: { timezone: "Europe/Moscow" },
+    ...rest,
+    occurrence: {
+      id: "occurrence-1",
+      scheduledAt: new Date("2026-09-19T16:00:00.000Z"),
+      proposedCourt: { name: "Лужники" },
+      regularPair: {
+        id: "pair-1",
+        gameSearchId: "search-1",
+        createdByUserId: "organizer-1",
+        partnerUserId: "partner-1",
+        createdByUser: { name: "Иван" },
+        partnerUser: { name: "Аня" },
+        preferredCourt: { name: "ЦСКА" }
+      },
+      ...(occurrence as Record<string, unknown> | undefined)
+    }
+  };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.gameSearchResponseFindMany.mockResolvedValue([]);
   mocks.gameRequestFindMany.mockResolvedValue([]);
+  mocks.occurrenceConfirmationFindMany.mockResolvedValue([]);
   mocks.blockFindMany.mockResolvedValue([]);
   mocks.sendCampaignPush.mockResolvedValue({ status: "sent", reason: "ok", deliveryId: "delivery-1" });
   delete process.env.PENDING_ACTION_REMINDERS_ENABLED;
@@ -253,15 +287,107 @@ describe("reminder switch", () => {
     expect(result.searchResponseWaiting.samples).toHaveLength(1);
   });
 
-  it("runs both campaigns once the switch is on", async () => {
+  it("runs every campaign once the switch is on", async () => {
     process.env.PENDING_ACTION_REMINDERS_ENABLED = "1";
     mocks.gameSearchResponseFindMany.mockResolvedValue([searchResponse()]);
     mocks.gameRequestFindMany.mockResolvedValue([gameRequest()]);
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([slotConfirmation()]);
 
     const result = await runPendingActionReminders(now);
 
     expect(result.enabled).toBe(true);
     expect(result.searchResponseWaiting.sent).toBe(1);
     expect(result.gameOutcomePending.sent).toBe(2);
+    expect(result.regularSlotConfirmationWaiting.sent).toBe(1);
+  });
+});
+
+describe("regular slot confirmation waiting", () => {
+  it("nudges the player whose confirmation is missing, not the one who answered", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([slotConfirmation()]);
+
+    const stats = await runRegularSlotConfirmationWaiting(now);
+
+    expect(stats.sent).toBe(1);
+    expect(mocks.sendCampaignPush).toHaveBeenCalledTimes(1);
+    const input = mocks.sendCampaignPush.mock.calls[0][0];
+    expect(input.userId).toBe("partner-1");
+    expect(input.href).toBe("/play/searches/search-1");
+    expect(input.dedupeKey).toBe("regular_slot_confirmation_waiting:partner-1:2026-09-17");
+    expect(input.content("ru")).toEqual({
+      title: "Иван ждёт вашего подтверждения",
+      body: "19.09, 19:00 · Лужники — подтвердите, если время подходит"
+    });
+  });
+
+  it("asks the organizer when the partner is the one who answered", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([
+      slotConfirmation({ id: "confirmation-2", userId: "organizer-1" })
+    ]);
+
+    await runRegularSlotConfirmationWaiting(now);
+
+    const input = mocks.sendCampaignPush.mock.calls[0][0];
+    expect(input.userId).toBe("organizer-1");
+    expect(input.content("ru").title).toBe("Аня ждёт вашего подтверждения");
+  });
+
+  it("falls back to the pair court when the slot has none", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([
+      slotConfirmation({ occurrence: { proposedCourt: null } })
+    ]);
+
+    await runRegularSlotConfirmationWaiting(now);
+
+    const content = mocks.sendCampaignPush.mock.calls[0][0].content;
+    expect(content("ru").body).toBe("19.09, 19:00 · ЦСКА — подтвердите, если время подходит");
+  });
+
+  it("collapses several waiting slots of one pair into a single push", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([
+      slotConfirmation(),
+      slotConfirmation({
+        id: "confirmation-2",
+        occurrence: { id: "occurrence-2", scheduledAt: new Date("2026-09-26T16:00:00.000Z") }
+      })
+    ]);
+
+    await runRegularSlotConfirmationWaiting(now);
+
+    expect(mocks.sendCampaignPush).toHaveBeenCalledTimes(1);
+    const input = mocks.sendCampaignPush.mock.calls[0][0];
+    // Ведём в ближайший слот, а не в последний добавленный.
+    expect(input.href).toBe("/play/searches/search-1");
+    expect(input.content("ru").title).toBe("2 слота регулярной пары ждут вас");
+    expect(input.context).toEqual({
+      occurrenceIds: ["occurrence-1", "occurrence-2"],
+      searchIds: ["search-1"]
+    });
+  });
+
+  it("stays silent when the pair is blocked", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([slotConfirmation()]);
+    mocks.blockFindMany.mockResolvedValue([{ blockerUserId: "organizer-1", blockedUserId: "partner-1" }]);
+
+    const stats = await runRegularSlotConfirmationWaiting(now);
+
+    expect(mocks.sendCampaignPush).not.toHaveBeenCalled();
+    expect(stats.scanned).toBe(0);
+  });
+
+  it("waits three hours after the partner answered and only for the coming week", async () => {
+    mocks.occurrenceConfirmationFindMany.mockResolvedValue([slotConfirmation()]);
+
+    await runRegularSlotConfirmationWaiting(now);
+
+    const where = mocks.occurrenceConfirmationFindMany.mock.calls[0][0].where;
+    expect(where.occurrence.scheduledAt).toEqual({
+      gt: now,
+      lte: new Date("2026-09-24T19:30:00.000Z")
+    });
+    expect(where.occurrence.confirmations.some.respondedAt).toEqual({
+      lte: new Date("2026-09-17T16:30:00.000Z"),
+      gte: new Date("2026-09-15T19:30:00.000Z")
+    });
   });
 });

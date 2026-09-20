@@ -17,6 +17,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { SportBadge } from "@/components/ui/sport-badge";
 import { Button } from "@/components/ui/button";
 import { getRegularPairForUser } from "@/server/app-data";
+import { markCampaignConversion } from "@/server/notification-campaigns";
+import { notifyRegularOccurrencePartner } from "@/server/regular-occurrence-notifications";
 import { updateRegularPairOccurrenceConfirmation } from "@/server/regular-occurrences";
 import { leaveRegularPairForUser } from "@/server/regular-pairs";
 
@@ -99,6 +101,15 @@ export default async function RegularPairPage({
     if (!previous && updated?.gameRequest) {
       await recordGameRequestMilestones([updated.gameRequest.id], "request_accepted", "regular");
     }
+
+    // Ответ со страницы пары ничем не отличается от ответа из приложения:
+    // второй игрок ждёт его так же и узнать о нём должен так же.
+    await notifyRegularOccurrencePartner({
+      occurrenceId,
+      actorUserId: viewer.id,
+      change: nextStatus === "declined" ? "declined" : "confirmed"
+    });
+    await markCampaignConversion(viewer.id, ["regular_slot_confirmation_waiting"]);
 
     revalidatePath(`/play/regular/${params.id}`);
     revalidatePath("/play/searches");

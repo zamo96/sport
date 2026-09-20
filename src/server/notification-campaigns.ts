@@ -126,6 +126,12 @@ export const CAMPAIGNS = {
     cooldownHours: 24,
     preferenceKey: "notificationGames",
     respectQuietHours: true
+  },
+  regular_slot_confirmation_waiting: {
+    category: "transactional",
+    cooldownHours: 24,
+    preferenceKey: "notificationGames",
+    respectQuietHours: true
   }
 } as const satisfies Record<string, CampaignDefinition>;
 
