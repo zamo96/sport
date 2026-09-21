@@ -50,6 +50,14 @@ fun config(key: String, fallback: String): String =
 fun boolConfig(key: String, fallback: String): String =
     if (config(key, fallback).lowercase() in setOf("yes", "true")) "true" else "false"
 
+// The Play upload key. keystore.properties and the .jks it points at stay out of
+// version control; without them a release build is simply unsigned, as before.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+val hasUploadKey = keystoreProperties.getProperty("storeFile")?.let { rootProject.file(it).exists() } == true
+
 android {
     namespace = "shop.sportsearch.app"
     compileSdk = 37
@@ -75,6 +83,17 @@ android {
         )
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -83,6 +102,7 @@ android {
             buildConfigField("boolean", "USE_MOCK_DATA", boolConfig("USE_MOCK_DATA", "NO"))
         }
         release {
+            if (hasUploadKey) signingConfig = signingConfigs.getByName("upload")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
