@@ -902,7 +902,9 @@ private fun OnboardingDarkStep(
                 color = OnboardingStepPalette.lime,
             )
 
-            Text(title, fontSize = 31.sp, fontWeight = FontWeight.Black, color = Color.White)
+            // The title is two lines by design; without its own line height it
+            // inherits body text's ~22sp and the lines overlap.
+            Text(title, fontSize = 31.sp, lineHeight = 37.sp, fontWeight = FontWeight.Black, color = Color.White)
 
             Text(
                 subtitle,
