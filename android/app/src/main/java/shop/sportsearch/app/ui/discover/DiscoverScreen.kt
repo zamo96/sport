@@ -623,6 +623,70 @@ fun DiscoverScreen(
         return
     }
 
+    /**
+     * `submitSwipe(_:userID:)` - one handler for both decks, the similar
+     * players and the players who already want to play with you, as on iOS.
+     */
+    fun submitSwipe(user: DiscoverUser, action: SwipeAction) {
+        // `submitSwipe(_:userID:)` - a guest cannot send
+        // interest; the like turns into a sign-in prompt.
+        if (!appModel.isAuthenticated &&
+            (action == SwipeAction.LIKE || action == SwipeAction.SUPERLIKE)
+        ) {
+            appModel.consumeDiscoverFirstInterestHint()
+            appModel.presentAuth(AuthStep.EMAIL)
+            return
+        }
+
+        // A guest's swipe never leaves the device: the card is
+        // dropped locally and nothing is sent, so a decline works
+        // without an account.
+        if (!appModel.isAuthenticated) {
+            users = users.filterNot { it.id == user.id }
+            viewedPlayers = viewedPlayers.remove(user.id)
+            if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
+            return
+        }
+
+        // A decline is optimistic and fire-and-forget: the card goes
+        // at once and the request is not awaited, so a failure never
+        // interrupts swiping (`try?` on the iOS side).
+        if (action == SwipeAction.DISLIKE) {
+            users = users.filterNot { it.id == user.id }
+            viewedPlayers = viewedPlayers.remove(user.id)
+            if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
+            scope.launch {
+                runCatching { appModel.repository.swipe(user.id, action) }
+            }
+            return
+        }
+
+        isSubmittingSwipe = true
+        scope.launch {
+            runCatching { appModel.repository.swipe(user.id, action) }
+                .onSuccess { createdMatchId ->
+                    if (createdMatchId != null && action == SwipeAction.LIKE) {
+                        matchMessage = L10n.string(
+                            "You matched with ${user.displayName}.",
+                            "С ${user.displayName} случился новый мэтч.",
+                        )
+                    }
+                }
+                .onFailure { appModel.present(it) }
+            users = users.filterNot { it.id == user.id }
+            viewedPlayers = viewedPlayers.remove(user.id)
+            if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
+            isSubmittingSwipe = false
+            appModel.refreshActivitySummary()
+            if (action == SwipeAction.LIKE || action == SwipeAction.SUPERLIKE) {
+                firstInterestHintPlayerName = user.displayName
+                if (appModel.queueDiscoverFirstInterestHintIfNeeded()) {
+                    scheduleFirstInterestHintIfNeeded(user.displayName)
+                }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -911,65 +975,8 @@ fun DiscoverScreen(
                                         selectedSimilarPlayerId = null
                                     }
                                 },
-                                onSwipe = { user, action ->
-                                    // `submitSwipe(_:userID:)` - a guest cannot send
-                                    // interest; the like turns into a sign-in prompt.
-                                    if (!appModel.isAuthenticated &&
-                                        (action == SwipeAction.LIKE || action == SwipeAction.SUPERLIKE)
-                                    ) {
-                                        appModel.consumeDiscoverFirstInterestHint()
-                                        appModel.presentAuth(AuthStep.EMAIL)
-                                        return@SwipeDeck
-                                    }
-
-                                    // A guest's swipe never leaves the device: the card is
-                                    // dropped locally and nothing is sent, so a decline works
-                                    // without an account.
-                                    if (!appModel.isAuthenticated) {
-                                        users = users.filterNot { it.id == user.id }
-                                        viewedPlayers = viewedPlayers.remove(user.id)
-                                        if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
-                                        return@SwipeDeck
-                                    }
-
-                                    // A decline is optimistic and fire-and-forget: the card goes
-                                    // at once and the request is not awaited, so a failure never
-                                    // interrupts swiping (`try?` on the iOS side).
-                                    if (action == SwipeAction.DISLIKE) {
-                                        users = users.filterNot { it.id == user.id }
-                                        viewedPlayers = viewedPlayers.remove(user.id)
-                                        if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
-                                        scope.launch {
-                                            runCatching { appModel.repository.swipe(user.id, action) }
-                                        }
-                                        return@SwipeDeck
-                                    }
-
-                                    isSubmittingSwipe = true
-                                    scope.launch {
-                                        runCatching { appModel.repository.swipe(user.id, action) }
-                                            .onSuccess { createdMatchId ->
-                                                if (createdMatchId != null && action == SwipeAction.LIKE) {
-                                                    matchMessage = L10n.string(
-                                                        "You matched with ${user.displayName}.",
-                                                        "С ${user.displayName} случился новый мэтч.",
-                                                    )
-                                                }
-                                            }
-                                            .onFailure { appModel.present(it) }
-                                        users = users.filterNot { it.id == user.id }
-                                        viewedPlayers = viewedPlayers.remove(user.id)
-                                        if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
-                                        isSubmittingSwipe = false
-                                        appModel.refreshActivitySummary()
-                                        if (action == SwipeAction.LIKE || action == SwipeAction.SUPERLIKE) {
-                                            firstInterestHintPlayerName = user.displayName
-                                            if (appModel.queueDiscoverFirstInterestHintIfNeeded()) {
-                                                scheduleFirstInterestHintIfNeeded(user.displayName)
-                                            }
-                                        }
-                                    }
-                                },
+                                onSwipe = ::submitSwipe,
+                                onOpen = { selectedParticipant = it },
                             )
                         }
                     }
@@ -987,7 +994,14 @@ fun DiscoverScreen(
                         }
                     }
                 }
-                DiscoverTab.LIKES -> likesContent(appModel, users, isLoading)
+                DiscoverTab.LIKES -> likesContent(
+                    appModel = appModel,
+                    users = users,
+                    isLoading = isLoading,
+                    isSubmitting = isSubmittingSwipe,
+                    onSwipe = ::submitSwipe,
+                    onOpen = { selectedParticipant = it },
+                )
                 DiscoverTab.SEEKING, DiscoverTab.HOT -> searchContent(
                     appModel = appModel,
                     users = users,
@@ -1181,6 +1195,7 @@ private fun SwipeDeck(
     hintDemoPhase: Int?,
     onPlaybackComplete: (DiscoverUser) -> Unit,
     onSwipe: (DiscoverUser, SwipeAction) -> Unit,
+    onOpen: (DiscoverUser) -> Unit = {},
 ) {
     if (users.isEmpty()) {
         if (!isLoading) {
@@ -1309,6 +1324,7 @@ private fun SwipeDeck(
             decision = if (hintDemoPhase != null) demoDecision else decision,
             storyIndex = storyIndex,
             storyProgress = storyProgress,
+            onOpen = { onOpen(topUser) },
             onDislike = { onSwipe(topUser, SwipeAction.DISLIKE) },
             onLike = { onSwipe(topUser, SwipeAction.LIKE) },
         )
@@ -1568,20 +1584,55 @@ private fun CompactUpcomingHistoryRow(
     }
 }
 
-/** Port of `likesContent`. */
+/**
+ * Port of `likesContent`: the players who already want to play with you, as a
+ * swipe deck - right accepts (a mutual interest, so a match), left declines.
+ * A guest gets the sign-in prompt instead, since the list is theirs only.
+ */
 private fun androidx.compose.foundation.lazy.LazyListScope.likesContent(
     appModel: AppViewModel,
     users: List<DiscoverUser>,
     isLoading: Boolean,
+    isSubmitting: Boolean,
+    onSwipe: (DiscoverUser, SwipeAction) -> Unit,
+    onOpen: (DiscoverUser) -> Unit,
 ) {
+    if (!appModel.isAuthenticated) {
+        item {
+            SectionCard(
+                title = L10n.string("Want to play with you", "Хотят с тобой поиграть"),
+                subtitle = L10n.string(
+                    "This section is available after signing in with email.",
+                    "Этот раздел доступен после входа по email.",
+                ),
+            ) {
+                AuthInlinePrompt(
+                    title = L10n.string("Sign in to see incoming interest", "Войди, чтобы видеть входящие симпатии"),
+                    subtitle = L10n.string(
+                        "Players who have already shown interest in you will appear here after email verification.",
+                        "После подтверждения email здесь появятся игроки, которые уже отметили интерес к тебе.",
+                    ),
+                ) { appModel.presentAuth(AuthStep.EMAIL) }
+            }
+        }
+        return
+    }
+
+    item {
+        SwipeHintBar(
+            leftTitle = L10n.string("Left — decline", "Влево — отказать"),
+            rightTitle = L10n.string("Right — ready to play", "Вправо — можно сыграть"),
+        )
+    }
+
     if (users.isEmpty()) {
         if (!isLoading) {
             item {
                 DarkEmptyState(
-                    title = L10n.string("Nobody yet", "Пока никого"),
+                    title = L10n.string("No interest yet", "Пока никто не отметил интерес"),
                     subtitle = L10n.string(
-                        "When someone wants to play with you, they will show up here.",
-                        "Когда кто-то захочет с тобой сыграть, он появится здесь.",
+                        "Cards will appear here when someone wants to play with you.",
+                        "Когда кто-то захочет сыграть с тобой, карточки появятся здесь.",
                     ),
                 )
             }
@@ -1589,45 +1640,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.likesContent(
         return
     }
 
-    item { DarkSectionHeader(L10n.string("Want to play with you", "Хотят с тобой поиграть"), users.size) }
-
-    items(users.size) { index ->
-        val user = users[index]
-        DarkCard {
-            Row(horizontalArrangement = Arrangement.spacedBy(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                RemoteAvatarView(name = user.displayName, path = user.avatarUrl, size = 58.dp)
-
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(
-                        user.age?.let { "${user.displayName}, $it" } ?: user.displayName,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${user.preferredSports.firstOrNull()?.title ?: ""} · ${user.districtDisplaySummary}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF69DB8F),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        user.explainabilityReasons.firstOrNull()
-                            ?: L10n.string(
-                                "This player has already said they would like to play with you.",
-                                "Игрок уже отметил, что хочет с вами сыграть.",
-                            ),
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.62f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
+    item {
+        // No auto-advance here: iOS runs its playback queue for the similar
+        // players only, and a card of someone waiting on your answer should not
+        // leave on its own.
+        SwipeDeck(
+            users = users,
+            isLoading = isLoading,
+            isSubmitting = isSubmitting,
+            hintDemoPhase = null,
+            onPlaybackComplete = {},
+            onSwipe = onSwipe,
+            onOpen = onOpen,
+        )
     }
 }
 
