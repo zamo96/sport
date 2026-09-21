@@ -13,6 +13,9 @@ export const serverAuthMessages = defineServerMessages(
     "auth.error.appleInvalid": "Apple sign-in could not be verified. Start the Apple sign-in flow again.",
     "auth.error.appleEmailRequired": "Apple did not provide an email address for this new account. Try again or sign in with email.",
     "auth.error.appleUnavailable": "Apple sign-in is temporarily unavailable. Please try again later.",
+    "auth.error.googleInvalid": "Google sign-in could not be verified. Try signing in with Google again.",
+    "auth.error.googleEmailRequired": "Google did not confirm an email address for this new account. Try again or sign in with email.",
+    "auth.error.googleUnavailable": "Google sign-in is temporarily unavailable. Please try again later.",
     "auth.email.subject": "Your TennisSearch sign-in code",
     "auth.email.heading": "Your TennisSearch sign-in code:",
     "auth.email.expiry": "The code is valid for 10 minutes. If you did not request it, you can ignore this email."
@@ -29,6 +32,9 @@ export const serverAuthMessages = defineServerMessages(
     "auth.error.appleInvalid": "Не удалось подтвердить вход через Apple. Запустите вход через Apple ещё раз.",
     "auth.error.appleEmailRequired": "Apple не передал email для нового аккаунта. Попробуйте ещё раз или войдите по email.",
     "auth.error.appleUnavailable": "Вход через Apple временно недоступен. Попробуйте ещё раз позже.",
+    "auth.error.googleInvalid": "Не удалось подтвердить вход через Google. Попробуйте войти через Google ещё раз.",
+    "auth.error.googleEmailRequired": "Google не подтвердил email для нового аккаунта. Попробуйте ещё раз или войдите по email.",
+    "auth.error.googleUnavailable": "Вход через Google временно недоступен. Попробуйте ещё раз позже.",
     "auth.email.subject": "Код входа в TennisSearch",
     "auth.email.heading": "Код входа в TennisSearch:",
     "auth.email.expiry": "Код действует 10 минут. Если вы не запрашивали вход, просто проигнорируйте это письмо."

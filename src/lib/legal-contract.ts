@@ -8,7 +8,7 @@ export const USER_AGREEMENT_EFFECTIVE_DATE = "24 августа 2026 года";
 export const USER_AGREEMENT_TITLE = "Пользовательское соглашение SportSearch";
 export const LEGAL_ACCEPTANCE_ERROR = "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных";
 
-export type LegalAcceptanceSource = "email_otp" | "apple";
+export type LegalAcceptanceSource = "email_otp" | "apple" | "google";
 export type AcceptedUserAgreementVersion = (typeof ACCEPTED_USER_AGREEMENT_VERSIONS)[number];
 
 export type LatestUserAgreementPayload = {
