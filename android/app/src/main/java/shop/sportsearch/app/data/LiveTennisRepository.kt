@@ -98,6 +98,26 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
         return envelope.user
     }
 
+    override suspend fun signInWithGoogle(
+        idToken: String,
+        userAgreementAccepted: Boolean,
+        userAgreementVersion: String,
+        showOnMap: Boolean?,
+    ): SessionUser {
+        val envelope = client.request(
+            path = "auth/google",
+            method = "POST",
+            jsonBody = body {
+                put("idToken", idToken)
+                put("userAgreement", userAgreement(userAgreementAccepted, userAgreementVersion))
+                showOnMap?.let { put("showOnMap", it) }
+            },
+            deserializer = VerifyEnvelope.serializer(),
+        )
+        client.setSessionToken(envelope.sessionToken)
+        return envelope.user
+    }
+
     override fun clearAuthSession() = client.setSessionToken(null)
 
     // MARK: - Profile

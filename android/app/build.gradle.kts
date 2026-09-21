@@ -16,6 +16,24 @@ if (hasFirebaseConfig) {
     apply(plugin = libs.plugins.google.services.get().pluginId)
 }
 
+// Sign in with Google needs the *web* OAuth client ID (client_type 3). Firebase
+// writes it into google-services.json once Google sign-in is enabled for the
+// project, so it is read from there unless local.defaults.properties overrides
+// it. Empty means the button stays hidden.
+fun googleWebClientIdFromFirebase(): String {
+    val servicesFile = file("google-services.json")
+    if (!servicesFile.exists()) return ""
+    return runCatching {
+        @Suppress("UNCHECKED_CAST")
+        val json = groovy.json.JsonSlurper().parse(servicesFile) as Map<String, Any?>
+        val clients = json["client"] as? List<Map<String, Any?>> ?: emptyList()
+        clients
+            .flatMap { (it["oauth_client"] as? List<Map<String, Any?>>).orEmpty() }
+            .firstOrNull { (it["client_type"] as? Number)?.toInt() == 3 }
+            ?.get("client_id") as? String
+    }.getOrNull().orEmpty()
+}
+
 // Mirrors ios/TennisSearchIOS/Configs/*.xcconfig.
 // Copy local.defaults.properties.example to local.defaults.properties to point
 // debug builds at a backend running on this machine.
@@ -48,6 +66,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
+        // The web OAuth client ID from Google Cloud: public, but specific to the
+        // project, so it lives in local.defaults.properties like the API host.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${config("GOOGLE_WEB_CLIENT_ID", "").ifBlank { googleWebClientIdFromFirebase() }}\"",
+        )
     }
 
     buildTypes {
@@ -128,6 +153,11 @@ dependencies {
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.common)
+
+    // Sign in with Google - the Android stand-in for Sign in with Apple.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    implementation(libs.googleid)
 
     // Push. The messaging library is safe to ship without google-services.json:
     // it simply finds no default FirebaseApp and never asks for a token.

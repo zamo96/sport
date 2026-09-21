@@ -19,10 +19,17 @@ interface TennisRepository {
     ): SessionUser
 
     /**
-     * The iOS build signs in with Apple. Google Sign-In is the Android
-     * equivalent and needs its own backend route, so it is not wired up here;
-     * email + OTP is the shared path both clients already support.
+     * The Android counterpart of `signInWithApple`: posts the ID token
+     * Credential Manager returned to `POST /auth/google`, which verifies it
+     * against Google's keys and answers with a session like `/auth/verify`.
      */
+    suspend fun signInWithGoogle(
+        idToken: String,
+        userAgreementAccepted: Boolean,
+        userAgreementVersion: String,
+        showOnMap: Boolean? = null,
+    ): SessionUser
+
     fun clearAuthSession()
 
     suspend fun fetchCurrentUser(): UserProfile

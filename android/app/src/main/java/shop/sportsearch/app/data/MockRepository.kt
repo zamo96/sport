@@ -205,6 +205,16 @@ class MockRepository : TennisRepository {
         return SessionUser(id = profile.id, email = email, onboardingCompleted = true)
     }
 
+    override suspend fun signInWithGoogle(
+        idToken: String,
+        userAgreementAccepted: Boolean,
+        userAgreementVersion: String,
+        showOnMap: Boolean?,
+    ): SessionUser {
+        delay(240)
+        return SessionUser(id = profile.id, email = profile.email ?: "google@example.com", onboardingCompleted = true)
+    }
+
     override fun clearAuthSession() = Unit
 
     override suspend fun fetchCurrentUser(): UserProfile = profile

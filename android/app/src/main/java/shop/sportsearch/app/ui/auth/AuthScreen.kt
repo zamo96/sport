@@ -1,5 +1,6 @@
 package shop.sportsearch.app.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,12 +55,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import shop.sportsearch.app.R
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
 import shop.sportsearch.app.ui.components.AppAvailabilityWeekEditor
@@ -80,9 +85,8 @@ import shop.sportsearch.app.ui.theme.continuousShape
  * sign-in card and the OTP step.
  *
  * One deliberate platform difference: iOS offers Sign in with Apple as the
- * primary action. Android has no Apple button, and the backend exposes no
- * Google route yet (only `POST /auth/apple`), so email + OTP - which both
- * clients already share - is the primary path here.
+ * primary action. Android has no Apple sign-in, so the same slot holds Sign in
+ * with Google (`POST /auth/google`), with email + OTP below it as on iOS.
  */
 @Composable
 fun AuthScreen(
@@ -639,6 +643,9 @@ private fun EmailStep(
     DismissOnSystemBack(onBack)
     val uriHandler = LocalUriHandler.current
     val haptics = rememberAppHaptics()
+    val scope = rememberCoroutineScope()
+    // Credential Manager draws its account picker over an Activity.
+    val activityContext = LocalContext.current
     var agreementPrompt by remember { mutableStateOf<String?>(null) }
     val cardShape = continuousShape(32.dp)
 
@@ -702,6 +709,23 @@ private fun EmailStep(
 
                 agreementPrompt?.let {
                     AuthInlineMessage(it, Color(0xFFD1493F), Icons.Filled.Warning)
+                }
+
+                // iOS puts Sign in with Apple here. Android has no Apple sign-in,
+                // so Google takes the same slot; hidden when the build has no
+                // Google client ID configured.
+                if (GoogleSignIn.isAvailable) {
+                    GoogleSignInButton(enabled = !appModel.isBusy) {
+                        if (ensureAgreement()) {
+                            scope.launch {
+                                appModel.signInWithGoogle(
+                                    context = activityContext,
+                                    userAgreementAccepted = appModel.authUserAgreementAccepted,
+                                )
+                            }
+                        }
+                    }
+                    AuthDividerLabel(L10n.string("or sign in with email", "или войти по Email"))
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1046,6 +1070,59 @@ private fun LegalAcceptanceControl(
 }
 
 /** Port of `AuthInlineMessage`. */
+/**
+ * "Continue with Google", in the light style the Sign in with Google branding
+ * guidelines prescribe: white fill, neutral border, the four-colour G. Sized
+ * like the iOS Apple button it replaces (68pt tall, 18pt corners).
+ */
+@Composable
+private fun GoogleSignInButton(enabled: Boolean, onClick: () -> Unit) {
+    val shape = continuousShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .clip(shape)
+            .background(Color.White)
+            .border(1.dp, Color(0xFF747775), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_google_logo),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            L10n.string("Continue with Google", "Продолжить с Google"),
+            style = AppText.title3Semibold,
+            color = Color(0xFF1F1F1F),
+            maxLines = 1,
+        )
+    }
+}
+
+/** Port of `private struct AuthDividerLabel`. */
+@Composable
+private fun AuthDividerLabel(text: String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f).height(1.dp).background(Color(0xFFD1D1D6)))
+        Text(
+            text,
+            style = AppText.title3,
+            color = AppTheme.mutedInk,
+            maxLines = 1,
+        )
+        Box(Modifier.weight(1f).height(1.dp).background(Color(0xFFD1D1D6)))
+    }
+}
+
 @Composable
 private fun AuthInlineMessage(
     text: String,

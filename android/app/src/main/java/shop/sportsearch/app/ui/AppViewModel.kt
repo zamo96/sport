@@ -21,6 +21,7 @@ import shop.sportsearch.app.data.TennisRepository
 import java.io.IOException
 import java.util.UUID
 import shop.sportsearch.app.push.PushRegistration
+import shop.sportsearch.app.ui.auth.GoogleSignIn
 
 /**
  * Port of `@MainActor final class AppModel`. Same published state, same
@@ -238,36 +239,76 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 userAgreementVersion = userAgreementVersion,
                 showOnMap = guestDraft.showOnMap,
             )
-            var user = reconcileLocalePreference(repository.fetchCurrentUser())
-            // The session token is already stored, so the account has to be
-            // adopted before anything that can throw. Assigning it only after the
-            // profile save left `currentUser` null on failure while the token was
-            // live: the app fell back to guest mode and still sent authenticated
-            // requests. Same shape as `AppModel.verify(code:...)` on iOS.
-            currentUser = user
-
-            if (!user.hasCompletedOnboarding && guestDraft.hasCompletedOnboarding) {
-                user = repository.updateProfile(makeProfileFromGuestDraft(user))
-            }
-
-            if (user.hasCompletedOnboarding) {
-                resetGuestDraft()
-            } else {
-                updateGuestDraft(OnboardingRequirements.resumeDraft(user, guestDraft))
-            }
-            currentUser = user
-            registerForPush()
-            authUserAgreementAccepted = false
-            authMessage = null
-            debugCode = null
-            errorMessage = null
-            presentedAuthStep = null
-            refreshActivitySummary()
+            completeSignIn()
         } catch (error: Throwable) {
             present(error)
         } finally {
             isBusy = false
         }
+    }
+
+    /**
+     * Sign in with Google - on Android it takes the place Sign in with Apple
+     * holds on iOS. [context] must be an Activity: Credential Manager shows its
+     * account picker over it.
+     */
+    suspend fun signInWithGoogle(
+        context: android.content.Context,
+        userAgreementAccepted: Boolean,
+        userAgreementVersion: String = LegalDocuments.USER_AGREEMENT_VERSION,
+    ) {
+        if (!userAgreementAccepted) {
+            errorMessage = LegalDocuments.acceptanceError
+            return
+        }
+
+        isBusy = true
+        try {
+            val idToken = GoogleSignIn.requestIdToken(context) ?: return
+            repository.signInWithGoogle(
+                idToken = idToken,
+                userAgreementAccepted = userAgreementAccepted,
+                userAgreementVersion = userAgreementVersion,
+                showOnMap = guestDraft.showOnMap,
+            )
+            completeSignIn()
+        } catch (error: Throwable) {
+            present(error)
+        } finally {
+            isBusy = false
+        }
+    }
+
+    /**
+     * Everything after the backend has issued a session, shared by the email
+     * code and Google paths so the ordering below cannot drift between them.
+     */
+    private suspend fun completeSignIn() {
+        var user = reconcileLocalePreference(repository.fetchCurrentUser())
+        // The session token is already stored, so the account has to be
+        // adopted before anything that can throw. Assigning it only after the
+        // profile save left `currentUser` null on failure while the token was
+        // live: the app fell back to guest mode and still sent authenticated
+        // requests. Same shape as `AppModel.verify(code:...)` on iOS.
+        currentUser = user
+
+        if (!user.hasCompletedOnboarding && guestDraft.hasCompletedOnboarding) {
+            user = repository.updateProfile(makeProfileFromGuestDraft(user))
+        }
+
+        if (user.hasCompletedOnboarding) {
+            resetGuestDraft()
+        } else {
+            updateGuestDraft(OnboardingRequirements.resumeDraft(user, guestDraft))
+        }
+        currentUser = user
+        registerForPush()
+        authUserAgreementAccepted = false
+        authMessage = null
+        debugCode = null
+        errorMessage = null
+        presentedAuthStep = null
+        refreshActivitySummary()
     }
 
     suspend fun saveProfile(profile: UserProfile): Boolean {
