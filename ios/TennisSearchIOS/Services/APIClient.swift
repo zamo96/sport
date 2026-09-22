@@ -629,6 +629,14 @@ final class LiveTennisRepository: TennisRepository {
         return response.users
     }
 
+    /// The Players tab badge while another tab is open: a count, not the feed, because
+    /// serving the feed records impressions for cards the player never saw.
+    func fetchPlayersCount(sport: Sport?) async throws -> Int {
+        let queryItems = sport.map { [URLQueryItem(name: "sport", value: $0.rawValue)] } ?? []
+        let response: DiscoverCountEnvelope = try await client.request(path: "users/discover/count", queryItems: queryItems)
+        return response.count
+    }
+
     func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
         let queryView: String
         switch view {
@@ -1532,6 +1540,10 @@ private struct ReverseLocationRequest: Encodable {
 
 private struct AvatarUploadEnvelope: Decodable {
     let avatarUrl: String
+}
+
+private struct DiscoverCountEnvelope: Decodable {
+    let count: Int
 }
 
 private struct DiscoverEnvelope: Decodable {

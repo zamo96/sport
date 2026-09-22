@@ -549,6 +549,10 @@ actor MockRepository: TennisRepository {
     private var hasLoadedDistrictPlayerCardsStressFixture = false
     #endif
 
+    func fetchPlayersCount(sport: Sport?) async throws -> Int {
+        try await fetchDiscoverUsers(view: .swipe, sport: sport).count
+    }
+
     func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser] {
         #if DEBUG
         if view == .swipe, !hasLoadedDistrictPlayerCardsStressFixture,

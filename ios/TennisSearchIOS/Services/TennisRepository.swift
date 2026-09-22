@@ -19,6 +19,7 @@ protocol TennisRepository {
     func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment
     func fetchChatMedia(path: String) async throws -> Data
     func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser]
+    func fetchPlayersCount(sport: Sport?) async throws -> Int
     func fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser]
     func swipe(userId: String, action: SwipeAction) async throws -> String?
     func reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext) async throws -> UserSafetyReport
