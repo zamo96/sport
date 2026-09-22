@@ -1130,20 +1130,13 @@ struct ProfileView: View {
         }
 
         do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
+            guard let pickedVideo = try await item.loadTransferable(type: ProfilePickedVideo.self) else {
                 throw APIError.invalidPayload(L10n.string("Could not read the selected video", "Не удалось прочитать выбранное видео"))
             }
 
-            let contentType = item.supportedContentTypes.first
-            let fileExtension = preferredProfileMediaExtension(for: contentType, preferredKind: .video)
-            let sourceURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("profile-video-source-\(UUID().uuidString)")
-                .appendingPathExtension(fileExtension)
-
-            try data.write(to: sourceURL, options: [.atomic])
-
+            let sourceURL = pickedVideo.url
             let asset = AVURLAsset(url: sourceURL)
-            let duration = CMTimeGetSeconds(asset.duration)
+            let duration = CMTimeGetSeconds(try await asset.load(.duration))
 
             guard duration.isFinite, duration > 0 else {
                 throw APIError.invalidPayload(L10n.string("Could not determine the video duration", "Не удалось определить длительность видео"))
@@ -1945,6 +1938,26 @@ private struct ProfileDistrictPickerCard: View {
     }
 }
 
+/// Выбранное видео приходит файлом, а не `Data`: пятиминутный ролик весит
+/// сотни мегабайт, и читать его в память целиком ради 10-секундного фрагмента
+/// незачем — редактор и экспорт работают с файлом напрямую.
+private struct ProfilePickedVideo: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let fileExtension = received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent("profile-video-source-\(UUID().uuidString)")
+                .appendingPathExtension(fileExtension)
+            // Файл пикера живёт только до конца замыкания. Копия в пределах
+            // одного тома APFS — клон, она не зависит от длины ролика.
+            try FileManager.default.copyItem(at: received.file, to: destination)
+            return ProfilePickedVideo(url: destination)
+        }
+    }
+}
+
 private struct ProfileVideoTrimDraft: Identifiable {
     let id = UUID()
     let sourceURL: URL
@@ -2491,10 +2504,14 @@ private struct ProfileSelectionMediaCard: View {
                             }
 
                             if remainingVideoSlots > 0 {
+                                // `.current` отдаёт ролик как есть: без него система сперва
+                                // перекодирует весь HEVC-файл в совместимый формат, и пятиминутное
+                                // видео готовится минутами ради 10-секундного фрагмента.
                                 PhotosPicker(
                                     selection: $selectedVideoItems,
                                     maxSelectionCount: remainingVideoSlots,
                                     matching: .videos,
+                                    preferredItemEncoding: .current,
                                     photoLibrary: .shared()
                                 ) {
                                     ProfileAddMediaTile(title: L10n.string("Video up to 10 sec", "Видео до 10 сек"), systemImage: "play.rectangle.fill")
