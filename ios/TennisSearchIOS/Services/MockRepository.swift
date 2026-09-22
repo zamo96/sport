@@ -2377,6 +2377,8 @@ actor MockRepository: TennisRepository {
 
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws {}
 
+    func reportPushOpened(deliveryId: String) async throws {}
+
     func fetchInviteSummary() async throws -> InviteSummary {
         InviteSummary(code: "K7M2QP", url: "https://sportsearch.shop/i/K7M2QP", visits: 4, registered: 2, joined: 1)
     }

@@ -40,11 +40,12 @@ class SportSearchMessagingService : FirebaseMessagingService() {
         val title = message.notification?.title ?: message.data["title"] ?: return
         val body = message.notification?.body ?: message.data["body"].orEmpty()
         val href = message.data["href"]
+        val deliveryId = message.data["deliveryId"]
 
-        showNotification(applicationContext, title, body, href)
+        showNotification(applicationContext, title, body, href, deliveryId)
     }
 
-    private fun showNotification(context: Context, title: String, body: String, href: String?) {
+    private fun showNotification(context: Context, title: String, body: String, href: String?, deliveryId: String?) {
         ensureChannel(context)
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -53,6 +54,8 @@ class SportSearchMessagingService : FirebaseMessagingService() {
             // it goes to AppNavigationTarget.fromNotificationHref rather than the
             // web deep-link parser.
             href?.let { putExtra(EXTRA_NOTIFICATION_HREF, it) }
+            // Only campaign pushes carry one; the tap reports it as opened.
+            deliveryId?.let { putExtra(EXTRA_NOTIFICATION_DELIVERY_ID, it) }
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -80,6 +83,16 @@ class SportSearchMessagingService : FirebaseMessagingService() {
     companion object {
         const val CHANNEL_ID = "sportsearch.games"
         const val EXTRA_NOTIFICATION_HREF = "shop.sportsearch.app.NOTIFICATION_HREF"
+        const val EXTRA_NOTIFICATION_DELIVERY_ID = "shop.sportsearch.app.NOTIFICATION_DELIVERY_ID"
+
+        /**
+         * `click_action` in src/lib/fcm.ts. While the app is in the background
+         * FCM draws the notification itself, and its tap starts the activity
+         * with this action and the payload's data keys as plain extras.
+         */
+        const val ACTION_OPEN_HREF = "shop.sportsearch.app.OPEN_HREF"
+        const val TRAY_EXTRA_HREF = "href"
+        const val TRAY_EXTRA_DELIVERY_ID = "deliveryId"
 
         /** Android 8+ drops a notification whose channel does not exist yet. */
         fun ensureChannel(context: Context) {

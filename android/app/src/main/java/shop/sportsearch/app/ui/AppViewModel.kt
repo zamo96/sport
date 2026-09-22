@@ -20,6 +20,7 @@ import shop.sportsearch.app.data.MockRepository
 import shop.sportsearch.app.data.TennisRepository
 import java.io.IOException
 import java.util.UUID
+import shop.sportsearch.app.push.PushOpenStore
 import shop.sportsearch.app.push.PushRegistration
 import shop.sportsearch.app.ui.auth.GoogleSignIn
 
@@ -48,6 +49,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val guestDraftStore = GuestDraftStore(application)
     private val discoverHintStore = DiscoverHintStore(application)
+    private val pushOpenStore = PushOpenStore(application)
     private var guestDraftSaveJob: Job? = null
 
     var currentUser by mutableStateOf<UserProfile?>(null)
@@ -113,6 +115,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (isUsingMockData) return
         viewModelScope.launch {
             PushRegistration.register(getApplication(), repository)
+        }
+        // Taps queued before the session came back belong to this user now.
+        flushPushOpens()
+    }
+
+    /** `NotificationManager.recordPushOpened(deliveryId:)` on iOS. */
+    fun recordPushOpened(deliveryId: String) {
+        if (isUsingMockData) return
+        pushOpenStore.add(deliveryId)
+        if (currentUser != null) flushPushOpens()
+    }
+
+    /**
+     * Sends queued opens one by one and keeps whatever failed for the next
+     * session. Two overlapping flushes may report an id twice; the server only
+     * stamps the first one, so that costs a request, not a wrong metric.
+     */
+    private fun flushPushOpens() {
+        viewModelScope.launch {
+            for (deliveryId in pushOpenStore.pending()) {
+                val reported = runCatching { repository.reportPushOpened(deliveryId) }.isSuccess
+                if (!reported) return@launch
+                pushOpenStore.remove(deliveryId)
+            }
         }
     }
 

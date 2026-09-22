@@ -867,6 +867,28 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
             },
         )
     }
+
+    /**
+     * `push_opened` for `activity/events` (src/app/activity/events): the server
+     * sets `openedAt` only on the signed-in user's own delivery and only once,
+     * so a repeated report is a no-op.
+     */
+    override suspend fun reportPushOpened(deliveryId: String) {
+        client.requestDiscardingResponse(
+            path = "activity/events",
+            jsonBody = body {
+                putJsonArray("events") {
+                    add(
+                        buildJsonObject {
+                            put("type", "push_opened")
+                            put("deliveryId", deliveryId)
+                            putJsonObject("context") { put("platform", "android") }
+                        },
+                    )
+                }
+            },
+        )
+    }
 }
 
 // MARK: - Response envelopes (private structs in APIClient.swift)

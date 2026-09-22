@@ -77,6 +77,7 @@ protocol TennisRepository {
     func setActiveChat(matchId: String?, gameRequestId: String?, isActive: Bool) async throws
     func setActiveSearchLobby(searchId: String, isActive: Bool) async throws
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws
+    func reportPushOpened(deliveryId: String) async throws
 }
 
 extension TennisRepository {

@@ -49,8 +49,22 @@ class MainActivity : ComponentActivity() {
 
     /** `\.onReceive(.tennisNotificationRouteRequested)` in ContentView.swift:217. */
     private fun routeFromNotification(intent: android.content.Intent?) {
-        val href = intent?.getStringExtra(SportSearchMessagingService.EXTRA_NOTIFICATION_HREF) ?: return
-        intent.removeExtra(SportSearchMessagingService.EXTRA_NOTIFICATION_HREF)
-        AppNavigationTarget.fromNotificationHref(href)?.let(appModel::navigate)
+        intent ?: return
+        // A notification drawn by onMessageReceived carries our own extras; one
+        // FCM drew itself while the app was in the background arrives with the
+        // payload's `click_action` and its data keys as they are.
+        val fromTray = intent.action == SportSearchMessagingService.ACTION_OPEN_HREF
+        val hrefKey =
+            if (fromTray) SportSearchMessagingService.TRAY_EXTRA_HREF else SportSearchMessagingService.EXTRA_NOTIFICATION_HREF
+        val deliveryIdKey =
+            if (fromTray) SportSearchMessagingService.TRAY_EXTRA_DELIVERY_ID else SportSearchMessagingService.EXTRA_NOTIFICATION_DELIVERY_ID
+
+        val href = intent.getStringExtra(hrefKey)
+        val deliveryId = intent.getStringExtra(deliveryIdKey)
+        intent.removeExtra(hrefKey)
+        intent.removeExtra(deliveryIdKey)
+
+        deliveryId?.takeIf { it.isNotBlank() }?.let(appModel::recordPushOpened)
+        href?.let { AppNavigationTarget.fromNotificationHref(it)?.let(appModel::navigate) }
     }
 }

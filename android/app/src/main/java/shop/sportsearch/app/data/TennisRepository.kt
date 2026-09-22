@@ -122,4 +122,7 @@ interface TennisRepository {
         deviceName: String?,
         locale: String?,
     )
+
+    /** Reports a tapped campaign push so the server stamps its delivery as opened. */
+    suspend fun reportPushOpened(deliveryId: String)
 }

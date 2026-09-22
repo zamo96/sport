@@ -558,4 +558,6 @@ class MockRepository : TennisRepository {
         deviceName: String?,
         locale: String?,
     ) = Unit
+
+    override suspend fun reportPushOpened(deliveryId: String) = Unit
 }

@@ -24,6 +24,12 @@ final class NotificationManager: NSObject, ObservableObject {
     private let gameReminderPrefix = "ios.game.reminder.1h."
     private let legacyGameReminderPrefixes = ["ios.game.reminder.2h."]
     private let scheduledGameReminderIDsKey = "ios.game.reminder.scheduled.ids.v1"
+    // Очередь не чистится при выходе: сервер отмечает открытие только у
+    // доставки её владельца, так что id прошлого аккаунта просто ни на что не
+    // повлияет, а при повторном входе тем же игроком открытие не потеряется.
+    private let pendingOpenedDeliveryIDsKey = "ios.push.opened.pending.ids"
+    private let maxPendingOpenedDeliveryIDs = 50
+    private var isFlushingPushOpens = false
     private let gameReminderLeadTime: TimeInterval = 60 * 60
     private let monitorIntervalNanoseconds: UInt64 = 5_000_000_000
 
@@ -82,6 +88,8 @@ final class NotificationManager: NSObject, ObservableObject {
                 await requestAuthorization()
             }
             await registerCurrentDeviceIfPossible()
+            // Тапы, пойманные до восстановления сессии, теперь есть кому отправить.
+            await flushPendingPushOpens()
             await sync(repository: repository)
             startRealtimeMonitoring(repository: repository)
 
@@ -406,6 +414,39 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
 
+    /// Тап по пушу кампании. На холодном старте сессия может быть ещё не
+    /// восстановлена, поэтому id сначала ложится в очередь и уходит, как только
+    /// появится репозиторий — иначе открытия из убитого приложения терялись бы.
+    func recordPushOpened(deliveryId: String) {
+        var pending = defaults.stringArray(forKey: pendingOpenedDeliveryIDsKey) ?? []
+        guard !pending.contains(deliveryId) else { return }
+        pending.append(deliveryId)
+        defaults.set(Array(pending.suffix(maxPendingOpenedDeliveryIDs)), forKey: pendingOpenedDeliveryIDsKey)
+        Task {
+            await flushPendingPushOpens()
+        }
+    }
+
+    /// Отправляет очередь по одному, пока она не опустеет: так подбираются и
+    /// тапы, пришедшие во время отправки. Ошибку оставляем до следующей сессии.
+    private func flushPendingPushOpens() async {
+        guard let repository, !isFlushingPushOpens else { return }
+        isFlushingPushOpens = true
+        defer { isFlushingPushOpens = false }
+
+        while let deliveryId = defaults.stringArray(forKey: pendingOpenedDeliveryIDsKey)?.first {
+            do {
+                try await repository.reportPushOpened(deliveryId: deliveryId)
+            } catch {
+                print("push open report error:", error.localizedDescription)
+                return
+            }
+
+            let remaining = (defaults.stringArray(forKey: pendingOpenedDeliveryIDsKey) ?? []).filter { $0 != deliveryId }
+            defaults.set(remaining, forKey: pendingOpenedDeliveryIDsKey)
+        }
+    }
+
     @objc private func handleAPNSRegistration(_ notification: Notification) {
         guard let token = notification.userInfo?["token"] as? String else {
             return
@@ -469,7 +510,17 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let href = response.notification.request.content.userInfo["href"] as? String
+        let userInfo = response.notification.request.content.userInfo
+        let href = userInfo["href"] as? String
+        // Есть только у пушей кампаний (src/lib/apns.ts): по нему сервер
+        // отмечает открытие доставки.
+        let deliveryId = (userInfo["deliveryId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+
+        if let deliveryId {
+            Task { @MainActor [weak self] in
+                self?.recordPushOpened(deliveryId: deliveryId)
+            }
+        }
 
         DispatchQueue.main.async {
             if let href {

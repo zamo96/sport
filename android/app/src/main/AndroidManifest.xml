@@ -48,6 +48,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="sportsearch.shop" />
             </intent-filter>
+
+            <!-- `click_action` of the FCM payload (src/lib/fcm.ts). Without a
+                 matching filter a tap on a notification the system drew while
+                 the app was in the background resolved to nothing. -->
+            <intent-filter>
+                <action android:name="shop.sportsearch.app.OPEN_HREF" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <!-- Push. Firebase only starts this when google-services.json is present,

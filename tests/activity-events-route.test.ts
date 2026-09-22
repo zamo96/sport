@@ -37,4 +37,17 @@ describe("activity ingestion boundary", () => {
     expect(mocks.opened).toHaveBeenCalledTimes(1);
     expect(mocks.opened).toHaveBeenCalledWith("session-user", "delivery", expect.any(Date));
   });
+  // Ровно то тело, что шлют NotificationManager.swift и AppViewModel.kt: схема
+  // строгая, и лишнее поле молча превратило бы каждое открытие в 400.
+  it.each(["ios", "android"])("accepts the push_opened body the %s app sends", async (platform) => {
+    const response = await POST(request({ events: [{ type: "push_opened", deliveryId: "delivery-1", context: { platform } }] }));
+    expect(response.status).toBe(200);
+    expect(mocks.opened).toHaveBeenCalledWith("session-user", "delivery-1", expect.any(Date));
+    expect(mocks.record.mock.calls[0][0][0]).toMatchObject({
+      type: "push_opened",
+      entityType: "notification_delivery",
+      entityId: "delivery-1",
+      context: { platform }
+    });
+  });
 });

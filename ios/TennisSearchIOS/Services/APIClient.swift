@@ -1089,6 +1089,22 @@ final class LiveTennisRepository: TennisRepository {
             )
         )
     }
+
+    /// `push_opened` для `activity/events`: сервер ставит `openedAt` только на
+    /// доставку текущего игрока и только один раз, так что повтор ничего не портит.
+    func reportPushOpened(deliveryId: String) async throws {
+        let _: SuccessEnvelope = try await client.request(
+            path: "activity/events",
+            method: "POST",
+            body: ActivityEventsRequest(events: [
+                ActivityEventRequest(
+                    type: "push_opened",
+                    deliveryId: deliveryId,
+                    context: ActivityEventContext(platform: "ios")
+                )
+            ])
+        )
+    }
 }
 
 private struct ErrorEnvelope: Decodable {
@@ -1660,6 +1676,20 @@ private struct RegisterPushDeviceRequest: Encodable {
     let bundleId: String
     let deviceName: String?
     let locale: String?
+}
+
+private struct ActivityEventsRequest: Encodable {
+    let events: [ActivityEventRequest]
+}
+
+private struct ActivityEventRequest: Encodable {
+    let type: String
+    let deliveryId: String
+    let context: ActivityEventContext
+}
+
+private struct ActivityEventContext: Encodable {
+    let platform: String
 }
 
 private struct InviteEnvelope: Decodable {
