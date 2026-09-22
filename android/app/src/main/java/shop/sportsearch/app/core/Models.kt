@@ -245,6 +245,8 @@ data class UserProfile(
     val avatarUrl: String? = null,
     val profilePhotoUrls: List<String> = emptyList(),
     val profileVideoUrls: List<String> = emptyList(),
+    /** Order of photos and videos in the card; empty keeps photos-then-videos. */
+    val profileMediaOrder: List<String> = emptyList(),
     val tennisLevel: Int? = null,
     @Serializable(with = SportListSerializer::class) val preferredSports: List<Sport> = emptyList(),
     @Serializable(with = FlexibleIntMapSerializer::class) val sportLevels: Map<String, Int> = emptyMap(),
@@ -335,6 +337,7 @@ data class DiscoverUser(
     val avatarUrl: String? = null,
     val profilePhotoUrls: List<String> = emptyList(),
     val profileVideoUrls: List<String> = emptyList(),
+    val profileMediaOrder: List<String> = emptyList(),
     val lastActiveAt: String? = null,
     val tennisLevel: Int? = null,
     @Serializable(with = SportListSerializer::class) val preferredSports: List<Sport> = emptyList(),

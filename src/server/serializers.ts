@@ -92,6 +92,10 @@ function serializeUserPreviewFields(user: PreviewUserInput) {
       "profileVideoUrls" in user
         ? normalizeStringArray((user as Partial<User> & { profileVideoUrls?: unknown }).profileVideoUrls, 4)
         : [],
+    profileMediaOrder:
+      "profileMediaOrder" in user
+        ? normalizeStringArray((user as Partial<User> & { profileMediaOrder?: unknown }).profileMediaOrder, 11)
+        : [],
     lastActiveAt:
       "lastActiveAt" in user
         ? (user as Partial<User> & { lastActiveAt?: Date | null }).lastActiveAt?.toISOString() ?? null

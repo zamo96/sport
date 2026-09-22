@@ -272,6 +272,9 @@ model User {
   avatarUrl                          String?
   profilePhotoUrls                   Json?
   profileVideoUrls                   Json?
+  /// Порядок фото и видео в карточке — URL из двух списков выше. Чего в нём
+  /// нет, клиент дописывает в конец в прежнем порядке «фото, потом видео».
+  profileMediaOrder                  Json?
   availableDays                      Json?
   availableTimeRanges                Json?
   availableTimeSlots                 Json?

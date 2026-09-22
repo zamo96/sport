@@ -808,6 +808,11 @@ export type CreateContentReportInput = z.infer<typeof createContentReportSchema>
 export type AdminContentReportsQuery = z.infer<typeof adminContentReportsQuerySchema>;
 export type ResolveContentReportInput = z.infer<typeof resolveContentReportSchema>;
 
+/** Порядок фото и видео в карточке: аватар, 6 фото и 4 видео — не больше 11. */
+export const profileMediaOrderSchema = z.object({
+  order: z.array(z.string().trim().min(1).max(600)).max(11)
+}).strict();
+
 export const userEventSchema = z.object({
   type: z.enum(CLIENT_REPORTABLE_EVENT_TYPES),
   entityType: z.string().trim().max(60).optional(),

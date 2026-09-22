@@ -1093,6 +1093,8 @@ struct UserProfile: Codable, Identifiable {
     var avatarUrl: String?
     var profilePhotoUrls: [String]
     var profileVideoUrls: [String]
+    /// Порядок фото и видео в карточке; пустой — прежний «фото, потом видео».
+    var profileMediaOrder: [String]
     var tennisLevel: Int?
     var preferredSports: [Sport]
     var sportLevels: [String: Int]
@@ -1136,6 +1138,7 @@ struct UserProfile: Codable, Identifiable {
         avatarUrl: String? = nil,
         profilePhotoUrls: [String] = [],
         profileVideoUrls: [String] = [],
+        profileMediaOrder: [String] = [],
         tennisLevel: Int? = nil,
         preferredSports: [Sport] = [],
         sportLevels: [String: Int] = [:],
@@ -1170,6 +1173,7 @@ struct UserProfile: Codable, Identifiable {
         self.avatarUrl = avatarUrl
         self.profilePhotoUrls = profilePhotoUrls
         self.profileVideoUrls = profileVideoUrls
+        self.profileMediaOrder = profileMediaOrder
         self.tennisLevel = tennisLevel
         self.preferredSports = preferredSports
         self.sportLevels = sportLevels
@@ -1206,6 +1210,7 @@ struct UserProfile: Codable, Identifiable {
         case avatarUrl
         case profilePhotoUrls
         case profileVideoUrls
+        case profileMediaOrder
         case tennisLevel
         case preferredSports
         case sportLevels
@@ -1245,6 +1250,7 @@ struct UserProfile: Codable, Identifiable {
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         profilePhotoUrls = try container.decodeIfPresent([String].self, forKey: .profilePhotoUrls) ?? []
         profileVideoUrls = try container.decodeIfPresent([String].self, forKey: .profileVideoUrls) ?? []
+        profileMediaOrder = try container.decodeIfPresent([String].self, forKey: .profileMediaOrder) ?? []
         tennisLevel = try container.decodeIfPresent(Int.self, forKey: .tennisLevel)
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
         sportLevels = try container.decodeFlexibleIntDictionary(forKey: .sportLevels)
@@ -1316,6 +1322,7 @@ struct DiscoverUser: Codable, Identifiable {
     let avatarUrl: String?
     let profilePhotoUrls: [String]
     let profileVideoUrls: [String]
+    let profileMediaOrder: [String]
     let lastActiveAt: String?
     let tennisLevel: Int?
     let preferredSports: [Sport]
@@ -1344,6 +1351,7 @@ struct DiscoverUser: Codable, Identifiable {
         case avatarUrl
         case profilePhotoUrls
         case profileVideoUrls
+        case profileMediaOrder
         case lastActiveAt
         case tennisLevel
         case preferredSports
@@ -1374,6 +1382,7 @@ struct DiscoverUser: Codable, Identifiable {
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         profilePhotoUrls = try container.decodeIfPresent([String].self, forKey: .profilePhotoUrls) ?? []
         profileVideoUrls = try container.decodeIfPresent([String].self, forKey: .profileVideoUrls) ?? []
+        profileMediaOrder = try container.decodeIfPresent([String].self, forKey: .profileMediaOrder) ?? []
         lastActiveAt = try container.decodeIfPresent(String.self, forKey: .lastActiveAt)
         tennisLevel = try container.decodeIfPresent(Int.self, forKey: .tennisLevel)
         preferredSports = try container.decodeFlexibleSportArray(forKey: .preferredSports)
@@ -1405,6 +1414,7 @@ extension DiscoverUser {
         avatarUrl = profile.avatarUrl
         profilePhotoUrls = profile.profilePhotoUrls
         profileVideoUrls = profile.profileVideoUrls
+        profileMediaOrder = profile.profileMediaOrder
         lastActiveAt = nil
         tennisLevel = profile.tennisLevel
         preferredSports = profile.preferredSports
@@ -2883,8 +2893,11 @@ extension DiscoverUser {
     }
 
     var playerCardMediaItems: [PlayerMediaItem] {
-        profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
-            + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) }
+        orderedPlayerMediaItems(
+            profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
+                + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) },
+            order: profileMediaOrder
+        )
     }
 }
 
@@ -2905,9 +2918,23 @@ extension UserProfile {
     }
 
     var playerCardMediaItems: [PlayerMediaItem] {
-        profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
-            + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) }
+        orderedPlayerMediaItems(
+            profilePhotoPaths.map { PlayerMediaItem(kind: .photo, path: $0) }
+                + uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(kind: .video, path: $0) },
+            order: profileMediaOrder
+        )
     }
+}
+
+/// Порядок из профиля поверх прежнего «фото, потом видео». Чего в порядке нет —
+/// новое медиа или профиль, сохранённый старой сборкой, — идёт следом как раньше.
+private func orderedPlayerMediaItems(_ items: [PlayerMediaItem], order: [String]) -> [PlayerMediaItem] {
+    guard !order.isEmpty else { return items }
+    let ordered = uniqueNonEmptyMediaPaths(order).compactMap { path in
+        items.first { $0.path == path }
+    }
+    let orderedPaths = Set(ordered.map(\.path))
+    return ordered + items.filter { !orderedPaths.contains($0.path) }
 }
 
 private func uniqueNonEmptyMediaPaths(_ paths: [String]) -> [String] {

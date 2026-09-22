@@ -15,6 +15,7 @@ protocol TennisRepository {
     func uploadAvatar(data: Data, fileName: String, mimeType: String) async throws -> String
     func uploadProfileMedia(data: Data, fileName: String, mimeType: String) async throws -> ProfileMediaUploadResult
     func removeProfileMedia(mediaUrl: String) async throws -> ProfileMediaUploadResult
+    func reorderProfileMedia(order: [String]) async throws -> ProfileMediaOrderResult
     func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment
     func fetchChatMedia(path: String) async throws -> Data
     func fetchDiscoverUsers(view: DiscoverTab, sport: Sport?) async throws -> [DiscoverUser]
@@ -114,6 +115,16 @@ struct ProfileMediaUploadResult: Codable {
     let avatarUrl: String?
     let profilePhotoUrls: [String]
     let profileVideoUrls: [String]
+    /// `nil` от бэкенда, который ещё не знает порядка медиа.
+    var profileMediaOrder: [String]? = nil
+}
+
+/// Ответ перестановки: те же списки, но без `mediaUrl` — ничего не добавлялось.
+struct ProfileMediaOrderResult: Codable {
+    let avatarUrl: String?
+    let profilePhotoUrls: [String]
+    let profileVideoUrls: [String]
+    let profileMediaOrder: [String]
 }
 
 struct SearchSimulationResult: Codable {

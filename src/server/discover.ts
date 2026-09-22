@@ -32,6 +32,7 @@ const candidateBaseSelect = {
   avatarUrl: true,
   profilePhotoUrls: true,
   profileVideoUrls: true,
+  profileMediaOrder: true,
   homeLat: true,
   homeLng: true,
   tennisLevel: true,

@@ -205,6 +205,7 @@ fun discoverUserFromProfile(profile: UserProfile): DiscoverUser = DiscoverUser(
     avatarUrl = profile.avatarUrl,
     profilePhotoUrls = profile.profilePhotoUrls,
     profileVideoUrls = profile.profileVideoUrls,
+    profileMediaOrder = profile.profileMediaOrder,
     lastActiveAt = null,
     tennisLevel = profile.tennisLevel,
     preferredSports = profile.preferredSports,

@@ -1,5 +1,7 @@
 export const PROFILE_PHOTO_LIMIT = 6;
 export const PROFILE_VIDEO_LIMIT = 4;
+/** Аватар может не входить в список фото, поэтому на одну позицию больше. */
+export const PROFILE_MEDIA_ORDER_LIMIT = PROFILE_PHOTO_LIMIT + PROFILE_VIDEO_LIMIT + 1;
 
 export type ProfileMediaType = "photo" | "video";
 
@@ -24,6 +26,24 @@ export function normalizeProfileMediaList(value: unknown, limit: number) {
         .filter(Boolean)
     )
   ).slice(0, limit);
+}
+
+/**
+ * Оставляет в порядке только медиа, которое сейчас есть в профиле: ссылка на
+ * удалённое или чужое видео не должна всплыть в карточке. Всё, чего в порядке
+ * нет, клиенты показывают следом в прежнем порядке «фото, потом видео».
+ */
+export function sanitizeProfileMediaOrder(
+  order: unknown,
+  state: { avatarUrl: string | null; profilePhotoUrls: unknown; profileVideoUrls: unknown }
+) {
+  const known = new Set([
+    ...normalizeProfileMediaList(state.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
+    ...normalizeProfileMediaList(state.profileVideoUrls, PROFILE_VIDEO_LIMIT),
+    ...(state.avatarUrl?.trim() ? [state.avatarUrl.trim()] : [])
+  ]);
+
+  return normalizeProfileMediaList(order, PROFILE_MEDIA_ORDER_LIMIT).filter((url) => known.has(url));
 }
 
 export function removeProfileMedia(

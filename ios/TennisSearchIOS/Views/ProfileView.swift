@@ -279,7 +279,8 @@ struct ProfileView: View {
                     selectedVideoItems: $selectedProfileVideoItems,
                     onEdit: { isEditorPresented = true },
                     onPreview: { selectedProfileMediaPreview = $0 },
-                    onRemove: requestProfileMediaRemoval
+                    onRemove: requestProfileMediaRemoval,
+                    onReorder: reorderProfileMediaPersistently
                 )
 
                 ProfileCompletenessCard(
@@ -1268,12 +1269,18 @@ struct ProfileView: View {
             updatedDraft.profilePhotoUrls = result.profilePhotoUrls
             updatedDraft.profileVideoUrls = result.profileVideoUrls
             updatedDraft.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first
+            if let order = result.profileMediaOrder {
+                updatedDraft.profileMediaOrder = order
+            }
             draft = updatedDraft
             appModel.currentUser = updatedDraft
         } else if var currentUser = appModel.currentUser {
             currentUser.profilePhotoUrls = result.profilePhotoUrls
             currentUser.profileVideoUrls = result.profileVideoUrls
             currentUser.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first
+            if let order = result.profileMediaOrder {
+                currentUser.profileMediaOrder = order
+            }
             draft = currentUser
             appModel.currentUser = currentUser
         }
@@ -1306,6 +1313,42 @@ struct ProfileView: View {
                 appModel.present(error: error)
             }
         }
+    }
+
+    /// Порядок сохраняется сразу, как добавление и удаление медиа: карточка
+    /// показывает его до ответа сервера и откатывается, если сохранить не вышло.
+    private func reorderProfileMediaPersistently(_ order: [String]) {
+        guard profileMediaMutationCount == 0,
+              var updatedDraft = draft ?? appModel.currentUser else { return }
+
+        let snapshot = updatedDraft
+        updatedDraft.profileMediaOrder = order
+        draft = updatedDraft
+        appModel.currentUser = updatedDraft
+
+        enqueueProfileMediaMutation {
+            do {
+                let result = try await appModel.repository.reorderProfileMedia(order: order)
+                applyProfileMediaOrder(result)
+                AppHaptics.notification(.success)
+                showSaveToast(L10n.string("Order saved", "Порядок сохранён"))
+            } catch {
+                draft = snapshot
+                appModel.currentUser = snapshot
+                guard !error.isCancellationLike else { return }
+                appModel.present(error: error)
+            }
+        }
+    }
+
+    private func applyProfileMediaOrder(_ result: ProfileMediaOrderResult) {
+        guard var updated = draft ?? appModel.currentUser else { return }
+        updated.profilePhotoUrls = result.profilePhotoUrls
+        updated.profileVideoUrls = result.profileVideoUrls
+        updated.avatarUrl = result.avatarUrl ?? result.profilePhotoUrls.first
+        updated.profileMediaOrder = result.profileMediaOrder
+        draft = updated
+        appModel.currentUser = updated
     }
 
     private func applyOptimisticProfileMediaRemoval(_ item: PlayerMediaItem) {
@@ -2358,6 +2401,9 @@ private struct ProfileSelectionMediaCard: View {
     let onEdit: () -> Void
     let onPreview: (PlayerMediaItem) -> Void
     let onRemove: (PlayerMediaItem) -> Void
+    let onReorder: ([String]) -> Void
+
+    @State private var isReorderPresented = false
 
     private var mediaItems: [PlayerMediaItem] {
         profile.playerCardMediaItems
@@ -2527,6 +2573,9 @@ private struct ProfileSelectionMediaCard: View {
                 ProfileMediaAdviceRow()
             }
         }
+        .sheet(isPresented: $isReorderPresented) {
+            ProfileMediaOrderSheet(items: mediaItems, onSave: onReorder)
+        }
     }
 
     private var profileName: some View {
@@ -2571,8 +2620,31 @@ private struct ProfileSelectionMediaCard: View {
             .foregroundStyle(.white)
     }
 
-    @ViewBuilder
     private var mediaHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
+            mediaTitleBlock
+            Spacer(minLength: 4)
+
+            if mediaItems.count > 1 {
+                Button {
+                    isReorderPresented = true
+                } label: {
+                    Label(L10n.string("Order", "Порядок"), systemImage: "arrow.up.arrow.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .background(.white.opacity(0.09), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isUploading || isUploadingAvatar)
+                .accessibilityLabel(L10n.string("Change the order in your card", "Изменить порядок в карточке"))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mediaTitleBlock: some View {
         if profile.profileVideoUrls.isEmpty {
             mediaTitle
         } else {
@@ -2654,7 +2726,7 @@ private struct ProfileMediaTile: View {
             Button {
                 onPreview(item)
             } label: {
-                thumbnail
+                ProfileMediaThumbnail(item: item)
                     .frame(width: 92, height: 120)
                     .clipped()
             }
@@ -2686,9 +2758,14 @@ private struct ProfileMediaTile: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
+}
+
+/// Превью медиа из карточки: общее у плитки профиля и экрана порядка.
+private struct ProfileMediaThumbnail: View {
+    let item: PlayerMediaItem
 
     @ViewBuilder
-    private var thumbnail: some View {
+    var body: some View {
         if item.kind == .video, let url = resolveAppRemoteURL(item.path) {
             RemoteLoopingVideo(url: url, indicator: .shimmer) {
                 tileFallback(showsIcon: false)
@@ -2715,6 +2792,83 @@ private struct ProfileMediaTile: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
         }
+    }
+}
+
+/// Порядок фото и видео в карточке: что наверху, то игроки увидят первым.
+private struct ProfileMediaOrderSheet: View {
+    let onSave: ([String]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var items: [PlayerMediaItem]
+    private let initialPaths: [String]
+
+    init(items: [PlayerMediaItem], onSave: @escaping ([String]) -> Void) {
+        _items = State(initialValue: items)
+        initialPaths = items.map(\.path)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(items) { item in
+                        row(for: item)
+                            .listRowBackground(Color.white.opacity(0.06))
+                    }
+                    .onMove { source, destination in
+                        items.move(fromOffsets: source, toOffset: destination)
+                    }
+                } footer: {
+                    Text(L10n.string("Drag the handle to move. The top item opens your card.", "Перетащите за ручку справа. Что наверху — с того и откроется карточка."))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .scrollContentBackground(.hidden)
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle(L10n.string("Order", "Порядок"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Cancel", "Отмена")) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Save", "Сохранить")) {
+                        let paths = items.map(\.path)
+                        if paths != initialPaths {
+                            onSave(paths)
+                        }
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func row(for item: PlayerMediaItem) -> some View {
+        let position = (items.firstIndex(of: item) ?? 0) + 1
+
+        return HStack(spacing: 14) {
+            ProfileMediaThumbnail(item: item)
+                .frame(width: 54, height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.kind == .video ? L10n.string("Video", "Видео") : L10n.string("Photo", "Фото"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(position == 1 ? L10n.string("Opens the card", "Первым в карточке") : L10n.string("Position \(position)", "\(position)-е место"))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(position == 1 ? AppTheme.mint : .white.opacity(0.56))
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

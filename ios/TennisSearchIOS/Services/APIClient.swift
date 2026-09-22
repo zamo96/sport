@@ -593,6 +593,14 @@ final class LiveTennisRepository: TennisRepository {
         )
     }
 
+    func reorderProfileMedia(order: [String]) async throws -> ProfileMediaOrderResult {
+        try await client.request(
+            path: "uploads/profile-media",
+            method: "PATCH",
+            body: ReorderProfileMediaRequest(order: order)
+        )
+    }
+
     func uploadChatMedia(data: Data, fileName: String, mimeType: String) async throws -> ChatMediaAttachment {
         let response: ChatMediaUploadEnvelope = try await client.uploadMultipart(
             path: "uploads/chat-media",
@@ -1657,6 +1665,10 @@ private struct SuccessEnvelope: Decodable {
 }
 
 private struct EmptyRequest: Encodable {}
+
+private struct ReorderProfileMediaRequest: Encodable {
+    let order: [String]
+}
 
 private struct RemoveProfileMediaRequest: Encodable {
     let mediaUrl: String

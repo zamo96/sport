@@ -508,9 +508,22 @@ actor MockRepository: TennisRepository {
         )
     }
 
+    func reorderProfileMedia(order: [String]) async throws -> ProfileMediaOrderResult {
+        let known = Set(currentUser.profilePhotoUrls + currentUser.profileVideoUrls + [currentUser.avatarUrl].compactMap { $0 })
+        currentUser.profileMediaOrder = order.filter { known.contains($0) }
+
+        return ProfileMediaOrderResult(
+            avatarUrl: currentUser.avatarUrl,
+            profilePhotoUrls: currentUser.profilePhotoUrls,
+            profileVideoUrls: currentUser.profileVideoUrls,
+            profileMediaOrder: currentUser.profileMediaOrder
+        )
+    }
+
     func removeProfileMedia(mediaUrl: String) async throws -> ProfileMediaUploadResult {
         currentUser.profilePhotoUrls.removeAll { $0 == mediaUrl }
         currentUser.profileVideoUrls.removeAll { $0 == mediaUrl }
+        currentUser.profileMediaOrder.removeAll { $0 == mediaUrl }
         if currentUser.avatarUrl == mediaUrl {
             currentUser.avatarUrl = currentUser.profilePhotoUrls.first
         }

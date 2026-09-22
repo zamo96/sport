@@ -38,8 +38,11 @@ val DiscoverUser.profileHeroImagePath: String?
     get() = profilePhotoPaths.firstOrNull()
 
 val DiscoverUser.playerCardMediaItems: List<PlayerMediaItem>
-    get() = profilePhotoPaths.map { PlayerMediaItem(PlayerMediaKind.PHOTO, it) } +
-        uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(PlayerMediaKind.VIDEO, it) }
+    get() = orderedPlayerMediaItems(
+        profilePhotoPaths.map { PlayerMediaItem(PlayerMediaKind.PHOTO, it) } +
+            uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(PlayerMediaKind.VIDEO, it) },
+        profileMediaOrder,
+    )
 
 val UserProfile.displayName: String
     get() = name?.takeIf { it.isNotEmpty() } ?: email ?: L10n.string("Profile", "Профиль")
@@ -49,8 +52,23 @@ val UserProfile.profilePhotoPaths: List<String>
 
 /** The same media list the swipe card builds, for the profile's own preview. */
 val UserProfile.playerCardMediaItems: List<PlayerMediaItem>
-    get() = profilePhotoPaths.map { PlayerMediaItem(PlayerMediaKind.PHOTO, it) } +
-        uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(PlayerMediaKind.VIDEO, it) }
+    get() = orderedPlayerMediaItems(
+        profilePhotoPaths.map { PlayerMediaItem(PlayerMediaKind.PHOTO, it) } +
+            uniqueNonEmptyMediaPaths(profileVideoUrls).map { PlayerMediaItem(PlayerMediaKind.VIDEO, it) },
+        profileMediaOrder,
+    )
+
+/**
+ * `orderedPlayerMediaItems(_:order:)` in AppModels.swift: the profile's order on
+ * top of photos-then-videos. Anything the order does not mention - new media, or
+ * a profile saved by an older build - follows in the old order.
+ */
+private fun orderedPlayerMediaItems(items: List<PlayerMediaItem>, order: List<String>): List<PlayerMediaItem> {
+    if (order.isEmpty()) return items
+    val ordered = uniqueNonEmptyMediaPaths(order).mapNotNull { path -> items.firstOrNull { it.path == path } }
+    val orderedPaths = ordered.map { it.path }.toSet()
+    return ordered + items.filterNot { it.path in orderedPaths }
+}
 
 val UserProfile.profileHeroImagePath: String?
     get() = profilePhotoPaths.firstOrNull()

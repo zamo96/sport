@@ -4,12 +4,22 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import {
   normalizeProfileMediaList,
+  PROFILE_MEDIA_ORDER_LIMIT,
   PROFILE_PHOTO_LIMIT,
   PROFILE_VIDEO_LIMIT,
-  removeProfileMedia
+  removeProfileMedia,
+  sanitizeProfileMediaOrder
 } from "@/lib/profile-media";
 import { withSerializableTransactionRetry } from "@/lib/prisma-transaction";
 import { uploadProfileMedia } from "@/lib/uploads";
+import { profileMediaOrderSchema } from "@/lib/validators";
+
+const mediaStateSelect = {
+  avatarUrl: true,
+  profilePhotoUrls: true,
+  profileVideoUrls: true,
+  profileMediaOrder: true
+} as const;
 
 export async function POST(request: Request) {
   try {
@@ -43,7 +53,7 @@ export async function POST(request: Request) {
     const updated = await withSerializableTransactionRetry(async (transaction) => {
       const current = await transaction.user.findUnique({
         where: { id: user.id },
-        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+        select: mediaStateSelect
       });
 
       if (!current) {
@@ -76,7 +86,7 @@ export async function POST(request: Request) {
           profilePhotoUrls: nextProfilePhotoUrls as Prisma.InputJsonValue,
           profileVideoUrls: nextProfileVideoUrls as Prisma.InputJsonValue
         },
-        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+        select: mediaStateSelect
       });
     });
 
@@ -89,7 +99,8 @@ export async function POST(request: Request) {
       mediaType,
       avatarUrl: updated.avatarUrl,
       profilePhotoUrls: normalizeProfileMediaList(updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
-      profileVideoUrls: normalizeProfileMediaList(updated.profileVideoUrls, PROFILE_VIDEO_LIMIT)
+      profileVideoUrls: normalizeProfileMediaList(updated.profileVideoUrls, PROFILE_VIDEO_LIMIT),
+      profileMediaOrder: normalizeProfileMediaList(updated.profileMediaOrder, PROFILE_MEDIA_ORDER_LIMIT)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
@@ -113,7 +124,7 @@ export async function DELETE(request: Request) {
     const result = await withSerializableTransactionRetry(async (transaction) => {
       const current = await transaction.user.findUnique({
         where: { id: user.id },
-        select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+        select: mediaStateSelect
       });
 
       if (!current) {
@@ -127,9 +138,10 @@ export async function DELETE(request: Request) {
             data: {
               avatarUrl: removal.avatarUrl,
               profilePhotoUrls: removal.profilePhotoUrls as Prisma.InputJsonValue,
-              profileVideoUrls: removal.profileVideoUrls as Prisma.InputJsonValue
+              profileVideoUrls: removal.profileVideoUrls as Prisma.InputJsonValue,
+              profileMediaOrder: sanitizeProfileMediaOrder(current.profileMediaOrder, removal) as Prisma.InputJsonValue
             },
-            select: { avatarUrl: true, profilePhotoUrls: true, profileVideoUrls: true }
+            select: mediaStateSelect
           })
         : current;
 
@@ -145,7 +157,59 @@ export async function DELETE(request: Request) {
       mediaType: result.removal.mediaType,
       avatarUrl: result.updated.avatarUrl,
       profilePhotoUrls: normalizeProfileMediaList(result.updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
-      profileVideoUrls: normalizeProfileMediaList(result.updated.profileVideoUrls, PROFILE_VIDEO_LIMIT)
+      profileVideoUrls: normalizeProfileMediaList(result.updated.profileVideoUrls, PROFILE_VIDEO_LIMIT),
+      profileMediaOrder: normalizeProfileMediaList(result.updated.profileMediaOrder, PROFILE_MEDIA_ORDER_LIMIT)
+    });
+  } catch (error) {
+    if (getErrorMessage(error) === "UNAUTHORIZED") {
+      return fail("Требуется авторизация", 401);
+    }
+
+    return fail(getErrorMessage(error));
+  }
+}
+
+/**
+ * Порядок фото и видео в карточке. Пишется отдельно от анкеты: медиа в профиле
+ * сохраняются сразу, без кнопки «Сохранить», и перестановка — тоже.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const user = await requireSessionUser();
+    const parsed = profileMediaOrderSchema.safeParse(await request.json().catch(() => null));
+
+    if (!parsed.success) {
+      return fail("Некорректный порядок медиа");
+    }
+
+    const updated = await withSerializableTransactionRetry(async (transaction) => {
+      const current = await transaction.user.findUnique({
+        where: { id: user.id },
+        select: mediaStateSelect
+      });
+
+      if (!current) {
+        return null;
+      }
+
+      return transaction.user.update({
+        where: { id: user.id },
+        data: {
+          profileMediaOrder: sanitizeProfileMediaOrder(parsed.data.order, current) as Prisma.InputJsonValue
+        },
+        select: mediaStateSelect
+      });
+    });
+
+    if (!updated) {
+      return fail("Пользователь не найден", 404);
+    }
+
+    return ok({
+      avatarUrl: updated.avatarUrl,
+      profilePhotoUrls: normalizeProfileMediaList(updated.profilePhotoUrls, PROFILE_PHOTO_LIMIT),
+      profileVideoUrls: normalizeProfileMediaList(updated.profileVideoUrls, PROFILE_VIDEO_LIMIT),
+      profileMediaOrder: normalizeProfileMediaList(updated.profileMediaOrder, PROFILE_MEDIA_ORDER_LIMIT)
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
