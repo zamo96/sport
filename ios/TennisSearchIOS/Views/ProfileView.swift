@@ -95,6 +95,8 @@ struct ProfileView: View {
     @State private var pendingProfileVideoRemoval: PlayerMediaItem?
     @State private var pendingVideoTrimQueue: [PhotosPickerItem] = []
     @State private var pendingVideoTrimDraft: ProfileVideoTrimDraft?
+    @State private var pendingMediaOrderSave: Task<Void, Never>?
+    @State private var mediaOrderSnapshot: UserProfile?
     @State private var saveToastMessage: String?
     @State private var gameFeedRequests: [MatchGameRequest] = []
     @State private var gameFeedVisits: [PersonalActivity] = []
@@ -1315,28 +1317,42 @@ struct ProfileView: View {
         }
     }
 
-    /// Порядок сохраняется сразу, как добавление и удаление медиа: карточка
-    /// показывает его до ответа сервера и откатывается, если сохранить не вышло.
+    /// Плитки переставляются прямо в ленте: каждое перемещение сразу видно в
+    /// карточке, а на сервер уходит последний порядок, когда плитку полсекунды
+    /// не двигали. Отпущенная где угодно, даже мимо ленты, плитка оставляет на
+    /// экране ровно то, что сохранено. При ошибке — откат к порядку до перестановки.
     private func reorderProfileMediaPersistently(_ order: [String]) {
-        guard profileMediaMutationCount == 0,
-              var updatedDraft = draft ?? appModel.currentUser else { return }
+        guard var updatedDraft = draft ?? appModel.currentUser else { return }
 
-        let snapshot = updatedDraft
+        if mediaOrderSnapshot == nil {
+            mediaOrderSnapshot = updatedDraft
+        }
         updatedDraft.profileMediaOrder = order
         draft = updatedDraft
         appModel.currentUser = updatedDraft
 
-        enqueueProfileMediaMutation {
-            do {
-                let result = try await appModel.repository.reorderProfileMedia(order: order)
-                applyProfileMediaOrder(result)
-                AppHaptics.notification(.success)
-                showSaveToast(L10n.string("Order saved", "Порядок сохранён"))
-            } catch {
-                draft = snapshot
-                appModel.currentUser = snapshot
-                guard !error.isCancellationLike else { return }
-                appModel.present(error: error)
+        pendingMediaOrderSave?.cancel()
+        pendingMediaOrderSave = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            let snapshot = mediaOrderSnapshot
+            mediaOrderSnapshot = nil
+            pendingMediaOrderSave = nil
+
+            enqueueProfileMediaMutation {
+                do {
+                    let result = try await appModel.repository.reorderProfileMedia(order: order)
+                    applyProfileMediaOrder(result)
+                    AppHaptics.notification(.success)
+                    showSaveToast(L10n.string("Order saved", "Порядок сохранён"))
+                } catch {
+                    if let snapshot {
+                        draft = snapshot
+                        appModel.currentUser = snapshot
+                    }
+                    guard !error.isCancellationLike else { return }
+                    appModel.present(error: error)
+                }
             }
         }
     }
@@ -2403,7 +2419,7 @@ private struct ProfileSelectionMediaCard: View {
     let onRemove: (PlayerMediaItem) -> Void
     let onReorder: ([String]) -> Void
 
-    @State private var isReorderPresented = false
+    @State private var draggedMediaItem: PlayerMediaItem?
 
     private var mediaItems: [PlayerMediaItem] {
         profile.playerCardMediaItems
@@ -2534,6 +2550,22 @@ private struct ProfileSelectionMediaCard: View {
                                     onPreview: onPreview,
                                     onRemove: onRemove
                                 )
+                                .onDrag {
+                                    draggedMediaItem = item
+                                    AppHaptics.selection()
+                                    return NSItemProvider(object: item.path as NSString)
+                                }
+                                .onDrop(
+                                    of: [.text],
+                                    delegate: ProfileMediaDropDelegate(
+                                        target: item,
+                                        items: mediaItems,
+                                        dragged: $draggedMediaItem,
+                                        onMove: onReorder
+                                    )
+                                )
+                                .accessibilityAction(named: L10n.string("Move left", "Сдвинуть влево")) { moveMedia(item, by: -1) }
+                                .accessibilityAction(named: L10n.string("Move right", "Сдвинуть вправо")) { moveMedia(item, by: 1) }
                             }
 
                             if remainingPhotoSlots > 0 {
@@ -2572,9 +2604,6 @@ private struct ProfileSelectionMediaCard: View {
 
                 ProfileMediaAdviceRow()
             }
-        }
-        .sheet(isPresented: $isReorderPresented) {
-            ProfileMediaOrderSheet(items: mediaItems, onSave: onReorder)
         }
     }
 
@@ -2621,26 +2650,24 @@ private struct ProfileSelectionMediaCard: View {
     }
 
     private var mediaHeader: some View {
-        HStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             mediaTitleBlock
-            Spacer(minLength: 4)
 
             if mediaItems.count > 1 {
-                Button {
-                    isReorderPresented = true
-                } label: {
-                    Label(L10n.string("Order", "Порядок"), systemImage: "arrow.up.arrow.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                        .background(.white.opacity(0.09), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(isUploading || isUploadingAvatar)
-                .accessibilityLabel(L10n.string("Change the order in your card", "Изменить порядок в карточке"))
+                Label(L10n.string("Hold and drag to change the order in your card", "Удерживайте и перетащите, чтобы поменять порядок в карточке"), systemImage: "hand.draw")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.5))
             }
         }
+    }
+
+    private func moveMedia(_ item: PlayerMediaItem, by offset: Int) {
+        guard let index = mediaItems.firstIndex(of: item) else { return }
+        let destination = index + offset
+        guard mediaItems.indices.contains(destination) else { return }
+        var order = mediaItems.map(\.path)
+        order.swapAt(index, destination)
+        onReorder(order)
     }
 
     @ViewBuilder
@@ -2795,80 +2822,34 @@ private struct ProfileMediaThumbnail: View {
     }
 }
 
-/// Порядок фото и видео в карточке: что наверху, то игроки увидят первым.
-private struct ProfileMediaOrderSheet: View {
-    let onSave: ([String]) -> Void
+/// Живая перестановка в ленте: плитка встаёт на место той, над которой её
+/// держат, и порядок сразу уходит в карточку.
+private struct ProfileMediaDropDelegate: DropDelegate {
+    let target: PlayerMediaItem
+    let items: [PlayerMediaItem]
+    @Binding var dragged: PlayerMediaItem?
+    let onMove: ([String]) -> Void
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var items: [PlayerMediaItem]
-    private let initialPaths: [String]
+    func dropEntered(info: DropInfo) {
+        guard let dragged, dragged != target,
+              let from = items.firstIndex(of: dragged),
+              let to = items.firstIndex(of: target) else { return }
 
-    init(items: [PlayerMediaItem], onSave: @escaping ([String]) -> Void) {
-        _items = State(initialValue: items)
-        initialPaths = items.map(\.path)
-        self.onSave = onSave
+        var next = items
+        next.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        AppHaptics.selection()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            onMove(next.map(\.path))
+        }
     }
 
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(items) { item in
-                        row(for: item)
-                            .listRowBackground(Color.white.opacity(0.06))
-                    }
-                    .onMove { source, destination in
-                        items.move(fromOffsets: source, toOffset: destination)
-                    }
-                } footer: {
-                    Text(L10n.string("Drag the handle to move. The top item opens your card.", "Перетащите за ручку справа. Что наверху — с того и откроется карточка."))
-                        .foregroundStyle(.white.opacity(0.56))
-                }
-            }
-            .environment(\.editMode, .constant(.active))
-            .scrollContentBackground(.hidden)
-            .background(Color.black.ignoresSafeArea())
-            .navigationTitle(L10n.string("Order", "Порядок"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.string("Cancel", "Отмена")) {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("Save", "Сохранить")) {
-                        let paths = items.map(\.path)
-                        if paths != initialPaths {
-                            onSave(paths)
-                        }
-                        dismiss()
-                    }
-                    .fontWeight(.bold)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 
-    private func row(for item: PlayerMediaItem) -> some View {
-        let position = (items.firstIndex(of: item) ?? 0) + 1
-
-        return HStack(spacing: 14) {
-            ProfileMediaThumbnail(item: item)
-                .frame(width: 54, height: 70)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.kind == .video ? L10n.string("Video", "Видео") : L10n.string("Photo", "Фото"))
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                Text(position == 1 ? L10n.string("Opens the card", "Первым в карточке") : L10n.string("Position \(position)", "\(position)-е место"))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(position == 1 ? AppTheme.mint : .white.opacity(0.56))
-            }
-        }
-        .padding(.vertical, 4)
+    func performDrop(info: DropInfo) -> Bool {
+        dragged = nil
+        return true
     }
 }
 
