@@ -712,11 +712,11 @@ struct AuthView: View {
     private var availabilityStep: some View {
         GeometryReader { geometry in
             let isCompact = geometry.size.height < 800
-            let horizontalPadding: CGFloat = isCompact ? 18 : 24
+            let horizontalPadding: CGFloat = isCompact ? 16 : 20
             let topPadding: CGFloat = max(isCompact ? 58 : 64, geometry.safeAreaInsets.top + (isCompact ? 24 : 30))
             let bottomPadding: CGFloat = max(14, geometry.safeAreaInsets.bottom + 10)
-            let verticalSpacing: CGFloat = isCompact ? 9 : 12
-            let actionHeight: CGFloat = isCompact ? 52 : 58
+            let verticalSpacing: CGFloat = isCompact ? 8 : 10
+            let actionHeight: CGFloat = isCompact ? 48 : 52
 
             ZStack {
                 OnboardingDarkBackground()
@@ -783,10 +783,11 @@ struct AuthView: View {
                                 }
                             } label: {
                                 Text(L10n.string("Back", "Назад"))
-                                    .font(.system(size: isCompact ? 18 : 20, weight: .black, design: .rounded))
+                                    .font(.system(size: isCompact ? 17 : 18, weight: .black, design: .rounded))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: actionHeight)
                             }
+                            .frame(maxWidth: 124)
                             .foregroundStyle(.white)
                             .background(OnboardingStepPalette.panel.opacity(0.86), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                             .overlay(
@@ -799,7 +800,10 @@ struct AuthView: View {
                                 Task { await finishGuestOnboarding() }
                             } label: {
                                 Text(embedded ? L10n.string("Browse players", "Смотреть игроков") : L10n.string("Continue", "Продолжить"))
-                                    .font(.system(size: isCompact ? 18 : 20, weight: .black, design: .rounded))
+                                    .font(.system(size: isCompact ? 17 : 18, weight: .black, design: .rounded))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                    .padding(.horizontal, 10)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: actionHeight)
                             }
@@ -2753,8 +2757,7 @@ private struct OnboardingAvailabilityEditorCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
+            .padding(10)
             .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -2780,27 +2783,19 @@ private struct OnboardingSearchLocationSection: View {
     let onDistricts: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Label {
-                    Text(L10n.string("Where is it convenient to exercise?", "Где удобно заниматься спортом?"))
-                        .font(.system(size: 18, weight: .black, design: .rounded))
-                } icon: {
-                    Image(systemName: "mappin")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                .foregroundStyle(.white)
-
-                Text(L10n.string("Choose a city first. You can add districts now or later.", "Сначала выбери город. Районы можно добавить сразу или позже."))
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.56))
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text(L10n.string("Where is it convenient to exercise?", "Где удобно заниматься спортом?"))
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            } icon: {
+                Image(systemName: "mappin")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
             }
+            .foregroundStyle(.white)
+            .padding(.top, 4)
 
             selectedCityPill
 
@@ -2825,6 +2820,7 @@ private struct OnboardingSearchLocationSection: View {
                     action: onDistricts
                 )
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             if selectedChoice == .nearby {
                 locationDetectionStatus
@@ -2839,7 +2835,7 @@ private struct OnboardingSearchLocationSection: View {
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.34))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(red: 1.0, green: 0.78, blue: 0.34).opacity(0.11), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
@@ -2851,7 +2847,7 @@ private struct OnboardingSearchLocationSection: View {
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.34))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(red: 1.0, green: 0.78, blue: 0.34).opacity(0.11), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
@@ -2863,7 +2859,7 @@ private struct OnboardingSearchLocationSection: View {
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(OnboardingStepPalette.lime)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(OnboardingStepPalette.lime.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
@@ -2880,7 +2876,7 @@ private struct OnboardingSearchLocationSection: View {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label {
                     Text(L10n.string("Searching near \(cityDistrictTitle). You can change or add districts.", "Ищем рядом с \(cityDistrictTitle). Можно изменить или добавить районы."))
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -2894,7 +2890,7 @@ private struct OnboardingSearchLocationSection: View {
                     Text(L10n.string("Change city and districts", "Изменить город и районы"))
                         .font(.system(size: 13, weight: .black, design: .rounded))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 38)
+                        .frame(height: 34)
                 }
                 .foregroundStyle(.white)
                 .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2906,7 +2902,7 @@ private struct OnboardingSearchLocationSection: View {
             }
             .foregroundStyle(OnboardingStepPalette.lime)
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OnboardingStepPalette.lime.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
@@ -2920,7 +2916,7 @@ private struct OnboardingSearchLocationSection: View {
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(OnboardingStepPalette.lime)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(OnboardingStepPalette.lime.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
@@ -2938,11 +2934,11 @@ private struct OnboardingSearchLocationSection: View {
             }
             .foregroundStyle(.white.opacity(0.72))
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         } else if locationDetectionFailed {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label {
                     Text(L10n.string("We couldn't detect your city and district. Choose them manually.", "Не удалось определить город и район по гео. Выбери вручную."))
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -2956,7 +2952,7 @@ private struct OnboardingSearchLocationSection: View {
                     Text(L10n.string("Choose city and districts", "Выбрать город и районы"))
                         .font(.system(size: 13, weight: .black, design: .rounded))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 38)
+                        .frame(height: 34)
                 }
                 .foregroundStyle(Color.black.opacity(0.88))
                 .background(Color(red: 1.0, green: 0.78, blue: 0.34), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2964,7 +2960,7 @@ private struct OnboardingSearchLocationSection: View {
             }
             .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.34))
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(red: 1.0, green: 0.78, blue: 0.34).opacity(0.11), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
@@ -3067,36 +3063,29 @@ private struct OnboardingLocationChoiceCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 9) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .black))
+                    .font(.system(size: 15, weight: .black))
                     .foregroundStyle(tint)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 32, height: 32)
                     .background(tint.opacity(0.14), in: Circle())
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(LocalizedStringKey(title))
-                            .font(.system(size: 14, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-
-                        Spacer(minLength: 4)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .black))
-                            .foregroundStyle(tint)
-                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(LocalizedStringKey(title))
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
 
                     Text(LocalizedStringKey(subtitle))
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .lineLimit(2)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .leading)
             .background(
                 LinearGradient(
                     colors: [Color.white.opacity(isSelected ? 0.10 : 0.07), OnboardingStepPalette.panelRaised.opacity(0.88)],
@@ -3881,11 +3870,7 @@ private struct DetailedAvailabilityEditor: View {
     @State private var activeDay: DayOfWeek = .monday
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.string("One weekly schedule. Choose a day, then select convenient time windows.", "Одна шкала недели. Выбери день и затем отметь удобные окна времени."))
-                .font(.caption)
-                .foregroundStyle(AppTheme.mutedInk)
-
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 ForEach(DayOfWeek.allCases) { day in
                     let ranges = availabilityByDay[day.rawValue] ?? []
@@ -3908,17 +3893,17 @@ private struct DetailedAvailabilityEditor: View {
                         }
                         .foregroundStyle(activeDay == day ? .white : AppTheme.ink)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(activeDay == day ? AppTheme.ink : AppTheme.cream, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .padding(.vertical, 8)
+                        .background(activeDay == day ? AppTheme.ink : AppTheme.cream, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(LocalizedStringKey(activeDay.title))
-                        .font(.headline)
+                        .font(.subheadline.weight(.bold))
                     Spacer()
                     if !(availabilityByDay[activeDay.rawValue] ?? []).isEmpty {
                         Button(L10n.string("Clear", "Очистить")) {
@@ -3944,7 +3929,7 @@ private struct DetailedAvailabilityEditor: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 presetButton(L10n.string("Weekday mornings", "Будни утром")) {
                     applyPreset(days: [.monday, .tuesday, .wednesday, .thursday, .friday], ranges: [.morning])
                 }
@@ -3980,12 +3965,15 @@ private struct DetailedAvailabilityEditor: View {
     private func presetButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(LocalizedStringKey(title))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(AppTheme.cream, in: Capsule())
         }
             .buttonStyle(.plain)
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(AppTheme.cream, in: Capsule())
             .foregroundStyle(AppTheme.ink)
     }
 }
@@ -3997,33 +3985,35 @@ private struct AvailabilityWindowCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 10) {
+            VStack(spacing: 6) {
                 Image(systemName: iconName)
-                    .font(.system(size: 18, weight: .bold))
-                    .frame(width: 36, height: 36)
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 30, height: 30)
                     .background(iconBackground, in: Circle())
                 Text(LocalizedStringKey(range.title))
                     .font(.caption.weight(.bold))
-                if isSelected {
-                    Text(L10n.string("Selected", "Выбрано"))
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.white.opacity(0.22), in: Capsule())
-                }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 10)
             .background(background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(borderColor, lineWidth: isSelected ? 2 : 1)
             )
+            // A corner check instead of a "Selected" row keeps the card height fixed.
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .padding(7)
+                }
+            }
             .foregroundStyle(isSelected ? activeTextColor : inactiveTextColor)
             .shadow(color: shadowColor, radius: isSelected ? 16 : 8, x: 0, y: isSelected ? 12 : 6)
             .scaleEffect(isSelected ? 1.02 : 1)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var iconName: String {
