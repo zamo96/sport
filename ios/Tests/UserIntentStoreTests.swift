@@ -89,10 +89,9 @@ struct UserIntentStoreTests {
         expect(store.hasDismissedFeatureGuide(for: nil), "Changing guest goals does not reopen the dismissed guide")
         store.adoptGuestSelection(for: "guide-A")
         expect(store.selection(for: "guide-A") == Set<UserIntent>(), "The explicit empty goal choice still adopts independently of guide state")
-        expect(!store.hasDismissedFeatureGuide(for: "guide-A"), "Sign-in does not adopt a guest's guide dismissal")
+        expect(store.hasDismissedFeatureGuide(for: "guide-A"), "A new account adopts the guide the guest already closed on this device")
         expect(!store.hasDismissedFeatureGuide(for: nil), "Sign-in consumes the guest's guide state with its goal handoff")
 
-        store.dismissFeatureGuide(for: "guide-A")
         store.dismissFeatureGuide(for: "guide-A")
         expect(UserIntentStore(defaults: defaults).hasDismissedFeatureGuide(for: "guide-A"), "Account dismissal is persistent and repeated dismissal is harmless")
         expect(!store.hasDismissedFeatureGuide(for: "guide-B"), "One account's dismissal never hides another account's guide")
@@ -159,11 +158,19 @@ struct UserIntentStoreTests {
         store.setSelection([.activity], for: nil)
         store.adoptGuestSelection(for: "new-progress-account")
         expect(store.selection(for: "new-progress-account") == [.activity], "Guest goals still adopt when guide progress is also present")
-        expect(store.featureGuideProgress(for: "new-progress-account") == freshProgress,
-               "Guest acknowledgement, viewed features, and dismissal do not adopt into an account")
+        expect(store.featureGuideProgress(for: "new-progress-account") == FeatureGuideProgress(hasAcknowledgedSwipeTutorial: true, openedIntents: [.partner], isDismissed: true),
+               "Signing in after guest onboarding keeps the acknowledged tutorial, viewed features, and closed guide")
         expect(store.featureGuideProgress(for: nil) == freshProgress, "Successful sign-in consumes every part of guest guide progress")
         expect(store.featureGuideProgress(for: "progress-A").openedIntents == [.partner, .group, .activity],
                "Guest handoff leaves another account's accumulated progress untouched")
+        store.markFeatureGuideOpened(.centers, for: nil)
+        store.adoptGuestSelection(for: "progress-A")
+        expect(store.featureGuideProgress(for: "progress-A").openedIntents == [.partner, .group, .activity],
+               "An account's own stored progress wins over the guest's")
+        expect(store.featureGuideProgress(for: nil) == freshProgress, "The unused guest progress is still consumed")
+        store.adoptGuestSelection(for: "no-guest-progress")
+        expect(defaults.object(forKey: "SportSearch.featureGuide.v2.account.no-guest-progress") == nil,
+               "Without guest progress, sign-in stores nothing for the account")
 
         defaults.set(true, forKey: "SportSearch.featureGuide.v1.account.old-dismissed")
         expect(store.featureGuideProgress(for: "old-dismissed") == freshProgress && !store.hasDismissedFeatureGuide(for: "old-dismissed"),

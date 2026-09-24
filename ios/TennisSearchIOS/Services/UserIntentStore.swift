@@ -40,11 +40,16 @@ struct UserIntentStore {
         defaults.set(serialized(intents), forKey: key(for: accountID))
     }
 
-    /// Only an explicit successful sign-in transfers the current guest's choice.
-    /// Existing account preferences take precedence; the guest handoff is consumed.
+    /// Only an explicit successful sign-in transfers the current guest's choice and guide progress.
+    /// Existing account state takes precedence; the guest handoff is consumed.
     func adoptGuestSelection(for accountID: String) {
         if selection(for: accountID) == nil, let guestSelection = selection(for: nil) {
             setSelection(guestSelection, for: accountID)
+        }
+        // Signing in right after guest onboarding otherwise replayed the guide and the swipe tutorial.
+        if defaults.object(forKey: featureGuideProgressKey(for: accountID)) == nil,
+           defaults.object(forKey: featureGuideProgressKey(for: nil)) != nil {
+            setFeatureGuideProgress(featureGuideProgress(for: nil), for: accountID)
         }
         clearGuestSelection()
     }

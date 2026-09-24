@@ -1203,7 +1203,7 @@ struct DiscoverView: View {
                                     selectedIntents: config.selectedIntents,
                                     openedIntents: config.progress.openedIntents,
                                     onOpen: { intent in closeIntroduction(); config.onOpen(intent) },
-                                    onDismiss: { closeIntroduction(); config.onDismiss() }
+                                    onDismiss: { closeFeatureGuide(config) }
                                 )
                                 .frame(maxWidth: 520).frame(maxWidth: .infinity)
                                 .padding(20)
@@ -1406,7 +1406,8 @@ struct DiscoverView: View {
                   hasPendingFeatureIntroduction || appModel.shouldPresentDiscoverSimilarPlayersHint() else { return }
             cancelPlayerAutoAdvance()
             resetSwipeInteraction(animated: false)
-            if let featureGuide, featureGuide.progress.hasAcknowledgedSwipeTutorial {
+            // The feature window comes first; the swipe tutorial follows it on the deck.
+            if hasPendingFeatureIntroduction, featureGuide != nil {
                 withAnimation(introductionAnimation) { introductionPhase = .opportunities }
             } else {
                 appModel.consumeDiscoverSimilarPlayersHint()
@@ -1436,23 +1437,23 @@ struct DiscoverView: View {
         if !isFirstInterestHintPresented { appModel.bottomBarDisplayMode = .expanded }
     }
 
-    private func dismissSimilarPlayersHint() {
-        guard !isSimilarPlayersHintDismissing else { return }
-        isSimilarPlayersHintDismissing = true
-        AppHaptics.selection()
-        appModel.completeDiscoverSimilarPlayersHint()
+    /// Closing the feature window leads straight into the swipe tutorial when it is still due.
+    private func closeFeatureGuide(_ config: DiscoverFeatureGuide) {
+        config.onDismiss()
+        guard appModel.shouldPresentDiscoverSimilarPlayersHint() else {
+            closeIntroduction()
+            return
+        }
         let generation = appModel.sessionGeneration
         let ownerID = appModel.currentUser?.id
-        let shouldContinue = featureGuide != nil
-        featureGuide?.onAcknowledgeSwipe()
-        isIntroductionTransitioning = shouldContinue
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) { introductionPhase = .none }
-        guard shouldContinue else { scheduleFirstInterestHintIfNeeded(); return }
         introductionTask?.cancel()
+        isManualIntroductionRequested = false
+        isIntroductionTransitioning = true
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) { introductionPhase = .none }
         introductionTask = Task { @MainActor in
             if !reduceMotion { try? await Task.sleep(for: .milliseconds(160)) }
             guard !Task.isCancelled, generation == appModel.sessionGeneration, ownerID == appModel.currentUser?.id,
-                  isIntroductionContextSafe, featureGuide != nil else {
+                  isIntroductionContextSafe, appModel.shouldPresentDiscoverSimilarPlayersHint() else {
                 if generation == appModel.sessionGeneration {
                     isIntroductionTransitioning = false
                     if introductionPhase == .none && !isFirstInterestHintPresented { appModel.bottomBarDisplayMode = .expanded }
@@ -1460,8 +1461,22 @@ struct DiscoverView: View {
                 return
             }
             isIntroductionTransitioning = false
-            withAnimation(introductionAnimation) { introductionPhase = .opportunities }
+            cancelPlayerAutoAdvance()
+            resetSwipeInteraction(animated: false)
+            appModel.consumeDiscoverSimilarPlayersHint()
+            withAnimation(introductionAnimation) { introductionPhase = .swipe }
         }
+    }
+
+    private func dismissSimilarPlayersHint() {
+        guard !isSimilarPlayersHintDismissing else { return }
+        isSimilarPlayersHintDismissing = true
+        AppHaptics.selection()
+        appModel.completeDiscoverSimilarPlayersHint()
+        featureGuide?.onAcknowledgeSwipe()
+        // Swiping is the last step: the feature window has already been shown before it.
+        closeIntroduction()
+        scheduleFirstInterestHintIfNeeded()
     }
 
     private func resetSwipeInteraction(animated: Bool = true) {

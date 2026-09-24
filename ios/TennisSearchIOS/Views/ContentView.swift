@@ -544,6 +544,9 @@ private struct MainTabView: View {
 
     private func openFeatureGuideIntent(_ intent: UserIntent) {
         appModel.markFeatureGuideOpened(intent)
+        // A chosen section closes the guide for good, like the cross does:
+        // otherwise it reopened on every launch until all four were checked.
+        appModel.dismissFeatureGuide()
         hasNavigatedBeyondEntry = true
         openHomeIntent(intent)
     }

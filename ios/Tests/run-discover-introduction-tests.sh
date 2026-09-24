@@ -25,7 +25,10 @@ def declaration(source, name):
     return source[start:index]
 
 assert 'Button(L10n.string("Got it", "Хорошо"))' in discover, "Swipe acknowledgment must retain the requested button"
-assert 'onOpen: { intent in closeIntroduction(); config.onOpen(intent) }' in discover, "A feature click closes the current modal and routes synchronously without dismissing stored progress"
+assert 'onOpen: { intent in closeIntroduction(); config.onOpen(intent) }' in discover, "A feature click closes the current modal and routes synchronously"
+assert 'onDismiss: { closeFeatureGuide(config) }' in discover, "Closing the feature window must lead into the swipe tutorial"
+intent_model = (root / "App/AppModel+UserIntent.swift").read_text()
+assert 'queueDiscoverSimilarPlayersHint()' in declaration(intent_model, '    func dismissFeatureGuide()'), "Closing the guide queues the swipe tutorial that follows it"
 assert '.onChange(of: appModel.sessionGeneration) { _ in closeIntroduction() }' in discover, "A new session must close the old presentation immediately"
 # Cards keep the 2026091904 size and layout: the viewport-fitted compact card hid
 # "last seen" on every Players card, because its 500 pt cap always read as compact.
@@ -120,6 +123,11 @@ source += '''@MainActor final class IntroductionModel {
     func completeDiscoverSimilarPlayersHint() { pendingDiscoverSimilarPlayersHint = false }
     func shouldPresentDiscoverFirstInterestHint() -> Bool { pendingDiscoverFirstInterestHint }
     func consumeDiscoverFirstInterestHint() { pendingDiscoverFirstInterestHint = false; consumedInterestCount += 1 }
+    // Mirrors AppModel.dismissFeatureGuide (checked above): closing queues the swipe tutorial.
+    func dismissFeatureGuide() {
+        featureGuideProgress.isDismissed = true
+        if !featureGuideProgress.hasAcknowledgedSwipeTutorial { pendingDiscoverSimilarPlayersHint = true }
+    }
 '''
 source += declaration(model, '    func shouldPresentDiscoverSimilarPlayersHint()') + '\n}\n'
 source += '''@MainActor final class IntroductionHarness {
@@ -177,7 +185,11 @@ source += '''@MainActor final class IntroductionHarness {
             onAcknowledgeSwipe: { [weak self] in
                 self?.appModel.acknowledgedCount += 1
                 self?.appModel.featureGuideProgress.hasAcknowledgedSwipeTutorial = true
-            }, onOpen: { _ in }, onDismiss: {})
+            }, onOpen: { _ in }, onDismiss: { [weak self] in
+                // The parent re-renders with the stored dismissal, as MainTabView does.
+                self?.appModel.dismissFeatureGuide()
+                self?.configure(automatic: false)
+            })
     }
 '''
 for name in [
@@ -186,7 +198,7 @@ for name in [
     '    private var hasPendingFeatureIntroduction:', '    private var introductionAnimation:',
     '    private var isIntroductionContextSafe:',
     '    private func scheduleSimilarPlayersHintIfNeeded()', '    private func openIntroductionManually()',
-    '    private func closeIntroduction()', '    private func dismissSimilarPlayersHint()',
+    '    private func closeIntroduction()', '    private func closeFeatureGuide(', '    private func dismissSimilarPlayersHint()',
     '    private func scheduleFirstInterestHintIfNeeded(', '    private func runSimilarPlayersHintDemoLoop()'
 ]:
     code = declaration(discover, name).replace('    private ', '    ')

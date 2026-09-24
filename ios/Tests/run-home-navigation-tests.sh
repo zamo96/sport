@@ -40,7 +40,7 @@ assert "OnboardingMotionHero(" in declaration(auth, "    private var introScreen
 assert "onContinue([])" in intent_ui, "Skipping goals must save an explicit empty choice"
 assert ".disabled(" not in declaration(intent_ui, "    var body:"), "The optional goal screen must not disable Continue when no goals are selected"
 assert "featureGuide: featureGuideConfiguration" in screen, "Discover must receive the progress-aware guide configuration"
-assert "dismissFeatureGuide" not in declaration(content, "    private func openFeatureGuideIntent("), "Opening one feature must not dismiss the entire guide"
+assert "dismissFeatureGuide" in declaration(content, "    private func openFeatureGuideIntent("), "Choosing a section closes the guide for good, so it opens by itself only once"
 assert "selectedUserIntents" not in week and "isIntentPickerPresented" not in week, "The week must not show or filter by goals"
 day_action = declaration(week, "    private func weekDayButton(")
 assert "selectedWeekDay = day.date" in day_action and "await " not in day_action and "load()" not in day_action, "Day selection must remain local and cannot reload the week"
@@ -73,7 +73,12 @@ final class HomeNavigationModel {
     var presentedAuthStep: String?
     func completeFeatureGuideSwipeTutorial() { featureGuideProgress.hasAcknowledgedSwipeTutorial = true }
     func markFeatureGuideOpened(_ intent: UserIntent) { featureGuideProgress.openedIntents.insert(intent) }
-    func dismissFeatureGuide() { featureGuideProgress.isDismissed = true }
+    var pendingDiscoverSimilarPlayersHint = false
+    // Mirrors AppModel.dismissFeatureGuide: closing queues the swipe tutorial on the Players deck.
+    func dismissFeatureGuide() {
+        featureGuideProgress.isDismissed = true
+        if !featureGuideProgress.hasAcknowledgedSwipeTutorial { lastSelectedDiscoverTab = .swipe; pendingDiscoverSimilarPlayersHint = true }
+    }
     func isTabContentLoading(_ tab: String) -> Bool { loadingTabs.contains(tab) }
     func clearPendingNavigation() { clearCount += 1 }
 '''

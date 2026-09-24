@@ -149,15 +149,17 @@ struct HomeNavigationTests {
         let progress = HomeNavigationHarness()
         let firstGuide = progress.guideConfiguration!
         expect(firstGuide.allowsAutomaticPresentation && !firstGuide.progress.hasAcknowledgedSwipeTutorial,
-               "The initial configuration requests the swipe checkpoint before the feature window")
-        firstGuide.onAcknowledgeSwipe()
-        expect(progress.appModel.featureGuideProgress.hasAcknowledgedSwipeTutorial && progress.appModel.featureGuideProgress.openedIntents.isEmpty,
-               "Acknowledging the demonstration does not falsely mark any feature as viewed")
+               "The initial configuration opens the feature window before the swipe checkpoint")
         firstGuide.onOpen(.activity)
-        expect(progress.appModel.featureGuideProgress.openedIntents == [.activity] && !progress.appModel.featureGuideProgress.isDismissed,
-               "Opening the visit scenario checks only that feature without permanently hiding the guide")
+        expect(progress.appModel.featureGuideProgress.openedIntents == [.activity] && progress.appModel.featureGuideProgress.isDismissed,
+               "Choosing the visit scenario checks that feature and stops the automatic window: it is shown once")
         expect(progress.selectedTab == .courts && progress.courtsVisitPlanningMode && progress.hasNavigatedBeyondEntry,
                "A checked feature still follows the existing real visit-planning route")
+        expect(progress.appModel.pendingDiscoverSimilarPlayersHint && progress.appModel.lastSelectedDiscoverTab == .swipe,
+               "The swipe tutorial waits for the next visit to Players")
+        firstGuide.onAcknowledgeSwipe()
+        expect(progress.appModel.featureGuideProgress.hasAcknowledgedSwipeTutorial && progress.appModel.featureGuideProgress.openedIntents == [.activity],
+               "Acknowledging the demonstration does not falsely mark any feature as viewed")
         progress.tap(.discover)
         expect(progress.canOpenFeatureGuide && progress.guideConfiguration?.allowsAutomaticPresentation == false,
                "Returning to Players retains manual access without presenting the feature window again automatically")
@@ -165,7 +167,7 @@ struct HomeNavigationTests {
         expect(reopened.progress.openedIntents == [.activity], "A reopened configuration carries the previous checkmark")
         reopened.onOpen(.group)
         expect(progress.appModel.featureGuideProgress.openedIntents == [.activity, .group] && progress.appModel.lastSelectedDiscoverTab == .hot,
-               "The next feature adds its checkmark and opens the unfiltered Searches tab")
+               "A manually reopened guide adds the next checkmark and opens the unfiltered Searches tab")
         reopened.onDismiss()
         expect(progress.appModel.featureGuideProgress.isDismissed && progress.appModel.featureGuideProgress.openedIntents == [.activity, .group],
                "Closing the window preserves partial progress")

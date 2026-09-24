@@ -27,9 +27,13 @@ extension AppModel {
         UserIntentStore().markFeatureGuideOpened(intent, for: currentUser?.id)
     }
 
+    /// The guide opens by itself only once. However it closes, the Players deck explains swiping next.
     func dismissFeatureGuide() {
         objectWillChange.send()
         UserIntentStore().dismissFeatureGuide(for: currentUser?.id)
+        if !featureGuideProgress.hasAcknowledgedSwipeTutorial {
+            queueDiscoverSimilarPlayersHint()
+        }
     }
 
     func setUserIntents(_ intents: Set<UserIntent>) {

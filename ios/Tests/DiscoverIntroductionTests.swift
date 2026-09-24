@@ -12,26 +12,37 @@ struct DiscoverIntroductionTests {
 
     static func main() async {
         let fresh = IntroductionHarness()
+        fresh.appModel.pendingDiscoverSimilarPlayersHint = true // Queued by completing onboarding.
         fresh.configure()
         fresh.scheduleSimilarPlayersHintIfNeeded()
         let firstID = fresh.introductionTaskID
         fresh.scheduleSimilarPlayersHintIfNeeded()
         expect(fresh.introductionTaskID == firstID, "Repeated load hooks must share one scheduled presentation")
         await fresh.introductionTask?.value
-        expect(fresh.introductionPhase == .swipe, "A new user sees swiping before the four possibilities, even with no loaded players")
+        expect(fresh.introductionPhase == .opportunities, "A new user sees the four possibilities first")
+        expect(fresh.appModel.pendingDiscoverSimilarPlayersHint && fresh.appModel.consumedSwipeCount == 0,
+               "The swipe tutorial waits until the feature window is closed")
+        expect(fresh.appModel.featureGuideProgress.openedIntents.isEmpty, "Viewing the guide does not mark any feature as opened")
+        expect(fresh.canceledAdvanceCount == 1 && fresh.resetSwipeCount == 1, "The underlying deck stops before showing the guide")
+        fresh.closeFeatureGuide(fresh.featureGuide!)
+        expect(fresh.appModel.featureGuideProgress.isDismissed, "Closing the window ends its automatic presentation")
+        expect(fresh.introductionPhase == .none && fresh.isIntroductionTransitioning, "The feature window closes before the tutorial opens")
+        fresh.scheduleFirstInterestHintIfNeeded()
+        expect(!fresh.isFirstInterestHintScheduled, "The legacy interest hint must not overlap the transition")
+        fresh.scheduleSimilarPlayersHintIfNeeded() // The parent's re-render after the dismissal.
+        expect(!fresh.isSimilarPlayersHintScheduled, "The transition cannot be doubled by another scheduled presentation")
+        await fresh.introductionTask?.value
+        expect(fresh.introductionPhase == .swipe && !fresh.isIntroductionTransitioning && fresh.appModel.consumedSwipeCount == 1,
+               "Swiping is demonstrated on the Players deck right after the window, even with no loaded players")
         expect(!fresh.appModel.featureGuideProgress.hasAcknowledgedSwipeTutorial, "Merely showing the animation cannot acknowledge it")
-        expect(fresh.canceledAdvanceCount == 1 && fresh.resetSwipeCount == 1, "The underlying deck stops before showing the tutorial")
+        expect(fresh.canceledAdvanceCount == 2 && fresh.resetSwipeCount == 2, "The deck stops again before the tutorial")
         fresh.dismissSimilarPlayersHint()
         fresh.dismissSimilarPlayersHint()
         expect(fresh.appModel.acknowledgedCount == 1, "A rapid double tap acknowledges the tutorial once")
-        expect(fresh.introductionPhase == .none && fresh.isIntroductionTransitioning, "The swipe tutorial closes before the next modal opens")
-        fresh.scheduleFirstInterestHintIfNeeded()
-        expect(!fresh.isFirstInterestHintScheduled, "The legacy interest hint must not overlap the transition")
-        await fresh.introductionTask?.value
-        expect(fresh.introductionPhase == .opportunities && !fresh.isIntroductionTransitioning, "The four possibilities appear after acknowledgment")
-        expect(fresh.appModel.featureGuideProgress.openedIntents.isEmpty, "Viewing the guide does not mark any feature as opened")
-        fresh.closeIntroduction()
-        expect(fresh.introductionPhase == .none && fresh.appModel.bottomBarDisplayMode == .expanded, "Closing restores the main navigation")
+        expect(fresh.introductionPhase == .none && !fresh.isIntroductionTransitioning && fresh.appModel.bottomBarDisplayMode == .expanded,
+               "Swiping is the last step and closing it restores the main navigation")
+        fresh.scheduleSimilarPlayersHintIfNeeded()
+        expect(fresh.introductionTask == nil && fresh.introductionPhase == .none, "Neither the window nor the tutorial comes back")
 
         let resumed = IntroductionHarness()
         resumed.appModel.featureGuideProgress.hasAcknowledgedSwipeTutorial = true
@@ -41,7 +52,9 @@ struct DiscoverIntroductionTests {
         resumed.scheduleSimilarPlayersHintIfNeeded()
         await resumed.introductionTask?.value
         expect(resumed.introductionPhase == .opportunities && resumed.appModel.consumedSwipeCount == 0, "Returning users resume directly at their feature progress")
-        resumed.closeIntroduction()
+        resumed.closeFeatureGuide(resumed.featureGuide!)
+        expect(resumed.introductionPhase == .none && !resumed.isIntroductionTransitioning && resumed.introductionTask == nil,
+               "An acknowledged tutorial is not replayed after the window")
 
         let manual = IntroductionHarness()
         manual.appModel.featureGuideProgress = FeatureGuideProgress(hasAcknowledgedSwipeTutorial: true,
@@ -117,31 +130,32 @@ struct DiscoverIntroductionTests {
         expect(canceled.isSimilarPlayersHintScheduled && canceled.introductionTaskID == replacementID,
                "An old canceled task cannot reset the new task's scheduled flag")
         await canceled.introductionTask?.value
-        expect(canceled.introductionPhase == .swipe, "The replacement task still presents once")
+        expect(canceled.introductionPhase == .opportunities, "The replacement task still presents once")
         canceled.closeIntroduction()
 
         let transition = IntroductionHarness()
         transition.configure()
-        transition.introductionPhase = .swipe
+        transition.introductionPhase = .opportunities
         transition.appModel.bottomBarDisplayMode = .hidden
-        transition.dismissSimilarPlayersHint()
+        transition.closeFeatureGuide(transition.featureGuide!)
         transition.appModel.errorMessage = "interruption"
         await transition.introductionTask?.value
         expect(transition.introductionPhase == .none && !transition.isIntroductionTransitioning,
                "An error between the modals cancels the second presentation")
         expect(transition.appModel.bottomBarDisplayMode == .expanded, "An interrupted transition restores navigation even without another phase change")
+        expect(transition.appModel.pendingDiscoverSimilarPlayersHint, "An interrupted tutorial stays queued for the next safe moment")
 
         let oldSession = IntroductionHarness()
         oldSession.configure()
-        oldSession.introductionPhase = .swipe
-        oldSession.dismissSimilarPlayersHint()
+        oldSession.introductionPhase = .opportunities
+        oldSession.closeFeatureGuide(oldSession.featureGuide!)
         let oldTask = oldSession.introductionTask
         oldSession.appModel.sessionGeneration = UUID()
         oldSession.closeIntroduction() // The production session onChange performs this synchronously.
         oldSession.appModel.bottomBarDisplayMode = .hidden // A modal owned by the new session.
         await oldTask?.value
         expect(oldSession.introductionPhase == .none && oldSession.appModel.bottomBarDisplayMode == .hidden,
-               "A canceled old-session transition cannot reopen a guide or change the new session's navigation")
+               "A canceled old-session transition cannot open the tutorial or change the new session's navigation")
 
         let reduced = IntroductionHarness()
         reduced.appModel.currentUser = nil
@@ -149,13 +163,14 @@ struct DiscoverIntroductionTests {
         reduced.configure()
         reduced.scheduleSimilarPlayersHintIfNeeded()
         await reduced.introductionTask?.value
-        expect(reduced.introductionPhase == .swipe && reduced.introductionAnimation == nil, "Guest entry and Reduce Motion preserve the first step")
+        expect(reduced.introductionPhase == .opportunities && reduced.introductionAnimation == nil, "Guest entry and Reduce Motion preserve the first step")
+        reduced.closeFeatureGuide(reduced.featureGuide!)
+        await reduced.introductionTask?.value
+        expect(reduced.introductionPhase == .swipe, "Reduce Motion preserves the same explicit progression")
         await reduced.runSimilarPlayersHintDemoLoop()
         expect(reduced.similarPlayersHintDemoPhase == 0, "Reduce Motion never starts the looping swipe movement")
         reduced.dismissSimilarPlayersHint()
-        await reduced.introductionTask?.value
-        expect(reduced.introductionPhase == .opportunities, "Reduce Motion preserves the same explicit progression")
-        reduced.closeIntroduction()
+        expect(reduced.introductionPhase == .none, "The tutorial closes as the last step")
 
         let competing = IntroductionHarness()
         competing.appModel.pendingDiscoverFirstInterestHint = true
@@ -163,8 +178,8 @@ struct DiscoverIntroductionTests {
         competing.configure()
         competing.scheduleSimilarPlayersHintIfNeeded()
         await competing.introductionTask?.value
-        expect(competing.introductionPhase == .swipe && !competing.isFirstInterestHintPresented && competing.appModel.consumedInterestCount == 0,
-               "A pre-scheduled interest hint yields to the new tutorial instead of consuming or layering itself")
+        expect(competing.introductionPhase == .opportunities && !competing.isFirstInterestHintPresented && competing.appModel.consumedInterestCount == 0,
+               "A pre-scheduled interest hint yields to the new guide instead of consuming or layering itself")
         competing.closeIntroduction()
         let legacy = IntroductionHarness()
         legacy.appModel.pendingDiscoverSimilarPlayersHint = true
