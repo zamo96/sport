@@ -7,6 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A33000000000000000000104 /* PersonalActivityReportComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000204 /* PersonalActivityReportComposerSheet.swift */; };
+		A33000000000000000000103 /* PersonalActivityDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000203 /* PersonalActivityDetailSheet.swift */; };
+		A33000000000000000000102 /* ActivityMediaGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000202 /* ActivityMediaGallery.swift */; };
+		A33000000000000000000101 /* UserIntentOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000201 /* UserIntentOnboardingView.swift */; };
+		A32000000000000000000101 /* ProfileWorkoutHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000201 /* ProfileWorkoutHistory.swift */; };
+		A32000000000000000000102 /* ProfileWorkoutsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000202 /* ProfileWorkoutsSection.swift */; };
+		A31000000000000000000101 /* UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000201 /* UserIntent.swift */; };
+		A31000000000000000000102 /* UserIntentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000202 /* UserIntentStore.swift */; };
+		A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000203 /* AppModel+UserIntent.swift */; };
+		A31000000000000000000104 /* SportHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000204 /* SportHomeView.swift */; };
+		A31000000000000000000105 /* SportHomeWeek.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000205 /* SportHomeWeek.swift */; };
+		A100000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
+		A200000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
 		A100000000000000000001B0 /* ReportPhotoGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002B0 /* ReportPhotoGallery.swift */; };
 		A100000000000000000001C0 /* RemoteMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002C0 /* RemoteMedia.swift */; };
 		A100000000000000000001A0 /* DiscoverPlayersMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002A0 /* DiscoverPlayersMap.swift */; };
@@ -81,6 +94,18 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A33000000000000000000204 /* PersonalActivityReportComposerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalActivityReportComposerSheet.swift; sourceTree = "<group>"; };
+		A33000000000000000000203 /* PersonalActivityDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalActivityDetailSheet.swift; sourceTree = "<group>"; };
+		A33000000000000000000202 /* ActivityMediaGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMediaGallery.swift; sourceTree = "<group>"; };
+		A33000000000000000000201 /* UserIntentOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserIntentOnboardingView.swift; sourceTree = "<group>"; };
+		A32000000000000000000201 /* ProfileWorkoutHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWorkoutHistory.swift; sourceTree = "<group>"; };
+		A32000000000000000000202 /* ProfileWorkoutsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWorkoutsSection.swift; sourceTree = "<group>"; };
+		A31000000000000000000201 /* UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserIntent.swift; sourceTree = "<group>"; };
+		A31000000000000000000202 /* UserIntentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserIntentStore.swift; sourceTree = "<group>"; };
+		A31000000000000000000203 /* AppModel+UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+UserIntent.swift"; sourceTree = "<group>"; };
+		A31000000000000000000204 /* SportHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeView.swift; sourceTree = "<group>"; };
+		A31000000000000000000205 /* SportHomeWeek.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeWeek.swift; sourceTree = "<group>"; };
+		A100000000000000000002D1 /* SecureSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureSessionStore.swift; sourceTree = "<group>"; };
 		A100000000000000000002B0 /* ReportPhotoGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPhotoGallery.swift; sourceTree = "<group>"; };
 		A100000000000000000002C0 /* RemoteMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMedia.swift; sourceTree = "<group>"; };
 		A100000000000000000002A0 /* DiscoverPlayersMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverPlayersMap.swift; sourceTree = "<group>"; };
@@ -192,6 +217,7 @@
 				A10000000000000000000201 /* TennisSearchIOSApp.swift */,
 				A10000000000000000000215 /* AppDelegate.swift */,
 				A10000000000000000000202 /* AppModel.swift */,
+				A31000000000000000000203 /* AppModel+UserIntent.swift */,
 				A10000000000000000000228 /* LocaleStore.swift */,
 			);
 			path = App;
@@ -201,6 +227,9 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000203 /* AppModels.swift */,
+				A31000000000000000000201 /* UserIntent.swift */,
+				A31000000000000000000205 /* SportHomeWeek.swift */,
+				A32000000000000000000201 /* ProfileWorkoutHistory.swift */,
 				A10000000000000000000225 /* BookingCallFlow.swift */,
 				A10000000000000000000223 /* UpcomingGameLiveActivity.swift */,
 			);
@@ -211,7 +240,9 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000204 /* TennisRepository.swift */,
+				A31000000000000000000202 /* UserIntentStore.swift */,
 				A10000000000000000000205 /* APIClient.swift */,
+				A100000000000000000002D1 /* SecureSessionStore.swift */,
 				A10000000000000000000206 /* MockRepository.swift */,
 				A10000000000000000000213 /* NotificationManager.swift */,
 				A10000000000000000000222 /* UpcomingGamesWidgetStore.swift */,
@@ -234,6 +265,12 @@
 			children = (
 				A10000000000000000000207 /* UIComponents.swift */,
 				A10000000000000000000208 /* ContentView.swift */,
+				A31000000000000000000204 /* SportHomeView.swift */,
+				A32000000000000000000202 /* ProfileWorkoutsSection.swift */,
+				A33000000000000000000204 /* PersonalActivityReportComposerSheet.swift */,
+				A33000000000000000000203 /* PersonalActivityDetailSheet.swift */,
+				A33000000000000000000202 /* ActivityMediaGallery.swift */,
+				A33000000000000000000201 /* UserIntentOnboardingView.swift */,
 				A10000000000000000000209 /* AuthView.swift */,
 				A1000000000000000000020A /* DiscoverView.swift */,
 				A100000000000000000002A0 /* DiscoverPlayersMap.swift */,
@@ -404,11 +441,23 @@
 			files = (
 				A10000000000000000000101 /* TennisSearchIOSApp.swift in Sources */,
 				A10000000000000000000102 /* AppModel.swift in Sources */,
+				A31000000000000000000101 /* UserIntent.swift in Sources */,
+				A31000000000000000000102 /* UserIntentStore.swift in Sources */,
+				A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */,
+				A31000000000000000000104 /* SportHomeView.swift in Sources */,
+				A31000000000000000000105 /* SportHomeWeek.swift in Sources */,
+				A32000000000000000000101 /* ProfileWorkoutHistory.swift in Sources */,
+				A32000000000000000000102 /* ProfileWorkoutsSection.swift in Sources */,
+				A33000000000000000000104 /* PersonalActivityReportComposerSheet.swift in Sources */,
+				A33000000000000000000103 /* PersonalActivityDetailSheet.swift in Sources */,
+				A33000000000000000000102 /* ActivityMediaGallery.swift in Sources */,
+				A33000000000000000000101 /* UserIntentOnboardingView.swift in Sources */,
 				A10000000000000000000123 /* LocaleStore.swift in Sources */,
 				A10000000000000000000103 /* AppModels.swift in Sources */,
 				A10000000000000000000120 /* BookingCallFlow.swift in Sources */,
 				A10000000000000000000104 /* TennisRepository.swift in Sources */,
 				A10000000000000000000105 /* APIClient.swift in Sources */,
+				A100000000000000000001D1 /* SecureSessionStore.swift in Sources */,
 				A10000000000000000000106 /* MockRepository.swift in Sources */,
 				A10000000000000000000107 /* UIComponents.swift in Sources */,
 				A10000000000000000000108 /* ContentView.swift in Sources */,
@@ -438,6 +487,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000101 /* UpcomingGamesWidget.swift in Sources */,
+				A200000000000000000001D1 /* SecureSessionStore.swift in Sources */,
 				A20000000000000000000103 /* UpcomingGameLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -492,7 +542,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026091904;
+				CURRENT_PROJECT_VERSION = 2026092205;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -502,7 +552,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
 				PRODUCT_NAME = SportSearch;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -518,7 +568,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TennisSearchIOS/TennisSearchIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026091904;
+				CURRENT_PROJECT_VERSION = 2026092205;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -528,7 +578,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app;
 				PRODUCT_NAME = SportSearch;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -544,7 +594,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026091904;
+				CURRENT_PROJECT_VERSION = 2026092205;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
@@ -554,7 +604,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
 				PRODUCT_NAME = UpcomingGamesWidget;
 				SKIP_INSTALL = YES;
@@ -571,7 +621,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = TennisSearchUpcomingWidget/TennisSearchUpcomingWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026091904;
+				CURRENT_PROJECT_VERSION = 2026092205;
 				DEVELOPMENT_TEAM = M2ZZ39HQZ5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TennisSearchUpcomingWidget/Info.plist;
@@ -581,7 +631,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = shop.sportsearch.app.UpcomingGamesWidget;
 				PRODUCT_NAME = UpcomingGamesWidget;
 				SKIP_INSTALL = YES;

@@ -544,7 +544,8 @@ export const updatePersonalActivitySchema = z.object({
   comment: publicText(240).optional(),
   status: z.nativeEnum(PersonalActivityStatus).optional(),
   reportComment: publicText(240).optional().nullable(),
-  photoUrls: z.array(z.string().min(1).max(600)).max(8).optional()
+  photoUrls: z.array(z.string().min(1).max(600)).max(8).optional(),
+  videoUrls: z.array(z.string().trim().min(1).max(600)).max(8).optional()
 });
 
 export const createGameSearchSchema = z

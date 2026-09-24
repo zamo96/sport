@@ -3,6 +3,7 @@ import Foundation
 enum APIError: LocalizedError {
     private static let genericServerMessage = "Сервис временно отвечает нестабильно. Попробуй ещё раз через пару секунд."
 
+    case unauthorized
     case invalidBaseURL
     case invalidResponse
     case server(String)
@@ -10,6 +11,8 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .unauthorized:
+            return "Войди в аккаунт ещё раз."
         case .invalidBaseURL:
             return "Не указан API base URL"
         case .invalidResponse:
@@ -66,8 +69,6 @@ enum APIError: LocalizedError {
 }
 
 final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
-    private static let sessionTokenKey = "SportSearch.sessionToken"
-    private static let appGroupIdentifier = "group.shop.sportsearch.app"
 
     private let baseURL: URL
     private let configuration: URLSessionConfiguration
@@ -77,16 +78,37 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let trustedHost: String?
     private let localeProvider: () -> String
     private var sessionToken: String?
+    private let secureSessionStore: SecureSessionStore
+    private let authLock = NSLock()
+    private var sessionGeneration: UInt64 = 0
+    private var logoutTask: Task<Void, Never>?
+
+    var authenticationGeneration: UInt64 {
+        authLock.lock()
+        defer { authLock.unlock() }
+        return sessionGeneration
+    }
+
+    func beginAuthenticationAttempt() -> UInt64 {
+        authLock.lock()
+        defer { authLock.unlock() }
+        sessionGeneration &+= 1
+        return sessionGeneration
+    }
+
+    private func requireCurrentGeneration(_ generation: UInt64) throws {
+        guard generation == authenticationGeneration, !Task.isCancelled else { throw CancellationError() }
+    }
 
     private lazy var session: URLSession = {
         URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
 
     private lazy var streamSession: URLSession = {
-        let streamConfiguration = URLSessionConfiguration.default
-        streamConfiguration.httpCookieAcceptPolicy = .always
-        streamConfiguration.httpShouldSetCookies = true
-        streamConfiguration.httpCookieStorage = .shared
+        let streamConfiguration = URLSessionConfiguration.ephemeral
+        streamConfiguration.httpCookieAcceptPolicy = .never
+        streamConfiguration.httpShouldSetCookies = false
+        streamConfiguration.httpCookieStorage = nil
         streamConfiguration.timeoutIntervalForRequest = 45
         streamConfiguration.timeoutIntervalForResource = 7 * 24 * 60 * 60
         return URLSession(configuration: streamConfiguration, delegate: self, delegateQueue: nil)
@@ -95,38 +117,83 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     init(
         baseURL: URL,
         allowDebugServerTrustOverride: Bool = false,
-        localeProvider: @escaping () -> String = { AppLocale.en.rawValue }
+        localeProvider: @escaping () -> String = { AppLocale.en.rawValue },
+        sessionConfiguration: URLSessionConfiguration = .ephemeral
     ) {
         self.baseURL = baseURL
         self.allowDebugServerTrustOverride = allowDebugServerTrustOverride
         self.localeProvider = localeProvider
         trustedHost = baseURL.host
-        configuration = URLSessionConfiguration.default
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.httpShouldSetCookies = true
-        configuration.httpCookieStorage = .shared
+        configuration = sessionConfiguration
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
         configuration.timeoutIntervalForRequest = 18
         configuration.timeoutIntervalForResource = 30
         decoder = JSONDecoder()
         encoder = JSONEncoder()
-        sessionToken = UserDefaults.standard.string(forKey: Self.sessionTokenKey)
-            ?? UserDefaults(suiteName: Self.appGroupIdentifier)?.string(forKey: Self.sessionTokenKey)
+        secureSessionStore = SecureSessionStore(baseURL: baseURL)
+        sessionToken = secureSessionStore.migrateLegacyToken(baseURL: baseURL)
+        super.init()
+        clearLegacySessionCookies()
     }
 
     var effectiveLocaleIdentifier: String {
         AppLocale(rawValue: localeProvider().lowercased())?.rawValue ?? AppLocale.en.rawValue
     }
 
-    func setSessionToken(_ token: String?) {
-        let normalizedToken = token?.trimmingCharacters(in: .whitespacesAndNewlines)
-        sessionToken = normalizedToken?.isEmpty == false ? normalizedToken : nil
+    func setSessionToken(_ token: String?, expectedGeneration: UInt64) throws {
+        authLock.lock()
+        defer { authLock.unlock() }
+        guard sessionGeneration == expectedGeneration, !Task.isCancelled else { throw CancellationError() }
+        guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            throw APIError.invalidPayload("Не удалось завершить вход. Попробуй ещё раз.")
+        }
+        try secureSessionStore.write(token)
+        sessionToken = token
+        sessionGeneration &+= 1
+    }
 
-        if let sessionToken {
-            UserDefaults.standard.set(sessionToken, forKey: Self.sessionTokenKey)
-            UserDefaults(suiteName: Self.appGroupIdentifier)?.set(sessionToken, forKey: Self.sessionTokenKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: Self.sessionTokenKey)
-            UserDefaults(suiteName: Self.appGroupIdentifier)?.removeObject(forKey: Self.sessionTokenKey)
+    func clearAuthSession() {
+        authLock.lock()
+        sessionGeneration &+= 1
+        sessionToken = nil
+        secureSessionStore.clear()
+        authLock.unlock()
+        clearLegacySessionCookies()
+    }
+
+    func logout(pushDeviceToken: String?) {
+        // Capture the old credential before clearing; delayed revocation must
+        // never authenticate with a subsequent account's token.
+        var request = makeRequest(path: "auth/logout", method: "POST", queryItems: [])
+        request.httpBody = try? JSONEncoder().encode(LogoutRequest(pushDeviceToken: pushDeviceToken))
+        clearAuthSession()
+        guard request.value(forHTTPHeaderField: "Authorization") != nil else { return }
+        authLock.lock()
+        let previousLogout = logoutTask
+        logoutTask = Task { [self] in
+            await previousLogout?.value
+            _ = try? await session.data(for: request)
+        }
+        authLock.unlock()
+    }
+
+    private func pendingLogout() -> Task<Void, Never>? {
+        authLock.lock()
+        defer { authLock.unlock() }
+        return logoutTask
+    }
+
+    func waitForLogoutCleanup() async throws {
+        let generation = authenticationGeneration
+        await pendingLogout()?.value
+        try requireCurrentGeneration(generation)
+    }
+
+    private func clearLegacySessionCookies() {
+        for cookie in HTTPCookieStorage.shared.cookies(for: baseURL) ?? [] where cookie.name == "tennis_session" {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
         }
     }
 
@@ -136,11 +203,12 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         queryItems: [URLQueryItem] = [],
         body: Body? = nil
     ) async throws -> Response {
+        let generation = authenticationGeneration
         var request = makeRequest(path: path, method: method, queryItems: queryItems)
         if let body {
             request.httpBody = try encoder.encode(body)
         }
-        return try await perform(request)
+        return try await perform(request, generation: generation)
     }
 
     func request<Response: Decodable>(
@@ -148,7 +216,8 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         method: String = "GET",
         queryItems: [URLQueryItem] = []
     ) async throws -> Response {
-        try await perform(makeRequest(path: path, method: method, queryItems: queryItems))
+        let generation = authenticationGeneration
+        return try await perform(makeRequest(path: path, method: method, queryItems: queryItems), generation: generation)
     }
 
     func uploadMultipart<Response: Decodable>(
@@ -158,6 +227,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         mimeType: String,
         data: Data
     ) async throws -> Response {
+        let generation = authenticationGeneration
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = makeRequest(path: path, method: "POST", queryItems: [])
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -168,23 +238,30 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             mimeType: mimeType,
             data: data
         )
-        return try await perform(request)
+        return try await perform(request, generation: generation)
     }
 
     func download(path: String) async throws -> Data {
+        let generation = authenticationGeneration
         var request: URLRequest
         if let absoluteURL = URL(string: path), absoluteURL.scheme != nil {
             request = URLRequest(url: absoluteURL)
             request.setValue(effectiveLocaleIdentifier, forHTTPHeaderField: "Accept-Language")
+            if SecureSessionStore.origin(for: absoluteURL) == SecureSessionStore.origin(for: baseURL) {
+                request.setValue(authorizationHeader(), forHTTPHeaderField: "Authorization")
+            }
         } else {
             let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
             request = makeRequest(path: relativePath, method: "GET", queryItems: [])
         }
 
+        try requireCurrentGeneration(generation)
         let (data, response) = try await session.data(for: request)
+        try requireCurrentGeneration(generation)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
+        if httpResponse.statusCode == 401 { throw APIError.unauthorized }
         guard (200 ... 299).contains(httpResponse.statusCode) else {
             throw APIError.server("HTTP \(httpResponse.statusCode)")
         }
@@ -192,7 +269,8 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     }
 
     func realtimeEvents(lastEventId: String?) -> AsyncThrowingStream<RealtimeEvent, Error> {
-        AsyncThrowingStream { continuation in
+        let generation = authenticationGeneration
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var request = makeRequest(path: "realtime", method: "GET", queryItems: [])
@@ -202,10 +280,13 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
                         request.setValue(lastEventId, forHTTPHeaderField: "Last-Event-ID")
                     }
 
+                    try requireCurrentGeneration(generation)
                     let (bytes, response) = try await streamSession.bytes(for: request)
+                    try requireCurrentGeneration(generation)
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw APIError.invalidResponse
                     }
+                    if httpResponse.statusCode == 401 { throw APIError.unauthorized }
                     guard (200 ... 299).contains(httpResponse.statusCode) else {
                         throw APIError.server("Realtime HTTP \(httpResponse.statusCode)")
                     }
@@ -248,6 +329,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
                     }
 
                     for try await line in bytes.lines {
+                        try requireCurrentGeneration(generation)
                         if Task.isCancelled {
                             break
                         }
@@ -297,9 +379,7 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         request.setValue(effectiveLocaleIdentifier, forHTTPHeaderField: "Accept-Language")
-        if let sessionToken, !sessionToken.isEmpty {
-            request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue(authorizationHeader(), forHTTPHeaderField: "Authorization")
         return request
     }
 
@@ -323,72 +403,50 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
         return body
     }
 
-    private func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
+    private func authorizationHeader() -> String? {
+        authLock.lock()
+        defer { authLock.unlock() }
+        return sessionToken.map { "Bearer \($0)" }
+    }
+
+    private func perform<Response: Decodable>(_ request: URLRequest, generation: UInt64) async throws -> Response {
+        try requireCurrentGeneration(generation)
         let (data, response) = try await session.data(for: request)
+        try requireCurrentGeneration(generation)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
-
-        if !(200 ... 299).contains(httpResponse.statusCode) {
-            let serverError =
-                (try? decoder.decode(ErrorEnvelope.self, from: data))?.error ??
-                "HTTP \(httpResponse.statusCode). \(debugPayloadSummary(data: data, response: httpResponse))"
+        let isSignInRequest = ["/auth/verify", "/auth/apple"].contains { request.url?.path.hasSuffix($0) == true }
+        if httpResponse.statusCode == 401 && !isSignInRequest { throw APIError.unauthorized }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            let serverError = (try? decoder.decode(ErrorEnvelope.self, from: data))?.error
+                ?? "HTTP \(httpResponse.statusCode)"
             throw APIError.server(serverError)
         }
-
         do {
             return try decoder.decode(Response.self, from: data)
-        } catch let decodingError as DecodingError {
-            throw APIError.invalidPayload(
-                "Не удалось прочитать JSON ответа. " +
-                describe(decodingError: decodingError) +
-                ". " +
-                debugPayloadSummary(data: data, response: httpResponse)
-            )
         } catch {
-            throw APIError.invalidPayload(
-                "Не удалось обработать ответ сервера. " +
-                debugPayloadSummary(data: data, response: httpResponse)
-            )
+            // Responses may contain private messages, profiles or credentials.
+            // Never include the body or decoding context in a displayed error.
+            throw APIError.invalidPayload("Не удалось прочитать ответ сервера. Попробуй ещё раз.")
         }
     }
 
-    private func debugPayloadSummary(data: Data, response: HTTPURLResponse) -> String {
-        let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? "unknown content type"
-        let snippet: String
-        if let text = String(data: data.prefix(220), encoding: .utf8) {
-            snippet = text
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            snippet = "<non-UTF8 body>"
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let source = response.url, let destination = request.url,
+              SecureSessionStore.origin(for: source) == SecureSessionStore.origin(for: destination) else {
+            // Authenticated API responses must not redirect credentials or bodies
+            // to another origin, nor downgrade HTTPS.
+            completionHandler(nil)
+            return
         }
-
-        return "HTTP \(response.statusCode), \(contentType). Body: \(snippet)"
-    }
-
-    private func describe(decodingError: DecodingError) -> String {
-        switch decodingError {
-        case .typeMismatch(let type, let context):
-            return "Type mismatch for \(type) at \(codingPath(context.codingPath)): \(context.debugDescription)"
-        case .valueNotFound(let type, let context):
-            return "Missing value for \(type) at \(codingPath(context.codingPath)): \(context.debugDescription)"
-        case .keyNotFound(let key, let context):
-            return "Missing key '\(key.stringValue)' at \(codingPath(context.codingPath)): \(context.debugDescription)"
-        case .dataCorrupted(let context):
-            return "Corrupted data at \(codingPath(context.codingPath)): \(context.debugDescription)"
-        @unknown default:
-            return "Unknown decoding error"
-        }
-    }
-
-    private func codingPath(_ path: [CodingKey]) -> String {
-        guard !path.isEmpty else {
-            return "<root>"
-        }
-
-        return path.map(\.stringValue).joined(separator: ".")
+        completionHandler(request)
     }
 
     func urlSession(
@@ -417,14 +475,16 @@ final class APIClient: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             return
         }
 
+        #if DEBUG
         if
             allowDebugServerTrustOverride,
-            trustedHost == nil || challenge.protectionSpace.host == trustedHost,
+            challenge.protectionSpace.host == trustedHost,
             let serverTrust = challenge.protectionSpace.serverTrust
         {
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
             return
         }
+        #endif
 
         completionHandler(.performDefaultHandling, nil)
     }
@@ -461,6 +521,7 @@ final class LiveTennisRepository: TennisRepository {
     }
 
     func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
+        let generation = client.beginAuthenticationAttempt()
         let response: VerifyEnvelope = try await client.request(
             path: "auth/verify",
             method: "POST",
@@ -474,11 +535,12 @@ final class LiveTennisRepository: TennisRepository {
                 showOnMap: showOnMap
             )
         )
-        client.setSessionToken(response.sessionToken)
+        try client.setSessionToken(response.sessionToken, expectedGeneration: generation)
         return response.user
     }
 
     func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool? = nil) async throws -> SessionUser {
+        let generation = client.beginAuthenticationAttempt()
         let response: VerifyEnvelope = try await client.request(
             path: "auth/apple",
             method: "POST",
@@ -494,12 +556,16 @@ final class LiveTennisRepository: TennisRepository {
                 showOnMap: showOnMap
             )
         )
-        client.setSessionToken(response.sessionToken)
+        try client.setSessionToken(response.sessionToken, expectedGeneration: generation)
         return response.user
     }
 
     func clearAuthSession() {
-        client.setSessionToken(nil)
+        client.clearAuthSession()
+    }
+
+    func logout(pushDeviceToken: String?) {
+        client.logout(pushDeviceToken: pushDeviceToken)
     }
 
     func fetchCurrentUser() async throws -> UserProfile {
@@ -845,6 +911,14 @@ final class LiveTennisRepository: TennisRepository {
         return response.photoUrl
     }
 
+    func uploadPersonalActivityVideo(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        let response: PersonalActivityVideoUploadEnvelope = try await client.uploadMultipart(
+            path: "uploads/personal-activities/\(activityId)", fieldName: "file",
+            fileName: fileName, mimeType: mimeType, data: data
+        )
+        return response.videoUrl
+    }
+
     func fetchSearches() async throws -> [GameSearch] {
         let response: SearchesEnvelope = try await client.request(path: "game-searches/my")
         return response.gameSearches
@@ -1092,6 +1166,7 @@ final class LiveTennisRepository: TennisRepository {
     }
 
     func registerPushDevice(token: String, environment: APNSEnvironment, bundleId: String, deviceName: String?, locale: String?) async throws {
+        try await client.waitForLogoutCleanup()
         let _: RegisterPushDeviceEnvelope = try await client.request(
             path: "devices/apns",
             method: "POST",
@@ -1363,6 +1438,7 @@ private struct UpdatePersonalActivityRequest: Encodable {
     let status: String?
     let reportComment: String?
     let photoUrls: [String]?
+    let videoUrls: [String]?
 
     init(draft: PersonalActivityUpdateDraft) {
         scheduledAt = draft.scheduledAt?.serverISOString()
@@ -1371,6 +1447,7 @@ private struct UpdatePersonalActivityRequest: Encodable {
         status = draft.status
         reportComment = draft.reportComment
         photoUrls = draft.photoUrls
+        videoUrls = draft.videoUrls
     }
 }
 
@@ -1602,6 +1679,10 @@ private struct PersonalActivityPhotoUploadEnvelope: Decodable {
     let photoUrl: String
 }
 
+private struct PersonalActivityVideoUploadEnvelope: Decodable {
+    let videoUrl: String
+}
+
 private struct SwipeEnvelope: Decodable {
     let match: MatchReference?
 }
@@ -1745,4 +1826,8 @@ private struct ChatReceiptRequest: Encodable {
     let searchId: String?
     let messageIds: [String]
     let status: String
+}
+
+private struct LogoutRequest: Encodable {
+    let pushDeviceToken: String?
 }

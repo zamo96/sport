@@ -1,6 +1,7 @@
 import Foundation
 
 @main
+@MainActor
 struct UpcomingGamesWidgetTests {
     static var checks = 0
     static func expect(_ value: @autoclosure () -> Bool, _ message: String) {
@@ -32,6 +33,25 @@ struct UpcomingGamesWidgetTests {
         expect(filtered.games.map(\.id) == ["next"], "Personal defaults and terminal statuses must be filtered before cap")
         expect(filtered.games.first?.durationMinutes == 60, "Store persists resolved sport duration for the extension")
         expect(!oldVisit.isArchivedForTimeline, "Widget projection must leave app history unchanged")
+        let defaults = UserDefaults(suiteName: UpcomingGamesWidgetStore.appGroupIdentifier)!
+        defer { defaults.removePersistentDomain(forName: UpcomingGamesWidgetStore.appGroupIdentifier) }
+        let liveGame = MatchGameRequest(id: "private-game", proposedDate: Date().addingTimeInterval(3600), durationMinutes: 90, status: "accepted", outcome: nil, sport: tennis)
+        UpcomingGamesWidgetStore.setCurrentAccount("A")
+        UpcomingGamesWidgetStore.save(gameRequests: [liveGame], currentUserId: "A")
+        func storedGames() -> [UpcomingGamesWidgetGame] {
+            let data = defaults.data(forKey: UpcomingGamesWidgetStore.payloadKey)!
+            return try! JSONDecoder().decode(UpcomingGamesWidgetPayload.self, from: data).games
+        }
+        expect(storedGames().count == 1, "An authenticated account can publish its widget")
+        UpcomingGamesWidgetStore.clear()
+        expect(storedGames().isEmpty && defaults.string(forKey: UpcomingGamesWidgetStore.currentUserIdKey) == nil, "Logout clears payload and account identifier synchronously")
+        UpcomingGamesWidgetStore.save(gameRequests: [liveGame], currentUserId: "A")
+        expect(storedGames().isEmpty, "A delayed logged-out view cannot republish a widget")
+        UpcomingGamesWidgetStore.setCurrentAccount("B")
+        UpcomingGamesWidgetStore.save(gameRequests: [liveGame], currentUserId: "A")
+        expect(storedGames().isEmpty, "The previous account cannot publish into the next account's widget")
+        UpcomingGamesWidgetStore.save(gameRequests: [liveGame], currentUserId: "B")
+        expect(storedGames().count == 1 && defaults.string(forKey: UpcomingGamesWidgetStore.currentUserIdKey) == "B", "The next account can publish its own widget")
         print("Upcoming widget app-store tests: \(checks) checks passed")
 #else
         func game(_ id: String, _ start: Date?, duration: Int? = 90, sport: String = "Теннис", type: String = "game", status: String = "Игра подтверждена") -> UpcomingGamesWidgetGame {

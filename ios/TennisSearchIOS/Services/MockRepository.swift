@@ -3,6 +3,10 @@ import Foundation
 actor MockRepository: TennisRepository {
     private var slotProposalsBySearchId: [String: SearchSlotProposalSummary] = [:]
     private var personalActivities: [PersonalActivity] = []
+    private var personalMediaUploadURLs: [String: Set<String>] = [:]
+    #if DEBUG
+    private var didSeedWorkoutHistoryPreview = false
+    #endif
     private var blockedUserIDs: Set<String> = []
 
     private var currentUser = UserProfile(
@@ -395,6 +399,10 @@ actor MockRepository: TennisRepository {
     nonisolated func clearAuthSession() {
     }
 
+    nonisolated func logout(pushDeviceToken: String?) {
+        clearAuthSession()
+    }
+
     func fetchCurrentUser() async throws -> UserProfile {
         currentUser
     }
@@ -542,7 +550,34 @@ actor MockRepository: TennisRepository {
     }
 
     func uploadPersonalActivityPhoto(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
-        "/uploads/mock/personal-activities/\(activityId)/\(UUID().uuidString)-\(fileName)"
+        guard ["image/jpeg", "image/png", "image/webp", "image/gif"].contains(mimeType),
+              !data.isEmpty, data.count <= 20 * 1024 * 1024 else {
+            throw APIError.server("Выберите фото до 20 МБ")
+        }
+        let extensions = ["image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"]
+        return try storePersonalMedia(activityId: activityId, data: data, fileExtension: extensions[mimeType] ?? "jpg")
+    }
+
+    func uploadPersonalActivityVideo(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String {
+        guard let activity = personalActivities.first(where: { $0.id == activityId && $0.userId == currentUser.id }),
+              activity.status != "canceled", activity.hasEnded else {
+            throw APIError.server("Отчёт можно добавить после завершения визита")
+        }
+        guard ["video/mp4", "video/quicktime"].contains(mimeType), !data.isEmpty, data.count <= 60 * 1024 * 1024 else {
+            throw APIError.server("Выберите MP4 или MOV до 60 МБ")
+        }
+        return try storePersonalMedia(activityId: activityId, data: data, fileExtension: mimeType == "video/mp4" ? "mp4" : "mov")
+    }
+
+    private func storePersonalMedia(activityId: String, data: Data, fileExtension: String) throws -> String {
+        guard let activity = personalActivities.first(where: { $0.id == activityId && $0.userId == currentUser.id }),
+              activity.status != "canceled", activity.hasEnded else {
+            throw APIError.server("Отчёт можно добавить после завершения визита")
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mock-visit-\(UUID().uuidString).\(fileExtension)")
+        try data.write(to: url, options: .atomic)
+        personalMediaUploadURLs[currentUser.id + ":" + activityId, default: []].insert(url.absoluteString)
+        return url.absoluteString
     }
 
     #if DEBUG
@@ -1085,8 +1120,65 @@ actor MockRepository: TennisRepository {
     }
 
     func fetchPersonalActivities() async throws -> [PersonalActivity] {
-        personalActivities.sorted { $0.scheduledAt < $1.scheduledAt }
+        #if DEBUG
+        seedWorkoutHistoryPreviewIfNeeded()
+        #endif
+        return personalActivities.sorted { $0.scheduledAt < $1.scheduledAt }
     }
+
+    #if DEBUG
+    private func seedWorkoutHistoryPreviewIfNeeded() {
+        guard !didSeedWorkoutHistoryPreview,
+              ProcessInfo.processInfo.arguments.contains("-workout-history-preview") else { return }
+        didSeedWorkoutHistoryPreview = true
+        let now = Date()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        let formatter = ISO8601DateFormatter()
+        let photoBaseURL = UserDefaults.standard.string(forKey: "WorkoutHistoryPhotoBaseURL")
+            .flatMap(URL.init(string:))
+        func day(_ offset: Int, hour: Int) -> Date {
+            let date = calendar.date(byAdding: .day, value: offset, to: today) ?? today
+            return calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date
+        }
+        let recent = now.addingTimeInterval(-min(now.timeIntervalSince(today), 2 * 60 * 60))
+        let previousMonth = calendar.date(byAdding: .month, value: -1, to: day(0, hour: 11)) ?? day(-32, hour: 11)
+        let entries: [(String, Date, Sport, Int?, String?, String)] = [
+            ("today", recent, .tennis, 60, "Поработала над подачей. В конце получилось несколько хороших розыгрышей.", "completed"),
+            ("yesterday-morning", day(-1, hour: 9), .padel, 90, "Утренняя игра в хорошем темпе.", "completed"),
+            ("yesterday-evening", day(-1, hour: 19), .tennis, 45, nil, "completed"),
+            ("earlier-week", day(-3, hour: 18), .padel, nil, "Больше движения у сетки — хочу повторить.", "completed"),
+            ("previous-week", day(-6, hour: 11), .tennis, 75, nil, "completed"),
+            ("previous-month", previousMonth, .padel, 60, "Первая тренировка в новом клубе.", "completed"),
+            ("planned", day(1, hour: 18), .tennis, 60, nil, "planned"),
+            ("canceled", day(-2, hour: 19), .padel, 90, nil, "canceled")
+        ]
+        for (id, date, sport, duration, comment, status) in entries {
+            guard let court = courts.first(where: { $0.supportedSports?.contains(sport) == true }) else { continue }
+            let photos: [PersonalActivityPhoto]
+            if id == "today", let photoBaseURL {
+                photos = ["hero-tennis.jpg", "hero-padel.jpg"].enumerated().map { index, name in
+                    PersonalActivityPhoto(
+                        id: "workout-history-preview-photo-\(index)",
+                        url: photoBaseURL.appendingPathComponent(name).absoluteString,
+                        position: index
+                    )
+                }
+            } else {
+                photos = []
+            }
+            personalActivities.append(PersonalActivity(
+                id: "workout-history-preview-" + id,
+                userId: currentUser.id, courtId: court.id, sport: sport,
+                scheduledAt: formatter.string(from: date), durationMinutes: duration,
+                comment: nil, status: status, reportComment: comment,
+                createdAt: formatter.string(from: now), updatedAt: formatter.string(from: now),
+                court: court, photos: photos,
+                videoUrls: id == "today" ? photoBaseURL.map { [$0.appendingPathComponent("test-visit.mp4").absoluteString] } ?? [] : []
+            ))
+        }
+    }
+    #endif
 
     func createPersonalActivity(_ draft: PersonalActivityDraft) async throws -> PersonalActivity {
         guard let court = courts.first(where: { $0.id == draft.courtId }) else {
@@ -1113,12 +1205,37 @@ actor MockRepository: TennisRepository {
     }
 
     func updatePersonalActivity(activityId: String, draft: PersonalActivityUpdateDraft) async throws -> PersonalActivity {
-        guard let index = personalActivities.firstIndex(where: { $0.id == activityId }) else {
+        guard let index = personalActivities.firstIndex(where: { $0.id == activityId && $0.userId == currentUser.id }) else {
             throw APIError.server("Визит не найден")
         }
 
         let existing = personalActivities[index]
         let photoUrls = draft.photoUrls ?? existing.photoUrls
+        let videoUrls = draft.videoUrls ?? existing.videoUrls
+        let allowed = Set(existing.photoUrls + existing.videoUrls).union(personalMediaUploadURLs[currentUser.id + ":" + activityId] ?? [])
+        guard (photoUrls + videoUrls).allSatisfy({ allowed.contains($0) }) else {
+            throw APIError.server("Медиа не относится к этому визиту")
+        }
+        guard photoUrls.count + videoUrls.count <= 8 else { throw APIError.server("В отчёте может быть не больше 8 фото и видео") }
+        let nextStatus = draft.status ?? existing.status
+        let editsReport = draft.reportComment != nil || draft.photoUrls != nil || draft.videoUrls != nil
+        guard existing.status == "planned" || nextStatus == existing.status else { throw APIError.server("Результат визита уже сохранён") }
+        if let date = draft.scheduledAt {
+            guard existing.status == "planned", date > Date() else { throw APIError.server("Выбери будущую дату и время") }
+        }
+        if let duration = draft.durationMinutes {
+            guard existing.status == "planned", (15...360).contains(duration) else {
+                throw APIError.server("Укажи длительность от 15 до 360 минут для запланированного визита")
+            }
+        }
+        if editsReport && nextStatus != "completed" { throw APIError.server("Отчёт можно сохранить только для завершённого визита") }
+        if nextStatus == "completed" && (draft.status == "completed" || editsReport) {
+            let date = draft.scheduledAt ?? existing.scheduledDate ?? .distantFuture
+            let duration = draft.durationMinutes ?? existing.durationMinutes ?? 60
+            guard existing.status != "canceled", date.addingTimeInterval(TimeInterval(duration * 60)) <= Date() else {
+                throw APIError.server("Отчёт можно добавить после завершения визита")
+            }
+        }
         let updated = PersonalActivity(
             id: existing.id,
             userId: existing.userId,
@@ -1134,7 +1251,8 @@ actor MockRepository: TennisRepository {
             court: existing.court,
             photos: photoUrls.enumerated().map { index, url in
                 PersonalActivityPhoto(id: "personal-activity-photo-\(UUID().uuidString)", url: url, position: index)
-            }
+            },
+            videoUrls: videoUrls
         )
         personalActivities[index] = updated
         return updated

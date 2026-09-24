@@ -27,6 +27,17 @@ final class AppModel: ObservableObject {
         case hardUpdateRequired
     }
 
+    enum SessionRestoreState { case restoring, failed, ready }
+
+    struct PersonalVisitContinuation {
+        let id = UUID()
+        let court: Court
+        let sport: Sport?
+        var authenticationDismissed = false
+    }
+
+    @Published private(set) var sessionGeneration = UUID()
+    @Published private(set) var sessionRestoreState: SessionRestoreState = .restoring
     @Published var currentUser: UserProfile?
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
@@ -41,7 +52,16 @@ final class AppModel: ObservableObject {
     @Published var pendingSearchLobbyID: String?
     @Published var pendingCreateSearchPrefill: CreateSearchPrefill?
     @Published var pendingCourtID: String?
-    @Published var bottomBarDisplayMode: BottomBarDisplayMode = .expanded
+    @Published private(set) var pendingPersonalVisit: PersonalVisitContinuation?
+    /// Announced only on a real change. @Published fires for every assignment, and Discover
+    /// assigns .expanded each time it leaves the screen: covered by My week, the app-wide
+    /// re-render made the navigation stack report that disappearance again, in a loop,
+    /// until the watchdog killed the app.
+    var bottomBarDisplayMode: BottomBarDisplayMode = .expanded {
+        willSet {
+            if newValue != bottomBarDisplayMode { objectWillChange.send() }
+        }
+    }
     @Published var pendingHighlightedDiscoverUserID: String?
     @Published var pendingHighlightedSearchID: String?
     @Published var pendingHighlightedGameRequestID: String?
@@ -74,6 +94,7 @@ final class AppModel: ObservableObject {
         self.localeStore = localeStore
         let useMock = AppConfig.useMockData
         isUsingMockData = useMock
+        if useMock || SportsActivityFeedPreview.isEnabled { sessionRestoreState = .ready }
         guestDraft = guestDraftStore.load()
         pendingDiscoverSimilarPlayersHint = discoverHintStore.hasPendingSimilarPlayersHint()
         pendingDiscoverFirstInterestHint = discoverHintStore.hasPendingFirstInterestHint()
@@ -150,7 +171,11 @@ final class AppModel: ObservableObject {
         localeStore.setManualOverride(locale)
         if currentUser != nil {
             currentUser?.localeOverride = locale.rawValue
-            Task { try? await repository.updateLocaleOverride(locale.rawValue) }
+            let generation = sessionGeneration
+            Task {
+                guard isCurrentSession(generation) else { return }
+                _ = try? await repository.updateLocaleOverride(locale.rawValue)
+            }
         }
     }
 
@@ -166,21 +191,44 @@ final class AppModel: ObservableObject {
         !isAuthenticated && guestDraft.isOnboardingComplete
     }
 
+    func isCurrentSession(_ generation: UUID) -> Bool {
+        generation == sessionGeneration && currentUser != nil && !Task.isCancelled
+    }
+
     func bootstrap() async {
+        let generation = sessionGeneration
+        sessionRestoreState = .restoring
         await notificationManager.configure()
         await checkForAppUpdate()
 
+        guard generation == sessionGeneration, !Task.isCancelled else { return }
         guard !isUsingMockData else {
+            sessionRestoreState = .ready
             return
         }
 
         do {
-            let user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            let fetchedUser = try await repository.fetchCurrentUser()
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            let user = await reconcileLocalePreference(fetchedUser)
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
             prepareOnboardingDraft(for: user)
             currentUser = user
+            UpcomingGamesWidgetStore.setCurrentAccount(user.id)
             notificationManager.startMonitoring(repository: repository)
+            sessionRestoreState = .ready
         } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
             currentUser = nil
+            if case APIError.unauthorized = error {
+                repository.clearAuthSession()
+                notificationManager.clearAccountState()
+                UpcomingGamesWidgetStore.clear()
+                RemoteImagePipeline.shared.clear()
+                sessionRestoreState = .ready
+            } else {
+                sessionRestoreState = .failed
+            }
         }
     }
 
@@ -210,6 +258,38 @@ final class AppModel: ObservableObject {
     func dismissPresentedAuth() {
         presentedAuthStep = nil
         authUserAgreementAccepted = false
+        if !isAuthenticated {
+            pendingPersonalVisit = nil
+        }
+    }
+
+    @discardableResult
+    func deferPersonalVisit(court: Court, sport: Sport?) -> UUID {
+        let continuation = PersonalVisitContinuation(court: court, sport: sport)
+        pendingPersonalVisit = continuation
+        return continuation.id
+    }
+
+    /// Called when the authentication sheet has actually finished dismissing.
+    func authenticationSheetDidDismiss() {
+        guard presentedAuthStep == nil else { return }
+        guard isAuthenticated else {
+            pendingPersonalVisit = nil
+            return
+        }
+        pendingPersonalVisit?.authenticationDismissed = true
+    }
+
+    var canResumePendingPersonalVisit: Bool {
+        isAuthenticated && isOnboardingComplete && !isBusy && presentedAuthStep == nil
+            && pendingPersonalVisit?.authenticationDismissed == true
+    }
+
+    func consumePendingPersonalVisit() -> PersonalVisitContinuation? {
+        guard canResumePendingPersonalVisit else { return nil }
+        let continuation = pendingPersonalVisit
+        pendingPersonalVisit = nil
+        return continuation
     }
 
     @discardableResult
@@ -223,8 +303,9 @@ final class AppModel: ObservableObject {
             return false
         }
 
+        let generation = sessionGeneration
         isBusy = true
-        defer { isBusy = false }
+        defer { if generation == sessionGeneration { isBusy = false } }
 
         do {
             let challenge = try await repository.requestCode(
@@ -232,11 +313,13 @@ final class AppModel: ObservableObject {
                 userAgreementAccepted: userAgreementAccepted,
                 userAgreementVersion: userAgreementVersion
             )
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
             authMessage = challenge.message
             debugCode = challenge.debugCode
             errorMessage = nil
             return true
         } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
             present(error: error)
             return false
         }
@@ -252,8 +335,10 @@ final class AppModel: ObservableObject {
             return
         }
 
+        sessionGeneration = UUID()
+        let generation = sessionGeneration
         isBusy = true
-        defer { isBusy = false }
+        defer { if generation == sessionGeneration { isBusy = false } }
 
         do {
             _ = try await repository.verifyCode(
@@ -263,21 +348,29 @@ final class AppModel: ObservableObject {
                 userAgreementVersion: userAgreementVersion,
                 showOnMap: guestDraft.showOnMap
             )
-            var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            let fetchedUser = try await repository.fetchCurrentUser()
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            var user = await reconcileLocalePreference(fetchedUser)
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+
             // The session token is already stored, so the account has to be
             // adopted before anything that can throw. Assigning it only after the
             // profile save left `currentUser` nil on failure while the token was
             // live: the app fell back to guest mode and still sent authenticated
             // requests, which is how a draft profile managed to send a like.
             currentUser = user
+            adoptGuestUserIntentIfNeeded()
+            UpcomingGamesWidgetStore.setCurrentAccount(user.id)
+            notificationManager.startMonitoring(repository: repository)
 
             if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
+                guard generation == sessionGeneration, !Task.isCancelled else { return }
             }
 
             prepareOnboardingDraft(for: user)
             currentUser = user
-            notificationManager.startMonitoring(repository: repository)
             if user.isOnboardingComplete { resetGuestDraft() }
             authUserAgreementAccepted = false
             authMessage = nil
@@ -285,6 +378,8 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             presentedAuthStep = nil
         } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            if currentUser == nil { repository.logout(pushDeviceToken: nil) }
             present(error: error)
         }
     }
@@ -302,8 +397,10 @@ final class AppModel: ObservableObject {
             return
         }
 
+        sessionGeneration = UUID()
+        let generation = sessionGeneration
         isBusy = true
-        defer { isBusy = false }
+        defer { if generation == sessionGeneration { isBusy = false } }
 
         do {
             if let email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -319,21 +416,29 @@ final class AppModel: ObservableObject {
                 userAgreementVersion: userAgreementVersion,
                 showOnMap: guestDraft.showOnMap
             )
-            var user = await reconcileLocalePreference(try await repository.fetchCurrentUser())
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            let fetchedUser = try await repository.fetchCurrentUser()
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            var user = await reconcileLocalePreference(fetchedUser)
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+
             // The session token is already stored, so the account has to be
             // adopted before anything that can throw. Assigning it only after the
             // profile save left `currentUser` nil on failure while the token was
             // live: the app fell back to guest mode and still sent authenticated
             // requests, which is how a draft profile managed to send a like.
             currentUser = user
+            adoptGuestUserIntentIfNeeded()
+            UpcomingGamesWidgetStore.setCurrentAccount(user.id)
+            notificationManager.startMonitoring(repository: repository)
 
             if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
                 user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
+                guard generation == sessionGeneration, !Task.isCancelled else { return }
             }
 
             prepareOnboardingDraft(for: user)
             currentUser = user
-            notificationManager.startMonitoring(repository: repository)
             if user.isOnboardingComplete { resetGuestDraft() }
             authUserAgreementAccepted = false
             authMessage = nil
@@ -341,21 +446,27 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             presentedAuthStep = nil
         } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            if currentUser == nil { repository.logout(pushDeviceToken: nil) }
             present(error: error)
         }
     }
 
     @discardableResult
     func saveProfile(_ profile: UserProfile) async -> Bool {
+        let generation = sessionGeneration
         isBusy = true
-        defer { isBusy = false }
+        defer { if generation == sessionGeneration { isBusy = false } }
 
         do {
-            currentUser = try await repository.updateProfile(profile)
+            let updatedUser = try await repository.updateProfile(profile)
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
+            currentUser = updatedUser
             errorMessage = nil
             serverRecoveryNotice = nil
             return true
         } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
             present(error: error)
             return false
         }
@@ -382,11 +493,20 @@ final class AppModel: ObservableObject {
     }
 
     func logout() {
+        sessionGeneration = UUID()
+        sessionRestoreState = .ready
+        isBusy = false
+        tabContentLoadingKeys = []
+        pendingLocaleRecommendation = nil
         dismissedDiscoverSummary = nil
         acknowledgedIncomingLikes = nil
-        guestDraftSaveTask?.cancel()
-        notificationManager.stopMonitoring()
-        repository.clearAuthSession()
+        resetGuestDraft()
+        clearGuestUserIntent()
+        let pushDeviceToken = notificationManager.pushDeviceToken
+        notificationManager.clearAccountState()
+        repository.logout(pushDeviceToken: pushDeviceToken)
+        UpcomingGamesWidgetStore.clear()
+        RemoteImagePipeline.shared.clear()
         currentUser = nil
         debugCode = nil
         authMessage = nil
@@ -399,6 +519,7 @@ final class AppModel: ObservableObject {
         pendingSearchLobbyID = nil
         pendingCreateSearchPrefill = nil
         pendingCourtID = nil
+        pendingPersonalVisit = nil
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil
@@ -472,7 +593,7 @@ final class AppModel: ObservableObject {
     }
 
     func shouldPresentDiscoverSimilarPlayersHint() -> Bool {
-        pendingDiscoverSimilarPlayersHint
+        pendingDiscoverSimilarPlayersHint && !featureGuideProgress.hasAcknowledgedSwipeTutorial
     }
 
     func consumeDiscoverSimilarPlayersHint() {
@@ -1006,7 +1127,7 @@ extension Error {
                 return true
             case .server:
                 return apiError.isInternalServerMessage
-            case .invalidBaseURL:
+            case .invalidBaseURL, .unauthorized:
                 return false
             }
         }

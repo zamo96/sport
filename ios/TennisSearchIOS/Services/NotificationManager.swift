@@ -14,6 +14,7 @@ final class NotificationManager: NSObject, ObservableObject {
     private var monitorTask: Task<Void, Never>?
     private var realtimeTask: Task<Void, Never>?
     private var hasCompletedInitialSync = false
+    private var monitoringGeneration = UUID()
     private var repository: (any TennisRepository)?
     private var mutedNotificationHrefs: Set<String> = []
 
@@ -82,25 +83,35 @@ final class NotificationManager: NSObject, ObservableObject {
     func startMonitoring(repository: TennisRepository) {
         stopMonitoring()
         self.repository = repository
+        let generation = monitoringGeneration
         monitorTask = Task { [weak self] in
             guard let self else { return }
             if authorizationStatus == .notDetermined {
                 await requestAuthorization()
             }
+            guard isCurrent(generation) else { return }
+            if authorizationStatus == .authorized || authorizationStatus == .provisional {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
             await registerCurrentDeviceIfPossible()
+            guard isCurrent(generation) else { return }
             // Тапы, пойманные до восстановления сессии, теперь есть кому отправить.
             await flushPendingPushOpens()
-            await sync(repository: repository)
-            startRealtimeMonitoring(repository: repository)
+            guard isCurrent(generation) else { return }
+            await sync(repository: repository, generation: generation)
+            guard isCurrent(generation) else { return }
+            startRealtimeMonitoring(repository: repository, generation: generation)
 
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: monitorIntervalNanoseconds)
-                await sync(repository: repository)
+                guard isCurrent(generation) else { return }
+                await sync(repository: repository, generation: generation)
             }
         }
     }
 
     func stopMonitoring() {
+        monitoringGeneration = UUID()
         monitorTask?.cancel()
         realtimeTask?.cancel()
         monitorTask = nil
@@ -109,11 +120,35 @@ final class NotificationManager: NSObject, ObservableObject {
         repository = nil
     }
 
+    var pushDeviceToken: String? { defaults.string(forKey: storedAPNSTokenKey) }
+
+    func clearAccountState() {
+        stopMonitoring()
+        UIApplication.shared.unregisterForRemoteNotifications()
+        notifications = []
+        summary = .empty
+        mutedNotificationHrefs = []
+        for key in [storedIDsKey, realtimeLastEventIDKey, seenHotEventIDsKey, scheduledGameReminderIDsKey] {
+            defaults.removeObject(forKey: key)
+        }
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        applyBadge(summary: .empty)
+    }
+
+    private func isCurrent(_ generation: UUID) -> Bool {
+        generation == monitoringGeneration && repository != nil && !Task.isCancelled
+    }
+
     func manualRefresh(repository: TennisRepository) async {
-        await sync(repository: repository)
+        let generation = monitoringGeneration
+        guard isCurrent(generation) else { return }
+        await sync(repository: repository, generation: generation)
     }
 
     func scheduleGameReminders(for gameRequests: [MatchGameRequest], playSound: Bool) async {
+        let generation = monitoringGeneration
+        guard isCurrent(generation) else { return }
         if authorizationStatus == .notDetermined {
             await requestAuthorization()
         }
@@ -122,6 +157,7 @@ final class NotificationManager: NSObject, ObservableObject {
             return
         }
 
+        guard isCurrent(generation) else { return }
         let now = Date()
         let reminders = gameRequests.compactMap { request -> (id: String, request: MatchGameRequest, reminderDate: Date)? in
             let status = request.status.lowercased()
@@ -144,12 +180,14 @@ final class NotificationManager: NSObject, ObservableObject {
         let pendingReminderIDs = await center.pendingNotificationRequests()
             .map(\.identifier)
             .filter(isGameReminderIdentifier)
-        let pendingReminderIDSet = Set(pendingReminderIDs)
+        guard isCurrent(generation) else { return }
+        let pendingReminderIDSet = Set(pendingReminderIDs.map(gameReminderBaseIdentifier))
         center.removePendingNotificationRequests(
-            withIdentifiers: pendingReminderIDs.filter { !desiredIDs.contains($0) }
+            withIdentifiers: pendingReminderIDs.filter { !desiredIDs.contains(gameReminderBaseIdentifier($0)) }
         )
 
         for reminder in reminders {
+            guard isCurrent(generation) else { return }
             if scheduledGameReminderIDs.contains(reminder.id) {
                 continue
             }
@@ -163,8 +201,10 @@ final class NotificationManager: NSObject, ObservableObject {
                 identifier: reminder.id,
                 request: reminder.request,
                 reminderDate: reminder.reminderDate,
-                playSound: playSound
+                playSound: playSound,
+                generation: generation
             )
+            guard isCurrent(generation) else { return }
             if didSchedule {
                 rememberScheduledGameReminder(id: reminder.id)
             }
@@ -202,13 +242,15 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    private func sync(repository: TennisRepository) async {
+    private func sync(repository: TennisRepository, generation: UUID) async {
+        guard isCurrent(generation) else { return }
         do {
             async let notificationsRequest = repository.fetchNotifications()
             async let summaryRequest = repository.fetchActivitySummary()
 
             let fetchedNotifications = try await notificationsRequest
             let fetchedSummary = try await summaryRequest
+            guard isCurrent(generation) else { return }
 
             let newNotifications = fetchedNotifications.filter { item in
                 !deliveredIDs.contains(item.id)
@@ -222,9 +264,11 @@ final class NotificationManager: NSObject, ObservableObject {
 
             if hasCompletedInitialSync && (authorizationStatus == .authorized || authorizationStatus == .provisional) {
                 for item in newNotifications {
+                    guard isCurrent(generation) else { return }
                     if shouldScheduleLocalNotification(for: item) {
-                        await scheduleLocalNotification(for: item, playSound: fetchedSummary.notificationSound)
+                        await scheduleLocalNotification(for: item, playSound: fetchedSummary.notificationSound, generation: generation)
                     }
+                    guard isCurrent(generation) else { return }
                     rememberDelivered(id: item.id)
                 }
             } else {
@@ -237,17 +281,17 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    private func startRealtimeMonitoring(repository: TennisRepository) {
+    private func startRealtimeMonitoring(repository: TennisRepository, generation: UUID) {
         realtimeTask?.cancel()
         realtimeTask = Task { [weak self] in
             guard let self else { return }
             var reconnectDelay: UInt64 = 1_000_000_000
 
-            while !Task.isCancelled {
+            while isCurrent(generation) {
                 do {
                     let lastEventId = defaults.string(forKey: realtimeLastEventIDKey)
                     for try await event in repository.realtimeEvents(lastEventId: lastEventId) {
-                        guard !Task.isCancelled else {
+                        guard isCurrent(generation) else {
                             return
                         }
 
@@ -256,7 +300,7 @@ final class NotificationManager: NSObject, ObservableObject {
                         }
 
                         NotificationCenter.default.post(name: .tennisRealtimeEventReceived, object: event)
-                        await sync(repository: repository)
+                        await sync(repository: repository, generation: generation)
                         reconnectDelay = 1_000_000_000
                     }
                 } catch {
@@ -272,7 +316,8 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    private func scheduleLocalNotification(for item: AppNotification, playSound: Bool) async {
+    private func scheduleLocalNotification(for item: AppNotification, playSound: Bool, generation: UUID) async {
+        guard isCurrent(generation) else { return }
         let content = UNMutableNotificationContent()
         content.title = item.title
         content.body = item.description
@@ -280,13 +325,17 @@ final class NotificationManager: NSObject, ObservableObject {
         content.userInfo = ["href": item.href, "notificationId": item.id]
 
         let request = UNNotificationRequest(
-            identifier: item.id,
+            identifier: "\(item.id).\(generation.uuidString)",
             content: content,
             trigger: nil
         )
 
         do {
             try await center.add(request)
+            if !isCurrent(generation) {
+                center.removePendingNotificationRequests(withIdentifiers: [request.identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
+            }
         } catch {
             print("notification schedule error:", error.localizedDescription)
         }
@@ -296,8 +345,10 @@ final class NotificationManager: NSObject, ObservableObject {
         identifier: String,
         request: MatchGameRequest,
         reminderDate: Date,
-        playSound: Bool
+        playSound: Bool,
+        generation: UUID
     ) async -> Bool {
+        guard isCurrent(generation) else { return false }
         guard let startDate = request.proposedDate else {
             return false
         }
@@ -323,13 +374,18 @@ final class NotificationManager: NSObject, ObservableObject {
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         let notificationRequest = UNNotificationRequest(
-            identifier: identifier,
+            identifier: "\(identifier).\(generation.uuidString)",
             content: content,
             trigger: trigger
         )
 
         do {
             try await center.add(notificationRequest)
+            guard isCurrent(generation) else {
+                center.removePendingNotificationRequests(withIdentifiers: [notificationRequest.identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [notificationRequest.identifier])
+                return false
+            }
             return true
         } catch {
             print("game reminder schedule error:", error.localizedDescription)
@@ -339,6 +395,11 @@ final class NotificationManager: NSObject, ObservableObject {
 
     private func gameReminderIdentifier(for request: MatchGameRequest, startDate: Date) -> String {
         "\(gameReminderPrefix)\(request.id).\(Int(startDate.timeIntervalSince1970))"
+    }
+
+    private func gameReminderBaseIdentifier(_ identifier: String) -> String {
+        guard let suffix = identifier.split(separator: ".").last, UUID(uuidString: String(suffix)) != nil else { return identifier }
+        return String(identifier.dropLast(suffix.count + 1))
     }
 
     private func isGameReminderIdentifier(_ identifier: String) -> Bool {

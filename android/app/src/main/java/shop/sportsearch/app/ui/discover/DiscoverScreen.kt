@@ -1,5 +1,14 @@
 package shop.sportsearch.app.ui.discover
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -112,6 +121,14 @@ fun DiscoverScreen(
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
     var users by remember { mutableStateOf<List<DiscoverUser>>(emptyList()) }
+    // The similar-players feed only loads while its own tab is open, so its size is
+    // kept here for the tabs that do not reload it. Mirrors similarPlayersCount.
+    var similarPlayersCount by remember { mutableIntStateOf(0) }
+    // How many searches this viewer can still respond to. Mirrors hotSearchesCount.
+    var hotSearchesCount by remember { mutableIntStateOf(0) }
+    // Last real count per tab, to tell "+2 arrived" from a first load. Lives here,
+    // not in the tab bar: the header row is a LazyColumn item and can be disposed.
+    val lastBadgeCounts = remember { mutableMapOf<DiscoverTab, Int>() }
     var upcomingRequests by remember { mutableStateOf<List<MatchGameRequest>>(emptyList()) }
     var upcomingMatches by remember { mutableStateOf<List<MatchSummary>>(emptyList()) }
     var personalActivities by remember { mutableStateOf<List<PersonalActivity>>(emptyList()) }
@@ -339,6 +356,13 @@ fun DiscoverScreen(
             emptyList()
         }
 
+        if (selectedTab == DiscoverTab.SWIPE) {
+            similarPlayersCount = users.size
+        }
+        if (selectedTab == DiscoverTab.HOT) {
+            hotSearchesCount = listedHotSearchCount(users, appModel.currentUser?.id, localResponseStatuses)
+        }
+
         if (selectedTab == DiscoverTab.UPCOMING && appModel.isAuthenticated) {
             upcomingRequests = runCatching { appModel.repository.fetchMyGameRequests() }.getOrDefault(emptyList())
             upcomingMatches = runCatching { appModel.repository.fetchMatches() }.getOrDefault(emptyList())
@@ -358,6 +382,15 @@ fun DiscoverScreen(
 
         appModel.setTabContentLoading("discover", false)
         isLoading = false
+
+        // The searches feed is only fetched on its own tab. Elsewhere its count is still
+        // refreshed, after the spinner, so ended searches drop out of the badge.
+        // Mirrors `fetchBackgroundHotFeed(skip:)` in DiscoverView.swift.
+        if (appModel.isAuthenticated && selectedTab != DiscoverTab.HOT) {
+            runCatching { appModel.repository.fetchDiscoverUsers(DiscoverTab.HOT) }.getOrNull()?.let { feed ->
+                hotSearchesCount = listedHotSearchCount(feed, appModel.currentUser?.id, localResponseStatuses)
+            }
+        }
     }
 
     LaunchedEffect(selectedTab, appModel.currentUser?.id) {
@@ -643,6 +676,7 @@ fun DiscoverScreen(
         // without an account.
         if (!appModel.isAuthenticated) {
             users = users.filterNot { it.id == user.id }
+            if (selectedTab == DiscoverTab.SWIPE) similarPlayersCount = users.size
             viewedPlayers = viewedPlayers.remove(user.id)
             if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
             return
@@ -653,6 +687,7 @@ fun DiscoverScreen(
         // interrupts swiping (`try?` on the iOS side).
         if (action == SwipeAction.DISLIKE) {
             users = users.filterNot { it.id == user.id }
+            if (selectedTab == DiscoverTab.SWIPE) similarPlayersCount = users.size
             viewedPlayers = viewedPlayers.remove(user.id)
             if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
             scope.launch {
@@ -674,6 +709,7 @@ fun DiscoverScreen(
                 }
                 .onFailure { appModel.present(it) }
             users = users.filterNot { it.id == user.id }
+            if (selectedTab == DiscoverTab.SWIPE) similarPlayersCount = users.size
             viewedPlayers = viewedPlayers.remove(user.id)
             if (selectedSimilarPlayerId == user.id) selectedSimilarPlayerId = null
             isSubmittingSwipe = false
@@ -714,8 +750,12 @@ fun DiscoverScreen(
                         }
                     },
                     selected = selectedTab,
+                    lastBadgeCounts = lastBadgeCounts,
                     badgeFor = { tab ->
-                        if (!appModel.isAuthenticated) {
+                        if (tab == DiscoverTab.SWIPE) {
+                            // Guests get a deck too, so this one needs no account.
+                            similarPlayersCount.takeIf { it > 0 }
+                        } else if (!appModel.isAuthenticated) {
                             null
                         } else when (tab) {
                             // Only the games waiting on this player. Counting every scheduled
@@ -725,10 +765,7 @@ fun DiscoverScreen(
                                 .count { !it.isArchivedForTimeline && it.isPendingForRecipient(appModel.currentUser?.id) }
                                 .takeIf { it > 0 }
                             DiscoverTab.LIKES -> appModel.activitySummary.incomingLikesCount.takeIf { it > 0 }
-                            // Server-side count of hot events newer than lastNotificationsSeenAt.
-                            DiscoverTab.HOT -> appModel.activitySummary.hotBadgeCount.takeIf { it > 0 }
-                            // The similar-players feed has no honest "new since last visit"
-                            // number: it is fetched only while its own tab is open.
+                            DiscoverTab.HOT -> hotSearchesCount.takeIf { it > 0 }
                             else -> null
                         }
                     },
@@ -1117,6 +1154,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeaderRow(
 @Composable
 private fun DiscoverTabBar(
     selected: DiscoverTab,
+    lastBadgeCounts: MutableMap<DiscoverTab, Int>,
     badgeFor: (DiscoverTab) -> Int?,
     onSelect: (DiscoverTab) -> Unit,
     trailing: @Composable () -> Unit = {},
@@ -1165,24 +1203,84 @@ private fun DiscoverTabBar(
                     }
                 }
 
-                // A badge exists to pull the player to a tab they are not on; on the
-                // open tab it is noise. Same rule as `discoverPrimaryTabLabel`.
-                badgeFor(tab).takeIf { !isSelected }?.let { count ->
-                    Text(
-                        minOf(count, 99).toString(),
-                        style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 0.dp)
-                            .background(AppTheme.clay, RoundedCornerShape(percent = 50))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                    )
-                }
+                // Shown on the open tab too: the counters read as "how much is in here".
+                DiscoverTabCountBadge(
+                    tab = tab,
+                    count = badgeFor(tab),
+                    lastBadgeCounts = lastBadgeCounts,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
             }
         }
 
         trailing()
+    }
+}
+
+/**
+ * Port of `DiscoverTabBadge` in DiscoverView.swift. When the count rises it briefly
+ * reads "+N", then rolls on to the new total. A first load only pulses: going from
+ * "unknown" to 20 is not "+20 arrived". Compose animations already follow the system
+ * animator scale, so with animations off the pulse and roll become instant.
+ */
+@Composable
+private fun DiscoverTabCountBadge(
+    tab: DiscoverTab,
+    count: Int?,
+    lastBadgeCounts: MutableMap<DiscoverTab, Int>,
+    modifier: Modifier = Modifier,
+) {
+    val scale = remember { Animatable(1f) }
+    var shownDelta by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(count) {
+        val current = count ?: 0
+        val previous = lastBadgeCounts[tab]
+        val growth = when {
+            previous == null -> {
+                if (current == 0) return@LaunchedEffect
+                lastBadgeCounts[tab] = current
+                0
+            }
+            else -> {
+                lastBadgeCounts[tab] = current
+                if (current <= previous) return@LaunchedEffect
+                current - previous
+            }
+        }
+        launch {
+            scale.animateTo(1.28f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium))
+            scale.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow))
+        }
+        if (growth > 0) {
+            // A newer count restarts this effect; `finally` keeps "+N" from sticking.
+            try {
+                shownDelta = growth
+                delay(1_200)
+            } finally {
+                shownDelta = null
+            }
+        }
+    }
+
+    val value = count ?: return
+    val text = shownDelta?.let { "+${minOf(it, 99)}" } ?: minOf(value, 99).toString()
+    AnimatedContent(
+        targetState = text,
+        transitionSpec = {
+            (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut())
+        },
+        label = "tab-badge-count",
+        modifier = modifier
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+            .background(AppTheme.clay, RoundedCornerShape(percent = 50))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+    ) { shown ->
+        Text(
+            shown,
+            style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
+            color = Color.White,
+        )
     }
 }
 
@@ -1689,22 +1787,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.searchContent(
     fun currentUserResponse(search: GameSearch): SearchResponse? =
         currentUserId?.let { id -> search.responses.firstOrNull { it.responderUser.id == id } }
 
-    // `isVisibleActiveHotSearch(_:)`
-    fun isVisible(search: GameSearch): Boolean {
-        if (search.searchType != SearchType.HOT) return false
-        if (search.isActive == false) return false
-        if (search.isExpired == true) return false
-        return search.status.lowercase() !in setOf("matched", "closed", "canceled", "cancelled", "expired")
-    }
-
     val allItems = users
         .flatMap { user -> user.gameSearches.map { user to it } }
-        .filter { (user, search) ->
-            if (user.id == currentUserId) return@filter false
-            if (!isVisible(search)) return@filter false
-            val status = localResponseStatuses[search.id] ?: currentUserResponse(search)?.status
-            status != "rejected"
-        }
+        .filter { (user, search) -> isListedHotSearch(search, user, currentUserId, localResponseStatuses) }
         .sortedBy { (_, search) -> parseServerInstant(search.hotStartsAt) ?: java.time.Instant.MAX }
 
     val availableSports = allItems.map { it.second.sport }.distinct().sortedBy { it.title }

@@ -8,15 +8,25 @@ enum UpcomingGamesWidgetStore {
     static let currentUserIdKey = "upcomingGamesWidget.currentUserId.v1"
     static let widgetKind = "UpcomingGamesWidget"
 
+    @MainActor private static var activeAccountID: String?
+
+    @MainActor
+    static func setCurrentAccount(_ accountID: String) {
+        if activeAccountID != accountID {
+            clear()
+            activeAccountID = accountID
+        }
+    }
+
+    @MainActor
     static func save(
         gameRequests: [MatchGameRequest],
         personalActivities: [PersonalActivity] = [],
         currentUserId: String?
     ) {
+        guard let currentUserId, currentUserId == activeAccountID else { return }
         write(makePayload(gameRequests: gameRequests, personalActivities: personalActivities, currentUserId: currentUserId))
-        if let currentUserId {
-            UserDefaults(suiteName: appGroupIdentifier)?.set(currentUserId, forKey: currentUserIdKey)
-        }
+        UserDefaults(suiteName: appGroupIdentifier)?.set(currentUserId, forKey: currentUserIdKey)
         UpcomingGameLiveActivityManager.sync(gameRequests: gameRequests, currentUserId: currentUserId)
     }
 
@@ -70,7 +80,9 @@ enum UpcomingGamesWidgetStore {
         return UpcomingGamesWidgetPayload(updatedAt: referenceDate, games: Array(games))
     }
 
+    @MainActor
     static func clear() {
+        activeAccountID = nil
         write(UpcomingGamesWidgetPayload(updatedAt: Date(), games: []))
         UserDefaults(suiteName: appGroupIdentifier)?.removeObject(forKey: currentUserIdKey)
         UpcomingGameLiveActivityManager.endAll()
@@ -151,22 +163,39 @@ private struct UpcomingGamesWidgetGame: Codable {
 }
 
 private enum UpcomingGameLiveActivityManager {
+    @MainActor private static var generation = UUID()
+    @MainActor private static var updateTask: Task<Void, Never>?
     private static let launchWindow: TimeInterval = 60 * 60
     private static let postGameDisplayInterval: TimeInterval = 2 * 60 * 60
 
+    @MainActor
     static func sync(gameRequests: [MatchGameRequest], currentUserId: String?) {
-        Task {
-            await syncAsync(gameRequests: gameRequests, currentUserId: currentUserId)
+        updateTask?.cancel()
+        let revision = UUID()
+        generation = revision
+        updateTask = Task {
+            await syncAsync(gameRequests: gameRequests, currentUserId: currentUserId, revision: revision)
         }
     }
 
+    @MainActor
     static func endAll() {
+        generation = UUID()
+        updateTask?.cancel()
+        updateTask = nil
+        // Capture only the old activities so an asynchronous logout cleanup cannot
+        // end a replacement activity created by the next signed-in account.
+        let activities = Activity<UpcomingGameLiveActivityAttributes>.activities
         Task {
-            await endAllAsync()
+            for activity in activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
         }
     }
 
-    private static func syncAsync(gameRequests: [MatchGameRequest], currentUserId: String?) async {
+    @MainActor
+    private static func syncAsync(gameRequests: [MatchGameRequest], currentUserId: String?, revision: UUID) async {
+        guard revision == generation, !Task.isCancelled else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             return
         }
@@ -188,6 +217,7 @@ private enum UpcomingGameLiveActivityManager {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
 
+        guard revision == generation, !Task.isCancelled else { return }
         guard let proposedDate = request.proposedDate else {
             return
         }
@@ -197,10 +227,14 @@ private enum UpcomingGameLiveActivityManager {
                 await activity.end(nil, dismissalPolicy: .immediate)
             } else {
                 await activity.update(content)
+                if revision != generation || Task.isCancelled {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
                 return
             }
         }
 
+        guard revision == generation, !Task.isCancelled else { return }
         do {
             if shouldStartImmediately(proposedDate: proposedDate) {
                 _ = try Activity.request(
@@ -216,6 +250,7 @@ private enum UpcomingGameLiveActivityManager {
         }
     }
 
+    @MainActor
     private static func endAllAsync() async {
         for activity in Activity<UpcomingGameLiveActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)

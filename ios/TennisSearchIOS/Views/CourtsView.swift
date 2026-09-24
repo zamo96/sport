@@ -6,6 +6,9 @@ struct CourtsView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.openURL) private var openURL
     private let initialSport: Sport?
+    private let visitPlanningMode: Bool
+    private let initialPersonalVisitCourt: Court?
+    @State private var hasOpenedInitialPersonalVisit = false
     @State private var courts: [Court] = []
     @State private var query = ""
     @State private var displayMode: CentersDisplayMode = .list
@@ -25,8 +28,10 @@ struct CourtsView: View {
     @AppStorage("savedCourtIDs") private var savedCourtIDsRaw = ""
     @FocusState private var isSearchFocused: Bool
 
-    init(initialSport: Sport? = nil) {
+    init(initialSport: Sport? = nil, visitPlanningMode: Bool = false, initialPersonalVisitCourt: Court? = nil) {
         self.initialSport = initialSport
+        self.visitPlanningMode = visitPlanningMode
+        self.initialPersonalVisitCourt = initialPersonalVisitCourt
         _selectedSport = State(initialValue: initialSport)
         #if DEBUG
         if AppConfig.useMockData, ProcessInfo.processInfo.arguments.contains("-centers-map-preview") {
@@ -331,6 +336,11 @@ struct CourtsView: View {
         .onAppear {
             isSearchFocused = false
             selectedSport = initialSport
+            if !hasOpenedInitialPersonalVisit, let court = initialPersonalVisitCourt,
+               appModel.isAuthenticated && appModel.isOnboardingComplete {
+                hasOpenedInitialPersonalVisit = true
+                presentPersonalVisitComposer(for: court)
+            }
         }
         .onReceive(locationProvider.$coordinate) { coordinate in
             guard focusesUserLocation, coordinate != nil else {
@@ -415,6 +425,18 @@ struct CourtsView: View {
     private var centersControls: some View {
         VStack(alignment: .leading, spacing: 18) {
             headerSection
+            if visitPlanningMode {
+                Label(
+                    L10n.string("Choose a center to plan your visit. You can mark it completed afterwards.", "Выбери центр и запланируй визит. После занятия сможешь отметить, что сходил."),
+                    systemImage: "calendar.badge.plus"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.85))
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.court.opacity(0.25), in: RoundedRectangle(cornerRadius: 18))
+                .accessibilityIdentifier("centers-visit-planning")
+            }
             searchField {
                 focusUserLocation()
             }
@@ -534,6 +556,10 @@ struct CourtsView: View {
     }
 
     private func openCourtDetail(_ court: Court) {
+        if visitPlanningMode {
+            presentPersonalVisitComposer(for: court)
+            return
+        }
         selectedCourtId = court.id
         focusedDistrictId = nil
         focusesUserLocation = false
@@ -584,13 +610,24 @@ struct CourtsView: View {
     }
 
     private func presentPersonalVisitComposer(for court: Court) {
-        guard requireAuthenticatedCourtAction() else {
+        guard appModel.isAuthenticated else {
+            let continuationID = appModel.deferPersonalVisit(court: court, sport: selectedSport ?? court.primarySport)
+            let generation = appModel.sessionGeneration
+            selectedCourtForDetail = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                guard generation == appModel.sessionGeneration,
+                      !appModel.isAuthenticated,
+                      appModel.pendingPersonalVisit?.id == continuationID else { return }
+                appModel.presentAuth(step: .email)
+            }
             return
         }
 
+        let generation = appModel.sessionGeneration
         selectedCourtForDetail = nil
         AppHaptics.impact(.medium)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            guard appModel.isCurrentSession(generation) else { return }
             selectedCourtForPersonalVisit = court
         }
     }
@@ -917,7 +954,9 @@ struct CourtsView: View {
                 Button {
                     openCourtDetail(court)
                 } label: {
-                    Text(L10n.string("Details", "Подробнее"))
+                    Text(visitPlanningMode
+                         ? L10n.string("Plan a visit", "Запланировать визит")
+                         : L10n.string("Details", "Подробнее"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

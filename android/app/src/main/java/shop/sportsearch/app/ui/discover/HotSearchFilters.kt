@@ -57,6 +57,40 @@ enum class ActiveHotSearchFilter {
 
 private val zone: ZoneId get() = ZoneId.systemDefault()
 
+/** `isVisibleActiveHotSearch(_:)`. */
+fun isVisibleActiveHotSearch(search: GameSearch): Boolean {
+    if (search.searchType != SearchType.HOT) return false
+    if (search.isActive == false) return false
+    if (search.isExpired == true) return false
+    return search.status.lowercase() !in setOf("matched", "closed", "canceled", "cancelled", "expired")
+}
+
+/**
+ * `isListedHotSearch(_:postedBy:)`: one rule for the searches list and the tab count,
+ * so the badge can never promise a search the list does not show.
+ */
+fun isListedHotSearch(
+    search: GameSearch,
+    user: DiscoverUser,
+    currentUserId: String?,
+    localResponseStatuses: Map<String, String>,
+): Boolean {
+    if (user.id == currentUserId) return false
+    if (!isVisibleActiveHotSearch(search)) return false
+    val ownResponse = currentUserId?.let { id -> search.responses.firstOrNull { it.responderUser.id == id } }
+    val status = localResponseStatuses[search.id] ?: ownResponse?.status
+    return status != "rejected"
+}
+
+/** `listedHotSearchCount(in:)`. */
+fun listedHotSearchCount(
+    feed: List<DiscoverUser>,
+    currentUserId: String?,
+    localResponseStatuses: Map<String, String>,
+): Int = feed.sumOf { user ->
+    user.gameSearches.count { isListedHotSearch(it, user, currentUserId, localResponseStatuses) }
+}
+
 /** `isTodayHotSearch(_:)`. */
 fun isTodayHotSearch(search: GameSearch): Boolean {
     parseServerInstant(search.hotStartsAt)?.let {

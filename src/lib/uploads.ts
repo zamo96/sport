@@ -5,6 +5,7 @@ import path from "path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import { IMAGE_SIZE_ERROR, MAX_IMAGE_BYTES } from "@/lib/upload-limits";
+import { validatePersonalActivityVideo } from "@/lib/personal-activity-media";
 
 type UploadImageInput = {
   bytes: Buffer;
@@ -321,6 +322,24 @@ export async function uploadPersonalActivityPhoto(input: UploadPersonalActivityP
   }
 
   return uploadImageLocally({ ...input, objectKey: `${keyPrefix}/${randomUUID()}.${sanitizeExtension(input.originalName, input.contentType)}` });
+}
+
+export async function uploadPersonalActivityVideo(input: UploadPersonalActivityPhotoInput) {
+  validatePersonalActivityVideo(input.bytes, input.contentType);
+  const extension = input.contentType === "video/quicktime" ? "mov" : "mp4";
+  const normalized = { ...input, originalName: `video.${extension}` };
+  const keyPrefix = `personal-activities/${input.activityId}/${input.userId}`;
+  return resolveUploadsProvider() === "s3"
+    ? uploadProfileMediaToS3({ ...normalized, keyPrefix })
+    : uploadProfileMediaLocally({ ...normalized, objectKey: `${keyPrefix}/${randomUUID()}` });
+}
+
+/** Only attach video URLs produced for this owner's exact visit. */
+export function isOwnedPersonalActivityVideoUrl(url: string, activityId: string, userId: string) {
+  const marker = "__personal_activity_video__";
+  const prefix = resolveUploadedObjectUrl(`personal-activities/${activityId}/${userId}/${marker}`).slice(0, -marker.length);
+  if (!url.startsWith(prefix)) return false;
+  return /^[a-f0-9-]+\.(mp4|mov)$/.test(url.slice(prefix.length));
 }
 
 export async function uploadProfileMedia(input: UploadProfileMediaInput) {

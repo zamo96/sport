@@ -342,10 +342,14 @@ export async function verifyAuthCode(email: string, code: string, showOnMap = tr
     return null;
   }
 
-  await prisma.authCode.update({
-    where: { id: authCode.id },
+  const consumed = await prisma.authCode.updateMany({
+    where: { id: authCode.id, consumedAt: null, expiresAt: { gt: new Date() } },
     data: { consumedAt: new Date() }
   });
+
+  if (consumed.count !== 1) {
+    return null;
+  }
 
   let user = authCode.userId
     ? await prisma.user.findUnique({ where: { id: authCode.userId } })
@@ -386,9 +390,9 @@ async function attributeInviteFromCookie(userId: string) {
 export async function signInWithAppleIdentityToken(identityToken: string, profile?: AppleAuthProfile) {
   const payload = await verifyAppleIdentityToken(identityToken);
   const appleSubject = payload.sub!;
-  const tokenEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : undefined;
-  const providedEmail = profile?.email?.trim().toLowerCase();
-  const email = tokenEmail || providedEmail;
+  // Client-supplied profile fields are not proof of ownership of an email address.
+  const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+  const email = emailVerified && typeof payload.email === "string" ? payload.email.trim().toLowerCase() : undefined;
   const displayName = buildAppleDisplayName(profile);
 
   let user = await prisma.user.findUnique({
@@ -418,15 +422,25 @@ export async function signInWithAppleIdentityToken(identityToken: string, profil
     await recordUserEventsOnce([{ userId: user.id, type: "registration_completed", entityType: "user", entityId: user.id, context: { method: "apple" } }]);
     await attributeInviteFromCookie(user.id);
   } else {
+    if (user.appleSubject && user.appleSubject !== appleSubject) {
+      throw new Error("Apple identity token не соответствует привязанному аккаунту");
+    }
+
+    if (!user.appleSubject) {
+      const linked = await prisma.user.updateMany({
+        where: { id: user.id, appleSubject: null },
+        data: { appleSubject }
+      });
+      if (linked.count !== 1) {
+        throw new Error("Apple identity token не соответствует привязанному аккаунту");
+      }
+      user = { ...user, appleSubject };
+    }
+
     const nextData: {
-      appleSubject?: string;
       isVerified?: boolean;
       name?: string;
     } = {};
-
-    if (!user.appleSubject) {
-      nextData.appleSubject = appleSubject;
-    }
 
     if (!user.isVerified) {
       nextData.isVerified = true;
@@ -483,11 +497,24 @@ export async function createSession(userId: string) {
   return token;
 }
 
-export async function destroySession() {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+export async function destroySession(pushDeviceToken?: string) {
+  const token = getRequestSessionToken();
 
   if (token) {
-    await prisma.session.deleteMany({ where: { token } });
+    await prisma.$transaction(async (tx) => {
+      // Registration locks this same row before writing a push device. Once logout
+      // wins the lock and removes the row, an old registration cannot reactivate it.
+      const [session] = await tx.$queryRaw<Array<{ userId: string }>>(Prisma.sql`
+        SELECT "userId" FROM "Session" WHERE "token" = ${token} FOR UPDATE
+      `);
+      if (session && pushDeviceToken) {
+        await tx.pushDevice.updateMany({
+          where: { token: pushDeviceToken, userId: session.userId, platform: "ios" },
+          data: { isActive: false }
+        });
+      }
+      await tx.session.deleteMany({ where: { token } });
+    });
   }
 
   cookies().delete(SESSION_COOKIE);
@@ -504,8 +531,12 @@ function getBearerSessionToken() {
   return token.trim();
 }
 
+export function getRequestSessionToken() {
+  return getBearerSessionToken() ?? cookies().get(SESSION_COOKIE)?.value;
+}
+
 export async function getSessionUser() {
-  const token = cookies().get(SESSION_COOKIE)?.value ?? getBearerSessionToken();
+  const token = getRequestSessionToken();
 
   if (!token) {
     return null;

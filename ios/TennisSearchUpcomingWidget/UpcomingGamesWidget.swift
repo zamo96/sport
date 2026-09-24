@@ -5,7 +5,6 @@ import WidgetKit
 private let appGroupIdentifier = "group.shop.sportsearch.app"
 private let payloadKey = "upcomingGamesWidget.payload.v1"
 private let currentUserIdKey = "upcomingGamesWidget.currentUserId.v1"
-private let sessionTokenKey = "SportSearch.sessionToken"
 private let countdownLeadTime: TimeInterval = 60 * 60
 private let countdownTimelineCadence: TimeInterval = 60
 private let maximumTimelineEntryCount = 90
@@ -190,6 +189,9 @@ struct UpcomingGamesProvider: TimelineProvider {
 
     private func loadPayload() -> UpcomingGamesWidgetPayload {
         guard
+            let baseURL = widgetAPIBaseURL,
+            SecureSessionStore(baseURL: baseURL).read() != nil,
+            UserDefaults(suiteName: appGroupIdentifier)?.string(forKey: currentUserIdKey) != nil,
             let data = UserDefaults(suiteName: appGroupIdentifier)?.data(forKey: payloadKey),
             let payload = try? JSONDecoder().decode(UpcomingGamesWidgetPayload.self, from: data)
         else {
@@ -202,9 +204,9 @@ struct UpcomingGamesProvider: TimelineProvider {
     private func loadRemotePayload() async -> UpcomingGamesWidgetPayload? {
         guard
             let defaults = UserDefaults(suiteName: appGroupIdentifier),
-            let token = defaults.string(forKey: sessionTokenKey),
-            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            let baseURL = widgetAPIBaseURL
+            let baseURL = widgetAPIBaseURL,
+            let token = SecureSessionStore(baseURL: baseURL).read(),
+            let currentUserId = defaults.string(forKey: currentUserIdKey)
         else {
             return nil
         }
@@ -229,7 +231,10 @@ struct UpcomingGamesProvider: TimelineProvider {
             }
 
             let referenceDate = Date()
-            let games = gameRequestsEnvelope.gameRequests.widgetGames(currentUserId: defaults.string(forKey: currentUserIdKey))
+            guard !Task.isCancelled,
+                  SecureSessionStore(baseURL: baseURL).read() == token,
+                  defaults.string(forKey: currentUserIdKey) == currentUserId else { return nil }
+            let games = gameRequestsEnvelope.gameRequests.widgetGames(currentUserId: currentUserId)
             let personalActivities = personalActivitiesEnvelope?.personalActivities.widgetGames() ?? []
             let payload = UpcomingGamesWidgetPayload(
                 updatedAt: referenceDate,
@@ -253,7 +258,13 @@ struct UpcomingGamesProvider: TimelineProvider {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        let session = URLSession(configuration: configuration, delegate: WidgetAuthenticatedSessionDelegate(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200 ... 299).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
@@ -1246,5 +1257,22 @@ private enum WidgetStrings {
         isRussian
             ? "Показывает следующую подтверждённую игру."
             : "Shows your next confirmed game."
+    }
+}
+
+private final class WidgetAuthenticatedSessionDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let source = response.url, let destination = request.url,
+              SecureSessionStore.origin(for: source) == SecureSessionStore.origin(for: destination) else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 }

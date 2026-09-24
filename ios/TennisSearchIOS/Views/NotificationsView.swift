@@ -72,10 +72,13 @@ struct NotificationsView: View {
         .background(Color.black.ignoresSafeArea())
         .navigationTitle("Уведомления")
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task {
+        .task(id: appModel.sessionGeneration) {
             await notificationManager.refreshAuthorizationStatus()
+            guard !Task.isCancelled else { return }
             await notificationManager.manualRefresh(repository: appModel.repository)
+            guard !Task.isCancelled else { return }
             try? await appModel.repository.markNotificationsSeen()
+            guard !Task.isCancelled else { return }
             notificationManager.markNotificationsOpened()
         }
         .refreshable {

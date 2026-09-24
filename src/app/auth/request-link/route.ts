@@ -8,11 +8,13 @@ import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
 import { translateServer } from "@/lib/i18n/server";
 import { prisma } from "@/lib/prisma";
 import { requestLinkSchema } from "@/lib/validators";
+import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
 
 export async function POST(request: NextRequest) {
   const locale = getServerRequestLocale(request);
   try {
     const body = requestLinkSchema.parse(await request.json());
+    await enforceAuthRateLimit("request", body.email, request);
     if (isAppReviewDemoEmail(body.email)) {
       return ok({
         ok: true,

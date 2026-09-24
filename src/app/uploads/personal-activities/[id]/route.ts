@@ -1,7 +1,9 @@
 import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
-import { uploadPersonalActivityPhoto } from "@/lib/uploads";
+import { uploadPersonalActivityPhoto, uploadPersonalActivityVideo } from "@/lib/uploads";
+import { PERSONAL_ACTIVITY_VIDEO_MAX_BYTES } from "@/lib/personal-activity-media";
+import { assertPersonalActivityReportAvailable } from "@/server/personal-activities";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -17,8 +19,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return fail("Визит не найден", 404);
     }
 
-    if (!hasPersonalActivityEnded(activity.scheduledAt, activity.durationMinutes ?? 60)) {
-      return fail("Фотоотчёт можно добавить после завершения визита");
+    assertPersonalActivityReportAvailable(activity);
+
+    const contentLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > PERSONAL_ACTIVITY_VIDEO_MAX_BYTES + 1024 * 1024) {
+      return fail("Файл слишком большой", 413);
     }
 
     const formData = await request.formData();
@@ -38,14 +43,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
       type?: string;
     };
 
-    const photoUrl = await uploadPersonalActivityPhoto({
+    const input = {
       bytes: Buffer.from(await uploadedFile.arrayBuffer()),
       originalName: uploadedFile.name || "personal-activity.png",
       contentType: uploadedFile.type,
       activityId: activity.id,
       userId: user.id
-    });
+    };
+    if (uploadedFile.type?.startsWith("video/") || /\.(mp4|mov)$/i.test(uploadedFile.name ?? "")) {
+      const videoUrl = await uploadPersonalActivityVideo(input);
+      return ok({ videoUrl });
+    }
 
+    const photoUrl = await uploadPersonalActivityPhoto(input);
     return ok({ photoUrl });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {
@@ -54,8 +64,4 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     return fail(getErrorMessage(error));
   }
-}
-
-function hasPersonalActivityEnded(scheduledAt: Date, durationMinutes: number) {
-  return Date.now() >= scheduledAt.getTime() + durationMinutes * 60 * 1000;
 }

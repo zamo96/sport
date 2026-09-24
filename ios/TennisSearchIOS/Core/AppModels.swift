@@ -1459,10 +1459,8 @@ extension DiscoverUser {
             return L10n.string("Active at \(lastActiveDate.formattedHourMinute())", "Был \(lastActiveDate.formattedHourMinute())")
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = LocaleStore.currentEffectiveLocale.locale
-        formatter.setLocalizedDateFormatFromTemplate("d MMM")
-        return L10n.string("Active \(formatter.string(from: lastActiveDate))", "Был \(formatter.string(from: lastActiveDate))")
+        let day = CachedDateFormatters.display(template: "d MMM").string(from: lastActiveDate)
+        return L10n.string("Active \(day)", "Был \(day)")
     }
 }
 
@@ -2004,6 +2002,26 @@ struct PersonalActivity: Codable, Identifiable {
     let updatedAt: String?
     let court: Court?
     let photos: [PersonalActivityPhoto]
+    // Optional backing storage preserves decoding of photo-only responses from older servers.
+    private var storedVideoUrls: [String]? = nil
+
+    var videoUrls: [String] { storedVideoUrls ?? [] }
+
+    enum CodingKeys: String, CodingKey {
+        case id, userId, courtId, sport, scheduledAt, durationMinutes, comment, status
+        case reportComment, createdAt, updatedAt, court, photos
+        case storedVideoUrls = "videoUrls"
+    }
+
+    init(id: String, userId: String, courtId: String, sport: Sport, scheduledAt: String,
+         durationMinutes: Int?, comment: String?, status: String, reportComment: String?,
+         createdAt: String?, updatedAt: String?, court: Court?, photos: [PersonalActivityPhoto],
+         videoUrls: [String] = []) {
+        self.id = id; self.userId = userId; self.courtId = courtId; self.sport = sport
+        self.scheduledAt = scheduledAt; self.durationMinutes = durationMinutes; self.comment = comment
+        self.status = status; self.reportComment = reportComment; self.createdAt = createdAt
+        self.updatedAt = updatedAt; self.court = court; self.photos = photos; self.storedVideoUrls = videoUrls
+    }
 
     var scheduledDate: Date? {
         scheduledAt.parsedISODateValue()
@@ -2013,7 +2031,7 @@ struct PersonalActivity: Codable, Identifiable {
         guard let scheduledDate else {
             return false
         }
-        let duration = TimeInterval((durationMinutes ?? sport.defaultDurationMinutes) * 60)
+        let duration = TimeInterval((durationMinutes ?? 60) * 60)
         return Date().timeIntervalSince(scheduledDate) >= duration
     }
 
@@ -2055,6 +2073,7 @@ struct PersonalActivityUpdateDraft {
     var status: String?
     var reportComment: String?
     var photoUrls: [String]?
+    var videoUrls: [String]? = nil
 }
 
 struct GameRequestInvitee: Codable, Identifiable {
@@ -3365,17 +3384,69 @@ extension Sport {
     static let defaultAuthSports: [Sport] = [.tennis, .padel, .running, .supboard, .squash, .badminton, .tableTennis, .volleyball, .fitness, .boxing, .yoga, .football]
 }
 
-extension String {
-    func parsedISODateValue() -> Date? {
-        let formatterWithFractional = ISO8601DateFormatter()
-        formatterWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatterWithFractional.date(from: self) {
-            return date
-        }
-
+/// Creating a formatter costs far more than using one, and the Discover body parsed
+/// every game date again for each filter, sort comparison and badge — a fresh pair of
+/// ISO formatters per call took a third of the main thread on a real account.
+/// Both formatter classes are thread-safe for parsing and formatting.
+enum CachedDateFormatters {
+    private static let isoWithFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let iso: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: self)
+        return formatter
+    }()
+    private static let parsedDates: NSCache<NSString, NSDate> = {
+        let cache = NSCache<NSString, NSDate>()
+        cache.countLimit = 4000
+        return cache
+    }()
+    private static let displayFormatters = NSCache<NSString, DateFormatter>()
+
+    static func isoDate(from string: String) -> Date? {
+        let key = string as NSString
+        if let cached = parsedDates.object(forKey: key) {
+            return cached as Date
+        }
+        guard let date = isoWithFractionalSeconds.date(from: string) ?? iso.date(from: string) else {
+            return nil
+        }
+        parsedDates.setObject(date as NSDate, forKey: key)
+        return date
+    }
+
+    /// A fixed pattern such as "d MMM", in the app's current language.
+    static func display(format: String) -> DateFormatter {
+        displayFormatter(key: "format:" + format) { $0.dateFormat = format }
+    }
+
+    /// A template such as "d MMM", reordered for the app's current language.
+    static func display(template: String) -> DateFormatter {
+        displayFormatter(key: "template:" + template) { $0.setLocalizedDateFormatFromTemplate(template) }
+    }
+
+    private static func displayFormatter(key: String, configure: (DateFormatter) -> Void) -> DateFormatter {
+        let locale = LocaleStore.currentEffectiveLocale
+        let timeZone = TimeZone.current
+        let cacheKey = "\(locale.rawValue)|\(timeZone.identifier)|\(key)" as NSString
+        if let cached = displayFormatters.object(forKey: cacheKey) {
+            return cached
+        }
+        let formatter = DateFormatter()
+        formatter.locale = locale.locale
+        formatter.timeZone = timeZone
+        configure(formatter)
+        displayFormatters.setObject(formatter, forKey: cacheKey)
+        return formatter
+    }
+}
+
+extension String {
+    func parsedISODateValue() -> Date? {
+        CachedDateFormatters.isoDate(from: self)
     }
 
     func formattedDateTime() -> String {
@@ -3383,10 +3454,7 @@ extension String {
             return self
         }
 
-        let output = DateFormatter()
-        output.locale = LocaleStore.currentEffectiveLocale.locale
-        output.dateFormat = "d MMM, HH:mm"
-        return output.string(from: date)
+        return CachedDateFormatters.display(format: "d MMM, HH:mm").string(from: date)
     }
 
     func formattedNumericDateTime() -> String {
@@ -3394,19 +3462,13 @@ extension String {
             return self
         }
 
-        let output = DateFormatter()
-        output.locale = LocaleStore.currentEffectiveLocale.locale
-        output.dateFormat = "dd.MM.yyyy HH:mm"
-        return output.string(from: date)
+        return CachedDateFormatters.display(format: "dd.MM.yyyy HH:mm").string(from: date)
     }
 }
 
 extension Date {
     func formattedHourMinute() -> String {
-        let output = DateFormatter()
-        output.locale = LocaleStore.currentEffectiveLocale.locale
-        output.dateFormat = "HH:mm"
-        return output.string(from: self)
+        CachedDateFormatters.display(format: "HH:mm").string(from: self)
     }
 }
 

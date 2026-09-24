@@ -92,6 +92,8 @@ struct AuthView: View {
     @State private var didAutoRequestAvailabilityLocation = false
     @State private var hasEditedAge = false
     @State private var hasAttemptedProfileContinue = false
+    @State private var isIntentStepPresented = false
+    @State private var stepAfterIntents: AuthStep = .profile
     @StateObject private var locationPermission = OnboardingLocationPermission()
     @FocusState private var profileFocusedField: OnboardingProfileField?
 
@@ -145,6 +147,10 @@ struct AuthView: View {
                 selectedLocationChoice = draft.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.preferredDistricts.isEmpty ? nil : .districts
                 if appModel.isAuthenticated && !appModel.isOnboardingComplete {
                     step = draft.hasProfileBasics ? .availability : .profile
+                    if !appModel.hasChosenUserIntents {
+                        stepAfterIntents = step
+                        isIntentStepPresented = true
+                    }
                 } else if appModel.presentedAuthStep == .code {
                     step = .code
                 }
@@ -156,12 +162,17 @@ struct AuthView: View {
                     return
                 }
                 step = newValue
+                isIntentStepPresented = false
             }
             .onChange(of: appModel.currentUser?.id) { newValue in
                 if newValue != nil {
                     if !appModel.isOnboardingComplete {
                         draft = normalizedDraft(appModel.guestDraft)
                         step = draft.hasProfileBasics ? .availability : .profile
+                        stepAfterIntents = step
+                        isIntentStepPresented = !appModel.hasChosenUserIntents
+                    } else {
+                        isIntentStepPresented = false
                     }
                     if !embedded { dismiss() }
                 }
@@ -315,6 +326,17 @@ struct AuthView: View {
 
     @ViewBuilder
     private var contentForStep: some View {
+        if isIntentStepPresented {
+            UserIntentOnboardingView(
+                initialSelection: appModel.selectedUserIntents,
+                onContinue: { selection in
+                    appModel.setUserIntents(selection)
+                    isIntentStepPresented = false
+                    step = stepAfterIntents
+                },
+                onBack: { isIntentStepPresented = false }
+            )
+        } else {
         switch step {
         case .intro:
             introScreen
@@ -338,6 +360,7 @@ struct AuthView: View {
                 }
                 .padding()
             }
+        }
         }
     }
 
@@ -407,9 +430,10 @@ struct AuthView: View {
 
                     Spacer(minLength: isCompact ? 6 : 10)
 
-                    LiquidStartButton(title: L10n.string("Start searching", "Начать поиск"), subtitle: L10n.string("Step 1 of 2", "Шаг 1 из 2")) {
+                    LiquidStartButton(title: L10n.string("Start searching", "Начать поиск"), subtitle: L10n.string("Let's find your starting point", "Найдём твой сценарий")) {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.84)) {
-                            step = .profile
+                            stepAfterIntents = .profile
+                            isIntentStepPresented = true
                         }
                     }
                     .frame(height: isCompact ? 76 : 82)
@@ -428,9 +452,6 @@ struct AuthView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .ignoresSafeArea()
-        .onAppear {
-            requestAvailabilityLocationIfNeeded()
-        }
     }
 
     private var seekingPlayersStatus: some View {
@@ -496,10 +517,9 @@ struct AuthView: View {
         HStack(spacing: 10) {
             Image(systemName: "lock")
                 .font(.system(size: 18, weight: .semibold))
-            Text(L10n.string("We don't publish your data or location", "Мы не публикуем ваши данные и местоположение"))
+            Text(L10n.string("You choose whether to appear on the player map", "Ты сам выбираешь, показывать ли себя на карте игроков"))
                 .font(.system(size: 15, weight: .medium, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(.white.opacity(0.48))
         .frame(maxWidth: .infinity, alignment: .center)
@@ -537,9 +557,10 @@ struct AuthView: View {
                     .lineSpacing(3)
             }
 
-            LiquidStartButton(title: L10n.string("Start", "Начать"), subtitle: L10n.string("Step 1 of 2", "Шаг 1 из 2")) {
+            LiquidStartButton(title: L10n.string("Start", "Начать"), subtitle: L10n.string("Let's find your starting point", "Найдём твой сценарий")) {
                 withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                    step = .profile
+                    stepAfterIntents = .profile
+                    isIntentStepPresented = true
                 }
             }
 
@@ -576,13 +597,13 @@ struct AuthView: View {
                                         .foregroundStyle(OnboardingStepPalette.lime)
                                 }
 
-                            Text(L10n.string("What would you like\nto play?", "Во что хочешь\nсыграть?"))
+                            Text(L10n.string("What sports\ninterest you?", "Какой спорт\nтебе интересен?"))
                                 .font(.system(size: titleSize, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
                                 .lineSpacing(-5)
                                 .minimumScaleFactor(0.78)
 
-                            Text(L10n.string("Choose sports and your level — we'll show suitable players nearby.", "Выбери виды спорта и укажи уровень — покажем подходящих игроков рядом."))
+                            Text(L10n.string("Choose your sports. Your level helps us suggest partners when you want to play together.", "Выбери виды спорта. Уровень поможет подобрать партнёров, когда захочешь сыграть вместе."))
                                 .font(.system(size: subtitleSize, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.62))
                                 .lineSpacing(2)
@@ -715,7 +736,7 @@ struct AuthView: View {
                                         .foregroundStyle(OnboardingStepPalette.lime)
                                 }
 
-                            Text(L10n.string("When are you available to play? You can leave this empty and set it later.", "Когда тебе удобно играть. Можно оставить пустым и настроить позже."))
+                            Text(L10n.string("When do you have time for sport? You can leave this empty and set it later.", "Когда у тебя есть время на спорт? Можно оставить пустым и настроить позже."))
                                 .font(.system(size: isCompact ? 13 : 14, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.62))
                                 .lineSpacing(2)
@@ -910,25 +931,19 @@ struct AuthView: View {
     }
 
     private var seekingPlayersLine: String {
-        let count = appStats?.registeredPlayersCount ?? 315
-        return L10n.string(
-            "\(count.formatted(.number.grouping(.automatic))) players are looking for a game nearby",
-            L10n.string("\(count.formatted(.number.grouping(.automatic))) players are looking for a game nearby", "\(count.formatted(.number.grouping(.automatic))) игроков ищут игру рядом")
-        )
+        guard let count = appStats?.registeredPlayersCount else {
+            return L10n.string("Your next game starts here", "Следующая игра начинается здесь")
+        }
+        let formattedCount = count.formatted(.number.grouping(.automatic))
+        return L10n.string("\(formattedCount) players in the app", "\(formattedCount) игроков в приложении")
     }
 
     private func loadAppStats() async {
-        guard appStats == nil else {
-            return
-        }
-
+        guard appStats == nil else { return }
         do {
             appStats = try await appModel.repository.fetchAppStats()
         } catch {
-            guard !error.isCancellationLike else {
-                return
-            }
-            appStats = AppStats(registeredPlayersCount: 315, seekingPlayersCount: 315)
+            // Leave the neutral message visible when a real count is unavailable.
         }
     }
 
@@ -2772,7 +2787,7 @@ private struct OnboardingSearchLocationSection: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Label {
-                    Text(L10n.string("Where should we look for players?", "Где искать игроков?"))
+                    Text(L10n.string("Where is it convenient to exercise?", "Где удобно заниматься спортом?"))
                         .font(.system(size: 18, weight: .black, design: .rounded))
                 } icon: {
                     Image(systemName: "mappin")

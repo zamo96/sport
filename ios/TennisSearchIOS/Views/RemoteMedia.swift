@@ -39,6 +39,9 @@ final class RemoteImagePipeline {
             .appendingPathComponent("RemoteMedia", isDirectory: true)
         // Uploaded media is UUID-named and served as immutable, so the protocol policy keeps it on disk.
         configuration.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024, directory: directory)
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
         configuration.requestCachePolicy = .useProtocolCachePolicy
         configuration.timeoutIntervalForRequest = 30
         return URLSession(configuration: configuration)
@@ -46,6 +49,17 @@ final class RemoteImagePipeline {
 
     private let lock = NSLock()
     private var inFlight: [String: Task<UIImage, Error>] = [:]
+    private var generation = UUID()
+
+    func clear() {
+        lock.withLock {
+            generation = UUID()
+            inFlight.values.forEach { $0.cancel() }
+            inFlight.removeAll()
+            memoryCache.removeAllObjects()
+            session.configuration.urlCache?.removeAllCachedResponses()
+        }
+    }
 
     func cachedImage(forKey key: String) -> UIImage? {
         memoryCache.object(forKey: key as NSString)
@@ -69,9 +83,12 @@ final class RemoteImagePipeline {
             if let existing = inFlight[key] {
                 return existing
             }
+            let revision = generation
             // Detached so a row scrolling away does not throw away a nearly finished download.
             let task = Task.detached(priority: .userInitiated) { [session] () throws -> UIImage in
-                defer { self.lock.withLock { self.inFlight[key] = nil } }
+                defer { self.lock.withLock {
+                    if self.generation == revision { self.inFlight[key] = nil }
+                } }
                 #if DEBUG
                 // `-RemoteMediaDebugDelay 2` slows every image load down to review the loading animation.
                 let debugDelay = UserDefaults.standard.double(forKey: "RemoteMediaDebugDelay")
@@ -83,7 +100,10 @@ final class RemoteImagePipeline {
                 guard let image = Self.decode(data, fitting: request.pixelSize, contentMode: request.contentMode) else {
                     throw URLError(.cannotDecodeContentData)
                 }
-                self.store(image, forKey: key)
+                try self.lock.withLock {
+                    guard self.generation == revision, !Task.isCancelled else { throw CancellationError() }
+                    self.memoryCache.setObject(image, forKey: key as NSString, cost: Self.cost(of: image))
+                }
                 return image
             }
             inFlight[key] = task

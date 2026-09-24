@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ find: vi.fn(), create: vi.fn(), update: vi.fn(), code: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
   user: { findUnique: mocks.find, create: mocks.create, update: mocks.update },
-  authCode: { findFirst: mocks.code, update: vi.fn() }
+  authCode: { findFirst: mocks.code, updateMany: vi.fn(async () => ({ count: 1 })) }
 } }));
 vi.mock("next/headers", () => ({ cookies: () => ({ get: () => undefined }), headers: () => ({ get: () => null }) }));
 vi.mock("@/server/user-events", () => ({ recordUserEventsOnce: vi.fn() }));
@@ -17,7 +17,7 @@ const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("b
 function appleToken() {
   const input = `${encode({ alg: "RS256", kid: "map-test" })}.${encode({
     iss: "https://appleid.apple.com", aud: "shop.sportsearch.app", sub: "apple-player",
-    exp: Math.floor(Date.now() / 1000) + 3600, email: "map-player@example.com"
+    exp: Math.floor(Date.now() / 1000) + 3600, email: "map-player@example.com", email_verified: true
   })}`;
   return `${input}.${sign("RSA-SHA256", Buffer.from(input), keys.privateKey).toString("base64url")}`;
 }

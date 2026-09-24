@@ -1,4 +1,5 @@
-import { requireSessionUser } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
+import { getRequestSessionToken, requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { registerPushDeviceSchema } from "@/lib/validators";
@@ -7,12 +8,22 @@ import { lockActiveUsersForMutation } from "@/server/account-status";
 export async function POST(request: Request) {
   try {
     const user = await requireSessionUser();
+    const sessionToken = getRequestSessionToken();
     const body = registerPushDeviceSchema.parse(await request.json());
 
     const device = await prisma.$transaction(async (tx) => {
       const lockedUserIds = await lockActiveUsersForMutation(tx, [user.id]);
       if (!lockedUserIds.has(user.id)) {
         throw new Error("ACCOUNT_DEACTIVATED");
+      }
+
+      const activeSessions = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id" FROM "Session"
+        WHERE "token" = ${sessionToken} AND "userId" = ${user.id} AND "expiresAt" > NOW()
+        FOR UPDATE
+      `);
+      if (activeSessions.length !== 1) {
+        throw new Error("UNAUTHORIZED");
       }
 
       return tx.pushDevice.upsert({

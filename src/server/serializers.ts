@@ -18,6 +18,7 @@ import type {
 import { getDistrictLabel } from "@/lib/constants";
 import { publicPlayerMapAreas } from "@/lib/player-map-areas";
 import { DEFAULT_LOCALE, type SupportedLocale } from "@/lib/locales";
+import { personalActivityVideoUrls } from "@/lib/personal-activity-media";
 import { formatDistanceKm } from "@/lib/utils";
 import { emptyCoverage, serializeLocationRelation } from "@/server/locations";
 import type { NearbyMetadata } from "@/lib/nearby";
@@ -252,6 +253,7 @@ export function serializePersonalActivity(
     comment: activity.comment ?? null,
     status: activity.status,
     reportComment: activity.reportComment ?? null,
+    videoUrls: personalActivityVideoUrls(activity.videoUrls),
     createdAt: activity.createdAt.toISOString(),
     updatedAt: activity.updatedAt.toISOString(),
     court: activity.court ? serializeCourt(activity.court) : null,

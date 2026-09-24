@@ -32,42 +32,6 @@ private struct ProfileCompletionStatus {
     let missingSteps: [String]
 }
 
-enum ProfileGameFeedItem: Identifiable {
-    case game(MatchGameRequest)
-    case visit(PersonalActivity)
-
-    var id: String {
-        switch self {
-        case .game(let request): return "game-\(request.id)"
-        case .visit(let activity): return "visit-\(activity.id)"
-        }
-    }
-
-    var date: Date {
-        switch self {
-        case .game(let request): return request.proposedDate ?? .distantPast
-        case .visit(let activity): return activity.scheduledDate ?? .distantPast
-        }
-    }
-
-    static func make(games: [MatchGameRequest], visits: [PersonalActivity], ownerID: String, referenceDate: Date = Date()) -> [ProfileGameFeedItem] {
-        let gameItems = games.filter { request in
-            guard request.hasEnded(referenceDate: referenceDate) else { return false }
-            if let report = request.report { return report.visibility == "profile" }
-            return request.outcome == "played"
-        }.map(ProfileGameFeedItem.game)
-        let visitItems = visits.filter { activity in
-            guard activity.userId == ownerID, activity.status.lowercased() == "completed",
-                  !activity.photoUrls.isEmpty, let date = activity.scheduledDate else { return false }
-            let duration = TimeInterval((activity.durationMinutes ?? activity.sport.defaultDurationMinutes) * 60)
-            return referenceDate.timeIntervalSince(date) >= duration
-        }.map(ProfileGameFeedItem.visit)
-        return Array((gameItems + visitItems).sorted { lhs, rhs in
-            lhs.date == rhs.date ? lhs.id < rhs.id : lhs.date > rhs.date
-        }.prefix(6))
-    }
-}
-
 private enum ProfileGameFeedSource {
     case games
     case visits
@@ -81,6 +45,7 @@ struct ProfileView: View {
 
     private let profileTopAnchor = "profile-top"
 
+    @State private var profileSessionGeneration: UUID?
     @State private var draft: UserProfile?
     @State private var guestDraft: GuestOnboardingDraft = .default
     @State private var selectedAvatarItem: PhotosPickerItem?
@@ -109,6 +74,7 @@ struct ProfileView: View {
     @State private var visitFeedRequestToken: UUID?
     @State private var isDeleteConfirmationPresented = false
     @State private var isEditorPresented = false
+    @State private var isBioEditorPresented = false
     @State private var profileScreenMode: ProfileScreenMode = .editing
     @AppStorage("profile.visibilityMode") private var visibilityModeRaw = ProfileVisibilityMode.publicProfile.rawValue
 
@@ -161,6 +127,7 @@ struct ProfileView: View {
             }
         }
         .task {
+            if profileSessionGeneration == nil { profileSessionGeneration = appModel.sessionGeneration }
             if draft == nil {
                 draft = appModel.currentUser
             }
@@ -214,6 +181,11 @@ struct ProfileView: View {
                     Task { await uploadTrimmedProfileVideo(trimDraft, startTime: startTime) }
                 }
             )
+        }
+        .sheet(isPresented: $isBioEditorPresented) {
+            ProfileBioEditorSheet(initialText: draft?.bio ?? appModel.currentUser?.bio ?? "") { text in
+                await saveBio(text)
+            }
         }
         .sheet(isPresented: $isEditorPresented) {
             if let draftBinding {
@@ -280,6 +252,7 @@ struct ProfileView: View {
                     selectedPhotoItems: $selectedProfilePhotoItems,
                     selectedVideoItems: $selectedProfileVideoItems,
                     onEdit: { isEditorPresented = true },
+                    onEditBio: { isBioEditorPresented = true },
                     onPreview: { selectedProfileMediaPreview = $0 },
                     onRemove: requestProfileMediaRemoval,
                     onReorder: reorderProfileMediaPersistently
@@ -291,14 +264,15 @@ struct ProfileView: View {
                     hasVideoBonus: !profile.profileVideoUrls.isEmpty
                 )
 
-                ProfileGameFeedSection(
-                    items: profileGameFeedItems,
-                    currentUserId: appModel.currentUser?.id,
+                ProfileWorkoutsSection(
+                    items: profileWorkoutHistoryItems,
                     isLoading: isGameFeedLoading || isVisitFeedLoading,
                     gameError: gameFeedError,
                     visitError: visitFeedError,
                     onRetryGames: { Task { await loadProfileGameFeed(source: .games) } },
-                    onRetryVisits: { Task { await loadProfileGameFeed(source: .visits) } }
+                    onRetryVisits: { Task { await loadProfileGameFeed(source: .visits) } },
+                    onOpenPlans: { appModel.navigate(to: .discover(.upcoming)) },
+                    partnersBySourceID: profileWorkoutPartners
                 )
                 .id(appModel.currentUser?.id)
 
@@ -774,7 +748,10 @@ struct ProfileView: View {
         FieldShell(title: L10n.string("About me", "О себе"), caption: L10n.string("Briefly describe yourself or who you'd like to play with.", "Коротко опиши себя или с кем хочешь играть.")) {
             TextField(
                 L10n.string("I enjoy intense rallies and evening practice.", "Люблю интенсивные розыгрыши и вечерние тренировки."),
-                text: profile.bio.orEmpty,
+                text: Binding(
+                    get: { profile.wrappedValue.bio ?? "" },
+                    set: { profile.wrappedValue.bio = $0.isEmpty ? nil : String($0.prefix(ProfileBioLimit.maxLength)) }
+                ),
                 axis: .vertical
             )
             .lineLimit(3 ... 6)
@@ -929,9 +906,17 @@ struct ProfileView: View {
         )
     }
 
-    private var profileGameFeedItems: [ProfileGameFeedItem] {
+    private var profileWorkoutPartners: [String: [WorkoutPartner]] {
+        guard let ownerID = appModel.currentUser?.id, gameFeedAccountID == ownerID else { return [:] }
+        return Dictionary(
+            gameFeedRequests.map { ($0.id, WorkoutPartner.partners(of: $0, ownerID: ownerID)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private var profileWorkoutHistoryItems: [ProfileWorkoutHistoryItem] {
         guard let ownerID = appModel.currentUser?.id, gameFeedAccountID == ownerID else { return [] }
-        return ProfileGameFeedItem.make(games: gameFeedRequests, visits: gameFeedVisits, ownerID: ownerID)
+        return ProfileWorkoutHistoryItem.make(games: gameFeedRequests, visits: gameFeedVisits, ownerID: ownerID)
     }
 
     @MainActor
@@ -1035,10 +1020,12 @@ struct ProfileView: View {
 
     @discardableResult
     private func save(successMessage: String = L10n.string("Profile saved", "Профиль сохранён")) async -> Bool {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return false }
+
         guard let draft else { return false }
 
         let didSave = await appModel.saveProfile(draft)
-        guard didSave else { return false }
+        guard didSave, appModel.isCurrentSession(generation) else { return false }
 
         self.draft = appModel.currentUser
         AppHaptics.notification(.success)
@@ -1046,26 +1033,44 @@ struct ProfileView: View {
         return true
     }
 
+    private func saveBio(_ text: String) async -> Bool {
+        guard var next = draft ?? appModel.currentUser else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.bio = trimmed.isEmpty ? nil : String(trimmed.prefix(ProfileBioLimit.maxLength))
+        draft = next
+        return await save(successMessage: L10n.string("Description saved", "Описание сохранено"))
+    }
+
     private func deleteProfile() async {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
+
         do {
             try await appModel.repository.deleteAccount()
+            guard appModel.isCurrentSession(generation) else { return }
             appModel.logout()
         } catch {
+            guard appModel.isCurrentSession(generation) else { return }
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
         }
     }
 
     private func uploadAvatar(from item: PhotosPickerItem) async {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
+
         guard !isUploadingAvatar else { return }
 
         guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+            guard appModel.isCurrentSession(generation) else { return }
             appModel.errorMessage = L10n.string("Could not read the selected photo", "Не удалось прочитать выбранное фото")
             selectedAvatarItem = nil
             return
         }
 
+        guard appModel.isCurrentSession(generation) else { return }
+
         guard let jpegData = image.jpegData(compressionQuality: 0.88) else {
+            guard appModel.isCurrentSession(generation) else { return }
             appModel.errorMessage = L10n.string("Could not prepare the photo for upload", "Не удалось подготовить фото к загрузке")
             selectedAvatarItem = nil
             return
@@ -1080,6 +1085,7 @@ struct ProfileView: View {
         do {
             let avatarUrl = try await appModel.repository.uploadAvatar(data: jpegData, fileName: "avatar.jpg", mimeType: "image/jpeg")
 
+            guard appModel.isCurrentSession(generation) else { return }
             if var updatedDraft = draft {
                 updatedDraft.avatarUrl = avatarUrl
                 draft = updatedDraft
@@ -1093,11 +1099,14 @@ struct ProfileView: View {
             AppHaptics.notification(.success)
             showSaveToast(L10n.string("Photo updated", "Фото обновлено"))
         } catch {
+            guard appModel.isCurrentSession(generation) else { return }
             appModel.present(error: error)
         }
     }
 
     private func uploadProfileMedia(from items: [PhotosPickerItem], preferredKind: PlayerMediaKind) async {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
+
         isUploadingProfileMedia = true
         defer {
             isUploadingProfileMedia = false
@@ -1106,24 +1115,29 @@ struct ProfileView: View {
         do {
             for (index, item) in items.enumerated() {
                 let payload = try await profileMediaPayload(from: item, preferredKind: preferredKind, index: index)
+                guard appModel.isCurrentSession(generation) else { return }
                 let result = try await appModel.repository.uploadProfileMedia(
                     data: payload.data,
                     fileName: payload.fileName,
                     mimeType: payload.mimeType
                 )
 
+                guard appModel.isCurrentSession(generation) else { return }
                 applyProfileMediaUpload(result)
             }
 
             AppHaptics.notification(.success)
             showSaveToast(preferredKind == .video ? L10n.string("Video added", "Видео добавлено") : L10n.string("Photo added", "Фото добавлено"))
         } catch {
+            guard appModel.isCurrentSession(generation) else { return }
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
         }
     }
 
     private func prepareNextVideoTrimDraft() async {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
+
         guard pendingVideoTrimDraft == nil, !pendingVideoTrimQueue.isEmpty else { return }
 
         let item = pendingVideoTrimQueue.removeFirst()
@@ -1138,6 +1152,11 @@ struct ProfileView: View {
             }
 
             let sourceURL = pickedVideo.url
+            guard appModel.isCurrentSession(generation) else {
+                try? FileManager.default.removeItem(at: sourceURL)
+                return
+            }
+
             let asset = AVURLAsset(url: sourceURL)
             let duration = CMTimeGetSeconds(try await asset.load(.duration))
 
@@ -1151,6 +1170,7 @@ struct ProfileView: View {
                 fileName: "profile-video-\(UUID().uuidString)"
             )
         } catch {
+            guard appModel.isCurrentSession(generation) else { return }
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
             await prepareNextVideoTrimDraft()
@@ -1164,6 +1184,8 @@ struct ProfileView: View {
     }
 
     private func performTrimmedProfileVideoUpload(_ trimDraft: ProfileVideoTrimDraft, startTime: TimeInterval) async {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
+
         isUploadingProfileMedia = true
         defer {
             isUploadingProfileMedia = false
@@ -1171,12 +1193,14 @@ struct ProfileView: View {
 
         do {
             let payload = try await trimmedVideoPayload(from: trimDraft, startTime: startTime)
+            guard appModel.isCurrentSession(generation) else { return }
             let result = try await appModel.repository.uploadProfileMedia(
                 data: payload.data,
                 fileName: "\(trimDraft.fileName).\(payload.fileExtension)",
                 mimeType: payload.mimeType
             )
 
+            guard appModel.isCurrentSession(generation) else { return }
             applyProfileMediaUpload(result)
             try? FileManager.default.removeItem(at: trimDraft.sourceURL)
             pendingVideoTrimDraft = nil
@@ -1185,6 +1209,7 @@ struct ProfileView: View {
             showSaveToast(L10n.string("Video added", "Видео добавлено"))
             await prepareNextVideoTrimDraft()
         } catch {
+            guard appModel.isCurrentSession(generation) else { return }
             guard !error.isCancellationLike else { return }
             appModel.present(error: error)
         }
@@ -1298,6 +1323,7 @@ struct ProfileView: View {
     }
 
     private func removeProfileMediaPersistently(_ item: PlayerMediaItem) {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
         guard profileMediaMutationCount == 0,
               let snapshot = draft ?? appModel.currentUser else { return }
 
@@ -1305,10 +1331,12 @@ struct ProfileView: View {
         enqueueProfileMediaMutation {
             do {
                 let result = try await appModel.repository.removeProfileMedia(mediaUrl: item.path)
+                guard appModel.isCurrentSession(generation) else { return }
                 applyProfileMediaUpload(result)
                 AppHaptics.notification(.success)
                 showSaveToast(item.kind == .video ? L10n.string("Video removed", "Видео удалено") : L10n.string("Photo removed", "Фото удалено"))
             } catch {
+                guard appModel.isCurrentSession(generation) else { return }
                 draft = snapshot
                 appModel.currentUser = snapshot
                 guard !error.isCancellationLike else { return }
@@ -1322,6 +1350,7 @@ struct ProfileView: View {
     /// не двигали. Отпущенная где угодно, даже мимо ленты, плитка оставляет на
     /// экране ровно то, что сохранено. При ошибке — откат к порядку до перестановки.
     private func reorderProfileMediaPersistently(_ order: [String]) {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
         guard var updatedDraft = draft ?? appModel.currentUser else { return }
 
         if mediaOrderSnapshot == nil {
@@ -1342,10 +1371,12 @@ struct ProfileView: View {
             enqueueProfileMediaMutation {
                 do {
                     let result = try await appModel.repository.reorderProfileMedia(order: order)
+                    guard appModel.isCurrentSession(generation) else { return }
                     applyProfileMediaOrder(result)
                     AppHaptics.notification(.success)
                     showSaveToast(L10n.string("Order saved", "Порядок сохранён"))
                 } catch {
+                    guard appModel.isCurrentSession(generation) else { return }
                     if let snapshot {
                         draft = snapshot
                         appModel.currentUser = snapshot
@@ -1385,10 +1416,12 @@ struct ProfileView: View {
     }
 
     private func enqueueProfileMediaMutation(_ operation: @escaping @MainActor () async -> Void) {
+        guard let generation = profileSessionGeneration, appModel.isCurrentSession(generation) else { return }
         let precedingMutation = profileMediaMutationTail
         profileMediaMutationCount += 1
         profileMediaMutationTail = Task { @MainActor in
             await precedingMutation?.value
+            guard appModel.isCurrentSession(generation) else { return }
             await operation()
             profileMediaMutationCount = max(profileMediaMutationCount - 1, 0)
         }
@@ -2415,6 +2448,7 @@ private struct ProfileSelectionMediaCard: View {
     @Binding var selectedPhotoItems: [PhotosPickerItem]
     @Binding var selectedVideoItems: [PhotosPickerItem]
     let onEdit: () -> Void
+    let onEditBio: () -> Void
     let onPreview: (PlayerMediaItem) -> Void
     let onRemove: (PlayerMediaItem) -> Void
     let onReorder: ([String]) -> Void
@@ -2530,12 +2564,9 @@ private struct ProfileSelectionMediaCard: View {
                         }
                     }
 
-                    Text(profileBioText)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+
+                ProfileBioCard(bio: profile.bio, onEdit: onEditBio)
 
                 VStack(alignment: .leading, spacing: 10) {
                     mediaHeader
@@ -2636,13 +2667,6 @@ private struct ProfileSelectionMediaCard: View {
         return parts.isEmpty ? L10n.string("City and district are not set", "Город и район не указаны") : parts.joined(separator: " · ")
     }
 
-    private var profileBioText: String {
-        guard let bio = profile.bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty else {
-            return L10n.string("Description is not filled in yet", "Описание пока не заполнено")
-        }
-        return bio
-    }
-
     private var mediaTitle: some View {
         Text(L10n.string("Photos and videos", "Фото и видео"))
             .font(.subheadline.weight(.bold))
@@ -2694,6 +2718,227 @@ private struct ProfileSelectionMediaCard: View {
         Label(L10n.string("Video added", "Видео добавлено"), systemImage: "checkmark.circle.fill")
         .font(.caption.weight(.semibold))
         .foregroundStyle(AppTheme.mint)
+    }
+}
+
+enum ProfileBioLimit {
+    /// Сервер режет описание на 220 символах (`publicText(220)` в validators.ts),
+    /// длиннее — весь профиль не сохраняется с 400.
+    static let maxLength = 220
+}
+
+private struct ProfileBioCard: View {
+    let bio: String?
+    let onEdit: () -> Void
+
+    @State private var isExpanded = false
+
+    private var text: String? {
+        guard let bio = bio?.trimmingCharacters(in: .whitespacesAndNewlines), !bio.isEmpty else { return nil }
+        return bio
+    }
+
+    var body: some View {
+        if let text {
+            filledCard(text)
+        } else {
+            emptyCard
+        }
+    }
+
+    private func filledCard(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                sectionTitle
+                Spacer()
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Edit description", "Изменить описание"))
+            }
+
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.86))
+                .lineSpacing(2)
+                .lineLimit(isExpanded ? nil : 3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Точно узнать, обрезал ли Text строки, SwiftUI не даёт — прикидываем по длине.
+            if text.count > 110 || text.filter(\.isNewline).count >= 2 {
+                Button(isExpanded ? L10n.string("Show less", "Свернуть") : L10n.string("More", "Ещё")) {
+                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.mint)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var emptyCard: some View {
+        Button(action: onEdit) {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionTitle
+                Text(L10n.string("Tell others who you'd like to play with", "Расскажите, с кем хотите играть"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text(L10n.string("Players are more likely to reply to a profile with a description.", "На профиль с описанием чаще отвечают."))
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.58))
+                Label(L10n.string("Add description", "Добавить описание"), systemImage: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.mint)
+                    .padding(.top, 4)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sectionTitle: some View {
+        Text(L10n.string("About me", "О себе"))
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.white.opacity(0.52))
+            .textCase(.uppercase)
+    }
+}
+
+private struct ProfileBioEditorSheet: View {
+    let initialText: String
+    let onSave: (String) async -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var isSaving = false
+    @FocusState private var isFocused: Bool
+
+    private var hints: [(title: String, insert: String)] {
+        [
+            (L10n.string("When I can play", "Когда удобно играть"), L10n.string("I can play ", "Удобно играть ")),
+            (L10n.string("Partner I'm looking for", "Какого партнёра ищу"), L10n.string("Looking for a partner ", "Ищу партнёра ")),
+            (L10n.string("How long I've played", "Сколько играю"), L10n.string("I've been playing for ", "Играю уже ")),
+            (L10n.string("I like doubles", "Люблю парные игры"), L10n.string("I like playing doubles.", "Люблю парные игры.")),
+            (L10n.string("Happy to split the court", "Готов(а) делить корт"), L10n.string("Happy to split the court fee.", "Готов(а) делить стоимость корта."))
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField(
+                        L10n.string("I play on weekday evenings and look for a regular sparring partner.", "Играю по вечерам в будни, ищу партнёра на регулярный спарринг."),
+                        text: $text,
+                        axis: .vertical
+                    )
+                    .lineLimit(5 ... 10)
+                    .textInputAutocapitalization(.sentences)
+                    .focused($isFocused)
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(isFocused ? AppTheme.court : .white.opacity(0.12), lineWidth: 1)
+                    )
+                    .onChange(of: text) { newValue in
+                        if newValue.count > ProfileBioLimit.maxLength {
+                            text = String(newValue.prefix(ProfileBioLimit.maxLength))
+                        }
+                    }
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L10n.string("Everyone who sees your profile can read this.", "Видят все, кому показывается ваш профиль."))
+                            .foregroundStyle(.white.opacity(0.5))
+                        Spacer(minLength: 8)
+                        Text("\(text.count)/\(ProfileBioLimit.maxLength)")
+                            .monospacedDigit()
+                            .foregroundStyle(text.count >= ProfileBioLimit.maxLength - 20 ? Color.orange : .white.opacity(0.5))
+                    }
+                    .font(.caption)
+
+                    Text(L10n.string("Hints — tap to add", "Подсказки — нажмите, чтобы добавить"))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.52))
+                        .textCase(.uppercase)
+                        .padding(.top, 8)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
+                        ForEach(hints, id: \.title) { hint in
+                            Button {
+                                append(hint.insert)
+                            } label: {
+                                Text(hint.title)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.86))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: .infinity, minHeight: 34)
+                                    .background(.white.opacity(0.08), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(18)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle(L10n.string("About me", "О себе"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Cancel", "Отмена")) { dismiss() }
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView().tint(.white)
+                    } else {
+                        Button(L10n.string("Done", "Готово")) {
+                            Task {
+                                isSaving = true
+                                let didSave = await onSave(text)
+                                isSaving = false
+                                if didSave { dismiss() }
+                            }
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(AppTheme.mint)
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            text = String(initialText.prefix(ProfileBioLimit.maxLength))
+            isFocused = true
+        }
+    }
+
+    private func append(_ fragment: String) {
+        let base = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = String((base.isEmpty ? fragment : base + " " + fragment).prefix(ProfileBioLimit.maxLength))
+        isFocused = true
     }
 }
 
@@ -2963,281 +3208,6 @@ private struct ProfileCompletenessCard: View {
             return L10n.string("Profile is ready to be shown", "Профиль готов к показу")
         }
         return L10n.string("Steps remaining: \(missingSteps.count)", "Осталось шагов: \(missingSteps.count)")
-    }
-}
-
-private struct ProfileGameFeedSection: View {
-    let items: [ProfileGameFeedItem]
-    let currentUserId: String?
-    let isLoading: Bool
-    let gameError: String?
-    let visitError: String?
-    let onRetryGames: () -> Void
-    let onRetryVisits: () -> Void
-    @State private var selectedGallery: ReportPhotoGalleryItem?
-
-    var body: some View {
-        ProfileDarkPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.string("Game feed", "Лента игр"))
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text(L10n.string("Games and your personal visit reports", "Игры и фотоотчёты твоих личных визитов"))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.58))
-                    }
-                    Spacer()
-                    if isLoading {
-                        ProgressView().tint(.white)
-                    } else if !items.isEmpty {
-                        Text("\(items.count)")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.court)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(AppTheme.court.opacity(0.14), in: Capsule())
-                    }
-                }
-
-                if let gameError { sourceError(gameError, onRetry: onRetryGames, identifier: "profile-feed-retry-games") }
-                if let visitError { sourceError(visitError, onRetry: onRetryVisits, identifier: "profile-feed-retry-visits") }
-
-                if items.isEmpty && !isLoading && gameError == nil && visitError == nil {
-                    Text(L10n.string("Completed games and photo reports from your personal visits will appear here.", "Здесь появятся завершённые игры и фотоотчёты твоих личных визитов."))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.62))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                VStack(spacing: 10) {
-                    ForEach(items) { item in
-                        ProfileGameFeedRow(item: item, currentUserId: currentUserId) { selectedGallery = $0 }
-                    }
-                }
-            }
-        }
-        .accessibilityIdentifier("profile-game-feed")
-        .sheet(item: $selectedGallery) { ReportPhotoGallerySheet(item: $0) }
-    }
-
-    private func sourceError(_ message: String, onRetry: @escaping () -> Void, identifier: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(message).font(.caption).foregroundStyle(.white.opacity(0.75))
-            Button(L10n.string("Try again", "Повторить"), action: onRetry)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.court)
-                .frame(minHeight: 44)
-                .disabled(isLoading)
-                .accessibilityIdentifier(identifier)
-        }
-    }
-}
-
-private struct ProfileGameFeedRow: View {
-    let item: ProfileGameFeedItem
-    let currentUserId: String?
-    let onOpenGallery: (ReportPhotoGalleryItem) -> Void
-
-    private var sport: Sport {
-        switch item {
-        case .game(let request): return request.sport
-        case .visit(let activity): return activity.sport
-        }
-    }
-
-    private var photoPaths: [String] {
-        switch item {
-        case .game(let request): return request.report?.photoUrls ?? []
-        case .visit(let activity): return activity.photoUrls
-        }
-    }
-
-    private var dateTitle: String {
-        switch item {
-        case .game(let request): return request.proposedDatetime.formattedDateTime()
-        case .visit(let activity): return activity.scheduledAt.formattedDateTime()
-        }
-    }
-
-    private var details: String {
-        switch item {
-        case .game(let request):
-            return [request.proposedCourt?.name, request.participantNamesLine(currentUserId: currentUserId)]
-                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-        case .visit(let activity):
-            return [L10n.string("Personal visit", "Личный визит"), activity.court?.name]
-                .compactMap { $0 }.joined(separator: " · ")
-        }
-    }
-
-    private var statusTitle: String {
-        switch item {
-        case .game(let request): return request.report?.statusTitle ?? request.outcomeLabel ?? ""
-        case .visit: return L10n.string("Visit photo report", "Фотоотчёт визита")
-        }
-    }
-
-    private var statusColor: Color {
-        switch item {
-        case .game(let request):
-            if let report = request.report, report.status.lowercased() != "confirmed" { return .orange }
-            return AppTheme.court
-        case .visit: return AppTheme.court
-        }
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ProfileGameFeedPreview(allPhotoPaths: photoPaths, sport: sport, onOpenPhoto: openPhoto)
-            Button { openPhoto(0) } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        SportIconView(sport: sport, color: AppTheme.court, size: 16)
-                        Text("\(sport.title) · \(dateTitle)")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.82)
-                    }
-                    Text(details)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.62))
-                        .lineLimit(2)
-                    Text(statusTitle).font(.caption.weight(.bold)).foregroundStyle(statusColor)
-                    if !photoPaths.isEmpty {
-                        Label(L10n.string("\(photoPaths.count) photos", "\(photoPaths.count) фото"), systemImage: "photo.stack")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(photoPaths.isEmpty)
-            .accessibilityHint(photoPaths.isEmpty ? "" : L10n.string("Opens the photo report", "Открывает фотоотчёт"))
-        }
-        .padding(12)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
-        .accessibilityIdentifier("profile-feed-\(item.id)")
-    }
-
-    private func openPhoto(_ index: Int) {
-        guard !photoPaths.isEmpty else { return }
-        let comment: String?
-        switch item {
-        case .game(let request): comment = request.report?.comment
-        case .visit(let activity): comment = activity.reportComment
-        }
-        onOpenGallery(ReportPhotoGalleryItem(
-            photoPaths: photoPaths,
-            initialIndex: index,
-            title: L10n.string("Photo report", "Фотоотчёт"),
-            subtitle: "\(sport.title) · \(dateTitle) · \(statusTitle)",
-            comment: comment
-        ))
-    }
-}
-
-private struct ProfileGameFeedPreview: View {
-    let allPhotoPaths: [String]
-    let sport: Sport
-    let onOpenPhoto: (Int) -> Void
-
-    private var photoPaths: [String] { Array(allPhotoPaths.prefix(4)) }
-    private var extraPhotoCount: Int { max(allPhotoPaths.count - 4, 0) }
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.court.opacity(0.16))
-
-            if photoPaths.isEmpty {
-                fallbackIcon
-            } else {
-                collage
-            }
-        }
-        .frame(width: 76, height: 76)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var fallbackIcon: some View {
-        SportIconView(sport: sport, color: AppTheme.court, size: 24)
-    }
-
-    @ViewBuilder
-    private var collage: some View {
-        GeometryReader { geometry in
-            let gap: CGFloat = 2
-            let halfWidth = (geometry.size.width - gap) / 2
-            let halfHeight = (geometry.size.height - gap) / 2
-
-            switch photoPaths.count {
-            case 1:
-                photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
-            case 2:
-                HStack(spacing: gap) {
-                    photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
-                        .frame(width: halfWidth, height: geometry.size.height)
-                    photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: extraPhotoCount > 0)
-                        .frame(width: halfWidth, height: geometry.size.height)
-                }
-            case 3:
-                HStack(spacing: gap) {
-                    photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
-                        .frame(width: halfWidth, height: geometry.size.height)
-                    VStack(spacing: gap) {
-                        photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: false)
-                            .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[2], index: 2, showsMoreOverlay: extraPhotoCount > 0)
-                            .frame(width: halfWidth, height: halfHeight)
-                    }
-                }
-            default:
-                VStack(spacing: gap) {
-                    HStack(spacing: gap) {
-                        photoTile(path: photoPaths[0], index: 0, showsMoreOverlay: false)
-                            .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[1], index: 1, showsMoreOverlay: false)
-                            .frame(width: halfWidth, height: halfHeight)
-                    }
-                    HStack(spacing: gap) {
-                        photoTile(path: photoPaths[2], index: 2, showsMoreOverlay: false)
-                            .frame(width: halfWidth, height: halfHeight)
-                        photoTile(path: photoPaths[3], index: 3, showsMoreOverlay: extraPhotoCount > 0)
-                            .frame(width: halfWidth, height: halfHeight)
-                    }
-                }
-            }
-        }
-    }
-
-    private func photoTile(path: String, index: Int, showsMoreOverlay: Bool) -> some View {
-        Button { onOpenPhoto(index) } label: {
-        ZStack {
-            RemoteImage(url: resolveAppRemoteURL(path), indicator: .shimmer(AppTheme.court.opacity(0.4))) { phase in
-                if phase != .loading {
-                    fallbackIcon
-                }
-            }
-
-            if showsMoreOverlay {
-                Color.black.opacity(0.45)
-                Text("+\(extraPhotoCount)")
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white)
-            }
-        }
-        .clipped()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.string("Open photo \(index + 1) of \(allPhotoPaths.count)", "Открыть фото \(index + 1) из \(allPhotoPaths.count)"))
     }
 }
 

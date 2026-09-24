@@ -7,11 +7,13 @@ import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
 import { translateServer } from "@/lib/i18n/server";
 import { prisma } from "@/lib/prisma";
 import { verifySchema } from "@/lib/validators";
+import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
 
 export async function POST(request: NextRequest) {
   const locale = getServerRequestLocale(request);
   try {
     const body = verifySchema.parse(await request.json());
+    await enforceAuthRateLimit("verify", body.email, request);
     const user = await verifyAuthCode(body.email, body.code, body.showOnMap);
 
     if (!user) {

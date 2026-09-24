@@ -11,6 +11,7 @@ export type AuthErrorCode =
   | "AUTH_APPLE_INVALID_TOKEN"
   | "AUTH_APPLE_UNAVAILABLE"
   | "AUTH_INVALID_REQUEST"
+  | "AUTH_RATE_LIMITED"
   | "AUTH_UNAVAILABLE";
 
 export type AppleAuthPhase = "request" | "apple" | "session";
@@ -60,6 +61,9 @@ export function resolveLocalizedAuthError(error: unknown, locale: SupportedLocal
   errorCode: AuthErrorCode;
 } {
   const rawMessage = getErrorMessage(error);
+  if (rawMessage === "AUTH_RATE_LIMITED") {
+    return { message: translateServer(locale, "auth.error.rateLimited"), status: 429, errorCode: "AUTH_RATE_LIMITED" };
+  }
   if (rawMessage === "ACCOUNT_DEACTIVATED") {
     return {
       message: translateServer(locale, "auth.error.deactivated"),

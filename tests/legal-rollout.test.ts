@@ -16,6 +16,7 @@ vi.mock("@/lib/auth", () => ({
   createSession: mocks.createSession,
   getLegalAcceptanceRequestMeta: () => ({ ip: "127.0.0.1", userAgent: "test" })
 }));
+vi.mock("@/server/auth-rate-limit", () => ({ enforceAuthRateLimit: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { update: mocks.updateUser } } }));
 
 import { POST as verifyPost } from "@/app/auth/verify/route";

@@ -800,6 +800,7 @@ model PersonalActivity {
   comment         String?
   status          PersonalActivityStatus  @default(planned)
   reportComment   String?
+  videoUrls       Json                    @default("[]")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -94,6 +94,7 @@ fun ProfileScreen(appModel: AppViewModel) {
     var isPreparingProfileVideo by remember { mutableStateOf(false) }
     var gallery by remember { mutableStateOf<ReportPhotoGalleryItem?>(null) }
     var isDeleteConfirmationPresented by remember { mutableStateOf(false) }
+    var isBioEditorPresented by remember { mutableStateOf(false) }
     var visibilityMode by remember {
         mutableStateOf(ProfileVisibilityMode.from(prefs.getString(VISIBILITY_KEY, null)))
     }
@@ -260,6 +261,24 @@ fun ProfileScreen(appModel: AppViewModel) {
             onConfirm = { startTime -> uploadTrimmedProfileVideo(trimDraft, startTime) },
         )
         return
+    }
+
+    // `.sheet(isPresented: $isBioEditorPresented)` in ProfileView.swift.
+    if (isBioEditorPresented) {
+        ProfileBioEditorSheet(
+            initialText = draft?.bio.orEmpty(),
+            onSave = { text ->
+                val current = draft
+                if (current == null) {
+                    false
+                } else {
+                    val trimmed = text.trim().take(PROFILE_BIO_MAX_LENGTH)
+                    draft = current.copy(bio = trimmed.ifEmpty { null })
+                    save(L10n.string("Description saved", "Описание сохранено"))
+                }
+            },
+            onDismiss = { isBioEditorPresented = false },
+        )
     }
 
     // --- Subscreen routing, standing in for iOS `NavigationLink` destinations ---
@@ -792,6 +811,7 @@ fun ProfileScreen(appModel: AppViewModel) {
                     onPickPhotos = photoPicker,
                     onPickVideo = videoPicker,
                     onEdit = { route = ProfileRoute.EDITOR },
+                    onEditBio = { isBioEditorPresented = true },
                     onPreview = { mediaPreview = it },
                     onRemove = ::removeMedia,
                 )
@@ -954,6 +974,7 @@ private fun ProfileSelectionMediaCard(
     onPickPhotos: () -> Unit,
     onPickVideo: () -> Unit,
     onEdit: () -> Unit,
+    onEditBio: () -> Unit,
     onPreview: (PlayerMediaItem) -> Unit,
     onRemove: (PlayerMediaItem) -> Unit,
 ) {
@@ -1029,14 +1050,9 @@ private fun ProfileSelectionMediaCard(
                         }
                     }
                 }
-
-                Text(
-                    profile.bio?.trim()?.takeIf { it.isNotEmpty() }
-                        ?: L10n.string("Description is not filled in yet", "Описание пока не заполнено"),
-                    style = AppText.subheadline,
-                    color = Color.White.copy(alpha = 0.72f),
-                )
             }
+
+            ProfileBioCard(bio = profile.bio, onEdit = onEditBio)
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

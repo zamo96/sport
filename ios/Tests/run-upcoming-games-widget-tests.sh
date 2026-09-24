@@ -10,11 +10,18 @@ from pathlib import Path
 import sys
 root = Path(sys.argv[1]).parent
 out = Path(sys.argv[2])
-widget = (root / 'TennisSearchUpcomingWidget/UpcomingGamesWidget.swift').read_text().split('struct UpcomingGamesWidgetEntryView:')[0]
+widget_source = (root / 'TennisSearchUpcomingWidget/UpcomingGamesWidget.swift').read_text()
+widget = widget_source.split('struct UpcomingGamesWidgetEntryView:')[0]
+widget += widget_source[widget_source.index('private final class WidgetAuthenticatedSessionDelegate:'):]
 widget = widget.replace('import ActivityKit\n', '').replace('import SwiftUI\n', '').replace('import WidgetKit', 'import Foundation')
 widget = widget.replace('struct UpcomingGamesProvider: TimelineProvider {', 'struct UpcomingGamesProvider {')
 widget = widget.replace('private ', '').replace('group.shop.sportsearch.app', 'widget.tests.' + out.name)
 stubs = '''
+struct SecureSessionStore {
+    init(baseURL: URL) {}
+    func read() -> String? { nil }
+    static func origin(for url: URL) -> String { url.absoluteString }
+}
 protocol TimelineEntry {}
 struct Context {}
 struct Timeline<E> { enum Policy { case after(Date) }; let entries: [E]; let policy: Policy }
@@ -22,6 +29,7 @@ struct Timeline<E> { enum Policy { case after(Date) }; let entries: [E]; let pol
 (out / 'WidgetProduction.swift').write_text(stubs + widget)
 store = (root / 'TennisSearchIOS/Services/UpcomingGamesWidgetStore.swift').read_text().split('private enum UpcomingGameLiveActivityManager')[0]
 store = store.replace('import ActivityKit\n', '').replace('import WidgetKit\n', '').replace('private ', '')
+store = store.replace('group.shop.sportsearch.app', 'widget.store.tests.' + out.name)
 core = (root / 'TennisSearchIOS/Core/AppModels.swift').read_text()
 def declaration(source, name):
     start = source.index(name)

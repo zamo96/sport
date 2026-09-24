@@ -5,6 +5,7 @@ protocol TennisRepository {
     func verifyCode(email: String, code: String, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
     func signInWithApple(identityToken: String, email: String?, givenName: String?, familyName: String?, userAgreementAccepted: Bool, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
     func clearAuthSession()
+    func logout(pushDeviceToken: String?)
     func fetchCurrentUser() async throws -> UserProfile
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile
     func updateLocaleOverride(_ locale: String?) async throws -> String?
@@ -42,6 +43,7 @@ protocol TennisRepository {
     func createPersonalActivity(_ draft: PersonalActivityDraft) async throws -> PersonalActivity
     func updatePersonalActivity(activityId: String, draft: PersonalActivityUpdateDraft) async throws -> PersonalActivity
     func uploadPersonalActivityPhoto(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String
+    func uploadPersonalActivityVideo(activityId: String, data: Data, fileName: String, mimeType: String) async throws -> String
     func fetchSearches() async throws -> [GameSearch]
     func createSearch(_ draft: SearchDraft) async throws -> GameSearch
     func updateSearch(searchId: String, draft: SearchDraft) async throws -> GameSearch

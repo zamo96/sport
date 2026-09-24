@@ -6,14 +6,37 @@ struct ContentView: View {
     var body: some View {
         AppScreen {
             Group {
-                if appModel.isOnboardingComplete || appModel.isGuestModeAvailable {
+                if appModel.sessionRestoreState == .restoring {
+                    ProgressView(L10n.string("Restoring your session…", "Восстанавливаем вход…"))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if appModel.sessionRestoreState == .failed {
+                    VStack(spacing: 18) {
+                        Text(L10n.string("Could not restore your session", "Не удалось восстановить вход"))
+                            .font(.headline)
+                        Text(L10n.string("Check your connection and try again.", "Проверь подключение и попробуй ещё раз."))
+                            .foregroundStyle(.secondary)
+                        Button(L10n.string("Try again", "Повторить")) {
+                            Task { await appModel.bootstrap() }
+                        }
+                        .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
+                        Button(L10n.string("Continue as guest", "Продолжить как гость")) {
+                            appModel.logout()
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.court))
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if appModel.isOnboardingComplete || appModel.isGuestModeAvailable {
                     MainTabView()
+                        .id(appModel.sessionGeneration)
                 } else {
                     AuthView(initialStep: appModel.isAuthenticated ? (appModel.guestDraft.hasProfileBasics ? .availability : .profile) : .intro, embedded: true)
                 }
             }
         }
-        .sheet(item: $appModel.presentedAuthStep) { step in
+        .sheet(item: $appModel.presentedAuthStep, onDismiss: {
+            appModel.authenticationSheetDidDismiss()
+        }) { step in
             NavigationStack {
                 AppScreen {
                     AuthView(initialStep: step, embedded: false)
@@ -161,6 +184,10 @@ private struct MainTabView: View {
     @State private var discoverHighlightedSearchID: String?
     @State private var discoverHighlightedGameRequestID: String?
     @State private var courtsInitialSport: Sport?
+    @State private var courtsVisitPlanningMode = false
+    @State private var courtsInitialPersonalVisit: Court?
+    @State private var isSportHomePresented = false
+    @State private var hasNavigatedBeyondEntry = false
     @State private var discoverViewIdentity = UUID()
     @State private var isSlidingTabs = false
     @State private var tabDragLocationX: CGFloat?
@@ -210,9 +237,13 @@ private struct MainTabView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             handlePendingNavigation(appModel.pendingNavigationTarget)
+            resumePendingPersonalVisitIfNeeded()
         }
         .onChange(of: appModel.pendingNavigationTarget) { target in
             handlePendingNavigation(target)
+        }
+        .onChange(of: appModel.canResumePendingPersonalVisit) { canResume in
+            if canResume { resumePendingPersonalVisitIfNeeded() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tennisNotificationRouteRequested)) { notification in
             guard let href = notification.object as? String,
@@ -248,13 +279,31 @@ private struct MainTabView: View {
         case .discover:
             tabNavigation(id: discoverStackID) {
                 DiscoverView(
+                    isForeground: !isSportHomePresented,
                     initialTab: appModel.lastSelectedDiscoverTab,
                     highlightedUserID: discoverHighlightedUserID,
                     highlightedSearchID: discoverHighlightedSearchID,
                     highlightedGameRequestID: discoverHighlightedGameRequestID,
-                    onTabChanged: { appModel.lastSelectedDiscoverTab = $0 }
+                    onTabChanged: {
+                        hasNavigatedBeyondEntry = true
+                        appModel.lastSelectedDiscoverTab = $0
+                    },
+                    onOpenSportHome: {
+                        hasNavigatedBeyondEntry = true
+                        isSportHomePresented = true
+                    },
+                    featureGuide: featureGuideConfiguration
                 )
                 .id(discoverViewIdentity)
+                .navigationDestination(isPresented: $isSportHomePresented) {
+                    SportHomeView(
+                        onOpenIntent: openHomeIntent,
+                        onOpenUpcoming: { gameID in
+                            openHomeDiscover(.upcoming, gameID: gameID)
+                        }
+                    )
+                    .toolbar(.visible, for: .navigationBar)
+                }
             }
         case .matches:
             tabNavigation(id: matchesStackID) {
@@ -284,7 +333,11 @@ private struct MainTabView: View {
             }
         case .courts:
             tabNavigation(id: courtsStackID) {
-                CourtsView(initialSport: courtsInitialSport)
+                CourtsView(
+                    initialSport: courtsInitialSport,
+                    visitPlanningMode: courtsVisitPlanningMode,
+                    initialPersonalVisitCourt: courtsInitialPersonalVisit
+                )
             }
         case .profile:
             tabNavigation(id: profileStackID) {
@@ -445,7 +498,54 @@ private struct MainTabView: View {
     }
 
     private var shouldShowTabLoading: Bool {
-        appModel.isTabContentLoading(selectedTab.rawValue)
+        guard selectedTab != .discover || !isSportHomePresented else { return false }
+        return appModel.isTabContentLoading(selectedTab.rawValue)
+    }
+
+    private var isFeatureGuideAvailable: Bool {
+        !isSportHomePresented
+            && (appModel.isOnboardingComplete || appModel.isGuestModeAvailable)
+            && appModel.pendingNavigationTarget == nil
+            && appModel.pendingPersonalVisit == nil
+            && appModel.presentedAuthStep == nil
+            && discoverHighlightedUserID == nil
+            && discoverHighlightedSearchID == nil
+            && discoverHighlightedGameRequestID == nil
+    }
+
+    private var shouldShowFeatureGuide: Bool {
+        isFeatureGuideAvailable
+            && !hasNavigatedBeyondEntry
+            && appModel.shouldShowFeatureGuide
+            && appModel.featureGuideProgress.openedIntents.count < UserIntent.allCases.count
+    }
+
+    private var featureGuideConfiguration: DiscoverFeatureGuide? {
+        guard isFeatureGuideAvailable else { return nil }
+        let generation = appModel.sessionGeneration
+        return DiscoverFeatureGuide(
+            selectedIntents: appModel.selectedUserIntents,
+            progress: appModel.featureGuideProgress,
+            allowsAutomaticPresentation: shouldShowFeatureGuide,
+            onAcknowledgeSwipe: {
+                guard appModel.sessionGeneration == generation else { return }
+                appModel.completeFeatureGuideSwipeTutorial()
+            },
+            onOpen: { intent in
+                guard appModel.sessionGeneration == generation else { return }
+                openFeatureGuideIntent(intent)
+            },
+            onDismiss: {
+                guard appModel.sessionGeneration == generation else { return }
+                appModel.dismissFeatureGuide()
+            }
+        )
+    }
+
+    private func openFeatureGuideIntent(_ intent: UserIntent) {
+        appModel.markFeatureGuideOpened(intent)
+        hasNavigatedBeyondEntry = true
+        openHomeIntent(intent)
     }
 
     private func tab(at x: CGFloat, tabWidth: CGFloat) -> MainTab {
@@ -482,6 +582,8 @@ private struct MainTabView: View {
             return
         }
 
+        hasNavigatedBeyondEntry = true
+        isSportHomePresented = false
         switch target {
         case .discover(let tab, let highlightedUserID, let highlightedSearchID, let highlightedGameRequestID):
             let resolvedTab: DiscoverTab = tab == .seeking ? .hot : tab
@@ -510,6 +612,8 @@ private struct MainTabView: View {
             selectedTab = .profile
         case .courts(let sport):
             courtsInitialSport = sport
+            courtsVisitPlanningMode = false
+            courtsInitialPersonalVisit = nil
             courtsStackID = UUID()
             selectedTab = .courts
         case .chat(let matchId):
@@ -526,9 +630,10 @@ private struct MainTabView: View {
     }
 
     private func activateTab(_ tab: MainTab, source _: TabActivationSource) {
+        hasNavigatedBeyondEntry = true
+        isSportHomePresented = false
         switch tab {
         case .discover:
-            appModel.lastSelectedDiscoverTab = appModel.hasActiveUpcomingGameRequests ? .upcoming : .swipe
             discoverHighlightedUserID = nil
             discoverHighlightedSearchID = nil
             discoverHighlightedGameRequestID = nil
@@ -540,11 +645,49 @@ private struct MainTabView: View {
             searchesStackID = UUID()
         case .courts:
             courtsInitialSport = nil
+            courtsVisitPlanningMode = false
+            courtsInitialPersonalVisit = nil
             courtsStackID = UUID()
         case .profile:
             profileStackID = UUID()
         }
         selectedTab = tab
+    }
+
+    private func openHomeIntent(_ intent: UserIntent) {
+        isSportHomePresented = false
+        switch intent {
+        case .partner:
+            openHomeDiscover(.swipe)
+        case .group:
+            openHomeDiscover(.hot)
+        case .activity, .centers:
+            courtsInitialSport = nil
+            courtsVisitPlanningMode = intent == .activity
+            courtsInitialPersonalVisit = nil
+            courtsStackID = UUID()
+            selectedTab = .courts
+        }
+    }
+
+    private func openHomeDiscover(_ tab: DiscoverTab, gameID: String? = nil) {
+        appModel.lastSelectedDiscoverTab = tab
+        discoverHighlightedUserID = nil
+        discoverHighlightedSearchID = nil
+        discoverHighlightedGameRequestID = gameID
+        isSportHomePresented = false
+        discoverViewIdentity = UUID()
+        selectedTab = .discover
+    }
+
+    private func resumePendingPersonalVisitIfNeeded() {
+        guard let continuation = appModel.consumePendingPersonalVisit() else { return }
+        hasNavigatedBeyondEntry = true
+        courtsInitialSport = continuation.sport
+        courtsInitialPersonalVisit = continuation.court
+        courtsVisitPlanningMode = true
+        courtsStackID = UUID()
+        selectedTab = .courts
     }
 }
 

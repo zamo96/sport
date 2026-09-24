@@ -399,7 +399,7 @@ async function removeUserGeneratedContentAndDeactivate(
       data: { comment: "", visibility: GameReportVisibility.private }
     }),
     tx.gameReportPhoto.deleteMany({ where: { report: { createdByUserId: userId } } }),
-    tx.personalActivity.updateMany({ where: { userId }, data: { comment: "", reportComment: null } }),
+    tx.personalActivity.updateMany({ where: { userId }, data: { comment: "", reportComment: null, videoUrls: [] } }),
     tx.personalActivityPhoto.deleteMany({ where: { activity: { userId } } }),
     tx.chatMessage.updateMany({ where: { senderUserId: userId }, data: { text: REMOVED_MESSAGE } }),
     tx.gameSearchMessage.updateMany({ where: { senderUserId: userId }, data: { text: REMOVED_MESSAGE } }),

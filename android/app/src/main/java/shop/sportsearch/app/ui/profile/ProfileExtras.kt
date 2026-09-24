@@ -269,7 +269,7 @@ fun ProfileBasicsEditorScreen(
                     "I enjoy intense rallies and evening practice.",
                     "Люблю интенсивные розыгрыши и вечерние тренировки.",
                 ),
-                onValueChange = { onChange(profile.copy(bio = it.ifEmpty { null })) },
+                onValueChange = { onChange(profile.copy(bio = it.take(PROFILE_BIO_MAX_LENGTH).ifEmpty { null })) },
                 minHeight = 96.dp,
             )
 
