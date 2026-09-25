@@ -20,15 +20,19 @@ object AppConfig {
 
 /** Port of `enum LegalDocuments`. */
 object LegalDocuments {
-    const val USER_AGREEMENT_VERSION = "2026-08-24"
+    /** The version without bundled personal-data consent: the sign-in button accepts it. */
+    const val USER_AGREEMENT_VERSION = "2026-09-24"
 
     val acceptanceError: String
         get() = L10n.string(
-            "Accept the User Agreement and consent to personal data processing.",
-            "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных.",
+            "Accept the User Agreement.",
+            "Нужно принять пользовательское соглашение.",
         )
 
     val userAgreementUrl: String get() = "${AppConfig.apiBaseUrl}/legal/terms"
+    val privacyPolicyUrl: String get() = "${AppConfig.apiBaseUrl}/legal/privacy"
+    val profileVisibilityConsentUrl: String get() = "${AppConfig.apiBaseUrl}/legal/profile-visibility"
+    val analyticsConsentUrl: String get() = "${AppConfig.apiBaseUrl}/legal/analytics"
 }
 
 /**

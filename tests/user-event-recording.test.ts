@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), createMany: vi.fn(), findMany: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { userEvent: { create: mocks.create, createMany: mocks.createMany }, gameRequest: { findMany: mocks.findMany } } }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), createMany: vi.fn(), findMany: vi.fn(), users: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { userEvent: { create: mocks.create, createMany: mocks.createMany }, gameRequest: { findMany: mocks.findMany }, user: { findMany: mocks.users } } }));
 import { recordGameRequestMilestones, recordUserEvent, recordUserEventsOnce } from "@/server/user-events";
 
 const root = { id: "root", sharedRootId: null, createdByUserId: "organizer", matchedUserId: "player" };
@@ -10,6 +10,20 @@ describe("committed user telemetry", () => {
     vi.resetAllMocks();
     mocks.create.mockResolvedValue({});
     mocks.createMany.mockResolvedValue({ count: 1 });
+    // Everyone in these cases has opted in to analytics.
+    mocks.users.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id })));
+  });
+
+  it("drops events of people who have not opted in to analytics", async () => {
+    mocks.users.mockResolvedValue([{ id: "consented" }]);
+    await recordUserEventsOnce([
+      { userId: "consented", type: "profile_completed", entityType: "user", entityId: "consented" },
+      { userId: "declined", type: "profile_completed", entityType: "user", entityId: "declined" }
+    ]);
+    expect(mocks.users.mock.calls[0][0].where).toEqual({ id: { in: ["consented", "declined"] }, analyticsConsent: true });
+    expect(mocks.createMany.mock.calls[0][0].data.map((event: { userId: string }) => event.userId)).toEqual(["consented"]);
+    await recordUserEvent({ userId: "declined", type: "message_sent" });
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it("does not let failed telemetry fail the product action", async () => {

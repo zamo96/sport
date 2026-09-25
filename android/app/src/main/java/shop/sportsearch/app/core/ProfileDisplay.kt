@@ -18,35 +18,6 @@ enum class ProfileScreenMode {
         }
 }
 
-/** Port of `enum ProfileVisibilityMode`. */
-enum class ProfileVisibilityMode(val wire: String) {
-    PUBLIC_PROFILE("publicProfile"),
-    LIMITED_PROFILE("limitedProfile");
-
-    val title: String
-        get() = when (this) {
-            PUBLIC_PROFILE -> L10n.string("Public profile", "Публичный профиль")
-            LIMITED_PROFILE -> L10n.string("Limited profile", "Ограниченный профиль")
-        }
-
-    val description: String
-        get() = when (this) {
-            PUBLIC_PROFILE -> L10n.string(
-                "Show photos, sport, level, district, and bio. Best for finding new players.",
-                "Показывать фото, спорт, уровень, район и описание. Подходит для поиска новых игроков.",
-            )
-            LIMITED_PROFILE -> L10n.string(
-                "Show only name, sport, and city. More privacy with fewer details.",
-                "Показывать только имя, спорт и город. Больше приватности — меньше деталей.",
-            )
-        }
-
-    companion object {
-        fun from(value: String?): ProfileVisibilityMode =
-            entries.firstOrNull { it.wire == value } ?: PUBLIC_PROFILE
-    }
-}
-
 data class ProfileCompletionStatus(val percent: Int, val missingSteps: List<String>)
 
 /** Port of `Sport.shortTitle` in ProfileView.swift. */

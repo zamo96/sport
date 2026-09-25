@@ -1,7 +1,7 @@
 import { recordUserEventsOnce } from "@/server/user-events";
 import { NextRequest } from "next/server";
 
-import { destroySession, getSessionUser, requireSessionUser } from "@/lib/auth";
+import { destroySession, getLegalAcceptanceRequestMeta, getSessionUser, requireSessionUser } from "@/lib/auth";
 import { resolveLocationFromDistrict } from "@/lib/geo";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { resolveRequestLocale } from "@/lib/locales";
@@ -14,6 +14,7 @@ import {
   getLocationPlace,
   shouldPreserveCurrentGlobalLocation
 } from "@/server/locations";
+import { logMapVisibilityChange } from "@/server/consents";
 import { serializeMe } from "@/server/serializers";
 
 export async function GET(request: NextRequest) {
@@ -152,6 +153,10 @@ export async function PATCH(request: NextRequest) {
       },
       include: { location: { include: { serviceArea: true } } }
     });
+
+    if (body.showOnMap !== undefined) {
+      await logMapVisibilityChange(currentUser, body.showOnMap, getLegalAcceptanceRequestMeta(request));
+    }
 
     if (!currentUser.onboardingCompleted && user.onboardingCompleted) {
       await recordUserEventsOnce([{ userId: user.id, type: "profile_completed", entityType: "user", entityId: user.id }]);

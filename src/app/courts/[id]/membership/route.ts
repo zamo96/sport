@@ -5,6 +5,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { haversineDistanceKm } from "@/lib/geo";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { publicProfileWhere } from "@/lib/profile-visibility";
 import { emptyCourtActiveSearchSummary, getCourtActiveSearchSummaries } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
 import { assertActiveCourtIds } from "@/server/court-status";
@@ -72,6 +73,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           where: {
             userId: {
               not: user.id
+            },
+            user: {
+              accountStatus: "active",
+              isVerified: true,
+              onboardingCompleted: true,
+              ...publicProfileWhere("registered"),
+              blockedUsers: { none: { blockedUserId: user.id } },
+              blockingUsers: { none: { blockerUserId: user.id } }
             }
           },
           include: {
@@ -93,7 +102,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!refreshed) {
       return fail("Клуб не найден", 404);
     }
-    const activeSearchSummaries = await getCourtActiveSearchSummaries([refreshed.id]);
+    const activeSearchSummaries = await getCourtActiveSearchSummaries([refreshed.id], user.id);
 
     return ok({
       court: serializeCourt({

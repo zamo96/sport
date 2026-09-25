@@ -22,8 +22,9 @@ import { z } from "zod";
 
 import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
-import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
+import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR, USER_AGREEMENT_VERSION } from "@/lib/legal-contract";
 import { normalizeSupportedLocale } from "@/lib/locales";
+import { CONSENT_FULL_NAME_PATTERN } from "@/lib/profile-visibility";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { CLIENT_REPORTABLE_EVENT_TYPES } from "@/lib/user-events";
 
@@ -100,8 +101,16 @@ export const requestLinkSchema = z.object({
   userAgreement: userAgreementAcceptanceSchema
 });
 
+/**
+ * Клиент умеет показывать экран согласий. Новый аккаунт тогда создаётся
+ * скрытым до ответа; старые сборки этого поля не шлют и получают прежнее
+ * поведение (`legacy`), иначе их пользователи остались бы невидимыми навсегда.
+ */
+const consentReviewSupportSchema = z.boolean().optional();
+
 export const verifySchema = z.object({
   showOnMap: z.boolean().optional(),
+  consentReview: consentReviewSupportSchema,
   email: z.string().email().transform((value) => value.toLowerCase()),
   code: z.string().length(6),
   userAgreement: userAgreementAcceptanceSchema
@@ -109,6 +118,7 @@ export const verifySchema = z.object({
 
 export const appleAuthSchema = z.object({
   showOnMap: z.boolean().optional(),
+  consentReview: consentReviewSupportSchema,
   identityToken: z.string().min(1),
   email: z
     .string()
@@ -834,3 +844,38 @@ export const userEventsSchema = z.object({
 }).strict();
 
 export type UserEventPayload = z.infer<typeof userEventSchema>;
+
+export const consentUpdateSchema = z
+  .object({
+    source: z.enum(["web", "ios", "android"]),
+    acceptAgreementVersion: z
+      .literal(USER_AGREEMENT_VERSION, "Нужно принять актуальную редакцию пользовательского соглашения")
+      .optional(),
+    profile: z
+      .object({
+        decision: z.enum(["visible", "hidden"]),
+        fullName: z
+          .string()
+          .trim()
+          .max(150)
+          .transform((value) => value.replace(/\s+/g, " "))
+          .refine((value) => CONSENT_FULL_NAME_PATTERN.test(value), "Укажите фамилию и имя")
+          .optional(),
+        visibleToGuests: z.boolean().optional(),
+        showsBio: z.boolean().optional(),
+        showsPhotos: z.boolean().optional(),
+        showsVideos: z.boolean().optional(),
+        showsSearches: z.boolean().optional(),
+        showOnMap: z.boolean().optional()
+      })
+      .strict()
+      .optional(),
+    analytics: z.boolean().optional()
+  })
+  .strict()
+  .refine(
+    (value) => value.acceptAgreementVersion !== undefined || value.profile !== undefined || value.analytics !== undefined,
+    "Нет изменений согласий"
+  );
+
+export type ConsentUpdatePayload = z.infer<typeof consentUpdateSchema>;

@@ -17,6 +17,7 @@ import type {
 
 import { getDistrictLabel } from "@/lib/constants";
 import { publicPlayerMapAreas } from "@/lib/player-map-areas";
+import { buildConsentState, redactPublicPreview, type ProfileVisibilityFields } from "@/lib/profile-visibility";
 import { DEFAULT_LOCALE, type SupportedLocale } from "@/lib/locales";
 import { personalActivityVideoUrls } from "@/lib/personal-activity-media";
 import { formatDistanceKm } from "@/lib/utils";
@@ -28,14 +29,15 @@ export function serializeMe<
     localeOverride?: string | null;
     showOnMap?: boolean;
     location?: Parameters<typeof serializeLocationRelation>[0];
-  }
+  } & Parameters<typeof buildConsentState>[0]
 >(user: T, requestLocale: SupportedLocale = DEFAULT_LOCALE) {
-  const { location, ...legacyUser } = user;
+  const { location, consentFullName: _consentFullName, ...legacyUser } = user;
   const serializedLocation = serializeLocationRelation(location);
   const localeOverride = user.localeOverride === "en" || user.localeOverride === "ru" ? user.localeOverride : null;
   return {
     ...legacyUser,
     showOnMap: user.showOnMap === true,
+    consents: buildConsentState(user),
     localeOverride,
     effectiveLocale: localeOverride ?? requestLocale,
     location: serializedLocation,
@@ -56,6 +58,15 @@ export function serializeUserPreview(user: PreviewUserInput) {
     ...serializeUserPreviewFields(user),
     gameSearches: "gameSearches" in user ? serializePreviewGameSearches((user as PreviewUserInput & { gameSearches?: unknown }).gameSearches) : undefined
   };
+}
+
+/**
+ * Карточка для публичных списков — поиска, карты, клубов. Показывает только
+ * то, что владелец разрешил в согласии на показ анкеты. Собеседникам и
+ * участникам общей игры отдаётся обычный `serializeUserPreview`.
+ */
+export function serializePublicUserPreview(user: PreviewUserInput & ProfileVisibilityFields) {
+  return redactPublicPreview(serializeUserPreview(user), user);
 }
 
 function serializeUserPreviewFields(user: PreviewUserInput) {
@@ -147,7 +158,7 @@ export function serializeCourt(
     distanceLabel: formatDistanceKm(court.distanceKm),
     isMember: court.isMember ?? false,
     memberCount: court._count?.members ?? court.members?.length ?? 0,
-    members: court.members?.map((member) => serializeUserPreview(member.user)) ?? [],
+    members: court.members?.map((member) => serializePublicUserPreview(member.user)) ?? [],
     activeSearchesCount: court.activeSearchesCount ?? 0,
     activeSearchPlayersCount: court.activeSearchPlayersCount ?? 0,
     activeSearchPreviewUsers: court.activeSearchPreviewUsers ?? []

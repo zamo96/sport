@@ -8,6 +8,7 @@ protocol TennisRepository {
     func logout(pushDeviceToken: String?)
     func fetchCurrentUser() async throws -> UserProfile
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile
+    func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile
     func updateLocaleOverride(_ locale: String?) async throws -> String?
     func fetchLocationCountries(query: String?) async throws -> [GeoCountry]
     func fetchLocationCities(countryCode: String, query: String, limit: Int) async throws -> [GeoPlace]

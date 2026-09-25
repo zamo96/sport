@@ -57,6 +57,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
+import shop.sportsearch.app.ui.consents.ConsentSettingsScreen
+import shop.sportsearch.app.ui.consents.consentStatusText
 import shop.sportsearch.app.ui.components.*
 import shop.sportsearch.app.ui.components.rememberAppHaptics
 import shop.sportsearch.app.ui.location.GlobalLocationPickerSheet
@@ -65,7 +67,6 @@ import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 
 private const val PROFILE_PREFS = "sportsearch.profile"
-private const val VISIBILITY_KEY = "profile.visibilityMode"
 
 /** The subscreen currently pushed on top of the profile tab. */
 private enum class ProfileRoute {
@@ -95,9 +96,6 @@ fun ProfileScreen(appModel: AppViewModel) {
     var gallery by remember { mutableStateOf<ReportPhotoGalleryItem?>(null) }
     var isDeleteConfirmationPresented by remember { mutableStateOf(false) }
     var isBioEditorPresented by remember { mutableStateOf(false) }
-    var visibilityMode by remember {
-        mutableStateOf(ProfileVisibilityMode.from(prefs.getString(VISIBILITY_KEY, null)))
-    }
 
     var gameFeedRequests by remember { mutableStateOf<List<MatchGameRequest>>(emptyList()) }
     var gameFeedVisits by remember { mutableStateOf<List<PersonalActivity>>(emptyList()) }
@@ -662,15 +660,7 @@ fun ProfileScreen(appModel: AppViewModel) {
             }
 
             ProfileRoute.PRIVACY -> {
-                VisibilitySettingsView(
-                    appModel = appModel,
-                    selection = visibilityMode,
-                    onSelect = { mode ->
-                        visibilityMode = mode
-                        prefs.edit().putString(VISIBILITY_KEY, mode.wire).apply()
-                    },
-                    onBack = { route = ProfileRoute.NONE },
-                )
+                ConsentSettingsScreen(appModel = appModel, onBack = { route = ProfileRoute.NONE })
                 return
             }
 
@@ -690,7 +680,6 @@ fun ProfileScreen(appModel: AppViewModel) {
                 QRProfileView(
                     appModel = appModel,
                     profile = profile,
-                    visibilityMode = visibilityMode,
                     onBack = { route = ProfileRoute.NONE },
                     onOpenVisibility = { route = ProfileRoute.PRIVACY },
                 )
@@ -890,8 +879,8 @@ fun ProfileScreen(appModel: AppViewModel) {
                     ProfileMenuRow(
                         Icons.Filled.Lock,
                         Color.White.copy(alpha = 0.82f),
-                        L10n.string("Privacy", "Приватность"),
-                        visibilityMode.title,
+                        L10n.string("Visibility and consents", "Видимость и согласия"),
+                        consentStatusText(profile.consents),
                     ) { route = ProfileRoute.PRIVACY }
 
                     ProfileMenuRow(

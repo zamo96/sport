@@ -10,7 +10,7 @@ export {
   LEGAL_ACCEPTANCE_ERROR,
   LEGACY_USER_AGREEMENT_VERSION,
   LEGAL_OPERATOR,
-  PERSONAL_DATA_CONSENT_VERSION,
+  PREVIOUS_USER_AGREEMENT_VERSION,
   USER_AGREEMENT_EFFECTIVE_DATE,
   USER_AGREEMENT_KEY,
   USER_AGREEMENT_TITLE,
@@ -43,10 +43,10 @@ export type UserAgreementDocument = {
   sections: UserAgreementSection[];
 };
 
-export const PRIVACY_POLICY_VERSION = "2026-07-07";
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "7 июля 2026 года";
-export const PRIVACY_POLICY_TITLE = "Политика конфиденциальности SportSearch";
-export const PRIVACY_POLICY_SERVICE_NAME = "SportSearch";
+export const PRIVACY_POLICY_VERSION = "2026-09-24";
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "24 сентября 2026 года";
+export const PRIVACY_POLICY_TITLE = "Политика конфиденциальности НаТреню";
+export const PRIVACY_POLICY_SERVICE_NAME = "НаТреню";
 
 const LEGAL_OPERATOR_DETAILS = [
   `Оператор: ${LEGAL_OPERATOR.legalName}`,
@@ -62,11 +62,20 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
     paragraphs: [
       `Настоящая Политика конфиденциальности описывает, как ${LEGAL_OPERATOR.legalName} (далее - Оператор) обрабатывает данные пользователей сервиса ${PRIVACY_POLICY_SERVICE_NAME}.`,
       "Политика применяется к iOS-приложению, сайту, PWA, API и другим интерфейсам сервиса.",
-      "Используя сервис, пользователь подтверждает, что ознакомился с настоящей Политикой. Если пользователь не согласен с условиями обработки данных, он должен прекратить использование функций сервиса, требующих аккаунта."
+      "Политика описывает обработку данных и не является согласием на обработку. Отдельные согласия — на показ анкеты и на аналитику — оформляются отдельными действиями пользователя и могут быть изменены или отозваны в настройках профиля."
     ]
   },
   {
-    title: "2. Какие данные обрабатываются",
+    title: "2. Правовые основания",
+    bullets: [
+      "Аккаунт, вход, профиль, подбор партнеров, рекомендации, переписка, игровые заявки и сервисные уведомления — заключение и исполнение пользовательского соглашения по инициативе пользователя (пункт 5 части 1 статьи 6 Федерального закона N 152-ФЗ).",
+      "Показ анкеты в поиске, на карте и в каталоге спортивных центров — отдельное согласие на обработку персональных данных, разрешенных для распространения (статья 10.1 Федерального закона N 152-ФЗ): https://sportsearch.shop/legal/profile-visibility.",
+      "Аналитика использования приложения — отдельное согласие: https://sportsearch.shop/legal/analytics. Без него события использования не записываются.",
+      "Поддержка, безопасность и выполнение требований закона — исполнение соглашения, обязанности оператора по закону и защита прав при соблюдении прав пользователя."
+    ]
+  },
+  {
+    title: "3. Какие данные обрабатываются",
     bullets: [
       "Данные аккаунта: email, идентификатор Apple ID, сведения о входе и подтверждении аккаунта.",
       "Данные профиля: имя, возраст, пол, город, район, предпочитаемые районы, виды спорта, спортивный уровень, доступность, описание профиля, фото и видео, если пользователь добавляет их сам.",
@@ -77,7 +86,7 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
     ]
   },
   {
-    title: "3. Цели обработки",
+    title: "4. Цели обработки",
     bullets: [
       "создание и поддержка аккаунта;",
       "подбор спортивных партнеров, поисков и игровых предложений;",
@@ -86,19 +95,21 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
       "отправка сервисных уведомлений об откликах, сообщениях, игровых заявках, изменениях статуса и безопасности аккаунта;",
       "поддержка пользователей и обработка обращений;",
       "предотвращение злоупотреблений, защита пользователей и обеспечение стабильной работы сервиса;",
-      "анализ качества продукта, исправление ошибок и развитие функций сервиса;",
+      "анализ использования приложения — только с отдельного согласия пользователя; исправление ошибок и развитие функций сервиса;",
       "выполнение требований закона и защита прав Оператора, пользователей и третьих лиц."
     ]
   },
   {
-    title: "4. Что видно другим пользователям",
+    title: "5. Что видно другим пользователям",
     paragraphs: [
-      "Часть данных нужна для работы спортивного поиска и может быть показана другим пользователям. Например, имя, возраст, город, район, виды спорта, уровень, доступность, фото, видео, описание профиля, активные поиски, игровые предложения и выбранные параметры игры.",
+      "Анкета показывается в поиске, на карте и в каталоге спортивных центров только с отдельного согласия пользователя и только в пределах выбранных им сведений (анкета, описание, фото, видео, точка района на карте, игровые поиски) и аудитории (только вошедшие пользователи или также гости без входа). Фамилия из согласия, email, IP-адрес, push-токены, точные координаты и переписка не показываются.",
+      "Все пользователи, давшие согласие на показ анкеты, запрещают передачу своих данных за пределы сервиса и их сбор в сторонние базы. Иные условия и запреты можно установить, написав на контактный email оператора; оператор публикует их не позднее трех рабочих дней после получения.",
+      "Аккаунты, созданные до 24 сентября 2026 года, показываются как прежде, пока владелец не ответит на экране согласия при следующем открытии приложения.",
       "Сообщения и детали конкретной договоренности видны участникам соответствующего чата, матча, поиска или игровой заявки."
     ]
   },
   {
-    title: "5. Передача данных",
+    title: "6. Передача данных",
     paragraphs: [
       "Оператор не продает персональные данные пользователей.",
       "Данные могут передаваться техническим поставщикам, которые помогают обеспечивать работу сервиса: хостинг, хранение данных, отправка email, push-уведомления, аналитика, диагностика, безопасность и поддержка. Такие поставщики получают данные только в объеме, необходимом для выполнения своих функций.",
@@ -106,7 +117,7 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
     ]
   },
   {
-    title: "6. Хранение и удаление",
+    title: "7. Хранение и удаление",
     paragraphs: [
       "Данные хранятся столько, сколько необходимо для работы аккаунта, предоставления функций сервиса, выполнения требований закона, разрешения споров, обеспечения безопасности и защиты прав.",
       "Пользователь может обратиться к Оператору для удаления аккаунта, уточнения, блокирования или удаления персональных данных, а также для отзыва согласия на обработку данных.",
@@ -114,35 +125,35 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
     ]
   },
   {
-    title: "7. Права пользователя",
+    title: "8. Права пользователя",
     bullets: [
       "получить информацию об обработке своих персональных данных;",
       "запросить уточнение, блокирование или удаление данных;",
-      "отозвать согласие на обработку персональных данных;",
+      "изменить или отозвать согласие на показ анкеты и согласие на аналитику в настройках профиля;",
       "удалить аккаунт или обратиться за помощью с удалением;",
       "направить вопрос, жалобу или запрос по конфиденциальности на контактный email Оператора."
     ]
   },
   {
-    title: "8. Дети",
+    title: "9. Дети",
     paragraphs: [
       "Сервис предназначен для пользователей от 18 лет. Если Оператор узнает, что аккаунт создан лицом младше 18 лет, такой аккаунт может быть ограничен или удален."
     ]
   },
   {
-    title: "9. Безопасность",
+    title: "10. Безопасность",
     paragraphs: [
       "Оператор применяет организационные и технические меры для защиты данных от несанкционированного доступа, изменения, раскрытия или уничтожения. При этом ни один способ передачи или хранения данных не может быть гарантирован как полностью безопасный."
     ]
   },
   {
-    title: "10. Изменения Политики",
+    title: "11. Изменения Политики",
     paragraphs: [
       "Оператор может обновлять настоящую Политику. Новая редакция размещается в сервисе с указанием версии и даты вступления в силу. Если изменения существенно влияют на права пользователей, Оператор может дополнительно уведомить пользователей доступным способом."
     ]
   },
   {
-    title: "11. Контакты",
+    title: "12. Контакты",
     bullets: LEGAL_OPERATOR_DETAILS
   }
 ];
@@ -152,14 +163,14 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
     title: "1. Общие положения",
     paragraphs: [
       `Настоящее Пользовательское соглашение регулирует отношения между ${LEGAL_OPERATOR.legalName} (далее - Оператор) и лицом, использующим сервис ${LEGAL_OPERATOR.serviceName} через сайт, PWA, iOS-приложение, API или иные интерфейсы сервиса (далее - Пользователь).`,
-      "Соглашение является публичной офертой в смысле статей 435, 437 и 438 Гражданского кодекса Российской Федерации. Регистрация, вход в аккаунт, подтверждение email, вход через Apple ID, проставление отметки о согласии или дальнейшее использование сервиса означает полный и безоговорочный акцепт Соглашения.",
+      "Соглашение является публичной офертой в смысле статей 435, 437 и 438 Гражданского кодекса Российской Федерации. Акцептом Соглашения является нажатие кнопки входа или регистрации (получение кода на email, вход через Apple ID или Google), рядом с которой размещена ссылка на Соглашение и указано, что нажатие означает его принятие. Для действующего аккаунта принятие новой редакции фиксируется отдельным действием в сервисе.",
       "Если Пользователь не согласен с условиями Соглашения, он обязан прекратить регистрацию и не использовать функции сервиса, требующие аккаунта."
     ]
   },
   {
     title: "2. Термины",
     bullets: [
-      "Сервис - программный комплекс SportSearch для поиска спортивных партнеров, игровых заявок, переписок, уведомлений и связанных функций.",
+      `Сервис - программный комплекс ${LEGAL_OPERATOR.serviceName} для поиска спортивных партнеров, игровых заявок, переписок, уведомлений и связанных функций.`,
       "Аккаунт - учетная запись Пользователя, создаваемая через email-код или Apple ID.",
       "Профиль - сведения Пользователя о имени, возрасте, городе, районе, видах спорта, уровне, доступности, фото, видео и иных данных, которые Пользователь указывает в сервисе.",
       "Контент - тексты, сообщения, фото, видео, отзывы, заявки, отклики и иные материалы, размещаемые Пользователем.",
@@ -214,17 +225,16 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
   {
     title: "8. Персональные данные",
     paragraphs: [
-      "При регистрации и использовании сервиса Пользователь дает Оператору согласие на обработку персональных данных в соответствии с Федеральным законом от 27.07.2006 N 152-ФЗ \"О персональных данных\".",
-      "Оператор может обрабатывать email, идентификатор Apple ID, имя, возраст, пол, город, район, предпочитаемые районы, виды спорта, спортивный уровень, доступность, фото, видео, сообщения, игровые заявки, сведения об активности, push-токены, технические данные устройства, IP-адрес, user-agent и иные данные, которые Пользователь передает при использовании сервиса.",
-      "Цели обработки: создание и поддержка аккаунта, подтверждение email или Apple ID, подбор спортивных партнеров, показ профиля другим Пользователям в рамках функций сервиса, организация переписки и игровых заявок, отправка сервисных уведомлений, безопасность, предотвращение злоупотреблений, поддержка Пользователей, аналитика качества и выполнение требований закона.",
-      "Согласие действует до удаления аккаунта, отзыва согласия или достижения целей обработки, если более длительный срок хранения не требуется законом или защитой прав Оператора и Пользователей."
+      "Порядок обработки персональных данных установлен отдельной Политикой конфиденциальности: https://sportsearch.shop/legal/privacy.",
+      "Обработка, необходимая для заключения и исполнения настоящего Соглашения по инициативе Пользователя (аккаунт, вход, профиль, подбор партнеров, переписка, игровые заявки и сервисные уведомления), осуществляется на основании пункта 5 части 1 статьи 6 Федерального закона от 27.07.2006 N 152-ФЗ \"О персональных данных\".",
+      "Принятие Соглашения не является согласием на обработку персональных данных, на показ анкеты неопределенному кругу лиц или на необязательную аналитику. Такие согласия оформляются отдельно, отдельным действием Пользователя, и могут быть в любой момент изменены или отозваны в настройках профиля."
     ]
   },
   {
-    title: "9. Согласие на распространение данных в сервисе",
+    title: "9. Показ анкеты другим пользователям",
     paragraphs: [
-      "Пользователь понимает, что часть данных профиля и игровых заявок может быть показана другим Пользователям для поиска партнеров и согласования игр. К таким данным могут относиться имя, возраст, город, район, виды спорта, уровень, доступность, фото, видео, описание профиля, активные поиски и игровые предложения.",
-      "Пользователь самостоятельно не размещает данные, которые не хочет показывать другим Пользователям, и может изменить или удалить часть сведений в профиле, если соответствующая функция доступна."
+      "Анкета показывается в поиске, на карте и в каталоге спортивных центров только при наличии отдельного согласия на обработку персональных данных, разрешенных для распространения (https://sportsearch.shop/legal/profile-visibility), и только в пределах выбранных Пользователем сведений и аудитории.",
+      "Без такого согласия Пользователь может искать партнеров, писать им и участвовать в играх; его сведения получают только те участники, с которыми он взаимодействует. Для прекращения показа Пользователь меняет настройки видимости анкеты или направляет требование на контактный email Оператора."
     ]
   },
   {
@@ -264,10 +274,10 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
     ]
   },
   {
-    title: "15. Удаление аккаунта и отзыв согласия",
+    title: "15. Удаление аккаунта и отзыв согласий",
     paragraphs: [
-      "Пользователь может обратиться к Оператору для удаления аккаунта, уточнения, блокирования или удаления персональных данных, а также для отзыва согласия на обработку персональных данных.",
-      "Отзыв согласия может привести к невозможности использовать аккаунт и функции сервиса, для которых обработка данных необходима. Оператор вправе продолжить хранение отдельных сведений, если это требуется законом, бухгалтерским учетом, безопасностью, разрешением споров или защитой прав."
+      "Пользователь может удалить аккаунт, обратиться к Оператору для уточнения, блокирования или удаления персональных данных, а также отозвать отдельные согласия в настройках профиля или по контактному email Оператора.",
+      "Отзыв согласия на показ анкеты или на аналитику не ограничивает остальные функции сервиса. Оператор вправе продолжить хранение отдельных сведений, если это требуется законом, безопасностью, разрешением споров или защитой прав."
     ]
   },
   {
@@ -301,14 +311,14 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
     title: "1. General provisions",
     paragraphs: [
       `These Terms of Use govern the relationship between ${LEGAL_OPERATOR.legalName} (the “Operator”) and the person using the ${LEGAL_OPERATOR.serviceName} service through the website, PWA, iOS application, API, or other service interfaces (the “User”).`,
-      "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. Registration, signing in to an account, email confirmation, signing in with Apple ID, checking the consent box, or continued use of the service constitutes full and unconditional acceptance of these Terms.",
+      "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. The Terms are accepted by pressing the sign-in or registration button (requesting an email code, signing in with Apple ID or Google) placed next to a link to these Terms together with a statement that pressing it means acceptance. For an existing Account, acceptance of a new version is recorded by a separate action in the service.",
       "If the User does not agree to these Terms, the User must discontinue registration and must not use service features that require an account."
     ]
   },
   {
     title: "2. Definitions",
     bullets: [
-      "Service means the SportSearch software suite for finding sports partners, game requests, chats, notifications, and related features.",
+      `Service means the ${LEGAL_OPERATOR.serviceName} software suite for finding sports partners, game requests, chats, notifications, and related features.`,
       "Account means the User account created using an email code or Apple ID.",
       "Profile means information provided by the User in the service, including name, age, city, district, sports, skill level, availability, photos, videos, and other data.",
       "Content means texts, messages, photos, videos, reviews, requests, responses, and other materials posted by the User.",
@@ -363,17 +373,16 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
   {
     title: "8. Personal data",
     paragraphs: [
-      "By registering for and using the service, the User consents to the Operator's processing of personal data in accordance with Federal Law No. 152-FZ of July 27, 2006, On Personal Data.",
-      "The Operator may process the User's email, Apple ID identifier, name, age, gender, city, district, preferred districts, sports, skill level, availability, photos, videos, messages, game requests, activity data, push tokens, device technical data, IP address, user agent, and other data submitted by the User when using the service.",
-      "The purposes of processing are creating and maintaining an Account, verifying an email address or Apple ID, matching sports partners, displaying the Profile to other Users within service features, enabling chats and game requests, sending service notifications, maintaining security, preventing abuse, providing User support, analyzing service quality, and complying with legal requirements.",
-      "Consent remains valid until the Account is deleted, consent is withdrawn, or the purposes of processing are achieved, unless a longer retention period is required by law or for the protection of the rights of the Operator and Users."
+      "The procedure for processing personal data is set out in the separate Privacy Policy: https://sportsearch.shop/legal/privacy.",
+      "Processing necessary to conclude and perform these Terms at the User's request (account, sign-in, Profile, partner matching, chats, game requests, and service notifications) is carried out under clause 5 of Part 1 of Article 6 of Federal Law No. 152-FZ of July 27, 2006, On Personal Data.",
+      "Accepting these Terms is not consent to personal-data processing, to showing the Profile to an indefinite number of people, or to optional analytics. Such consents are given separately, by a separate action of the User, and can be changed or withdrawn at any time in the Profile settings."
     ]
   },
   {
-    title: "9. Consent to data distribution within the service",
+    title: "9. Showing the Profile to other users",
     paragraphs: [
-      "The User understands that some Profile and game request data may be shown to other Users to find partners and arrange games. Such data may include name, age, city, district, sports, skill level, availability, photos, videos, Profile description, active searches, and game offers.",
-      "The User must not post data that they do not want to show to other Users and may change or delete certain Profile information when the relevant feature is available."
+      "The Profile is shown in search, on the map, and in the sports-venue catalog only with a separate consent to the processing of personal data permitted for distribution (https://sportsearch.shop/legal/profile-visibility), and only within the data and audience chosen by the User.",
+      "Without such consent the User can still search for partners, message them, and join games; the User's data is received only by the participants the User interacts with. To stop the Profile from being shown, the User changes the Profile visibility settings or sends a request to the Operator's contact email."
     ]
   },
   {
@@ -413,10 +422,10 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
     ]
   },
   {
-    title: "15. Account deletion and withdrawal of consent",
+    title: "15. Account deletion and withdrawal of consents",
     paragraphs: [
-      "The User may contact the Operator to delete their Account, correct, block, or delete personal data, or withdraw consent to personal-data processing.",
-      "Withdrawal of consent may make it impossible to use the Account and service features that require data processing. The Operator may continue to retain certain information if required by law, accounting obligations, security, dispute resolution, or the protection of rights."
+      "The User may delete their Account, contact the Operator to correct, block, or delete personal data, and withdraw separate consents in the Profile settings or via the Operator's contact email.",
+      "Withdrawing consent to showing the Profile or to analytics does not restrict other service features. The Operator may continue to retain certain information if required by law, security, dispute resolution, or the protection of rights."
     ]
   },
   {
@@ -437,7 +446,7 @@ export const USER_AGREEMENT_DOCUMENTS: Record<LegalLanguage, UserAgreementDocume
   ru: {
     language: "ru",
     title: USER_AGREEMENT_TITLE,
-    description: "Пользовательское соглашение сервиса SportSearch",
+    description: `Пользовательское соглашение сервиса ${LEGAL_OPERATOR.serviceName}`,
     version: USER_AGREEMENT_VERSION,
     effectiveDate: USER_AGREEMENT_EFFECTIVE_DATE,
     backLabel: "Назад к регистрации",
@@ -448,10 +457,10 @@ export const USER_AGREEMENT_DOCUMENTS: Record<LegalLanguage, UserAgreementDocume
   },
   en: {
     language: "en",
-    title: "SportSearch Terms of Use",
-    description: "Terms of Use for the SportSearch service",
+    title: "NaTrenyu Terms of Use",
+    description: "Terms of Use for the NaTrenyu service",
     version: USER_AGREEMENT_VERSION,
-    effectiveDate: "August 24, 2026",
+    effectiveDate: "September 24, 2026",
     backLabel: "Back to registration",
     versionLabel: "Version",
     effectiveDateLabel: "Effective date",

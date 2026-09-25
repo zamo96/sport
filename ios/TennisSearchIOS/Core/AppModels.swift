@@ -803,22 +803,46 @@ enum AuthStep: String, Identifiable {
 }
 
 enum LegalDocuments {
-    static let userAgreementVersion = "2026-08-24"
+    /// Редакция без встроенного согласия на обработку данных: соглашение
+    /// принимается кнопкой входа, согласия спрашиваются отдельно.
+    static let userAgreementVersion = "2026-09-24"
     static var acceptanceError: String {
         L10n.string(
-            "Accept the User Agreement and consent to personal data processing.",
-            "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных."
+            "Accept the User Agreement.",
+            "Нужно принять пользовательское соглашение."
         )
     }
 
-    static var userAgreementURL: URL? {
+    static var userAgreementURL: URL? { url("terms") }
+    static var privacyPolicyURL: URL? { url("privacy") }
+    static var profileVisibilityConsentURL: URL? { url("profile-visibility") }
+    static var analyticsConsentURL: URL? { url("analytics") }
+
+    private static func url(_ document: String) -> URL? {
         if let baseURL = AppConfig.apiBaseURL {
             return baseURL
                 .appendingPathComponent("legal")
-                .appendingPathComponent("terms")
+                .appendingPathComponent(document)
         }
 
-        return URL(string: "https://sportsearch.shop/legal/terms")
+        return URL(string: "https://sportsearch.shop/legal/\(document)")
+    }
+
+    /// Текст под кнопками входа: нажатие означает принятие соглашения. Согласия
+    /// на обработку данных здесь нет — оно не может быть частью соглашения.
+    static var signInNotice: some View {
+        let terms = userAgreementURL?.absoluteString ?? "https://sportsearch.shop/legal/terms"
+        let privacy = privacyPolicyURL?.absoluteString ?? "https://sportsearch.shop/legal/privacy"
+        let markdown = L10n.string(
+            "By continuing, you accept the [User Agreement](\(terms)). How we process data is described in the [Privacy Policy](\(privacy)).",
+            "Нажимая кнопку, вы принимаете [пользовательское соглашение](\(terms)). Как мы обрабатываем данные — в [политике конфиденциальности](\(privacy))."
+        )
+        return Text((try? AttributedString(markdown: markdown)) ?? AttributedString(markdown))
+            .font(.footnote)
+            .foregroundStyle(AppTheme.ink.opacity(0.6))
+            .tint(AppTheme.court)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1077,6 +1101,83 @@ enum OnboardingMapVisibility {
     }
 }
 
+/// Тело `POST /me/consents`. nil-поля не попадают в JSON — сервер их не меняет.
+struct ConsentUpdate: Encodable {
+    struct Profile: Encodable {
+        /// "visible" — согласие на показ анкеты, "hidden" — отказ или отзыв.
+        let decision: String
+        var fullName: String?
+        var visibleToGuests: Bool?
+        var showsBio: Bool?
+        var showsPhotos: Bool?
+        var showsVideos: Bool?
+        var showsSearches: Bool?
+        var showOnMap: Bool?
+    }
+
+    let source = "ios"
+    var acceptAgreementVersion: String?
+    var profile: Profile?
+    var analytics: Bool?
+}
+
+/// Состояние отдельных согласий из `GET /me` (`user.consents`).
+struct ConsentState: Codable, Equatable {
+    /// legacy — аккаунт старше раздельных согласий, виден как раньше до ответа;
+    /// pending — ещё не отвечал; visible / hidden — ответ дан.
+    var profileVisibility: String
+    var visibleToGuests: Bool
+    var showsBio: Bool
+    var showsPhotos: Bool
+    var showsVideos: Bool
+    var showsSearches: Bool
+    var analytics: Bool
+    var fullName: String?
+    var termsUpdateRequired: Bool
+    var reviewRequired: Bool
+
+    var isLegacy: Bool { profileVisibility == "legacy" }
+    var isVisible: Bool { profileVisibility == "visible" || profileVisibility == "legacy" }
+
+    init(
+        profileVisibility: String = "pending",
+        visibleToGuests: Bool = false,
+        showsBio: Bool = false,
+        showsPhotos: Bool = false,
+        showsVideos: Bool = false,
+        showsSearches: Bool = false,
+        analytics: Bool = false,
+        fullName: String? = nil,
+        termsUpdateRequired: Bool = false,
+        reviewRequired: Bool = false
+    ) {
+        self.profileVisibility = profileVisibility
+        self.visibleToGuests = visibleToGuests
+        self.showsBio = showsBio
+        self.showsPhotos = showsPhotos
+        self.showsVideos = showsVideos
+        self.showsSearches = showsSearches
+        self.analytics = analytics
+        self.fullName = fullName
+        self.termsUpdateRequired = termsUpdateRequired
+        self.reviewRequired = reviewRequired
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        profileVisibility = try container.decodeIfPresent(String.self, forKey: .profileVisibility) ?? "legacy"
+        visibleToGuests = try container.decodeIfPresent(Bool.self, forKey: .visibleToGuests) ?? false
+        showsBio = try container.decodeIfPresent(Bool.self, forKey: .showsBio) ?? false
+        showsPhotos = try container.decodeIfPresent(Bool.self, forKey: .showsPhotos) ?? false
+        showsVideos = try container.decodeIfPresent(Bool.self, forKey: .showsVideos) ?? false
+        showsSearches = try container.decodeIfPresent(Bool.self, forKey: .showsSearches) ?? false
+        analytics = try container.decodeIfPresent(Bool.self, forKey: .analytics) ?? false
+        fullName = try container.decodeIfPresent(String.self, forKey: .fullName)
+        termsUpdateRequired = try container.decodeIfPresent(Bool.self, forKey: .termsUpdateRequired) ?? false
+        reviewRequired = try container.decodeIfPresent(Bool.self, forKey: .reviewRequired) ?? false
+    }
+}
+
 struct UserProfile: Codable, Identifiable {
     let id: String
     let email: String?
@@ -1113,6 +1214,8 @@ struct UserProfile: Codable, Identifiable {
     var notificationGames: Bool
     var notificationSound: Bool
     var localeOverride: String?
+    /// Нет у ответов старого сервера — тогда экран согласий не показывается.
+    var consents: ConsentState?
 
     var isOnboardingComplete: Bool {
         OnboardingRequirements.isComplete(
@@ -1156,7 +1259,8 @@ struct UserProfile: Codable, Identifiable {
         notificationMessages: Bool = true,
         notificationGames: Bool = true,
         notificationSound: Bool = true,
-        localeOverride: String? = nil
+        localeOverride: String? = nil,
+        consents: ConsentState? = nil
     ) {
         self.id = id
         self.email = email
@@ -1192,6 +1296,7 @@ struct UserProfile: Codable, Identifiable {
         self.notificationGames = notificationGames
         self.notificationSound = notificationSound
         self.localeOverride = localeOverride
+        self.consents = consents
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1229,6 +1334,7 @@ struct UserProfile: Codable, Identifiable {
         case notificationGames
         case notificationSound
         case localeOverride
+        case consents
     }
 
     init(from decoder: Decoder) throws {
@@ -1269,6 +1375,7 @@ struct UserProfile: Codable, Identifiable {
         notificationGames = try container.decodeIfPresent(Bool.self, forKey: .notificationGames) ?? true
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
         localeOverride = try container.decodeIfPresent(String.self, forKey: .localeOverride)
+        consents = try container.decodeIfPresent(ConsentState.self, forKey: .consents)
     }
 }
 

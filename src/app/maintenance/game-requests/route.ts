@@ -5,6 +5,7 @@ import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { runHotSearchDigestMaintenance } from "@/server/hot-search-digest";
 import { runLifecycleCampaigns } from "@/server/lifecycle-campaigns";
 import { runPendingActionReminders } from "@/server/pending-action-reminders";
+import { purgeExpiredUserEvents } from "@/server/user-events";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,6 +50,7 @@ async function handleMaintenance(request: NextRequest) {
   const pendingActionReminders = await runPendingActionReminders(now, { dryRun });
   const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun, simulatedDeliveries });
   const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun, simulatedDeliveries });
+  const userEvents = dryRun ? null : await purgeExpiredUserEvents(now);
 
-  return ok({ success: true, dryRun, gameRequests, pendingActionReminders, hotSearchDigest, lifecycleCampaigns });
+  return ok({ success: true, dryRun, gameRequests, pendingActionReminders, hotSearchDigest, lifecycleCampaigns, userEvents });
 }

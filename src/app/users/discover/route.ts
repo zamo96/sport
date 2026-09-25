@@ -4,7 +4,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { discoverFiltersSchema } from "@/lib/validators";
 import { getDiscoverCandidates } from "@/server/discover";
-import { serializeUserPreview } from "@/server/serializers";
+import { serializePublicUserPreview } from "@/server/serializers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const candidates = await getDiscoverCandidates(user.id, filters);
 
     return ok({
-      users: candidates.map((candidate) => serializeUserPreview(candidate))
+      users: candidates.map((candidate) => serializePublicUserPreview(candidate))
     });
   } catch (error) {
     if (getErrorMessage(error) === "UNAUTHORIZED") {

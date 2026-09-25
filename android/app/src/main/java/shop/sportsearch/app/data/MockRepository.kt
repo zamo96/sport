@@ -58,6 +58,9 @@ class MockRepository : TennisRepository {
         showOnMap = true,
         onboardingCompleted = true,
         isVerified = true,
+        // An account from before separate consents: the consent screen shows after sign-in.
+        // Like the server: before the first consent the field is prefilled with the profile name.
+        consents = ConsentState(profileVisibility = "legacy", fullName = "Алекс", termsUpdateRequired = true, reviewRequired = true),
     )
 
     private val people = listOf(
@@ -221,6 +224,37 @@ class MockRepository : TennisRepository {
 
     override suspend fun updateProfile(profile: UserProfile): UserProfile {
         this.profile = profile
+        return profile
+    }
+
+    override suspend fun updateConsents(update: ConsentUpdate): UserProfile {
+        delay(240)
+        var consents = profile.consents ?: ConsentState(profileVisibility = "pending")
+        var showOnMap = profile.showOnMap
+        if (update.acceptAgreementVersion != null) consents = consents.copy(termsUpdateRequired = false)
+        update.profile?.let { choice ->
+            consents = if (choice.decision == "visible") {
+                val fullName = choice.fullName ?: consents.fullName
+                    ?: throw ApiException.Server("Укажите фамилию и имя для согласия на показ анкеты")
+                showOnMap = choice.showOnMap ?: false
+                consents.copy(
+                    profileVisibility = "visible",
+                    fullName = fullName,
+                    visibleToGuests = choice.visibleToGuests ?: false,
+                    showsBio = choice.showsBio ?: false,
+                    showsPhotos = choice.showsPhotos ?: false,
+                    showsVideos = choice.showsVideos ?: false,
+                    showsSearches = choice.showsSearches ?: false,
+                )
+            } else {
+                consents.copy(profileVisibility = "hidden")
+            }
+        }
+        update.analytics?.let { consents = consents.copy(analytics = it) }
+        consents = consents.copy(
+            reviewRequired = consents.termsUpdateRequired || consents.profileVisibility in setOf("legacy", "pending"),
+        )
+        profile = profile.copy(showOnMap = showOnMap, consents = consents)
         return profile
     }
 

@@ -91,6 +91,8 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 put("code", code)
                 put("userAgreement", userAgreement(userAgreementAccepted, userAgreementVersion))
                 showOnMap?.let { put("showOnMap", it) }
+                // This build shows the consent screen: a new account stays hidden until it answers.
+                put("consentReview", true)
             },
             deserializer = VerifyEnvelope.serializer(),
         )
@@ -111,6 +113,8 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 put("idToken", idToken)
                 put("userAgreement", userAgreement(userAgreementAccepted, userAgreementVersion))
                 showOnMap?.let { put("showOnMap", it) }
+                // This build shows the consent screen: a new account stays hidden until it answers.
+                put("consentReview", true)
             },
             deserializer = VerifyEnvelope.serializer(),
         )
@@ -124,6 +128,33 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
 
     override suspend fun fetchCurrentUser(): UserProfile =
         client.request(path = "me", deserializer = MeEnvelope.serializer()).user
+
+    override suspend fun updateConsents(update: ConsentUpdate): UserProfile {
+        val payload = body {
+            put("source", "android")
+            put("acceptAgreementVersion", update.acceptAgreementVersion)
+            update.profile?.let { profile ->
+                // Nested objects are not pruned by [body], so nulls are skipped here.
+                put("profile", buildJsonObject {
+                    put("decision", profile.decision)
+                    profile.fullName?.let { put("fullName", it) }
+                    profile.visibleToGuests?.let { put("visibleToGuests", it) }
+                    profile.showsBio?.let { put("showsBio", it) }
+                    profile.showsPhotos?.let { put("showsPhotos", it) }
+                    profile.showsVideos?.let { put("showsVideos", it) }
+                    profile.showsSearches?.let { put("showsSearches", it) }
+                    profile.showOnMap?.let { put("showOnMap", it) }
+                })
+            }
+            put("analytics", update.analytics)
+        }
+        return client.request(
+            path = "me/consents",
+            method = "POST",
+            jsonBody = payload,
+            deserializer = MeEnvelope.serializer(),
+        ).user
+    }
 
     override suspend fun updateProfile(profile: UserProfile): UserProfile {
         val primarySportLevel = profile.preferredSports.firstOrNull()?.let { profile.sportLevels[it.wire] }

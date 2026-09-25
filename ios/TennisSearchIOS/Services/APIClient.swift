@@ -579,6 +579,11 @@ final class LiveTennisRepository: TennisRepository {
         return response.user
     }
 
+    func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile {
+        let response: MeEnvelope = try await client.request(path: "me/consents", method: "POST", body: update)
+        return response.user
+    }
+
     func updateLocaleOverride(_ locale: String?) async throws -> String? {
         let response: LocaleOverrideEnvelope = try await client.request(
             path: "me/locale",
@@ -1212,6 +1217,8 @@ private struct VerifyRequest: Encodable {
     let code: String
     let userAgreement: UserAgreementAcceptanceRequest
     let showOnMap: Bool?
+    /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
+    let consentReview = true
 }
 
 private struct AppleAuthRequest: Encodable {
@@ -1221,6 +1228,8 @@ private struct AppleAuthRequest: Encodable {
     let familyName: String?
     let userAgreement: UserAgreementAcceptanceRequest
     let showOnMap: Bool?
+    /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
+    let consentReview = true
 }
 
 private struct UserAgreementAcceptanceRequest: Encodable {

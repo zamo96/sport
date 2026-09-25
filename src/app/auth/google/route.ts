@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = googleAuthSchema.parse(await request.json());
     phase = "google";
-    const user = await signInWithGoogleIdToken(body.idToken, { showOnMap: body.showOnMap });
+    const user = await signInWithGoogleIdToken(body.idToken, { showOnMap: body.showOnMap, consentReview: body.consentReview });
     phase = "session";
 
     const userWithAgreement = await recordUserAgreementAcceptance(

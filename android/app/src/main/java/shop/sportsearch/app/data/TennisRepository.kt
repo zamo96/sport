@@ -34,6 +34,7 @@ interface TennisRepository {
 
     suspend fun fetchCurrentUser(): UserProfile
     suspend fun updateProfile(profile: UserProfile): UserProfile
+    suspend fun updateConsents(update: ConsentUpdate): UserProfile
     suspend fun updateLocaleOverride(locale: String?): String?
     suspend fun fetchLocationCountries(query: String?): List<GeoCountry>
     suspend fun fetchLocationCities(countryCode: String, query: String, limit: Int = 20): List<GeoPlace>

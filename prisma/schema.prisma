@@ -172,6 +172,22 @@ enum LocationSource {
   geolocation
 }
 
+/// Согласие на показ анкеты другим людям (ст. 10.1 152-ФЗ).
+/// legacy — аккаунт старше раздельных согласий: показывается как раньше, пока
+/// человек не ответит на экране согласия. pending — ещё не отвечал, не
+/// показывается. visible/hidden — ответ дан.
+enum ProfileVisibility {
+  legacy
+  pending
+  visible
+  hidden
+}
+
+enum ConsentKind {
+  profile_visibility
+  analytics
+}
+
 enum AdminAuditAction {
   PROFILE_UPDATED
   ACCOUNT_DEACTIVATED
@@ -261,6 +277,19 @@ model User {
   district                           String?
   preferredDistricts                 Json?
   showOnMap                          Boolean                             @default(true)
+  /// По умолчанию legacy, чтобы старые клиенты и уже существующие строки
+  /// вели себя как раньше; новый поток регистрации явно ставит pending.
+  profileVisibility                  ProfileVisibility                   @default(legacy)
+  profileVisibleToGuests             Boolean                             @default(false)
+  profileShowsBio                    Boolean                             @default(false)
+  profileShowsPhotos                 Boolean                             @default(false)
+  profileShowsVideos                 Boolean                             @default(false)
+  profileShowsSearches               Boolean                             @default(false)
+  analyticsConsent                   Boolean                             @default(false)
+  /// ФИО из согласия на показ анкеты (приказ РКН № 18). Не публикуется.
+  consentFullName                    String?
+  /// Последняя принятая редакция пользовательского соглашения.
+  agreementVersion                   String?
   homeLat                            Float?
   homeLng                            Float?
   tennisLevel                        Int?
@@ -313,7 +342,8 @@ model User {
   sessions                           Session[]
   authCodes                          AuthCode[]
   agreementAcceptances               UserAgreementAcceptance[]
-  sentMessages                       ChatMessage[]
+  consents                           UserConsent[]
+  sentMessages                      ChatMessage[]
   messageReceipts                    MessageReceipt[]
   uploadedChatMedia                  ChatMediaAsset[]
   gameRequestsCreated                GameRequest[]                       @relation("GameRequestCreator")
@@ -1116,6 +1146,26 @@ model UserAgreementAcceptance {
 
   @@unique([userId, agreementKey, agreementVersion])
   @@index([userId, agreementKey, acceptedAt])
+}
+
+/// Журнал ответов на отдельные согласия: каждая выдача, изменение и отзыв —
+/// новая строка. Текущее состояние лежит в полях User.
+model UserConsent {
+  id          String      @id @default(cuid())
+  userId      String
+  kind        ConsentKind
+  version     String
+  granted     Boolean
+  /// Выбор на момент ответа: что показывать и кому.
+  scope       Json?
+  fullName    String?
+  source      String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, createdAt])
 }
 
 model PushDevice {

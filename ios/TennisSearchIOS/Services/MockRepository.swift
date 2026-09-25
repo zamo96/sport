@@ -30,7 +30,10 @@ actor MockRepository: TennisRepository {
         isLookingForGame: true,
         searchRadiusKm: 12,
         onboardingCompleted: true,
-        isVerified: true
+        isVerified: true,
+        // Аккаунт «до раздельных согласий»: после входа покажется экран согласия.
+        // Like the server: before the first consent the field is prefilled with the profile name.
+        consents: ConsentState(profileVisibility: "legacy", fullName: "Анна", termsUpdateRequired: true, reviewRequired: true)
     )
 
     private var discoverUsers: [DiscoverUser] = [
@@ -326,7 +329,8 @@ actor MockRepository: TennisRepository {
             notificationMatches: currentUser.notificationMatches,
             notificationMessages: currentUser.notificationMessages,
             notificationGames: currentUser.notificationGames,
-            notificationSound: currentUser.notificationSound
+            notificationSound: currentUser.notificationSound,
+            consents: currentUser.consents
         )
         return AuthChallenge(message: "Код подтверждения отправлен", debugCode: "111111")
     }
@@ -409,6 +413,36 @@ actor MockRepository: TennisRepository {
 
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile {
         currentUser = profile
+        return currentUser
+    }
+
+    func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile {
+        var consents = currentUser.consents ?? ConsentState()
+        if update.acceptAgreementVersion != nil {
+            consents.termsUpdateRequired = false
+        }
+        if let profile = update.profile {
+            if profile.decision == "visible" {
+                guard let fullName = profile.fullName ?? consents.fullName else {
+                    throw APIError.server("Укажите фамилию и имя для согласия на показ анкеты")
+                }
+                consents.profileVisibility = "visible"
+                consents.fullName = fullName
+                consents.visibleToGuests = profile.visibleToGuests ?? false
+                consents.showsBio = profile.showsBio ?? false
+                consents.showsPhotos = profile.showsPhotos ?? false
+                consents.showsVideos = profile.showsVideos ?? false
+                consents.showsSearches = profile.showsSearches ?? false
+                currentUser.showOnMap = profile.showOnMap ?? false
+            } else {
+                consents.profileVisibility = "hidden"
+            }
+        }
+        if let analytics = update.analytics {
+            consents.analytics = analytics
+        }
+        consents.reviewRequired = consents.termsUpdateRequired || consents.profileVisibility == "legacy" || consents.profileVisibility == "pending"
+        currentUser.consents = consents
         return currentUser
     }
 

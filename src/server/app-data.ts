@@ -18,7 +18,8 @@ import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { gameReportInclude } from "@/server/game-reports";
 import { syncRegularPairOccurrences } from "@/server/regular-occurrences";
 import { normalizeSports } from "@/lib/sport-levels";
-import { serializeUserPreview } from "@/server/serializers";
+import { serializePublicUserPreview, serializeUserPreview } from "@/server/serializers";
+import { publicProfileWhere } from "@/lib/profile-visibility";
 import {
   chatMessageAttachmentsInclude,
   chatMessagePreview,
@@ -405,6 +406,8 @@ export async function getHotNotificationsCount(userId: string) {
       createdByUserId: {
         not: userId
       },
+      // Автор срочного поиска виден в ленте только с согласием на показ поисков.
+      createdByUser: publicProfileWhere("registered", { requireSearches: true }),
       responses: {
         none: {
           responderUserId: userId
@@ -521,6 +524,7 @@ export async function getNotificationsForUser(userId: string) {
         createdByUserId: {
           not: userId
         },
+        createdByUser: publicProfileWhere("registered", { requireSearches: true }),
         responses: {
           none: {
             responderUserId: userId
@@ -1185,6 +1189,7 @@ export async function getCourtsForUser(
           ...(user ? { userId: { not: user.id } } : {}),
           user: {
             accountStatus: "active", isVerified: true, onboardingCompleted: true,
+            ...publicProfileWhere(user ? "registered" : "guest"),
             ...(user ? visibleToUserPairFilter(user.id) : {})
           }
         },
@@ -1299,6 +1304,7 @@ export async function getCourtActiveSearchSummaries(courtIds: string[], viewerId
     where: {
       isActive: true,
       createdByUser: { accountStatus: "active", isVerified: true, onboardingCompleted: true,
+        ...publicProfileWhere(viewerId ? "registered" : "guest", { requireSearches: true }),
         ...(viewerId ? visibleToUserPairFilter(viewerId) : {}) },
       status: {
         in: [GameSearchStatus.active, GameSearchStatus.in_review]
@@ -1322,6 +1328,7 @@ export async function getCourtActiveSearchSummaries(courtIds: string[], viewerId
         where: {
           status: GameSearchResponseStatus.approved,
           responderUser: { accountStatus: "active", isVerified: true, onboardingCompleted: true,
+            ...publicProfileWhere(viewerId ? "registered" : "guest", { requireSearches: true }),
             ...(viewerId ? visibleToUserPairFilter(viewerId) : {}) }
         },
         include: {
@@ -1346,10 +1353,10 @@ export async function getCourtActiveSearchSummaries(courtIds: string[], viewerId
     }
 
     const activeUsers = new Map<string, ReturnType<typeof serializeUserPreview>>();
-    activeUsers.set(search.createdByUserId, serializeUserPreview(search.createdByUser));
+    activeUsers.set(search.createdByUserId, serializePublicUserPreview(search.createdByUser));
 
     for (const response of search.responses) {
-      activeUsers.set(response.responderUserId, serializeUserPreview(response.responderUser));
+      activeUsers.set(response.responderUserId, serializePublicUserPreview(response.responderUser));
     }
 
     for (const courtId of relatedCourtIds) {
