@@ -58,6 +58,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,7 @@ import shop.sportsearch.app.R
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
 import shop.sportsearch.app.ui.components.AppAvailabilityWeekEditor
+import shop.sportsearch.app.ui.components.AutoSizeText
 import shop.sportsearch.app.ui.components.DismissOnSystemBack
 import shop.sportsearch.app.ui.components.PrimaryActionButton
 import shop.sportsearch.app.ui.components.SecondaryActionButton
@@ -586,16 +589,19 @@ private fun AvailabilityStep(
     DismissOnSystemBack(onBack)
     val canFinish = draft.hasRequiredOnboardingFields
 
+    // iOS `availabilityStep`: no title, the step label is the heading, and the
+    // whole step fits one screen so "Browse players" needs no scrolling.
     OnboardingDarkStep(
         stepIndex = 2,
-        title = L10n.string("When can you play?", "Когда удобно играть?"),
+        title = null,
         subtitle = L10n.string(
-            "When are you available to play? You can leave this empty and set it later.",
-            "Когда тебе удобно играть. Можно оставить пустым и настроить позже.",
+            "When do you have time for sport? You can leave this empty and set it later.",
+            "Когда у тебя есть время на спорт? Можно оставить пустым и настроить позже.",
         ),
         primaryTitle = if (embedded) L10n.string("Browse players", "Смотреть игроков") else L10n.string("Continue", "Продолжить"),
         primaryEnabled = canFinish,
         showBack = true,
+        compact = true,
         onBack = onBack,
         onPrimary = onFinish,
     ) {
@@ -603,10 +609,7 @@ private fun AvailabilityStep(
             AppAvailabilityWeekEditor(
                 availabilityByDay = draft.availabilityByDay,
                 onChange = { onDraftChange(draft.copy(availabilityByDay = it)) },
-                caption = L10n.string(
-                    "One weekly schedule. Choose a day, then select convenient time windows.",
-                    "Одна шкала недели. Выбери день и затем отметь удобные окна времени.",
-                ),
+                compact = true,
             )
         }
 
@@ -853,15 +856,21 @@ private fun CodeStep(
 @Composable
 private fun OnboardingDarkStep(
     stepIndex: Int,
-    title: String,
+    title: String?,
     subtitle: String,
     primaryTitle: String,
     primaryEnabled: Boolean,
     showBack: Boolean,
     onBack: () -> Unit,
     onPrimary: () -> Unit,
+    /** Step 2's denser chrome: smaller gaps and buttons, no arrow on the primary action. */
+    compact: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
+    val actionHeight = if (compact) 52.dp else 60.dp
+    val actionShape = continuousShape(if (compact) 20.dp else 22.dp)
+    val actionFontSize = if (compact) 18.sp else 20.sp
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -876,10 +885,10 @@ private fun OnboardingDarkStep(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = if (compact) 20.dp else 24.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
         ) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(if (compact) 16.dp else 24.dp))
 
             // OnboardingStepProgress(current:total:)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -896,42 +905,62 @@ private fun OnboardingDarkStep(
                 }
             }
 
-            Text(
-                L10n.string("Step $stepIndex of 2", "Шаг $stepIndex из 2"),
-                style = AppText.subheadlineSemibold.copy(fontWeight = FontWeight.Bold),
-                color = OnboardingStepPalette.lime,
-            )
+            if (compact) {
+                // "Step 2" in lime over the white "Step 2 of 2", as the iOS overlay draws it.
+                val stepLabel = L10n.string("Step $stepIndex of 2", "Шаг $stepIndex из 2")
+                val stepPrefix = L10n.string("Step $stepIndex", "Шаг $stepIndex")
+                Text(
+                    buildAnnotatedString {
+                        append(stepLabel)
+                        if (stepLabel.startsWith(stepPrefix)) {
+                            addStyle(SpanStyle(color = OnboardingStepPalette.lime), 0, stepPrefix.length)
+                        }
+                    },
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                )
+            } else {
+                Text(
+                    L10n.string("Step $stepIndex of 2", "Шаг $stepIndex из 2"),
+                    style = AppText.subheadlineSemibold.copy(fontWeight = FontWeight.Bold),
+                    color = OnboardingStepPalette.lime,
+                )
+            }
 
-            // The title is two lines by design; without its own line height it
-            // inherits body text's ~22sp and the lines overlap.
-            Text(title, fontSize = 31.sp, lineHeight = 37.sp, fontWeight = FontWeight.Black, color = Color.White)
+            if (title != null) {
+                // The title is two lines by design; without its own line height it
+                // inherits body text's ~22sp and the lines overlap.
+                Text(title, fontSize = 31.sp, lineHeight = 37.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
 
             Text(
                 subtitle,
-                fontSize = 15.sp,
+                fontSize = if (compact) 14.sp else 15.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.62f),
             )
 
             content()
 
-            Spacer(Modifier.height(8.dp))
+            if (!compact) Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 if (showBack) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(60.dp)
-                            .clip(continuousShape(22.dp))
+                            // iOS caps step 2's "Back" at 124pt so the primary title stays on one line.
+                            .then(if (compact) Modifier.width(124.dp) else Modifier.weight(1f))
+                            .height(actionHeight)
+                            .clip(actionShape)
                             .background(OnboardingStepPalette.panel.copy(alpha = 0.86f))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), continuousShape(22.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), actionShape)
                             .clickable(onClick = onBack),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             L10n.string("Back", "Назад"),
-                            fontSize = 20.sp,
+                            fontSize = actionFontSize,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.78f),
                         )
@@ -941,8 +970,8 @@ private fun OnboardingDarkStep(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(60.dp)
-                        .clip(continuousShape(22.dp))
+                        .height(actionHeight)
+                        .clip(actionShape)
                         .background(
                             if (primaryEnabled) {
                                 Brush.horizontalGradient(listOf(OnboardingStepPalette.lime, Color(0xFF8CE038)))
@@ -955,27 +984,39 @@ private fun OnboardingDarkStep(
                         .clickable(enabled = primaryEnabled, onClick = onPrimary),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            primaryTitle,
-                            fontSize = 20.sp,
+                    if (compact) {
+                        AutoSizeText(
+                            text = primaryTitle,
+                            fontSize = actionFontSize,
                             fontWeight = FontWeight.Black,
                             color = Color.Black.copy(alpha = if (primaryEnabled) 0.92f else 0.38f),
+                            maxLines = 1,
+                            minScale = 0.8f,
+                            modifier = Modifier.padding(horizontal = 10.dp),
                         )
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = Color.Black.copy(alpha = if (primaryEnabled) 0.92f else 0.38f),
-                            modifier = Modifier.size(20.dp),
-                        )
+                    } else {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                primaryTitle,
+                                fontSize = actionFontSize,
+                                fontWeight = FontWeight.Black,
+                                color = Color.Black.copy(alpha = if (primaryEnabled) 0.92f else 0.38f),
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = Color.Black.copy(alpha = if (primaryEnabled) 0.92f else 0.38f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (compact) 16.dp else 32.dp))
         }
     }
 }

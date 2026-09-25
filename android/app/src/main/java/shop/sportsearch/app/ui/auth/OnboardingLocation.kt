@@ -7,8 +7,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -123,34 +125,25 @@ fun OnboardingSearchLocationSection(
         .joinToString(", ") { localizedDistrictName(it) ?: it }
         .let { if (validDistricts.size > 2) "$it +${validDistricts.size - 2}" else it }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.10f)))
-
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Outlined.Place,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.72f),
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    L10n.string("Where should we look for players?", "Где искать игроков?"),
-                    fontFamily = appFontFamily,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                )
-            }
-            Text(
-                L10n.string(
-                    "Choose a city first. You can add districts now or later.",
-                    "Сначала выбери город. Районы можно добавить сразу или позже.",
-                ),
-                fontFamily = appFontFamily,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White.copy(alpha = 0.56f),
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.Place,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(15.dp),
+            )
+            AutoSizeText(
+                text = L10n.string("Where should we look for players?", "Где искать игроков?"),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                maxLines = 1,
+                minScale = 0.85f,
             )
         }
 
@@ -169,7 +162,11 @@ fun OnboardingSearchLocationSection(
             else -> OnboardingStatusPill(Icons.Filled.Apartment, selectedCity, OnboardingStepPalette.lime)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Equal-height cards, as the fixed-size HStack gives on iOS.
+        Row(
+            modifier = Modifier.height(IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             OnboardingLocationChoiceCard(
                 title = L10n.string("Near me", "Рядом со мной"),
                 subtitle = nearbySubtitle(
@@ -226,7 +223,7 @@ fun OnboardingSearchLocationSection(
                         .fillMaxWidth()
                         .clip(continuousShape(16.dp))
                         .background(Color.White.copy(alpha = 0.07f))
-                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -311,7 +308,7 @@ private fun OnboardingStatusPill(icon: ImageVector, text: String, tint: Color) {
             .clip(shape)
             .background(tint.copy(alpha = if (tint == OnboardingStepPalette.lime) 0.12f else 0.11f))
             .border(1.dp, tint.copy(alpha = if (tint == OnboardingStepPalette.lime) 0.24f else 0.22f), shape)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -342,8 +339,8 @@ private fun OnboardingStatusPanel(
             .clip(shape)
             .background(tint.copy(alpha = if (buttonIsFilled) 0.11f else 0.12f))
             .border(1.dp, tint.copy(alpha = if (buttonIsFilled) 0.22f else 0.26f), shape)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
@@ -361,7 +358,7 @@ private fun OnboardingStatusPanel(
             buttonTitle,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(34.dp)
                 .clip(buttonShape)
                 .background(if (buttonIsFilled) OnboardingAmber else Color.White.copy(alpha = 0.10f))
                 .then(
@@ -372,7 +369,7 @@ private fun OnboardingStatusPanel(
                     },
                 )
                 .clickable(onClick = onButton)
-                .padding(top = 10.dp),
+                .padding(top = 8.dp),
             fontFamily = appFontFamily,
             fontSize = 13.sp,
             fontWeight = FontWeight.ExtraBold,
@@ -394,9 +391,10 @@ private fun OnboardingLocationChoiceCard(
     onClick: () -> Unit,
 ) {
     val shape = continuousShape(22.dp)
-    Column(
+    Row(
         modifier = modifier
-            .heightIn(min = 112.dp)
+            .fillMaxHeight()
+            .heightIn(min = 64.dp)
             .appShadow(
                 if (isSelected) tint.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.18f),
                 18.dp,
@@ -419,39 +417,33 @@ private fun OnboardingLocationChoiceCard(
                 shape,
             )
             .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(42.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f)),
+            modifier = Modifier.size(32.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                AutoSizeText(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    maxLines = 2,
-                    minScale = 0.78f,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier.size(13.dp),
-                )
-            }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            AutoSizeText(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                minScale = 0.78f,
+            )
 
             Text(
                 subtitle,
                 fontFamily = appFontFamily,
                 fontSize = 11.sp,
+                lineHeight = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.56f),
                 maxLines = 2,
@@ -961,7 +953,7 @@ fun OnboardingAvailabilityEditorCard(content: @Composable () -> Unit) {
             .clip(shape)
             .background(Color.White.copy(alpha = 0.94f))
             .border(1.dp, Color.White.copy(alpha = 0.22f), shape)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
+            .padding(10.dp),
     ) {
         content()
     }

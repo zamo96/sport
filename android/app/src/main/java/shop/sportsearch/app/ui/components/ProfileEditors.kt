@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -384,17 +387,13 @@ fun AppSingleSportSelectionGrid(
 fun AppAvailabilityWeekEditor(
     availabilityByDay: Map<String, List<String>>,
     onChange: (Map<String, List<String>>) -> Unit,
-    /** `DetailedAvailabilityEditor` prefixes the onboarding copy of this editor. */
-    caption: String? = null,
+    /** Onboarding's `DetailedAvailabilityEditor`: denser rows so step 2 fits one screen. */
+    compact: Boolean = false,
 ) {
     val haptics = rememberAppHaptics()
     var activeDay by remember { mutableStateOf(DayOfWeek.MONDAY) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (caption != null) {
-            Text(caption, style = AppText.caption, color = AppTheme.mutedInk)
-        }
-
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             DayOfWeek.entries.forEach { day ->
                 val ranges = availabilityByDay[day.wire].orEmpty()
@@ -402,13 +401,13 @@ fun AppAvailabilityWeekEditor(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(continuousShape(18.dp))
+                        .clip(continuousShape(if (compact) 16.dp else 18.dp))
                         .background(if (isActive) AppTheme.ink else AppTheme.cream)
                         .clickable {
                             activeDay = day
                             haptics.selection()
                         }
-                        .padding(vertical = 10.dp),
+                        .padding(vertical = if (compact) 8.dp else 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -438,9 +437,13 @@ fun AppAvailabilityWeekEditor(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(activeDay.title, style = AppText.headline, color = AppTheme.ink)
+                Text(
+                    activeDay.title,
+                    style = if (compact) AppText.subheadlineSemibold.copy(fontWeight = FontWeight.Bold) else AppText.headline,
+                    color = AppTheme.ink,
+                )
                 Spacer(Modifier.weight(1f))
                 if (availabilityByDay[activeDay.wire].orEmpty().isNotEmpty()) {
                     Text(
@@ -461,6 +464,7 @@ fun AppAvailabilityWeekEditor(
                         range = range,
                         isSelected = availabilityByDay[activeDay.wire].orEmpty().contains(range.wire),
                         modifier = Modifier.weight(1f),
+                        compact = compact,
                     ) {
                         val current = availabilityByDay[activeDay.wire].orEmpty()
                         val next = if (current.contains(range.wire)) {
@@ -475,14 +479,14 @@ fun AppAvailabilityWeekEditor(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
             fun applyPreset(days: List<DayOfWeek>, ranges: List<TimeRange>) {
                 val raw = ranges.map { it.wire }
                 onChange(availabilityByDay + days.associate { it.wire to raw })
                 haptics.selection()
             }
 
-            PresetButton(L10n.string("Weekday mornings", "Будни утром")) {
+            PresetButton(L10n.string("Weekday mornings", "Будни утром"), compact) {
                 applyPreset(
                     listOf(
                         DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
@@ -491,7 +495,7 @@ fun AppAvailabilityWeekEditor(
                     listOf(TimeRange.MORNING),
                 )
             }
-            PresetButton(L10n.string("Weekday evenings", "Будни вечером")) {
+            PresetButton(L10n.string("Weekday evenings", "Будни вечером"), compact) {
                 applyPreset(
                     listOf(
                         DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
@@ -500,7 +504,7 @@ fun AppAvailabilityWeekEditor(
                     listOf(TimeRange.EVENING),
                 )
             }
-            PresetButton(L10n.string("Weekends", "Выходные")) {
+            PresetButton(L10n.string("Weekends", "Выходные"), compact) {
                 applyPreset(listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY), TimeRange.entries.toList())
             }
         }
@@ -508,7 +512,31 @@ fun AppAvailabilityWeekEditor(
 }
 
 @Composable
-private fun PresetButton(title: String, onClick: () -> Unit) {
+private fun RowScope.PresetButton(title: String, compact: Boolean, onClick: () -> Unit) {
+    if (compact) {
+        // Equal thirds on one line, as in `DetailedAvailabilityEditor.presetButton`.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(CircleShape)
+                .background(AppTheme.cream)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            AutoSizeText(
+                text = title,
+                fontSize = AppText.captionSemibold.fontSize,
+                fontWeight = FontWeight.SemiBold,
+                color = AppTheme.ink,
+                maxLines = 1,
+                minScale = 0.8f,
+                style = AppText.captionSemibold,
+            )
+        }
+        return
+    }
+
     Box(
         modifier = Modifier
             .clip(CircleShape)
@@ -533,6 +561,8 @@ fun AppAvailabilityWindowCard(
     range: TimeRange,
     isSelected: Boolean,
     modifier: Modifier = Modifier,
+    /** Onboarding's `AvailabilityWindowCard`: smaller icon and a corner check instead of extra height. */
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
     val shape = continuousShape(18.dp)
@@ -568,7 +598,7 @@ fun AppAvailabilityWindowCard(
         TimeRange.EVENING -> Icons.Filled.Bedtime
     }
 
-    Column(
+    Box(
         modifier = modifier
             .appShadow(
                 activeText.copy(alpha = if (isSelected) 0.15f else 0.06f),
@@ -580,16 +610,32 @@ fun AppAvailabilityWindowCard(
             .background(Brush.verticalGradient(background))
             .border(1.dp, Color.White.copy(alpha = if (isSelected) 0.2f else 0.82f), shape)
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .semantics { selected = isSelected },
     ) {
-        Box(
-            modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.76f)),
-            contentAlignment = Alignment.Center,
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = if (compact) 10.dp else 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
         ) {
-            Icon(icon, null, tint = textColor, modifier = Modifier.size(18.dp))
+            Box(
+                modifier = Modifier
+                    .size(if (compact) 30.dp else 34.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.76f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = textColor, modifier = Modifier.size(if (compact) 16.dp else 18.dp))
+            }
+            Text(range.title, style = AppText.captionBold, color = textColor)
         }
-        Text(range.title, style = AppText.captionBold, color = textColor)
+
+        if (compact && isSelected) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = activeText,
+                modifier = Modifier.align(Alignment.TopEnd).padding(7.dp).size(15.dp),
+            )
+        }
     }
 }
