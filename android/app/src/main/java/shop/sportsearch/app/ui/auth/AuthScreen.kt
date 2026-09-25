@@ -58,10 +58,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -285,7 +289,7 @@ fun AuthScreen(
             onRequestCode = {
                 persistDraft()
                 scope.launch {
-                    if (appModel.requestCode(appModel.authUserAgreementAccepted)) {
+                    if (appModel.requestCode(userAgreementAccepted = true)) {
                         step = AuthStep.CODE
                     }
                 }
@@ -306,7 +310,7 @@ fun AuthScreen(
             onChangeEmail = { step = AuthStep.EMAIL },
             onVerify = {
                 persistDraft()
-                scope.launch { appModel.verify(code, appModel.authUserAgreementAccepted) }
+                scope.launch { appModel.verify(code, userAgreementAccepted = true) }
             },
         )
     }
@@ -649,18 +653,7 @@ private fun EmailStep(
     val scope = rememberCoroutineScope()
     // Credential Manager draws its account picker over an Activity.
     val activityContext = LocalContext.current
-    var agreementPrompt by remember { mutableStateOf<String?>(null) }
     val cardShape = continuousShape(32.dp)
-
-    fun ensureAgreement(): Boolean {
-        if (appModel.authUserAgreementAccepted) return true
-        haptics.warning()
-        agreementPrompt = L10n.string(
-            "Accept the User Agreement and consent to personal data processing first.",
-            "Сначала примите пользовательское соглашение и согласие на обработку персональных данных.",
-        )
-        return false
-    }
 
     Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
         Column(
@@ -699,33 +692,16 @@ private fun EmailStep(
                     color = AppTheme.mutedInk,
                 )
 
-                LegalAcceptanceControl(
-                    accepted = appModel.authUserAgreementAccepted,
-                    highlighted = agreementPrompt != null,
-                    onToggle = {
-                        appModel.authUserAgreementAccepted = !appModel.authUserAgreementAccepted
-                        if (appModel.authUserAgreementAccepted) agreementPrompt = null
-                        haptics.selection()
-                    },
-                    onOpenAgreement = { uriHandler.openUri(LegalDocuments.userAgreementUrl) },
-                )
-
-                agreementPrompt?.let {
-                    AuthInlineMessage(it, Color(0xFFD1493F), Icons.Filled.Warning)
-                }
-
                 // iOS puts Sign in with Apple here. Android has no Apple sign-in,
                 // so Google takes the same slot; hidden when the build has no
                 // Google client ID configured.
                 if (GoogleSignIn.isAvailable) {
                     GoogleSignInButton(enabled = !appModel.isBusy) {
-                        if (ensureAgreement()) {
-                            scope.launch {
-                                appModel.signInWithGoogle(
-                                    context = activityContext,
-                                    userAgreementAccepted = appModel.authUserAgreementAccepted,
-                                )
-                            }
+                        scope.launch {
+                            appModel.signInWithGoogle(
+                                context = activityContext,
+                                userAgreementAccepted = true,
+                            )
                         }
                     }
                     AuthDividerLabel(L10n.string("or sign in with email", "или войти по Email"))
@@ -762,7 +738,7 @@ private fun EmailStep(
                                 listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f)),
                             ),
                         )
-                        .clickable { if (ensureAgreement()) onRequestCode() },
+                        .clickable { onRequestCode() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -785,9 +761,11 @@ private fun EmailStep(
                         L10n.string("I already have a code", "У меня уже есть код"),
                         style = AppText.title3,
                         color = AppTheme.court,
-                        modifier = Modifier.clickable { if (ensureAgreement()) onHaveCode() },
+                        modifier = Modifier.clickable { onHaveCode() },
                     )
                 }
+
+                LegalNotice()
 
                 appModel.authMessage?.let { AuthInlineMessage(it, AppTheme.court, Icons.Filled.CheckCircle) }
                 appModel.errorMessage?.let { AuthInlineMessage(it, Color(0xFFD1493F), Icons.Filled.Warning) }
@@ -838,6 +816,8 @@ private fun CodeStep(
                     tint = AppTheme.ink,
                     enabled = code.trim().length == 6,
                 )
+
+                LegalNotice()
             }
 
             SecondaryActionButton(
@@ -1061,55 +1041,26 @@ private fun OnboardingToggleCard(
 }
 
 /** Port of `legalAcceptanceControl`. */
+/**
+ * Port of `LegalDocuments.signInNotice`: pressing a sign-in button accepts the
+ * User Agreement. There is no personal-data consent here — it cannot be part of
+ * the agreement and is asked separately after onboarding.
+ */
 @Composable
-private fun LegalAcceptanceControl(
-    accepted: Boolean,
-    highlighted: Boolean,
-    onToggle: () -> Unit,
-    onOpenAgreement: () -> Unit,
-) {
-    val shape = continuousShape(18.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(if (highlighted) Color.Red.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.72f))
-            .border(
-                width = if (highlighted) 1.6.dp else 1.dp,
-                color = when {
-                    accepted -> AppTheme.court.copy(alpha = 0.35f)
-                    highlighted -> Color.Red.copy(alpha = 0.75f)
-                    else -> Color(0xFFD1D1D6)
-                },
-                shape = shape,
-            )
-            .padding(14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = if (accepted) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
-            contentDescription = null,
-            tint = if (accepted) AppTheme.court else AppTheme.ink.copy(alpha = 0.45f),
-            modifier = Modifier.size(30.dp).clickable(onClick = onToggle),
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                L10n.string(
-                    "I accept the User Agreement and consent to the processing of my personal data.",
-                    "Принимаю пользовательское соглашение и даю согласие на обработку персональных данных.",
-                ),
-                style = AppText.footnote.copy(fontWeight = FontWeight.Medium),
-                color = AppTheme.ink.copy(alpha = 0.72f),
-            )
-            Text(
-                L10n.string("Open the User Agreement", "Открыть пользовательское соглашение"),
-                style = AppText.footnote.copy(fontWeight = FontWeight.Bold),
-                color = AppTheme.court,
-                modifier = Modifier.clickable(onClick = onOpenAgreement),
-            )
+fun LegalNotice(modifier: Modifier = Modifier) {
+    val linkStyle = TextLinkStyles(SpanStyle(color = AppTheme.court, fontWeight = FontWeight.SemiBold, textDecoration = TextDecoration.Underline))
+    val text = buildAnnotatedString {
+        append(L10n.string("By continuing, you accept the ", "Нажимая кнопку, вы принимаете "))
+        withLink(LinkAnnotation.Url(LegalDocuments.userAgreementUrl, linkStyle)) {
+            append(L10n.string("User Agreement", "пользовательское соглашение"))
         }
+        append(L10n.string(". How we process data is described in the ", ". Как мы обрабатываем данные — в "))
+        withLink(LinkAnnotation.Url(LegalDocuments.privacyPolicyUrl, linkStyle)) {
+            append(L10n.string("Privacy Policy", "политике конфиденциальности"))
+        }
+        append(".")
     }
+    Text(text, style = AppText.footnote, color = AppTheme.ink.copy(alpha = 0.6f), modifier = modifier.fillMaxWidth())
 }
 
 /** Port of `AuthInlineMessage`. */

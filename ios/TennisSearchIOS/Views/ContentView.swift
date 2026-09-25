@@ -45,6 +45,16 @@ struct ContentView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .fullScreenCover(isPresented: Binding(
+            get: { appModel.isConsentReviewRequired },
+            // Закрывается только ответом: после него сервер снимает reviewRequired.
+            set: { _ in }
+        )) {
+            if let profile = appModel.currentUser {
+                ConsentReviewView(mode: .required, profile: profile)
+                    .environmentObject(appModel)
+            }
+        }
         .overlay {
             if appModel.isBusy {
                 LoadingOverlay()

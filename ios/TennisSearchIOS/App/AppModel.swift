@@ -42,7 +42,6 @@ final class AppModel: ObservableObject {
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
     @Published var authEmail = ""
-    @Published var authUserAgreementAccepted = false
     @Published var debugCode: String?
     @Published var authMessage: String?
     @Published var errorMessage: String?
@@ -257,7 +256,6 @@ final class AppModel: ObservableObject {
 
     func dismissPresentedAuth() {
         presentedAuthStep = nil
-        authUserAgreementAccepted = false
         if !isAuthenticated {
             pendingPersonalVisit = nil
         }
@@ -372,7 +370,6 @@ final class AppModel: ObservableObject {
             prepareOnboardingDraft(for: user)
             currentUser = user
             if user.isOnboardingComplete { resetGuestDraft() }
-            authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
             errorMessage = nil
@@ -440,7 +437,6 @@ final class AppModel: ObservableObject {
             prepareOnboardingDraft(for: user)
             currentUser = user
             if user.isOnboardingComplete { resetGuestDraft() }
-            authUserAgreementAccepted = false
             authMessage = nil
             debugCode = nil
             errorMessage = nil
@@ -449,6 +445,31 @@ final class AppModel: ObservableObject {
             guard generation == sessionGeneration, !Task.isCancelled else { return }
             if currentUser == nil { repository.logout(pushDeviceToken: nil) }
             present(error: error)
+        }
+    }
+
+    /// Экран согласия показывается после анкеты, пока нет ответа, и аккаунтам,
+    /// созданным до раздельных согласий, — поверх всего, кроме листа входа.
+    var isConsentReviewRequired: Bool {
+        guard presentedAuthStep == nil,
+              sessionRestoreState == .ready,
+              let user = currentUser,
+              user.isOnboardingComplete else { return false }
+        return user.consents?.reviewRequired == true
+    }
+
+    /// Отправляет ответ с экрана согласия. Возвращает текст ошибки: экран
+    /// показывает её сам, потому что общий алерт остался бы под ним.
+    func submitConsents(_ update: ConsentUpdate) async -> String? {
+        let generation = sessionGeneration
+        do {
+            let updatedUser = try await repository.updateConsents(update)
+            guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+            currentUser = updatedUser
+            return nil
+        } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+            return error.isServerIssue ? error.serverRecoveryMessage : error.detailedMessage
         }
     }
 
@@ -512,7 +533,6 @@ final class AppModel: ObservableObject {
         authMessage = nil
         errorMessage = nil
         authEmail = ""
-        authUserAgreementAccepted = false
         presentedAuthStep = nil
         pendingNavigationTarget = nil
         pendingChatMatchID = nil

@@ -6,7 +6,9 @@ import type { User } from "@prisma/client";
 
 import { apiFetch } from "@/lib/client-api";
 import { DAY_OPTIONS, DEFAULT_CITY, TIME_RANGE_OPTIONS } from "@/lib/constants";
+import { buildConsentState } from "@/lib/profile-visibility";
 import { normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
+import { ConsentSettingsPanel } from "@/components/consents/consent-settings-panel";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { LocaleSelector } from "@/components/i18n/locale-selector";
@@ -107,6 +109,18 @@ export function SettingsForm({ user }: { user: User }) {
           onChange={(checked) => setValues((current) => ({ ...current, notificationSound: checked }))}
         />
       </Panel>
+
+      <ConsentSettingsPanel
+        profile={{
+          name: user.name,
+          age: user.age,
+          city: user.city,
+          district: user.district,
+          preferredSports: user.preferredSports,
+          showOnMap: user.showOnMap,
+          consents: buildConsentState(user)
+        }}
+      />
 
       <Button fullWidth onClick={saveSettings} disabled={loading}>
         {loading ? t("settings.saving") : t("settings.save")}

@@ -228,6 +228,43 @@ object OnboardingMapVisibility {
         if (completed) stored else stored && draft
 }
 
+/** Port of `struct ConsentState`: separate consents from `GET /me` (`user.consents`). */
+@Serializable
+data class ConsentState(
+    /** legacy — account predates separate consents, visible as before until it answers; pending — no answer yet. */
+    val profileVisibility: String = "legacy",
+    val visibleToGuests: Boolean = false,
+    val showsBio: Boolean = false,
+    val showsPhotos: Boolean = false,
+    val showsVideos: Boolean = false,
+    val showsSearches: Boolean = false,
+    val analytics: Boolean = false,
+    val fullName: String? = null,
+    val termsUpdateRequired: Boolean = false,
+    val reviewRequired: Boolean = false,
+) {
+    val isLegacy: Boolean get() = profileVisibility == "legacy"
+}
+
+/** Port of `struct ConsentUpdate`: body of `POST /me/consents`. Null fields are dropped from JSON. */
+data class ConsentUpdate(
+    val acceptAgreementVersion: String? = null,
+    val profile: Profile? = null,
+    val analytics: Boolean? = null,
+) {
+    data class Profile(
+        /** "visible" — consent to showing the profile, "hidden" — refusal or withdrawal. */
+        val decision: String,
+        val fullName: String? = null,
+        val visibleToGuests: Boolean? = null,
+        val showsBio: Boolean? = null,
+        val showsPhotos: Boolean? = null,
+        val showsVideos: Boolean? = null,
+        val showsSearches: Boolean? = null,
+        val showOnMap: Boolean? = null,
+    )
+}
+
 @Serializable
 data class UserProfile(
     val id: String,
@@ -265,6 +302,8 @@ data class UserProfile(
     val notificationGames: Boolean = true,
     val notificationSound: Boolean = true,
     val localeOverride: String? = null,
+    /** Absent in responses from an older server; then the consent screen never shows. */
+    val consents: ConsentState? = null,
 ) {
     val gender: Gender? get() = Gender.from(genderRaw)
     val locationSource: LocationSource? get() = LocationSource.from(locationSourceRaw)

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = verifySchema.parse(await request.json());
     await enforceAuthRateLimit("verify", body.email, request);
-    const user = await verifyAuthCode(body.email, body.code, body.showOnMap);
+    const user = await verifyAuthCode(body.email, body.code, body.showOnMap, body.consentReview);
 
     if (!user) {
       return fail(translateServer(locale, "auth.error.invalidCode"), 401, "AUTH_INVALID_CODE");

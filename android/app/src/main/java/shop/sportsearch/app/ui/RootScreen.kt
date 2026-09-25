@@ -84,6 +84,8 @@ import shop.sportsearch.app.ui.searches.SearchesScreen
 import shop.sportsearch.app.ui.theme.AppRadius
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
+import shop.sportsearch.app.ui.consents.ConsentReviewMode
+import shop.sportsearch.app.ui.consents.ConsentReviewScreen
 import shop.sportsearch.app.ui.theme.continuousShape
 
 /** Port of `struct ContentView`. */
@@ -117,6 +119,15 @@ fun RootScreen(appModel: AppViewModel) {
 
         if (appModel.isBusy) {
             LoadingOverlay()
+        }
+
+        // Port of the iOS `fullScreenCover`: closes only with an answer, after which
+        // the server clears `reviewRequired`.
+        val consentProfile = appModel.currentUser
+        if (appModel.isConsentReviewRequired && consentProfile != null) {
+            Box(modifier = Modifier.fillMaxSize().zIndex(50f)) {
+                ConsentReviewScreen(appModel, consentProfile, ConsentReviewMode.REQUIRED)
+            }
         }
 
         appModel.serverRecoveryNotice?.let { notice ->

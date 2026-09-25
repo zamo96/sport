@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({ session: vi.fn(), update: vi.fn(), place: vi.fn(), record: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ requireSessionUser: mocks.session, getSessionUser: mocks.session, destroySession: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ requireSessionUser: mocks.session, getSessionUser: mocks.session, destroySession: vi.fn(),
+  getLegalAcceptanceRequestMeta: () => ({ ip: null, userAgent: null }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { update: mocks.update } } }));
 vi.mock("@/server/user-events", () => ({ recordUserEventsOnce: mocks.record }));
 vi.mock("@/server/locations", () => ({

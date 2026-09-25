@@ -23,12 +23,39 @@ function toCreateInput(event: UserEventInput) {
 }
 
 /**
+ * Журнал событий — это необязательная аналитика: пишется только для тех, кто
+ * дал на неё отдельное согласие. Фильтр стоит здесь, в единственной точке
+ * записи, поэтому покрывает и серверные события, и старые клиенты.
+ */
+async function keepConsentedEvents<T extends { userId: string }>(events: T[]) {
+  const userIds = Array.from(new Set(events.map((event) => event.userId)));
+  if (!userIds.length) return [];
+  const consented = await prisma.user.findMany({
+    where: { id: { in: userIds }, analyticsConsent: true },
+    select: { id: true }
+  });
+  const allowed = new Set(consented.map((user) => user.id));
+  return events.filter((event) => allowed.has(event.userId));
+}
+
+/** Срок хранения событий из согласия на аналитику. */
+export const USER_EVENT_RETENTION_DAYS = 90;
+
+export async function purgeExpiredUserEvents(now: Date) {
+  const cutoff = new Date(now.getTime() - USER_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const { count } = await prisma.userEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  return { deleted: count };
+}
+
+/**
  * Журнал событий — вспомогательная телеметрия: он никогда не должен ронять
  * пользовательский запрос, поэтому все ошибки только логируются.
  */
 export async function recordUserEvent(event: UserEventInput) {
   try {
-    await prisma.userEvent.create({ data: toCreateInput(event) });
+    const [allowed] = await keepConsentedEvents([event]);
+    if (!allowed) return;
+    await prisma.userEvent.create({ data: toCreateInput(allowed) });
   } catch (error) {
     console.warn("Failed to record user event", { type: event.type, userId: event.userId, error });
   }
@@ -40,7 +67,9 @@ export async function recordUserEvents(events: UserEventInput[]) {
   }
 
   try {
-    await prisma.userEvent.createMany({ data: events.map(toCreateInput) });
+    const allowed = await keepConsentedEvents(events);
+    if (!allowed.length) return;
+    await prisma.userEvent.createMany({ data: allowed.map(toCreateInput) });
   } catch (error) {
     console.warn("Failed to record user events", { count: events.length, error });
   }
@@ -50,8 +79,10 @@ export async function recordUserEvents(events: UserEventInput[]) {
 export async function recordUserEventsOnce(events: UserEventInput[]) {
   if (!events.length) return;
   try {
+    const allowed = await keepConsentedEvents(events);
+    if (!allowed.length) return;
     await prisma.userEvent.createMany({
-      data: events.map((event) => ({
+      data: allowed.map((event) => ({
         ...toCreateInput(event),
         id: `evt_${createHash("sha256").update(JSON.stringify([event.userId, event.type, event.entityType, event.entityId])).digest("hex")}`
       })),

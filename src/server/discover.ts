@@ -16,8 +16,10 @@ import { recordDiscoverImpressions, rerankDiscoverCandidates } from "@/server/re
 import { scoreCandidate } from "@/lib/scoring";
 import { selectNearby, type NearbyMetadata, validCoordinates } from "@/lib/nearby";
 import { resolveNearbyOrigin } from "@/server/nearby-location";
+import { profileVisibilitySelect, publicProfileWhere, redactPublicUserRecord } from "@/lib/profile-visibility";
 
 const candidateBaseSelect = {
+  ...profileVisibilitySelect,
   id: true,
   name: true,
   age: true,
@@ -56,6 +58,8 @@ async function fetchCandidatePool(viewerId: string | null, filters: DiscoverFilt
       ...(viewerId ? { id: { not: viewerId } } : {}),
       onboardingCompleted: true,
       isVerified: true,
+      // Срочные и регулярные поиски показывают сами поиски — нужен отдельный пункт согласия.
+      ...publicProfileWhere(viewerId ? "registered" : "guest", { requireSearches: keepsSearchCandidatesVisible }),
       ...(viewerId
         ? {
             blockedUsers: {
@@ -280,7 +284,7 @@ async function scoreCandidatesForViewer(viewer: CandidateUser, viewerId: string 
   }
 
   return ranked.map((candidate) => ({
-    ...candidate,
+    ...redactPublicUserRecord(candidate),
     explainabilityReasons: buildDiscoverExplainabilityReasons(viewerProfile, candidate, filters)
   }));
 }

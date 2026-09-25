@@ -57,7 +57,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var isBusy by mutableStateOf(false)
     var authEmail by mutableStateOf("")
-    var authUserAgreementAccepted by mutableStateOf(false)
     var debugCode by mutableStateOf<String?>(null)
     var authMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
@@ -211,7 +210,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissPresentedAuth() {
         presentedAuthStep = null
-        authUserAgreementAccepted = false
     }
 
     suspend fun requestCode(
@@ -329,13 +327,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         currentUser = user
         registerForPush()
-        authUserAgreementAccepted = false
         authMessage = null
         debugCode = null
         errorMessage = null
         presentedAuthStep = null
         refreshActivitySummary()
     }
+
+    /**
+     * The consent screen shows after onboarding while there is no answer, and to
+     * accounts created before separate consents — above everything but sign-in.
+     */
+    val isConsentReviewRequired: Boolean
+        get() {
+            val user = currentUser ?: return false
+            return presentedAuthStep == null && user.hasCompletedOnboarding && user.consents?.reviewRequired == true
+        }
+
+    /**
+     * Sends the consent-screen answer. Returns an error message: the screen shows
+     * it itself, because the shared error dialog would stay underneath.
+     */
+    suspend fun submitConsents(update: ConsentUpdate): String? =
+        try {
+            currentUser = repository.updateConsents(update)
+            null
+        } catch (error: Throwable) {
+            if (error.isServerIssue) error.serverRecoveryMessage else error.detailedMessage
+        }
 
     suspend fun saveProfile(profile: UserProfile): Boolean {
         isBusy = true
@@ -360,7 +379,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         authMessage = null
         errorMessage = null
         authEmail = ""
-        authUserAgreementAccepted = false
         presentedAuthStep = null
         pendingNavigationTarget = null
         pendingChatMatchID = null

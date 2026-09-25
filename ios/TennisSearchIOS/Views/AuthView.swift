@@ -316,11 +316,6 @@ struct AuthView: View {
                     requestAvailabilityLocationIfNeeded()
                 }
             }
-            .onDisappear {
-                if appModel.presentedAuthStep == nil && appModel.currentUser == nil {
-                    appModel.authUserAgreementAccepted = false
-                }
-            }
         }
     }
 
@@ -835,7 +830,6 @@ struct AuthView: View {
     private var emailStep: some View {
         AuthSignInReferenceScreen(
             email: $appModel.authEmail,
-            userAgreementAccepted: $appModel.authUserAgreementAccepted,
             authMessage: appModel.authMessage,
             errorMessage: appModel.errorMessage,
             debugCode: appModel.debugCode,
@@ -854,7 +848,7 @@ struct AuthView: View {
             onRequestCode: {
                 persistDraft()
                 Task {
-                    let didRequestCode = await appModel.requestCode(userAgreementAccepted: appModel.authUserAgreementAccepted)
+                    let didRequestCode = await appModel.requestCode(userAgreementAccepted: true)
                     guard didRequestCode else {
                         return
                     }
@@ -893,17 +887,15 @@ struct AuthView: View {
                     OTPCodeField(code: $code)
 
                     Button(L10n.string("Sign in", "Войти")) {
-                        guard appModel.authUserAgreementAccepted else {
-                            appModel.errorMessage = LegalDocuments.acceptanceError
-                            return
-                        }
                         persistDraft()
                         Task {
-                            await appModel.verify(code: code, userAgreementAccepted: appModel.authUserAgreementAccepted)
+                            await appModel.verify(code: code, userAgreementAccepted: true)
                         }
                     }
                     .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
                     .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count != 6)
+
+                    LegalDocuments.signInNotice
                 }
             }
 
@@ -1127,11 +1119,6 @@ struct AuthView: View {
                 appModel.errorMessage = L10n.string("Apple did not provide an identity token. Try again.", "Apple не передал identity token. Попробуй ещё раз.")
                 return
             }
-            guard appModel.authUserAgreementAccepted else {
-                appModel.errorMessage = LegalDocuments.acceptanceError
-                return
-            }
-
             persistDraft()
 
             Task {
@@ -1140,7 +1127,7 @@ struct AuthView: View {
                     email: credential.email?.trimmingCharacters(in: .whitespacesAndNewlines),
                     givenName: credential.fullName?.givenName,
                     familyName: credential.fullName?.familyName,
-                    userAgreementAccepted: appModel.authUserAgreementAccepted
+                    userAgreementAccepted: true
                 )
             }
 
@@ -1233,7 +1220,6 @@ struct AuthView: View {
 private struct AuthSignInReferenceScreen: View {
     @EnvironmentObject private var localeStore: LocaleStore
     @Binding var email: String
-    @Binding var userAgreementAccepted: Bool
     let authMessage: String?
     let errorMessage: String?
     let debugCode: String?
@@ -1247,10 +1233,6 @@ private struct AuthSignInReferenceScreen: View {
 
     @FocusState private var isEmailFocused: Bool
     @State private var isEmailLoginExpanded = false
-    @State private var agreementPromptMessage: String?
-    @State private var agreementHighlight = false
-    @State private var agreementShakeOffset: CGFloat = 0
-    @State private var agreementPromptTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geometry in
@@ -1298,63 +1280,6 @@ private struct AuthSignInReferenceScreen: View {
             }
         }
         .ignoresSafeArea(.container, edges: .bottom)
-        .onDisappear {
-            agreementPromptTask?.cancel()
-        }
-    }
-
-    private var legalAcceptanceControl: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Button {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                    userAgreementAccepted.toggle()
-                }
-                if userAgreementAccepted {
-                    agreementPromptTask?.cancel()
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
-                        agreementPromptMessage = nil
-                        agreementHighlight = false
-                        agreementShakeOffset = 0
-                    }
-                }
-                AppHaptics.selection()
-            } label: {
-                Image(systemName: userAgreementAccepted ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(userAgreementAccepted ? AppTheme.court : AppTheme.ink.opacity(0.45))
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(userAgreementAccepted ? L10n.string("Agreement accepted", "Согласие принято") : L10n.string("Accept the User Agreement", "Принять пользовательское соглашение"))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.string("I accept the User Agreement and consent to the processing of my personal data.", "Принимаю пользовательское соглашение и даю согласие на обработку персональных данных."))
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(AppTheme.ink.opacity(0.72))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let url = LegalDocuments.userAgreementURL {
-                    Link(L10n.string("Open the User Agreement", "Открыть пользовательское соглашение"), destination: url)
-                        .font(.footnote.weight(.bold))
-                        .foregroundStyle(AppTheme.court)
-                }
-            }
-        }
-        .padding(14)
-        .background(
-            agreementHighlight ? Color.red.opacity(0.08) : .white.opacity(0.72),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(
-                    userAgreementAccepted
-                        ? AppTheme.court.opacity(0.35)
-                        : (agreementHighlight ? Color.red.opacity(0.75) : Color(.systemGray4)),
-                    lineWidth: agreementHighlight ? 1.6 : 1
-                )
-        )
-        .offset(x: agreementShakeOffset)
     }
 
     private var signInCard: some View {
@@ -1373,13 +1298,6 @@ private struct AuthSignInReferenceScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            legalAcceptanceControl
-
-            if let agreementPromptMessage {
-                AuthInlineMessage(text: agreementPromptMessage, tint: .red, icon: "exclamationmark.triangle")
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
             ZStack {
                 SignInWithAppleButton(.continue, onRequest: onAppleRequest, onCompletion: onAppleCompletion)
                     .signInWithAppleButtonStyle(.black)
@@ -1388,18 +1306,9 @@ private struct AuthSignInReferenceScreen: View {
                     .frame(height: 68)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                if !userAgreementAccepted {
-                    Button {
-                        showAgreementPrompt()
-                    } label: {
-                        Rectangle()
-                            .fill(Color.clear)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.string("Accept the User Agreement first", "Сначала принять пользовательское соглашение"))
-                }
             }
+
+            LegalDocuments.signInNotice
 
             if isEmailLoginExpanded {
                 AuthDividerLabel(text: L10n.string("or sign in with email", "или войти по Email"))
@@ -1439,9 +1348,6 @@ private struct AuthSignInReferenceScreen: View {
                 }
 
                 Button {
-                    guard ensureAgreementAccepted() else {
-                        return
-                    }
                     onRequestCode()
                 } label: {
                     Text(L10n.string("Get a code by email", "Получить код по email"))
@@ -1468,9 +1374,6 @@ private struct AuthSignInReferenceScreen: View {
                         .lineSpacing(3)
 
                     Button {
-                        guard ensureAgreementAccepted() else {
-                            return
-                        }
                         onHaveCode()
                     } label: {
                         Text(L10n.string("I already have a code", "У меня уже есть код"))
@@ -1519,50 +1422,6 @@ private struct AuthSignInReferenceScreen: View {
                 .stroke(.white.opacity(0.75), lineWidth: 1)
         )
         .shadow(color: AppTheme.ink.opacity(0.08), radius: 30, x: 0, y: 18)
-        .animation(.spring(response: 0.26, dampingFraction: 0.86), value: agreementPromptMessage)
-    }
-
-    @discardableResult
-    private func ensureAgreementAccepted() -> Bool {
-        guard userAgreementAccepted else {
-            showAgreementPrompt()
-            return false
-        }
-
-        return true
-    }
-
-    private func showAgreementPrompt() {
-        agreementPromptTask?.cancel()
-        agreementPromptMessage = L10n.string("Accept the User Agreement and consent to personal data processing first.", "Сначала примите пользовательское соглашение и согласие на обработку персональных данных.")
-        AppHaptics.notification(.warning)
-
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-            agreementHighlight = true
-        }
-
-        agreementPromptTask = Task { @MainActor in
-            let offsets: [CGFloat] = [-9, 9, -7, 7, -4, 4, 0]
-            for offset in offsets {
-                guard !Task.isCancelled else {
-                    return
-                }
-                withAnimation(.easeInOut(duration: 0.055)) {
-                    agreementShakeOffset = offset
-                }
-                try? await Task.sleep(nanoseconds: 60_000_000)
-            }
-
-            try? await Task.sleep(nanoseconds: 2_200_000_000)
-            guard !Task.isCancelled, !userAgreementAccepted else {
-                return
-            }
-
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
-                agreementHighlight = false
-                agreementShakeOffset = 0
-            }
-        }
     }
 }
 

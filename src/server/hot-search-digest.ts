@@ -5,6 +5,7 @@ import { pluralKeySuffix } from "@/lib/i18n/server/notifications";
 import { getAuthSportLabel } from "@/lib/i18n/web/auth";
 import type { SupportedLocale } from "@/lib/locales";
 import { prisma } from "@/lib/prisma";
+import { publicProfileWhere } from "@/lib/profile-visibility";
 import { normalizeSports } from "@/lib/sport-levels";
 import { DEFAULT_TIMEZONE, getLocalDateParts, localDateTimeToUtc } from "@/lib/timezone";
 import {
@@ -208,6 +209,7 @@ function buildCreatorFilter(userId: string, location: { city: string | null; loc
     onboardingCompleted: true,
     isVerified: true,
     ...(!location.locationPlaceId && location.city ? { city: location.city } : {}),
+    ...publicProfileWhere("registered", { requireSearches: true }),
     blockedUsers: {
       none: {
         blockedUserId: userId

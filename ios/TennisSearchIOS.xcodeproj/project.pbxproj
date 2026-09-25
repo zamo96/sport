@@ -11,6 +11,7 @@
 		A33000000000000000000103 /* PersonalActivityDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000203 /* PersonalActivityDetailSheet.swift */; };
 		A33000000000000000000102 /* ActivityMediaGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000202 /* ActivityMediaGallery.swift */; };
 		A33000000000000000000101 /* UserIntentOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33000000000000000000201 /* UserIntentOnboardingView.swift */; };
+		A34000000000000000000101 /* ConsentReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A34000000000000000000201 /* ConsentReviewView.swift */; };
 		A32000000000000000000101 /* ProfileWorkoutHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000201 /* ProfileWorkoutHistory.swift */; };
 		A32000000000000000000102 /* ProfileWorkoutsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000202 /* ProfileWorkoutsSection.swift */; };
 		A31000000000000000000101 /* UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000201 /* UserIntent.swift */; };
@@ -98,6 +99,7 @@
 		A33000000000000000000203 /* PersonalActivityDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalActivityDetailSheet.swift; sourceTree = "<group>"; };
 		A33000000000000000000202 /* ActivityMediaGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityMediaGallery.swift; sourceTree = "<group>"; };
 		A33000000000000000000201 /* UserIntentOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserIntentOnboardingView.swift; sourceTree = "<group>"; };
+		A34000000000000000000201 /* ConsentReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentReviewView.swift; sourceTree = "<group>"; };
 		A32000000000000000000201 /* ProfileWorkoutHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWorkoutHistory.swift; sourceTree = "<group>"; };
 		A32000000000000000000202 /* ProfileWorkoutsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWorkoutsSection.swift; sourceTree = "<group>"; };
 		A31000000000000000000201 /* UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserIntent.swift; sourceTree = "<group>"; };
@@ -271,6 +273,7 @@
 				A33000000000000000000203 /* PersonalActivityDetailSheet.swift */,
 				A33000000000000000000202 /* ActivityMediaGallery.swift */,
 				A33000000000000000000201 /* UserIntentOnboardingView.swift */,
+				A34000000000000000000201 /* ConsentReviewView.swift */,
 				A10000000000000000000209 /* AuthView.swift */,
 				A1000000000000000000020A /* DiscoverView.swift */,
 				A100000000000000000002A0 /* DiscoverPlayersMap.swift */,
@@ -452,6 +455,7 @@
 				A33000000000000000000103 /* PersonalActivityDetailSheet.swift in Sources */,
 				A33000000000000000000102 /* ActivityMediaGallery.swift in Sources */,
 				A33000000000000000000101 /* UserIntentOnboardingView.swift in Sources */,
+				A34000000000000000000101 /* ConsentReviewView.swift in Sources */,
 				A10000000000000000000123 /* LocaleStore.swift in Sources */,
 				A10000000000000000000103 /* AppModels.swift in Sources */,
 				A10000000000000000000120 /* BookingCallFlow.swift in Sources */,

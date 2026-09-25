@@ -4,6 +4,7 @@ import {
   type WebTranslationValues
 } from "@/lib/i18n/web/define";
 import { authMessages } from "@/lib/i18n/web/auth";
+import { consentMessages } from "@/lib/i18n/web/consents";
 import { courtsMessages } from "@/lib/i18n/web/courts";
 import { discoverMessages } from "@/lib/i18n/web/discover";
 import { localeRecommendationMessages } from "@/lib/i18n/web/locale-recommendation";
@@ -15,6 +16,7 @@ import { settingsMessages } from "@/lib/i18n/web/settings";
 export const webMessages = {
   en: {
     ...authMessages.en,
+    ...consentMessages.en,
     ...courtsMessages.en,
     ...discoverMessages.en,
     ...navigationMessages.en,
@@ -25,6 +27,7 @@ export const webMessages = {
   },
   ru: {
     ...authMessages.ru,
+    ...consentMessages.ru,
     ...courtsMessages.ru,
     ...discoverMessages.ru,
     ...navigationMessages.ru,

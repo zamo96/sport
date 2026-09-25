@@ -9,6 +9,7 @@ import { attributeInvite, INVITE_COOKIE_NAME } from "@/lib/invites";
 import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR } from "@/lib/legal-contract";
 import type { SupportedLocale } from "@/lib/locales";
 import { prisma } from "@/lib/prisma";
+import { initialProfileVisibility } from "@/lib/profile-visibility";
 import { recordUserEventsOnce } from "@/server/user-events";
 
 /**
@@ -63,6 +64,7 @@ const userAgreementAcceptanceSchema = z.object({
 
 export const googleAuthSchema = z.object({
   showOnMap: z.boolean().optional(),
+  consentReview: z.boolean().optional(),
   idToken: z.string().min(1),
   userAgreement: userAgreementAcceptanceSchema
 });
@@ -174,7 +176,7 @@ async function attributeInviteFromCookie(userId: string) {
   }
 }
 
-export async function signInWithGoogleIdToken(idToken: string, options?: { showOnMap?: boolean }) {
+export async function signInWithGoogleIdToken(idToken: string, options?: { showOnMap?: boolean; consentReview?: boolean }) {
   const payload = await verifyGoogleIdToken(idToken);
   const googleSubject = payload.sub!;
   // Only a verified address may match an existing account; otherwise anyone
@@ -198,6 +200,7 @@ export async function signInWithGoogleIdToken(idToken: string, options?: { showO
       data: {
         email,
         showOnMap: options?.showOnMap ?? true,
+        profileVisibility: initialProfileVisibility(options?.consentReview),
         googleSubject,
         name: displayName,
         isVerified: true

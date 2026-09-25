@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     const user = await signInWithAppleIdentityToken(body.identityToken, {
       email: body.email,
       showOnMap: body.showOnMap,
+      consentReview: body.consentReview,
       givenName: body.givenName,
       familyName: body.familyName
     });

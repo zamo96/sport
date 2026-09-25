@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { haversineDistanceKm } from "@/lib/geo";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { publicProfileWhere } from "@/lib/profile-visibility";
 import { emptyCourtActiveSearchSummary, getCourtActiveSearchSummaries } from "@/server/app-data";
 import { serializeCourt } from "@/server/serializers";
 
@@ -23,15 +24,21 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
           }
         },
         members: {
-          ...(user
-            ? {
-                where: {
-                  userId: {
-                    not: user.id
+          where: {
+            ...(user ? { userId: { not: user.id } } : {}),
+            user: {
+              accountStatus: "active",
+              isVerified: true,
+              onboardingCompleted: true,
+              ...publicProfileWhere(user ? "registered" : "guest"),
+              ...(user
+                ? {
+                    blockedUsers: { none: { blockedUserId: user.id } },
+                    blockingUsers: { none: { blockerUserId: user.id } }
                   }
-                }
-              }
-            : {}),
+                : {})
+            }
+          },
           include: {
             user: true
           },
@@ -69,7 +76,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
       user && user.homeLat != null && user.homeLng != null ? { lat: user.homeLat, lng: user.homeLng } : null,
       { lat: court.locationLat, lng: court.locationLng }
     );
-    const activeSearchSummaries = await getCourtActiveSearchSummaries([court.id]);
+    const activeSearchSummaries = await getCourtActiveSearchSummaries([court.id], user?.id);
 
     return ok({
       court: serializeCourt({

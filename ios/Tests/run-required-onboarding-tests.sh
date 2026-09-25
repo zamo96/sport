@@ -27,7 +27,7 @@ def declaration(source, name):
 names = ["enum SupportedCity:", "enum LocationSource:", "struct LocationCoverage:",
          "struct GeoPlace:", "enum Gender:", "enum Sport:", "enum PlayFormat:",
          "enum Surface:", "enum OnboardingRequirements {", "struct GuestOnboardingDraft:",
-         "enum OnboardingMapVisibility {", "struct UserProfile:", "private extension KeyedDecodingContainer {"]
+         "enum OnboardingMapVisibility {", "struct ConsentState:", "struct UserProfile:", "private extension KeyedDecodingContainer {"]
 result = """import Foundation
 import CoreLocation
 

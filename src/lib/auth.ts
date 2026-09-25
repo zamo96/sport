@@ -12,6 +12,7 @@ import {
 } from "@/lib/legal-contract";
 import { attributeInvite, INVITE_COOKIE_NAME } from "@/lib/invites";
 import { prisma } from "@/lib/prisma";
+import { initialProfileVisibility } from "@/lib/profile-visibility";
 
 type AppleIdentityTokenHeader = {
   alg?: string;
@@ -36,6 +37,7 @@ type AppleJwk = CryptoJsonWebKey & {
 
 type AppleAuthProfile = {
   showOnMap?: boolean;
+  consentReview?: boolean;
   email?: string;
   givenName?: string;
   familyName?: string;
@@ -298,6 +300,15 @@ export async function recordUserAgreementAcceptance(
     skipDuplicates: true
   });
 
+  // Версии — даты ISO: старая сборка, принявшая прежнюю редакцию, не откатывает более новую.
+  await prisma.user.updateMany({
+    where: {
+      id: userId,
+      OR: [{ agreementVersion: null }, { agreementVersion: { lt: agreementVersion } }]
+    },
+    data: { agreementVersion }
+  });
+
   return prisma.user.findUniqueOrThrow({
     where: { id: userId }
   });
@@ -318,7 +329,7 @@ export async function createAuthCode(email: string, userId?: string) {
   return code;
 }
 
-export async function verifyAuthCode(email: string, code: string, showOnMap = true) {
+export async function verifyAuthCode(email: string, code: string, showOnMap = true, consentReview?: boolean) {
   const demoCredentials = getAppReviewDemoCredentials();
   if (demoCredentials?.email === email.trim().toLowerCase() && demoCredentials.code === code.trim()) {
     return ensureAppReviewDemoUser(demoCredentials.email, showOnMap);
@@ -360,6 +371,7 @@ export async function verifyAuthCode(email: string, code: string, showOnMap = tr
       data: {
         email,
         showOnMap,
+        profileVisibility: initialProfileVisibility(consentReview),
         isVerified: true
       }
     });
@@ -414,6 +426,7 @@ export async function signInWithAppleIdentityToken(identityToken: string, profil
       data: {
         email,
         showOnMap: profile?.showOnMap ?? true,
+        profileVisibility: initialProfileVisibility(profile?.consentReview),
         appleSubject,
         name: displayName,
         isVerified: true

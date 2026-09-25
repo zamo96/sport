@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), createMany: vi.fn(), requests: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { userEvent: { create: mocks.create, createMany: mocks.createMany }, gameRequest: { findMany: mocks.requests } } }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), createMany: vi.fn(), requests: vi.fn(), users: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { userEvent: { create: mocks.create, createMany: mocks.createMany }, gameRequest: { findMany: mocks.requests }, user: { findMany: mocks.users } } }));
 import { recordGameRequestMilestones, recordUserEvent, recordUserEventsOnce } from "@/server/user-events";
 
-beforeEach(() => { vi.clearAllMocks(); mocks.createMany.mockResolvedValue({ count: 1 }); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.createMany.mockResolvedValue({ count: 1 });
+  // Everyone in these cases has opted in to analytics.
+  mocks.users.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id })));
+});
 describe("independent QA: best-effort milestone recording", () => {
   it("absorbs storage and roster lookup failures", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});

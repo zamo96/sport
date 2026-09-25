@@ -76,11 +76,6 @@ struct ProfileView: View {
     @State private var isEditorPresented = false
     @State private var isBioEditorPresented = false
     @State private var profileScreenMode: ProfileScreenMode = .editing
-    @AppStorage("profile.visibilityMode") private var visibilityModeRaw = ProfileVisibilityMode.publicProfile.rawValue
-
-    private var visibilityMode: ProfileVisibilityMode {
-        ProfileVisibilityMode(rawValue: visibilityModeRaw) ?? .publicProfile
-    }
 
     var body: some View {
         ZStack {
@@ -354,13 +349,13 @@ struct ProfileView: View {
                     .buttonStyle(.plain)
 
                     NavigationLink {
-                        VisibilitySettingsView(selectionRaw: $visibilityModeRaw)
+                        ConsentSettingsScreen()
                     } label: {
                         ProfileMenuRow(
                             icon: "lock",
                             tint: .white.opacity(0.82),
-                            title: L10n.string("Privacy", "Приватность"),
-                            subtitle: visibilityMode.title
+                            title: L10n.string("Visibility and consents", "Видимость и согласия"),
+                            subtitle: ConsentSettingsScreen.statusText(for: profile.consents)
                         )
                     }
                     .buttonStyle(.plain)
@@ -406,7 +401,7 @@ struct ProfileView: View {
 
             if let profile = draft ?? appModel.currentUser {
                 NavigationLink {
-                    QRProfileView(profile: profile, visibilityMode: visibilityMode)
+                    QRProfileView(profile: profile)
                 } label: {
                     ProfileHeaderButton(systemImage: "qrcode.viewfinder", tint: AppTheme.court)
                 }
@@ -2420,7 +2415,7 @@ private struct ProfileOverviewCard: View {
                 }
 
                 NavigationLink {
-                    QRProfileView(profile: profile, visibilityMode: .publicProfile)
+                    QRProfileView(profile: profile)
                 } label: {
                     Label(L10n.string("QR profile", "QR-профиль"), systemImage: "qrcode")
                         .frame(maxWidth: .infinity)
@@ -3213,7 +3208,6 @@ private struct ProfileCompletenessCard: View {
 
 private struct QRProfileView: View {
     let profile: UserProfile
-    let visibilityMode: ProfileVisibilityMode
     @Environment(\.dismiss) private var dismiss
     @State private var toast: String?
 
@@ -3275,9 +3269,9 @@ private struct QRProfileView: View {
                         .buttonStyle(.plain)
 
                         NavigationLink {
-                            VisibilitySettingsView(selectionRaw: .constant(visibilityMode.rawValue))
+                            ConsentSettingsScreen()
                         } label: {
-                            ProfileMenuRow(icon: "eye", tint: .white.opacity(0.72), title: L10n.string("Visibility settings", "Настроить видимость"), subtitle: visibilityMode.title)
+                            ProfileMenuRow(icon: "eye", tint: .white.opacity(0.72), title: L10n.string("Visibility settings", "Настроить видимость"), subtitle: ConsentSettingsScreen.statusText(for: profile.consents))
                         }
                         .buttonStyle(.plain)
                     }
@@ -3309,102 +3303,131 @@ private struct QRProfileView: View {
     }
 }
 
-private struct VisibilitySettingsView: View {
-    @Binding var selectionRaw: String
+/// Видимость анкеты и согласия. Всё состояние — на сервере: прежний режим
+/// «ограниченный профиль» хранился только на телефоне и ничего не скрывал.
+private struct ConsentSettingsScreen: View {
+    @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var isEditing = false
+    @State private var isSavingAnalytics = false
+    @State private var errorText: String?
 
-    private var selection: ProfileVisibilityMode {
-        ProfileVisibilityMode(rawValue: selectionRaw) ?? .publicProfile
+    static func statusText(for consents: ConsentState?) -> String {
+        guard let consents else {
+            return L10n.string("Visible to other players", "Анкета видна другим игрокам")
+        }
+        switch consents.profileVisibility {
+        case "visible":
+            return consents.visibleToGuests
+                ? L10n.string("Visible to players and guests", "Анкету видят игроки и гости")
+                : L10n.string("Visible to signed-in players", "Анкету видят игроки, вошедшие в аккаунт")
+        case "legacy":
+            return L10n.string("Visible as before. Confirm your choice", "Видна как раньше. Подтвердите выбор")
+        default:
+            return L10n.string("Hidden from search and the map", "Скрыта из поиска и с карты")
+        }
     }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 20) {
-                ProfileSubscreenHeader(title: L10n.string("Visibility settings", "Настройки видимости"), onBack: { dismiss() })
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    ProfileSubscreenHeader(title: L10n.string("Visibility and consents", "Видимость и согласия"), onBack: { dismiss() })
 
-                Text(L10n.string("Choose what is visible in your public profile", "Выбери, что будет видно в твоём публичном профиле"))
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.72))
+                    ProfileDarkPanel {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text(Self.statusText(for: appModel.currentUser?.consents))
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Button(L10n.string("Change", "Изменить")) {
+                                AppHaptics.selection()
+                                isEditing = true
+                            }
+                            .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
+                        }
+                    }
 
-                VisibilityOptionCard(
-                    mode: .publicProfile,
-                    isSelected: selection == .publicProfile,
-                    onSelect: { selectionRaw = ProfileVisibilityMode.publicProfile.rawValue }
-                )
+                    ProfileDarkPanel {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(isOn: Binding(
+                                get: { appModel.currentUser?.consents?.analytics == true },
+                                set: { setAnalytics($0) }
+                            )) {
+                                Text(L10n.string("Usage analytics", "Аналитика использования"))
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                            }
+                            .tint(.green)
+                            .disabled(isSavingAnalytics)
 
-                VisibilityOptionCard(
-                    mode: .limitedProfile,
-                    isSelected: selection == .limitedProfile,
-                    onSelect: { selectionRaw = ProfileVisibilityMode.limitedProfile.rawValue }
-                )
+                            Text(L10n.string("Which screens you open and what you tap. No messages, photos, or videos. Kept up to 90 days.", "Какие экраны открываете и что нажимаете. Без переписки, фото и видео. Хранится до 90 дней."))
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.62))
+                        }
+                    }
 
-                ProfileDarkPanel {
-                    Label(L10n.string("You can change visibility settings at any time.", "В любой момент можно изменить настройки видимости."), systemImage: "info.circle")
+                    if let errorText {
+                        Label(errorText, systemImage: "exclamationmark.triangle")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.red)
+                    }
+
+                    ProfileDarkPanel {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(L10n.string("Documents", "Документы"))
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            documentLink(L10n.string("Consent to showing your profile", "Согласие на показ анкеты"), LegalDocuments.profileVisibilityConsentURL)
+                            documentLink(L10n.string("Consent to analytics", "Согласие на аналитику"), LegalDocuments.analyticsConsentURL)
+                            documentLink(L10n.string("User Agreement", "Пользовательское соглашение"), LegalDocuments.userAgreementURL)
+                            documentLink(L10n.string("Privacy Policy", "Политика конфиденциальности"), LegalDocuments.privacyPolicyURL)
+                        }
+                    }
+
+                    Label(L10n.string("Changes take effect immediately.", "Изменения действуют сразу."), systemImage: "info.circle")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.white.opacity(0.62))
                 }
-
-                Spacer()
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
         }
         .toolbar(.hidden, for: .navigationBar)
         .profileBackSwipe { dismiss() }
-    }
-}
-
-private struct VisibilityOptionCard: View {
-    let mode: ProfileVisibilityMode
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    var body: some View {
-        Button {
-            AppHaptics.selection()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.84)) {
-                onSelect()
-            }
-        } label: {
-            ProfileDarkPanel {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text(mode.title)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(isSelected ? .green : .white)
-                        Spacer()
-                        Circle()
-                            .stroke(isSelected ? .green : .white.opacity(0.38), lineWidth: 2)
-                            .frame(width: 22, height: 22)
-                            .overlay {
-                                if isSelected {
-                                    Circle()
-                                        .fill(.green)
-                                        .frame(width: 12, height: 12)
-                                }
-                            }
-                    }
-
-                    Text(mode.description)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.leading)
-
-                    HStack(spacing: 12) {
-                        ForEach(mode.icons, id: \.self) { icon in
-                            Image(systemName: icon)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.76))
-                                .frame(width: 34, height: 34)
-                                .background(.white.opacity(0.08), in: Circle())
-                        }
-                    }
-                }
+        .sheet(isPresented: $isEditing) {
+            if let profile = appModel.currentUser {
+                ConsentReviewView(mode: .settings, profile: profile) { isEditing = false }
+                    .environmentObject(appModel)
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func documentLink(_ title: String, _ url: URL?) -> some View {
+        if let url {
+            Link(destination: url) {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.footnote.weight(.semibold))
+                }
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.86))
+            }
+        }
+    }
+
+    private func setAnalytics(_ value: Bool) {
+        isSavingAnalytics = true
+        errorText = nil
+        Task {
+            errorText = await appModel.submitConsents(ConsentUpdate(analytics: value))
+            isSavingAnalytics = false
+        }
     }
 }
 
@@ -3751,38 +3774,6 @@ private struct ToggleCard: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(0.72), lineWidth: 1)
         )
-    }
-}
-
-private enum ProfileVisibilityMode: String {
-    case publicProfile
-    case limitedProfile
-
-    var title: String {
-        switch self {
-        case .publicProfile:
-            return L10n.string("Public profile", "Публичный профиль")
-        case .limitedProfile:
-            return L10n.string("Limited profile", "Ограниченный профиль")
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .publicProfile:
-            return L10n.string("Show photos, sport, level, district, and bio. Best for finding new players.", "Показывать фото, спорт, уровень, район и описание. Подходит для поиска новых игроков.")
-        case .limitedProfile:
-            return L10n.string("Show only name, sport, and city. More privacy with fewer details.", "Показывать только имя, спорт и город. Больше приватности — меньше деталей.")
-        }
-    }
-
-    var icons: [String] {
-        switch self {
-        case .publicProfile:
-            return ["person.2", "tennis.racket", "chart.bar", "mappin", "message"]
-        case .limitedProfile:
-            return ["person.2", "tennis.racket", "location"]
-        }
     }
 }
 

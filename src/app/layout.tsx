@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 
 import { WebActivityTracker } from "@/components/analytics/web-activity-tracker";
+import { ConsentReviewGate } from "@/components/consents/consent-review-gate";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SWRegister } from "@/components/layout/sw-register";
 import { LocaleProvider } from "@/components/i18n/locale-provider";
@@ -47,6 +48,7 @@ export default function RootLayout({
           <WebActivityTracker />
           {children}
           <BottomNav />
+          <ConsentReviewGate />
         </LocaleProvider>
       </body>
     </html>

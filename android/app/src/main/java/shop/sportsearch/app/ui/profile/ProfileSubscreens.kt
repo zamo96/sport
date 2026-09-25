@@ -65,6 +65,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
+import shop.sportsearch.app.ui.consents.consentStatusText
 import shop.sportsearch.app.ui.components.AppAvailabilityWeekEditor
 import shop.sportsearch.app.ui.components.DismissOnSystemBack
 import shop.sportsearch.app.ui.components.HideBottomBarWhileVisible
@@ -233,103 +234,11 @@ fun ProfileAccountScreen(
     }
 }
 
-/** Port of `struct VisibilitySettingsView`. */
-@Composable
-fun VisibilitySettingsView(
-    appModel: AppViewModel,
-    selection: ProfileVisibilityMode,
-    onSelect: (ProfileVisibilityMode) -> Unit,
-    onBack: () -> Unit,
-) {
-    DismissOnSystemBack(onBack)
-    HideBottomBarWhileVisible(appModel)
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp)
-            .padding(top = 16.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        ProfileSubscreenHeader(
-            title = L10n.string("Visibility settings", "Настройки видимости"),
-            onBack = onBack,
-        )
-
-        Text(
-            L10n.string(
-                "Choose what is visible in your public profile",
-                "Выбери, что будет видно в твоём публичном профиле",
-            ),
-            style = AppText.title3,
-            color = Color.White.copy(alpha = 0.72f),
-        )
-
-        ProfileVisibilityMode.entries.forEach { mode ->
-            VisibilityOptionCard(mode = mode, isSelected = selection == mode) { onSelect(mode) }
-        }
-
-        ProfileDarkPanel {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Info, null, tint = Color.White.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
-                Text(
-                    L10n.string(
-                        "You can change visibility settings at any time.",
-                        "В любой момент можно изменить настройки видимости.",
-                    ),
-                    style = AppText.footnote,
-                    color = Color.White.copy(alpha = 0.72f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VisibilityOptionCard(mode: ProfileVisibilityMode, isSelected: Boolean, onSelect: () -> Unit) {
-    val haptics = rememberAppHaptics()
-    val accent = Color(0xFF4CAF50)
-
-    ProfileDarkPanel(
-        modifier = Modifier.clickable {
-            haptics.selection()
-            onSelect()
-        },
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    mode.title,
-                    style = AppText.title3Semibold,
-                    color = if (isSelected) accent else Color.White,
-                )
-                Spacer(Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .border(2.dp, if (isSelected) accent else Color.White.copy(alpha = 0.38f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isSelected) {
-                        Box(Modifier.size(12.dp).clip(CircleShape).background(accent))
-                    }
-                }
-            }
-
-            Text(mode.description, style = AppText.subheadline, color = Color.White.copy(alpha = 0.7f))
-        }
-    }
-}
-
 /** Port of `struct QRProfileView`. */
 @Composable
 fun QRProfileView(
     appModel: AppViewModel,
     profile: UserProfile,
-    visibilityMode: ProfileVisibilityMode,
     onBack: () -> Unit,
     onOpenVisibility: () -> Unit,
 ) {
@@ -444,7 +353,7 @@ fun QRProfileView(
                     Icons.Filled.Visibility,
                     Color.White.copy(alpha = 0.72f),
                     L10n.string("Visibility settings", "Настроить видимость"),
-                    visibilityMode.title,
+                    consentStatusText(profile.consents),
                     onClick = onOpenVisibility,
                 )
             }

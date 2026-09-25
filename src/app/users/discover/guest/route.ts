@@ -4,7 +4,7 @@ import { createDefaultGuestOnboardingDraft } from "@/lib/guest-draft";
 import { fail, getErrorMessage, ok } from "@/lib/http";
 import { guestDiscoverSchema } from "@/lib/validators";
 import { getDiscoverCandidatesForGuestDraft } from "@/server/discover";
-import { serializeUserPreview } from "@/server/serializers";
+import { serializePublicUserPreview } from "@/server/serializers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     );
 
     return ok({
-      users: candidates.map((candidate) => serializeUserPreview(candidate))
+      users: candidates.map((candidate) => serializePublicUserPreview(candidate))
     });
   } catch (error) {
     return fail(getErrorMessage(error));

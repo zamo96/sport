@@ -61,7 +61,6 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const [draft, setDraft] = useState<DraftProfile>(createDefaultGuestOnboardingDraft());
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [levelGuideOpen, setLevelGuideOpen] = useState(false);
-  const [userAgreementAccepted, setUserAgreementAccepted] = useState(false);
 
   const continueHref = searchParams.get("continue") || "/discover";
 
@@ -187,10 +186,6 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
   async function requestCode(event: FormEvent) {
     event.preventDefault();
-    if (!userAgreementAccepted) {
-      setError(t("auth.error.acceptTerms"));
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -214,10 +209,6 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
   async function verify(event: FormEvent) {
     event.preventDefault();
-    if (!userAgreementAccepted) {
-      setError(t("auth.error.acceptTerms"));
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -229,6 +220,8 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           email,
           code,
           showOnMap: draft.showOnMap,
+          // The consent screen asks for profile visibility after onboarding.
+          consentReview: true,
           userAgreement: buildLatestUserAgreementPayload()
         })
       });
@@ -565,18 +558,15 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   placeholder="player@email.com"
                 />
               </label>
-              <LegalAcceptanceField
-                accepted={userAgreementAccepted}
-                onChange={setUserAgreementAccepted}
-              />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
                   {t("auth.email.later")}
                 </Button>
-                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || !userAgreementAccepted}>
+                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
                   {loading ? t("auth.email.sending") : t("auth.email.getCode")}
                 </Button>
               </div>
+              <LegalNotice />
             </form>
           ) : (
             <form className="space-y-4" onSubmit={verify}>
@@ -596,18 +586,15 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   placeholder="000000"
                 />
               </label>
-              <LegalAcceptanceField
-                accepted={userAgreementAccepted}
-                onChange={setUserAgreementAccepted}
-              />
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
                   {t("auth.code.changeEmail")}
                 </Button>
-                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6 || !userAgreementAccepted}>
+                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6}>
                   {loading ? t("auth.code.saving") : t("auth.code.submit")}
                 </Button>
               </div>
+              <LegalNotice />
             </form>
           )}
 
@@ -618,34 +605,25 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   );
 }
 
-function LegalAcceptanceField({
-  accepted,
-  onChange
-}: {
-  accepted: boolean;
-  onChange: (value: boolean) => void;
-}) {
+/**
+ * Соглашение принимается нажатием кнопки входа. Согласия на обработку данных
+ * здесь нет: показ анкеты и аналитика спрашиваются отдельно, после анкеты.
+ */
+function LegalNotice() {
   const { t } = useLocale();
 
   return (
-    <div className="rounded-[20px] border border-white/75 bg-white/72 px-3 py-3">
-      <label htmlFor="user-agreement-accepted" className="flex items-start gap-3 text-[12px] leading-5 text-ink/70">
-        <input
-          id="user-agreement-accepted"
-          type="checkbox"
-          checked={accepted}
-          onChange={(event) => onChange(event.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-court"
-        />
-        <span>
-          {t("auth.legal.prefix")}{" "}
-          <Link href="/legal/terms" target="_blank" className="font-semibold text-court underline underline-offset-2">
-            {t("auth.legal.link")}
-          </Link>{" "}
-          {t("auth.legal.suffix")}
-        </span>
-      </label>
-    </div>
+    <p className="px-1 text-center text-[12px] leading-5 text-ink/60">
+      {t("auth.legal.prefix")}{" "}
+      <Link href="/legal/terms" target="_blank" className="font-semibold text-court underline underline-offset-2">
+        {t("auth.legal.link")}
+      </Link>
+      {t("auth.legal.suffix")}{" "}
+      <Link href="/legal/privacy" target="_blank" className="font-semibold text-court underline underline-offset-2">
+        {t("auth.legal.policyLink")}
+      </Link>
+      .
+    </p>
   );
 }
 
