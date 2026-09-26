@@ -15,6 +15,30 @@ final class AppModel: ObservableObject {
         let message: String
     }
 
+    struct MatchMoment: Identifiable, Equatable {
+        struct Person: Equatable {
+            let name: String
+            let imagePath: String?
+        }
+
+        let id = UUID()
+        let matchID: String
+        let sport: Sport
+        let viewer: Person
+        let player: Person
+    }
+
+    struct GameConfirmation: Identifiable, Equatable {
+        let id = UUID()
+        let sport: Sport
+        let date: Date?
+        let durationMinutes: Int?
+        /// Court name, or the route for a run.
+        let place: String?
+        let partnerName: String
+        let partnerImagePath: String?
+    }
+
     struct LocaleRecommendation: Identifiable, Equatable {
         let locale: AppLocale
 
@@ -69,6 +93,8 @@ final class AppModel: ObservableObject {
     @Published var lastSelectedDiscoverTab: DiscoverTab = .swipe
     @Published var hasActiveUpcomingGameRequests = false
     @Published var serverRecoveryNotice: ServerRecoveryNotice?
+    @Published private(set) var matchMoment: MatchMoment?
+    @Published private(set) var gameConfirmation: GameConfirmation?
     @Published var pendingLocaleRecommendation: LocaleRecommendation?
     @Published private(set) var updateStatus: UpdateStatus = .upToDate
     @Published private(set) var tabContentLoadingKeys: Set<String> = []
@@ -548,6 +574,8 @@ final class AppModel: ObservableObject {
         pendingDiscoverFirstInterestHint = discoverHintStore.hasPendingFirstInterestHint()
         hasActiveUpcomingGameRequests = false
         serverRecoveryNotice = nil
+        matchMoment = nil
+        gameConfirmation = nil
     }
 
     func present(error: Error) {
@@ -582,6 +610,49 @@ final class AppModel: ObservableObject {
 
     func dismissServerRecoveryNotice() {
         serverRecoveryNotice = nil
+    }
+
+    func presentMatchMoment(matchID: String, with player: DiscoverUser, deckSport: Sport? = nil) {
+        matchMoment = MatchMoment(
+            matchID: matchID,
+            sport: MatchMomentSportResolver.resolve(
+                deckFilter: deckSport,
+                viewer: currentUser?.preferredSports ?? [],
+                player: player.preferredSports,
+                fallback: .tennis
+            ),
+            viewer: .init(name: currentUser?.displayName ?? "", imagePath: currentUser?.profileHeroImagePath),
+            player: .init(name: player.displayName, imagePath: player.profileHeroImagePath)
+        )
+    }
+
+    /// The agreed game as the viewer sees it: the other side's name and photo, where, when.
+    func presentGameConfirmation(for request: MatchGameRequest) {
+        let route = request.runningRoute?.trimmingCharacters(in: .whitespacesAndNewlines)
+        presentGameConfirmation(GameConfirmation(
+            sport: request.sport,
+            date: request.proposedDate,
+            durationMinutes: request.durationMinutes,
+            place: request.proposedCourt?.name ?? (route?.isEmpty == false ? route : nil),
+            partnerName: request.upcomingDisplayName(currentUserId: currentUser?.id),
+            partnerImagePath: request.upcomingAvatarURL(currentUserId: currentUser?.id)
+        ))
+    }
+
+    func presentGameConfirmation(_ confirmation: GameConfirmation) {
+        gameConfirmation = confirmation
+    }
+
+    func dismissGameConfirmation() {
+        gameConfirmation = nil
+    }
+
+    func dismissMatchMoment(openingChat: Bool) {
+        guard let matchMoment else { return }
+        self.matchMoment = nil
+        if openingChat {
+            navigate(to: .chat(matchMoment.matchID))
+        }
     }
 
     func setTabContentLoading(_ key: String, isLoading: Bool) {

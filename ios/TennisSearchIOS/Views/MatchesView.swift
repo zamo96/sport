@@ -145,6 +145,8 @@ struct MatchesView: View {
                     self.navigationMatch = nil
                     isChatPresented = false
                 }
+                // A chat opened over another one (a push while chatting) starts clean.
+                .id(navigationMatch.id)
             }
         }
         .sheet(item: $selectedProfileMatch) { match in
@@ -217,7 +219,7 @@ struct MatchesView: View {
                     )
 
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        withAnimation(AppMotion.quick) {
                             selectedFilter = filter
                         }
                     } label: {
@@ -392,20 +394,16 @@ struct MatchesView: View {
             let createdMatchId = try await appModel.repository.swipe(userId: user.id, action: action)
             incomingLikes.removeAll { $0.id == user.id }
 
-            switch action {
-            case .like, .superlike:
-                AppHaptics.notification(.success)
-            case .dislike:
-                AppHaptics.notification(.warning)
+            if let createdMatchId, action != .dislike {
+                // Same moment as a match from the deck; it carries its own haptics and
+                // opens the chat from its button.
+                appModel.presentMatchMoment(matchID: createdMatchId, with: user)
+            } else {
+                AppHaptics.notification(action == .dislike ? .warning : .success)
             }
 
             await loadMatches()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
-
-            if let createdMatchId,
-               let createdMatch = matches.first(where: { $0.id == createdMatchId || $0.otherUser.id == user.id }) {
-                navigationMatch = createdMatch
-            }
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -426,7 +424,7 @@ struct MatchesView: View {
             _ = try await appModel.repository.updateGameRequestStatus(gameRequestId: request.id, status: status)
             switch status {
             case "accepted":
-                AppHaptics.notification(.success)
+                appModel.presentGameConfirmation(for: request)
             case "declined", "canceled":
                 AppHaptics.notification(.warning)
             default:
@@ -961,6 +959,7 @@ private struct MatchInboxCard: View {
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var notificationManager: NotificationManager
     let match: MatchSummary
@@ -1055,6 +1054,11 @@ struct ChatView: View {
                                         onAttachmentTap: { selectedMediaAttachment = $0 }
                                     )
                                     .id(message.id)
+                                    // Grows out of its own corner; only animated arrivals play it.
+                                    .transition(.asymmetric(
+                                        insertion: .scale(scale: 0.6, anchor: isMine ? .bottomTrailing : .bottomLeading).combined(with: .opacity),
+                                        removal: .opacity
+                                    ))
                                 }
                             }
                             .chatReceiptRow(id: message.id)
@@ -1160,20 +1164,29 @@ struct ChatView: View {
                         await sendMessage()
                     }
                 } label: {
-                    Group {
+                    ZStack {
                         if isSendingMessage {
                             ProgressView().tint(.white)
+                                .transition(.scale(scale: 0.5).combined(with: .opacity))
                         } else {
+                            // Takes off towards the chat on send, and drops back in after.
                             Image(systemName: "paperplane.fill")
                                 .font(.system(size: 16, weight: .bold))
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.4).combined(with: .opacity),
+                                    removal: .offset(x: 26, y: -26).combined(with: .opacity)
+                                ))
                         }
                     }
                     .frame(width: 58, height: 58)
-                    .background(AppTheme.court, in: Circle())
-                    .foregroundStyle(.white)
+                    .background(AppTheme.court.opacity(hasSomethingToSend || isSendingMessage ? 1 : 0.45), in: Circle())
+                    .foregroundStyle(.white.opacity(hasSomethingToSend || isSendingMessage ? 1 : 0.6))
+                    .scaleEffect(hasSomethingToSend || isSendingMessage ? 1 : 0.88)
+                    .animation(AppMotion.animation(.spring(response: 0.3, dampingFraction: 0.55), reduceMotion: reduceMotion), value: hasSomethingToSend)
+                    .animation(AppMotion.animation(AppMotion.quick, reduceMotion: reduceMotion), value: isSendingMessage)
                 }
                 .buttonStyle(.plain)
-                .disabled(isSendingMessage || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty))
+                .disabled(isSendingMessage || !hasSomethingToSend)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -2045,7 +2058,12 @@ struct ChatView: View {
 
         do {
             _ = try await appModel.repository.updateGameRequestStatus(gameRequestId: request.id, status: status)
-            AppHaptics.notification(status == "accepted" ? .success : .warning)
+            if status == "accepted" {
+                // Carries its own haptics.
+                appModel.presentGameConfirmation(for: request)
+            } else {
+                AppHaptics.notification(.warning)
+            }
             await refreshChatState()
         } catch {
             guard !error.isCancellationLike else {
@@ -2090,7 +2108,12 @@ struct ChatView: View {
             let fetchedMessages = try await appModel.repository.fetchMessages(matchId: currentMatch.id)
             guard revision == messagesLoadRevision else { return }
             // IDs may stay the same while receipts advance; stale responses cannot regress them.
-            messages = mergeChatReceipts(current: messages, fetched: fetchedMessages)
+            let merged = mergeChatReceipts(current: messages, fetched: fetchedMessages)
+            // New arrivals grow in; the first load of the history just appears.
+            let hasArrivals = !messages.isEmpty && merged.count > messages.count
+            withAnimation(hasArrivals ? AppMotion.animation(AppMotion.standard, reduceMotion: reduceMotion) : nil) {
+                messages = merged
+            }
         } catch {
             guard !error.isCancellationLike else {
                 return
@@ -2244,6 +2267,10 @@ struct ChatView: View {
         return result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
     }
 
+    private var hasSomethingToSend: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingPhotos.isEmpty
+    }
+
     private func sendMessage() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !pendingPhotos.isEmpty, !isSendingMessage else {
@@ -2270,7 +2297,9 @@ struct ChatView: View {
             )
             messagesLoadRevision += 1 // Invalidate history requests that began before this send completed.
             if !messages.contains(where: { $0.id == message.id }) {
-                messages.append(message)
+                withAnimation(AppMotion.animation(AppMotion.standard, reduceMotion: reduceMotion)) {
+                    messages.append(message)
+                }
             }
             text = ""
             pendingPhotos = []

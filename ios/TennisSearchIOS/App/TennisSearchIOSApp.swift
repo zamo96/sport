@@ -47,8 +47,8 @@ struct TennisSearchIOSApp: App {
                 .environmentObject(appModel.notificationManager)
                 .environmentObject(localeStore)
                 .environment(\.locale, localeStore.locale)
-                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.pendingLocaleRecommendation)
-                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.pendingUpdateBanner)
+                .animation(AppMotion.standard, value: appModel.pendingLocaleRecommendation)
+                .animation(AppMotion.standard, value: appModel.pendingUpdateBanner)
                 .task {
                     if !SportsActivityFeedPreview.isEnabled {
                         await appModel.bootstrap()

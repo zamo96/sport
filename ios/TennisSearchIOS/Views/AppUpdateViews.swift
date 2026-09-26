@@ -7,6 +7,7 @@ struct AppUpdateBanner: View {
     let onDismiss: () -> Void
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animateBounce = false
 
     var body: some View {
@@ -58,13 +59,15 @@ struct AppUpdateBanner: View {
         )
         .shadow(color: AppTheme.ink.opacity(0.1), radius: 16, x: 0, y: 8)
         .onAppear {
-            animateBounce = true
+            // Decorative loop: Reduce Motion keeps the ball still.
+            animateBounce = !reduceMotion
         }
     }
 }
 
 struct AppUpdateRequiredView: View {
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animateBounce = false
     @State private var pulse = false
 
@@ -116,8 +119,9 @@ struct AppUpdateRequiredView: View {
             .padding(.horizontal, 36)
         }
         .onAppear {
-            animateBounce = true
-            pulse = true
+            // Decorative loops: Reduce Motion keeps the screen still.
+            animateBounce = !reduceMotion
+            pulse = !reduceMotion
         }
     }
 }

@@ -71,9 +71,15 @@ struct HomeNavigationTests {
         expect(navigation.selectedTab == .searches && navigation.appModel.pendingSearchLobbyID == "lobby-A" && !navigation.isSportHomePresented,
                "A group-lobby notification bypasses goal selection")
         navigation.isSportHomePresented = true
+        let stackBeforeChat = navigation.matchesStackID
         navigation.navigate(.chat("match-A"))
         expect(navigation.selectedTab == .matches && navigation.appModel.pendingChatMatchID == "match-A" && !navigation.isSportHomePresented,
                "Chat navigation remains available from the optional week screen")
+        expect(navigation.matchesStackID != stackBeforeChat, "Coming from another tab, a chat opens on a fresh Matches stack")
+        let liveMatchesStack = navigation.matchesStackID
+        navigation.navigate(.chat("match-B"))
+        expect(navigation.matchesStackID == liveMatchesStack && navigation.appModel.pendingChatMatchID == "match-B",
+               "Already on Matches, the live list keeps its stack and opens the chat itself")
         navigation.isSportHomePresented = true
         navigation.courtsVisitPlanningMode = true
         navigation.courtsInitialPersonalVisit = Court(id: "stale")

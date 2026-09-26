@@ -19,6 +19,7 @@
 		A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000203 /* AppModel+UserIntent.swift */; };
 		A31000000000000000000104 /* SportHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000204 /* SportHomeView.swift */; };
 		A31000000000000000000105 /* SportHomeWeek.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000205 /* SportHomeWeek.swift */; };
+		A1000000000000000000F1B0 /* MatchMomentSport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1B1 /* MatchMomentSport.swift */; };
 		A100000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
 		A200000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
 		A100000000000000000001B0 /* ReportPhotoGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002B0 /* ReportPhotoGallery.swift */; };
@@ -42,6 +43,10 @@
 		A1000000000000000000010B /* MatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020B /* MatchesView.swift */; };
 		A1000000000000000000010C /* SearchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020C /* SearchesView.swift */; };
 		A1000000000000000000019E /* EmptyDeckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000029E /* EmptyDeckView.swift */; };
+		A1000000000000000000F1A0 /* MatchMomentOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1A1 /* MatchMomentOverlay.swift */; };
+		A1000000000000000000F1C0 /* MatchMomentScenes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1C1 /* MatchMomentScenes.swift */; };
+		A1000000000000000000F1D0 /* GameConfirmedOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1D1 /* GameConfirmedOverlay.swift */; };
+		A1000000000000000000F1E0 /* SportPickIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1E1 /* SportPickIcon.swift */; };
 		A1000000000000000000010D /* CourtsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020D /* CourtsView.swift */; };
 		A1000000000000000000010E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000020E /* ProfileView.swift */; };
 		A10000000000000000000122 /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000227 /* LocationPickerView.swift */; };
@@ -107,6 +112,7 @@
 		A31000000000000000000203 /* AppModel+UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+UserIntent.swift"; sourceTree = "<group>"; };
 		A31000000000000000000204 /* SportHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeView.swift; sourceTree = "<group>"; };
 		A31000000000000000000205 /* SportHomeWeek.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeWeek.swift; sourceTree = "<group>"; };
+		A1000000000000000000F1B1 /* MatchMomentSport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchMomentSport.swift; sourceTree = "<group>"; };
 		A100000000000000000002D1 /* SecureSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureSessionStore.swift; sourceTree = "<group>"; };
 		A100000000000000000002B0 /* ReportPhotoGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPhotoGallery.swift; sourceTree = "<group>"; };
 		A100000000000000000002C0 /* RemoteMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMedia.swift; sourceTree = "<group>"; };
@@ -130,6 +136,10 @@
 		A1000000000000000000020B /* MatchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchesView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020C /* SearchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchesView.swift; sourceTree = "<group>"; };
 		A1000000000000000000029E /* EmptyDeckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyDeckView.swift; sourceTree = "<group>"; };
+		A1000000000000000000F1A1 /* MatchMomentOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchMomentOverlay.swift; sourceTree = "<group>"; };
+		A1000000000000000000F1C1 /* MatchMomentScenes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchMomentScenes.swift; sourceTree = "<group>"; };
+		A1000000000000000000F1D1 /* GameConfirmedOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameConfirmedOverlay.swift; sourceTree = "<group>"; };
+		A1000000000000000000F1E1 /* SportPickIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportPickIcon.swift; sourceTree = "<group>"; };
 		A1000000000000000000020D /* CourtsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtsView.swift; sourceTree = "<group>"; };
 		A1000000000000000000020E /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A10000000000000000000227 /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
@@ -231,6 +241,7 @@
 				A10000000000000000000203 /* AppModels.swift */,
 				A31000000000000000000201 /* UserIntent.swift */,
 				A31000000000000000000205 /* SportHomeWeek.swift */,
+				A1000000000000000000F1B1 /* MatchMomentSport.swift */,
 				A32000000000000000000201 /* ProfileWorkoutHistory.swift */,
 				A10000000000000000000225 /* BookingCallFlow.swift */,
 				A10000000000000000000223 /* UpcomingGameLiveActivity.swift */,
@@ -281,6 +292,10 @@
 				A1000000000000000000020B /* MatchesView.swift */,
 				A1000000000000000000020C /* SearchesView.swift */,
 				A1000000000000000000029E /* EmptyDeckView.swift */,
+				A1000000000000000000F1A1 /* MatchMomentOverlay.swift */,
+				A1000000000000000000F1C1 /* MatchMomentScenes.swift */,
+				A1000000000000000000F1D1 /* GameConfirmedOverlay.swift */,
+				A1000000000000000000F1E1 /* SportPickIcon.swift */,
 				A1000000000000000000020D /* CourtsView.swift */,
 				A1000000000000000000020E /* ProfileView.swift */,
 				A100000000000000000002B0 /* ReportPhotoGallery.swift */,
@@ -449,6 +464,7 @@
 				A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */,
 				A31000000000000000000104 /* SportHomeView.swift in Sources */,
 				A31000000000000000000105 /* SportHomeWeek.swift in Sources */,
+				A1000000000000000000F1B0 /* MatchMomentSport.swift in Sources */,
 				A32000000000000000000101 /* ProfileWorkoutHistory.swift in Sources */,
 				A32000000000000000000102 /* ProfileWorkoutsSection.swift in Sources */,
 				A33000000000000000000104 /* PersonalActivityReportComposerSheet.swift in Sources */,
@@ -472,6 +488,10 @@
 				A1000000000000000000010B /* MatchesView.swift in Sources */,
 				A1000000000000000000010C /* SearchesView.swift in Sources */,
 				A1000000000000000000019E /* EmptyDeckView.swift in Sources */,
+				A1000000000000000000F1A0 /* MatchMomentOverlay.swift in Sources */,
+				A1000000000000000000F1C0 /* MatchMomentScenes.swift in Sources */,
+				A1000000000000000000F1D0 /* GameConfirmedOverlay.swift in Sources */,
+				A1000000000000000000F1E0 /* SportPickIcon.swift in Sources */,
 				A1000000000000000000010D /* CourtsView.swift in Sources */,
 				A1000000000000000000010E /* ProfileView.swift in Sources */,
 				A100000000000000000001B0 /* ReportPhotoGallery.swift in Sources */,

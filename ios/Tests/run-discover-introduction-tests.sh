@@ -99,6 +99,10 @@ struct Animation {
     static func easeInOut(duration: Double) -> Animation { Animation() }
 }
 func withAnimation(_ animation: Animation?, _ changes: () -> Void) { changes() }
+enum AppMotion {
+    static let quick = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    static let standard = Animation.spring(response: 0.34, dampingFraction: 0.86)
+}
 enum AppHaptics { static func selection() {} }
 struct IntroductionUser { let id: String }
 '''

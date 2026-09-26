@@ -164,6 +164,9 @@ struct DiscoverView: View {
     @State private var similarPlayersSportFilter: Sport?
     @State private var isSubmittingSwipe = false
     @Namespace private var similarPlayersTransition
+    @Namespace private var participantZoom
+    /// The deck card a player's profile was opened from, so the sheet can grow out of it.
+    @State private var participantZoomSourceID: String?
     @State private var upcomingMatches: [MatchSummary] = []
     @State private var upcomingGameRequests: [MatchGameRequest] = []
     @State private var personalActivities: [PersonalActivity] = []
@@ -197,8 +200,6 @@ struct DiscoverView: View {
     @State private var emptyDeckContentFailed = false
     @State private var emptyDeckAccountID: String?
     @State private var emptyDeckRequestID: UUID?
-    @State private var matchMessage: String?
-    @State private var matchMessageTask: Task<Void, Never>?
     @State private var responseMessage: String?
     @State private var responseMessageTask: Task<Void, Never>?
     @State private var actionCelebration: DiscoverActionCelebration?
@@ -284,7 +285,7 @@ struct DiscoverView: View {
     private var hasPendingFeatureIntroduction: Bool {
         isManualIntroductionRequested || featureGuide?.allowsAutomaticPresentation == true
     }
-    private var introductionAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86) }
+    private var introductionAnimation: Animation? { reduceMotion ? nil : AppMotion.standard }
     private var isIntroductionContextSafe: Bool {
         isDiscoverForeground && isDiscoverVisible && scenePhase == .active && selectedTab == .swipe
             && similarPlayersDisplayMode == .cards && !isLoading && !isSystemRefreshing
@@ -978,6 +979,7 @@ struct DiscoverView: View {
                             handleBlockedUser(user.id)
                         }
                     )
+                        .zoomTransition(from: participantZoomSourceID == user.id ? user.id : nil, in: participantZoom)
                         .presentationDetents([.fraction(0.58), .large])
                         .presentationDragIndicator(.visible)
                         .presentationCornerRadius(32)
@@ -1155,18 +1157,12 @@ struct DiscoverView: View {
                                 .transition(.move(edge: .top).combined(with: .opacity))
                         }
 
-                        if let matchMessage {
-                            MatchSuccessToast(message: matchMessage)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-
                         if let responseMessage {
                             InlineToast(message: responseMessage)
                                 .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
                 }
-                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: matchMessage)
                 .animation(.spring(response: 0.3, dampingFraction: 0.84), value: responseMessage)
                 .animation(.spring(response: 0.3, dampingFraction: 0.88), value: islandCollapseProgress)
                 .animation(.spring(response: 0.38, dampingFraction: 0.8), value: hasVisibleSummaryCard)
@@ -1275,7 +1271,7 @@ struct DiscoverView: View {
 
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(480))
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        withAnimation(AppMotion.standard) {
                             islandPulse = false
                         }
                     }
@@ -1526,7 +1522,7 @@ struct DiscoverView: View {
                 return
             }
             appModel.consumeDiscoverFirstInterestHint()
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            withAnimation(AppMotion.standard) {
                 isFirstInterestHintPresented = true
             }
         }
@@ -1535,7 +1531,7 @@ struct DiscoverView: View {
     private func dismissFirstInterestHint() {
         AppHaptics.selection()
         appModel.completeDiscoverFirstInterestHint()
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+        withAnimation(AppMotion.standard) {
             isFirstInterestHintPresented = false
         }
     }
@@ -2533,7 +2529,7 @@ struct DiscoverView: View {
                     index: index,
                     dragOffset: isSimilarPlayersHintPresented ? similarPlayersHintDemoOffset : dragOffset,
                     decision: isSimilarPlayersHintPresented ? similarPlayersHintDemoDecision : dragDecision,
-                    onOpen: { openDiscoverParticipant(user) },
+                    onOpen: { openDiscoverParticipant(user, fromCard: true) },
                     onDislike: { Task { await submitSwipe(.dislike, userID: user.id) } },
                     onLike: { Task { await submitSwipe(.like, userID: user.id) } },
                     onBlocked: { handleBlockedUser(user.id) },
@@ -2545,6 +2541,7 @@ struct DiscoverView: View {
                     onMediaCompleted: { completePlayerMedia(userID: user.id) }
                 )
                 .modifier(SimilarPlayerGeometry(id: user.id, namespace: similarPlayersTransition, isEnabled: !reduceMotion))
+                .zoomTransitionSource(id: user.id, in: participantZoom, cornerRadius: 34)
                 .background(ViewedFlightFrameMarker(endpoints: viewedFlightEndpoints, role: .source, userID: user.id))
                 .allowsHitTesting(autoAdvanceToken == nil && !isSubmittingSwipe && !isSimilarPlayersHintPresented && !isFirstInterestHintPresented && !isFeatureGuidePresented && !isIntroductionTransitioning)
                 .scaleEffect(isSimilarPlayersHintPresented ? 0.92 : 1)
@@ -2571,9 +2568,12 @@ struct DiscoverView: View {
                 .allowsHitTesting(false)
                 .accessibilityElement(children: .ignore)
                 .disabled(true)
-                .scaleEffect(reduceMotion || isAutoAdvanceExiting ? 1 : 0.965 - CGFloat(index) * 0.02)
-                .offset(y: reduceMotion || isAutoAdvanceExiting ? 0 : CGFloat(index) * 14)
+                .brightness(isAutoAdvanceExiting ? 0 : -backCardDimming)
+                .scaleEffect(reduceMotion || isAutoAdvanceExiting ? 1 : backCardScale(index: index))
+                .offset(y: reduceMotion || isAutoAdvanceExiting ? 0 : backCardOffset(index: index))
                 .animation(reduceMotion ? nil : .timingCurve(0.32, 0, 0.2, 1, duration: 0.8), value: isAutoAdvanceExiting)
+                // Tracks the finger 1:1 while dragging; springs back when the drag is let go.
+                .animation(AppMotion.animation(AppMotion.standard, reduceMotion: reduceMotion), value: dragOffset == .zero)
                 .zIndex(Double(topStack.count - index))
             )
         }
@@ -2836,11 +2836,12 @@ struct DiscoverView: View {
                                 index: index,
                                 dragOffset: dragOffset,
                                 decision: dragDecision,
-                                onOpen: { openDiscoverParticipant(user) },
+                                onOpen: { openDiscoverParticipant(user, fromCard: true) },
                                 onDislike: { Task { await submitSwipe(.dislike, userID: user.id) } },
                                 onLike: { Task { await submitSwipe(.like, userID: user.id) } },
                                 onBlocked: { handleBlockedUser(user.id) }
                             )
+                            .zoomTransitionSource(id: user.id, in: participantZoom, cornerRadius: 34)
                             .allowsHitTesting(!isSubmittingSwipe)
                             .scaleEffect(1.0)
                             .offset(y: 0)
@@ -2860,8 +2861,10 @@ struct DiscoverView: View {
                                 .allowsHitTesting(false)
                                 .accessibilityElement(children: .ignore)
                                 .disabled(true)
-                                .scaleEffect(0.965 - CGFloat(index) * 0.02)
-                                .offset(y: CGFloat(index) * 14)
+                                .brightness(-backCardDimming)
+                                .scaleEffect(backCardScale(index: index))
+                                .offset(y: backCardOffset(index: index))
+                                .animation(AppMotion.animation(AppMotion.standard, reduceMotion: reduceMotion), value: dragOffset == .zero)
                                 .zIndex(Double(topStack.count - index))
                             }
                         }
@@ -2889,7 +2892,7 @@ struct DiscoverView: View {
                             sport: nil,
                             isSelected: hotSearchSportFilter == nil
                         ) {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            withAnimation(AppMotion.quick) {
                                 hotSearchSportFilter = nil
                             }
                             AppHaptics.selection()
@@ -2901,7 +2904,7 @@ struct DiscoverView: View {
                                 sport: sport,
                                 isSelected: hotSearchSportFilter == sport
                             ) {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                withAnimation(AppMotion.quick) {
                                     hotSearchSportFilter = sport
                                 }
                                 AppHaptics.selection()
@@ -3269,7 +3272,7 @@ struct DiscoverView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    withAnimation(AppMotion.quick) {
                         hotSearchFilter = .all
                     }
                     AppHaptics.selection()
@@ -3316,7 +3319,7 @@ struct DiscoverView: View {
         let dayTitle = activeHotSearchCalendar.isDateInToday(date) ? L10n.string("Today", "Сегодня") : activeHotSearchWeekdayTitle(for: date)
 
         return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            withAnimation(AppMotion.quick) {
                 hotSearchCalendarDate = activeHotSearchCalendar.startOfDay(for: date)
                 hotSearchFilter = .calendar
             }
@@ -4044,12 +4047,13 @@ struct DiscoverView: View {
         appModel.navigate(to: target)
     }
 
-    private func openDiscoverParticipant(_ user: DiscoverUser) {
+    private func openDiscoverParticipant(_ user: DiscoverUser, fromCard: Bool = false) {
         guard !isSimilarPlayersHintPresented, !isFirstInterestHintPresented else {
             return
         }
         AppHaptics.selection()
         selectedUpcomingMatch = nil
+        participantZoomSourceID = fromCard && !reduceMotion ? user.id : nil
         selectedUpcomingParticipant = user
     }
 
@@ -4180,14 +4184,25 @@ struct DiscoverView: View {
             users.removeAll { $0.id == activeUser.id }
             viewedPlayers.remove(activeUser.id)
             updateSimilarPlayersCountIfNeeded()
+            // The card behind already rose into the top slot during the fly-out. Without this
+            // it would inherit the flown-out offset and slide back in from the edge after the
+            // badge refresh below.
+            resetSwipeInteraction(animated: false)
+            let isMatchMoment = createdMatchId != nil && action == .like
+            if let createdMatchId, isMatchMoment {
+                // Right on the swipe, not after the badge refresh below makes its own round trip.
+                appModel.presentMatchMoment(
+                    matchID: createdMatchId,
+                    with: activeUser,
+                    deckSport: sourceTab == .swipe ? similarPlayersSportFilter : nil
+                )
+            }
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             guard !Task.isCancelled, selectedTab == sourceTab,
                   appModel.currentUser?.id == sourceAccountID,
                   appModel.isAuthenticated == sourceIsAuthenticated else { return }
-            if createdMatchId != nil, action == .like {
-                showMatchToast(L10n.string("You matched with \(activeUser.displayName).", "С \(activeUser.displayName) случился новый мэтч."))
-            }
-            if action == .like || action == .superlike {
+            // The hint promises a chat "if the interest is mutual"; after a match it already is.
+            if !isMatchMoment, action == .like || action == .superlike {
                 firstInterestHintPlayerName = swipedUserName
                 if appModel.queueDiscoverFirstInterestHintIfNeeded() {
                     scheduleFirstInterestHintIfNeeded(playerName: swipedUserName)
@@ -4318,18 +4333,6 @@ struct DiscoverView: View {
 
             withAnimation(.easeOut(duration: 0.22)) {
                 actionCelebration = nil
-            }
-        }
-    }
-
-    private func showMatchToast(_ message: String) {
-        matchMessageTask?.cancel()
-        matchMessage = message
-        matchMessageTask = Task {
-            try? await Task.sleep(nanoseconds: 2_800_000_000)
-            guard !Task.isCancelled else { return }
-            if matchMessage == message {
-                matchMessage = nil
             }
         }
     }
@@ -4501,8 +4504,7 @@ struct DiscoverView: View {
 
         do {
             _ = try await appModel.repository.updateGameRequestStatus(gameRequestId: request.id, status: "accepted")
-            AppHaptics.notification(.success)
-            showResponseToast(L10n.string("Game confirmed.", "Игра подтверждена."))
+            appModel.presentGameConfirmation(for: request)
             await loadDiscover()
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
         } catch {
@@ -4678,7 +4680,7 @@ struct DiscoverView: View {
                     resetSwipeInteraction()
                     return
                 }
-                let decision = currentDecision(for: value.translation)
+                let decision = currentDecision(for: value.translation) ?? flickDecision(for: value)
                 guard let decision else {
                     resetSwipeInteraction()
                     return
@@ -4702,6 +4704,42 @@ struct DiscoverView: View {
             return .dislike
         }
         return nil
+    }
+
+    /// A quick flick commits short of the 110 pt threshold: it is the finger's momentum
+    /// that says "done", as long as it keeps going the way the card was already moving.
+    private func flickDecision(for value: DragGesture.Value) -> SwipeAction? {
+        let moved = value.translation.width
+        let projected = value.predictedEndTranslation.width
+        guard abs(moved) >= 40, abs(projected) >= 280, (moved > 0) == (projected > 0) else {
+            return nil
+        }
+        return moved > 0 ? .like : .dislike
+    }
+
+    /// While the top card is dragged away, the one behind rises toward its slot, so the
+    /// deck answers the finger and the next player is already in place on commit.
+    /// Paced like the top card's own like/skip overlay (170 pt), so both peak together.
+    private var deckLift: CGFloat {
+        reduceMotion ? 0 : min(abs(dragOffset.width) / 170, 1)
+    }
+
+    /// The card behind waits a shade darker and lights up as it comes forward; scale alone
+    /// was a few percent and read as nothing under the finger.
+    private var backCardDimming: Double {
+        0.22 * Double(1 - deckLift)
+    }
+
+    private func deckSlotScale(_ slot: Int) -> CGFloat {
+        slot == 0 ? 1 : 0.965 - CGFloat(slot) * 0.02
+    }
+
+    private func backCardScale(index: Int) -> CGFloat {
+        deckSlotScale(index) + (deckSlotScale(index - 1) - deckSlotScale(index)) * deckLift
+    }
+
+    private func backCardOffset(index: Int) -> CGFloat {
+        (CGFloat(index) - deckLift) * 14
     }
 
     private var tabSwitchGesture: some Gesture {
@@ -9921,64 +9959,6 @@ private struct ShareExistingGameSheet: View {
             selectedMatchIDs.remove(matchId)
         } else {
             selectedMatchIDs.insert(matchId)
-        }
-    }
-}
-
-private struct MatchSuccessToast: View {
-    let message: String
-
-    @State private var animateBounce = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: 42, height: 42)
-
-                TennisBallIcon()
-                    .frame(width: 26, height: 26)
-                    .offset(y: animateBounce ? -4 : 4)
-                    .rotationEffect(.degrees(animateBounce ? 12 : -12))
-                    .animation(.easeInOut(duration: 0.46).repeatForever(autoreverses: true), value: animateBounce)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.string("New match", "Новый мэтч"))
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .tracking(1.4)
-                    .foregroundStyle(Color(red: 0.76, green: 0.97, blue: 0.80))
-
-                Text(message)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            LinearGradient(
-                colors: [Color(red: 0.07, green: 0.17, blue: 0.12), Color(red: 0.10, green: 0.30, blue: 0.20)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color(red: 0.37, green: 0.78, blue: 0.56).opacity(0.8), lineWidth: 1.2)
-        )
-        .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 12)
-        .padding(.horizontal, 16)
-        .onAppear {
-            animateBounce = true
-            AppHaptics.notification(.success)
         }
     }
 }

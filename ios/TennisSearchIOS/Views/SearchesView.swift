@@ -5320,7 +5320,7 @@ struct SearchComposerView: View {
         HStack(spacing: 12) {
             if hotStep != .when {
                 Button(L10n.string("Back", "Назад")) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    withAnimation(AppMotion.quick) {
                         hotStep = HotSearchStep(rawValue: hotStep.rawValue - 1) ?? .when
                     }
                 }
@@ -5329,7 +5329,7 @@ struct SearchComposerView: View {
 
             Button {
                 triggerSubmitFeedback()
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                withAnimation(AppMotion.quick) {
                     if hotStep == .confirm {
                         Task { await saveSearch() }
                     } else {

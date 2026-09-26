@@ -78,6 +78,7 @@ struct AuthView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var code = ""
+    @State private var codeVerdict = OTPCodeField.Verdict.none
     @State private var draft: GuestOnboardingDraft
     @State private var step: AuthStep
     @State private var appStats: AppStats?
@@ -853,7 +854,7 @@ struct AuthView: View {
                         return
                     }
 
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    withAnimation(AppMotion.standard) {
                         step = .code
                     }
                 }
@@ -864,17 +865,35 @@ struct AuthView: View {
                     return
                 }
 
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                withAnimation(AppMotion.standard) {
                     step = .code
                 }
             },
             onBack: {
                 persistDraft()
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                withAnimation(AppMotion.standard) {
                     step = draft.hasProfileBasics ? .availability : .intro
                 }
             }
         )
+    }
+
+    /// A wrong code shakes the boxes red and clears them for another try; a right one
+    /// flashes them green on the way out.
+    @MainActor
+    private func showCodeVerdict(accepted: Bool) async {
+        if !accepted {
+            AppHaptics.notification(.error)
+        }
+        withAnimation(accepted ? .easeOut(duration: 0.2) : .linear(duration: 0.45)) {
+            codeVerdict = accepted ? .accepted : .rejected(codeVerdict.attempt + 1)
+        }
+        guard !accepted else { return }
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        withAnimation(.easeOut(duration: 0.2)) {
+            code = ""
+            codeVerdict = .none
+        }
     }
 
     private var codeStep: some View {
@@ -884,12 +903,13 @@ struct AuthView: View {
                 subtitle: L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
-                    OTPCodeField(code: $code)
+                    OTPCodeField(code: $code, verdict: codeVerdict)
 
                     Button(L10n.string("Sign in", "Войти")) {
                         persistDraft()
                         Task {
                             await appModel.verify(code: code, userAgreementAccepted: true)
+                            await showCodeVerdict(accepted: appModel.isAuthenticated)
                         }
                     }
                     .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
@@ -1829,6 +1849,7 @@ private struct LiquidStartButton: View {
     let subtitle: String
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPressed = false
     @State private var hasExpanded = false
     @State private var pulse = false
@@ -1959,6 +1980,8 @@ private struct LiquidStartButton: View {
                 hasExpanded = true
             }
 
+            // The breathing glow is decorative; Reduce Motion leaves the button still.
+            guard !reduceMotion else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.76) {
                 pulse = true
             }
@@ -2202,11 +2225,14 @@ private struct OnboardingSportTile: View {
     var body: some View {
         VStack(spacing: height < 90 ? 5 : 6) {
             ZStack(alignment: .topTrailing) {
-                SportIconView(
+                SportPickIcon(
                     sport: sport,
+                    isSelected: isSelected,
                     color: isSelected ? OnboardingStepPalette.lime : .white.opacity(0.88),
+                    accent: OnboardingStepPalette.lime,
                     size: height < 90 ? 30 : 34
                 )
+                    .frame(maxWidth: .infinity)
                     .frame(height: height < 90 ? 30 : 34)
 
                 if isSelected {
@@ -2216,6 +2242,7 @@ private struct OnboardingSportTile: View {
                         .frame(width: 24, height: 24)
                         .background(OnboardingStepPalette.lime, in: Circle())
                         .offset(x: 7, y: -4)
+                        .transition(.scale(scale: 0.2).combined(with: .opacity))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -3560,8 +3587,22 @@ private struct OnboardingDistrictPickerSheet: View {
 }
 
 private struct OTPCodeField: View {
+    enum Verdict: Equatable {
+        case none
+        case accepted
+        /// Carries the attempt number, so every rejection shakes again.
+        case rejected(Int)
+
+        var attempt: Int {
+            if case .rejected(let attempt) = self { return attempt }
+            return 0
+        }
+    }
+
     @Binding var code: String
+    var verdict: Verdict = .none
     @FocusState private var isFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var digits: [String] {
         let values = Array(code.prefix(6)).map(String.init)
@@ -3581,18 +3622,23 @@ private struct OTPCodeField: View {
                     ForEach(Array(digits.enumerated()), id: \.offset) { index, digit in
                         ZStack {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(AppTheme.creamLight)
+                                .fill(boxFill)
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(index == min(code.count, 5) && isFocused ? AppTheme.court : AppTheme.court.opacity(0.16), lineWidth: index == min(code.count, 5) && isFocused ? 2 : 1)
+                                .stroke(boxStroke(at: index), lineWidth: isHighlighted(index) ? 2 : 1)
 
+                            // Each digit pops in as it is typed.
                             Text(digit.isEmpty ? "•" : digit)
                                 .font(.system(size: 24, weight: .bold, design: .rounded))
                                 .foregroundStyle(digit.isEmpty ? AppTheme.mutedInk.opacity(0.34) : AppTheme.ink)
+                                .id(digit.isEmpty ? "empty-\(index)" : "digit-\(index)-\(digit)")
+                                .transition(.scale(scale: 0.4).combined(with: .opacity))
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 62)
                     }
                 }
+                .modifier(OTPShake(shakes: CGFloat(reduceMotion ? 0 : verdict.attempt)))
+                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: code)
 
                 TextField("", text: Binding(
                     get: { code },
@@ -3612,6 +3658,40 @@ private struct OTPCodeField: View {
                 isFocused = true
             }
         }
+    }
+
+    private var boxFill: Color {
+        switch verdict {
+        case .accepted: return AppTheme.mint
+        case .rejected: return Color(red: 1, green: 0.9, blue: 0.88)
+        case .none: return AppTheme.creamLight
+        }
+    }
+
+    private func isHighlighted(_ index: Int) -> Bool {
+        verdict != .none || (index == min(code.count, 5) && isFocused)
+    }
+
+    private func boxStroke(at index: Int) -> Color {
+        switch verdict {
+        case .accepted: return AppTheme.court
+        case .rejected: return Color(red: 0.86, green: 0.24, blue: 0.2)
+        case .none: return isHighlighted(index) ? AppTheme.court : AppTheme.court.opacity(0.16)
+        }
+    }
+}
+
+/// Side-to-side shake, one full shake per whole step of `shakes`.
+private struct OTPShake: GeometryEffect {
+    var shakes: CGFloat
+
+    var animatableData: CGFloat {
+        get { shakes }
+        set { shakes = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: 10 * sin(shakes * .pi * 4), y: 0))
     }
 }
 

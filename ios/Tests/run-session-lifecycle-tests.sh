@@ -96,6 +96,8 @@ struct DiscoverHintStore {
     var pendingDiscoverFirstInterestHint = false
     var hasActiveUpcomingGameRequests = false
     var serverRecoveryNotice: String?
+    var matchMoment: String?
+    var gameConfirmation: String?
     func resetGuestDraft() { guestDraft = GuestDraft() }
     func adoptGuestUserIntentIfNeeded() {}
     func clearGuestUserIntent() {}

@@ -56,6 +56,37 @@ struct ContentView: View {
             }
         }
         .overlay {
+            // Above the tab bar: the moment owns the whole screen until the player picks an action.
+            if let moment = appModel.matchMoment {
+                MatchMomentOverlay(
+                    moment: moment,
+                    onPlanGame: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            appModel.dismissMatchMoment(openingChat: true)
+                        }
+                    },
+                    onKeepBrowsing: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            appModel.dismissMatchMoment(openingChat: false)
+                        }
+                    }
+                )
+                .id(moment.id)
+                .transition(.opacity)
+            }
+        }
+        .overlay {
+            if let confirmation = appModel.gameConfirmation {
+                GameConfirmedOverlay(confirmation: confirmation) {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        appModel.dismissGameConfirmation()
+                    }
+                }
+                .id(confirmation.id)
+                .transition(.opacity)
+            }
+        }
+        .overlay {
             if appModel.isBusy {
                 LoadingOverlay()
             }
@@ -66,7 +97,7 @@ struct ContentView: View {
                     title: notice.title,
                     message: notice.message,
                     onDismiss: {
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        withAnimation(AppMotion.standard) {
                             appModel.dismissServerRecoveryNotice()
                         }
                     }
@@ -107,12 +138,46 @@ struct ContentView: View {
                 guard appModel.serverRecoveryNotice?.id == value else {
                     return
                 }
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                withAnimation(AppMotion.standard) {
                     appModel.dismissServerRecoveryNotice()
                 }
             }
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: appModel.serverRecoveryNotice?.id)
+        .animation(AppMotion.standard, value: appModel.serverRecoveryNotice?.id)
+        .task {
+            await presentMatchMomentPreviewIfRequested()
+        }
+    }
+
+    /// On mock data, `-match-moment-preview` replays the mutual-like moment at launch and
+    /// `-game-confirmed-preview` the agreed-game one, so the choreography can be reviewed
+    /// without onboarding first; `-match-moment-sport badminton` (a `Sport` raw value)
+    /// picks the sport for either.
+    private func presentMatchMomentPreviewIfRequested() async {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard AppConfig.useMockData,
+              arguments.contains("-match-moment-preview") || arguments.contains("-game-confirmed-preview"),
+              let player = try? await appModel.repository.fetchDiscoverUsers(view: .swipe, sport: nil).first else {
+            return
+        }
+        let sport = arguments.firstIndex(of: "-match-moment-sport")
+            .flatMap { arguments.indices.contains($0 + 1) ? Sport(rawValue: arguments[$0 + 1]) : nil }
+        try? await Task.sleep(for: .milliseconds(800))
+        if arguments.contains("-game-confirmed-preview") {
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            appModel.presentGameConfirmation(AppModel.GameConfirmation(
+                sport: sport ?? .tennis,
+                date: Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: tomorrow),
+                durationMinutes: 90,
+                place: sport == .running ? "Крестовский остров" : "Tennis Prime",
+                partnerName: player.displayName,
+                partnerImagePath: player.profileHeroImagePath
+            ))
+        } else {
+            appModel.presentMatchMoment(matchID: "match-\(player.id)", with: player, deckSport: sport)
+        }
+        #endif
     }
 }
 
@@ -403,21 +468,12 @@ private struct MainTabView: View {
                         activateTab(tab, source: .tap)
                     } label: {
                         VStack(spacing: 5) {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: tab.systemImage)
-                                    .font(.system(size: 21, weight: displayedTab == tab ? .semibold : .regular))
-
-                                if let badge = badgeText(for: tab) {
-                                    Text(badge)
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(badgeBackground(for: tab), in: Capsule())
-                                        .offset(x: 14, y: -10)
-                                }
-                            }
-                            .frame(height: 24)
+                            TabBarItemIcon(
+                                systemImage: tab.systemImage,
+                                isSelected: displayedTab == tab,
+                                badge: badgeText(for: tab),
+                                badgeColor: badgeBackground(for: tab)
+                            )
 
                             Text(tab.title(locale: localeStore.effectiveLocale))
                                 .font(.system(size: 11, weight: displayedTab == tab ? .semibold : .medium))
@@ -631,7 +687,11 @@ private struct MainTabView: View {
             selectedTab = .courts
         case .chat(let matchId):
             appModel.pendingChatMatchID = matchId
-            matchesStackID = UUID()
+            // Already on Matches, the live list opens the chat itself. A fresh stack would
+            // race it: the outgoing list consumes the pending id and takes the chat with it.
+            if selectedTab != .matches {
+                matchesStackID = UUID()
+            }
             selectedTab = .matches
         }
 
@@ -701,6 +761,78 @@ private struct MainTabView: View {
         courtsVisitPlanningMode = true
         courtsStackID = UUID()
         selectedTab = .courts
+    }
+}
+
+/// A tab's icon and badge. The icon bounces when its tab becomes the selected one, also
+/// while a finger slides across the bar; the badge pops in, rolls its number when it
+/// changes and swells for a moment when the count goes up.
+private struct TabBarItemIcon: View {
+    let systemImage: String
+    let isSelected: Bool
+    let badge: String?
+    let badgeColor: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bounce = 0
+    @State private var isSqueezed = false
+    @State private var isBadgeSwollen = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            icon
+
+            if let badge {
+                Text(badge)
+                    .font(.system(size: 10, weight: .bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(badgeColor, in: Capsule())
+                    .scaleEffect(isBadgeSwollen ? 1.3 : 1)
+                    .offset(x: 14, y: -10)
+                    .transition(.scale(scale: 0.3).combined(with: .opacity))
+            }
+        }
+        .frame(height: 24)
+        .animation(AppMotion.animation(.spring(response: 0.34, dampingFraction: 0.62), reduceMotion: reduceMotion), value: badge)
+        .onChange(of: isSelected) { selected in
+            guard selected, !reduceMotion else { return }
+            bounce += 1
+            if #unavailable(iOS 17.0) {
+                pulse($isSqueezed, settle: .spring(response: 0.32, dampingFraction: 0.45))
+            }
+        }
+        .onChange(of: badge) { [badge] newValue in
+            guard !reduceMotion, let old = badge.flatMap(Int.init), let new = newValue.flatMap(Int.init), new > old else { return }
+            pulse($isBadgeSwollen, settle: .spring(response: 0.3, dampingFraction: 0.5))
+        }
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        let image = Image(systemName: systemImage)
+            .font(.system(size: 21, weight: isSelected ? .semibold : .regular))
+        if #available(iOS 17.0, *) {
+            image.symbolEffect(.bounce.down, value: bounce)
+        } else {
+            image.scaleEffect(isSqueezed ? 0.8 : 1)
+        }
+    }
+
+    /// Snaps the flag on, then lets it spring back off: a quick squeeze or swell.
+    private func pulse(_ flag: Binding<Bool>, settle: Animation) {
+        withAnimation(.easeOut(duration: 0.08)) {
+            flag.wrappedValue = true
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            withAnimation(settle) {
+                flag.wrappedValue = false
+            }
+        }
     }
 }
 

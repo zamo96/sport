@@ -52,11 +52,54 @@ enum AppHaptics {
     }
 }
 
+extension View {
+    /// Where a zoom transition starts and returns to, morphing through the source's
+    /// own corner radius. iOS 18+; a no-op before.
+    @ViewBuilder
+    func zoomTransitionSource(id: String, in namespace: Namespace.ID, cornerRadius: CGFloat) -> some View {
+        if #available(iOS 18.0, *) {
+            matchedTransitionSource(id: id, in: namespace) { source in
+                source.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+        } else {
+            self
+        }
+    }
+
+    /// Grows this sheet or screen out of the source with the same id, when there is one;
+    /// otherwise, and before iOS 18, it keeps the usual presentation.
+    @ViewBuilder
+    func zoomTransition(from id: String?, in namespace: Namespace.ID) -> some View {
+        if #available(iOS 18.0, *), let id {
+            navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            self
+        }
+    }
+}
+
+/// Shared springs, so motion reads as one app instead of a spring per screen.
+/// Values are the ones the app already leaned on most; new motion picks one of these.
+enum AppMotion {
+    /// Chips, toggles, press states: small things that should settle almost at once.
+    static let quick = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    /// Cards, panels, toasts moving into place.
+    static let standard = Animation.spring(response: 0.34, dampingFraction: 0.86)
+    /// Hero entrances that may overshoot once.
+    static let emphasized = Animation.spring(response: 0.42, dampingFraction: 0.72)
+
+    /// `nil` under Reduce Motion, so the change lands without travelling.
+    static func animation(_ animation: Animation, reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+}
+
 struct SuccessCelebrationOverlay: View {
     let title: String
     let subtitle: String
     let icon: String
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var launched = false
     @State private var cardVisible = false
 
@@ -76,7 +119,8 @@ struct SuccessCelebrationOverlay: View {
             Color.black.opacity(0.24)
                 .ignoresSafeArea()
 
-            ForEach(Self.particles) { particle in
+            // Reduce Motion: no confetti flight, the card just fades in.
+            ForEach(reduceMotion ? [] : Self.particles) { particle in
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(particle.color)
                     .frame(width: particle.size.width, height: particle.size.height)
@@ -132,6 +176,12 @@ struct SuccessCelebrationOverlay: View {
         }
         .allowsHitTesting(false)
         .onAppear {
+            guard !reduceMotion else {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    cardVisible = true
+                }
+                return
+            }
             withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
                 cardVisible = true
             }
@@ -557,18 +607,48 @@ struct EmptyStateView: View {
     let subtitle: String
     let systemImage: String
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasAppeared = false
+
     var body: some View {
+        // The icon drops in with a small tilt and the lines follow it up, once, on appear.
         VStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.system(size: 34))
                 .foregroundStyle(AppTheme.clay)
+                .background(
+                    Circle()
+                        .fill(AppTheme.clay.opacity(0.1))
+                        .frame(width: 68, height: 68)
+                        .scaleEffect(hasAppeared ? 1 : 0.4)
+                )
+                .frame(height: 68)
+                .scaleEffect(hasAppeared ? 1 : 0.5)
+                .rotationEffect(.degrees(hasAppeared ? 0 : -14))
+                .animation(.spring(response: 0.5, dampingFraction: 0.55), value: hasAppeared)
             Text(title)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 10)
+                .animation(.easeOut(duration: 0.35).delay(0.08), value: hasAppeared)
             Text(subtitle)
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.ink.opacity(0.62))
                 .multilineTextAlignment(.center)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 10)
+                .animation(.easeOut(duration: 0.35).delay(0.16), value: hasAppeared)
+        }
+        .onAppear {
+            guard !hasAppeared else { return }
+            if reduceMotion {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { hasAppeared = true }
+            } else {
+                hasAppeared = true
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(24)
@@ -598,6 +678,7 @@ struct ServerRecoveryOverlay: View {
     let message: String
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
     @State private var drift = false
 
@@ -654,6 +735,8 @@ struct ServerRecoveryOverlay: View {
             .shadow(color: AppTheme.ink.opacity(0.16), radius: 28, x: 0, y: 18)
         }
         .onAppear {
+            // Decorative loops: Reduce Motion keeps the notice still.
+            guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.45).repeatForever(autoreverses: true)) {
                 pulse = true
             }
@@ -1426,9 +1509,11 @@ struct AppSportSelectionCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    SportIconView(
+                    SportPickIcon(
                         sport: sport,
+                        isSelected: isSelected,
                         color: isSelected ? .white : AppTheme.court,
+                        accent: .white,
                         size: 18
                     )
                         .frame(width: 34, height: 34)
@@ -2976,6 +3061,9 @@ struct ChatReceiptLabel: View {
         }
         .font(.caption2)
         .foregroundStyle(receipt?.status == "read" ? Color.white : Color.white.opacity(0.72))
+        // Sent, delivered and read cross-fade into each other as the receipt advances.
+        .contentTransition(.opacity)
+        .animation(.easeInOut(duration: 0.3), value: receipt?.status)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
     }
