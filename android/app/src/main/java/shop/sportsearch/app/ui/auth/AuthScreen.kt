@@ -940,6 +940,11 @@ private fun CodeStep(
             ) {
                 OtpCodeField(code = code, onCodeChange = onCodeChange, modifier = Modifier.fillMaxWidth())
 
+                // Only a local server without an SMS.ru / email key returns it.
+                appModel.debugCode?.let {
+                    AuthInlineMessage("Debug OTP: $it", Color(0xFFFF9500), Icons.Filled.Numbers)
+                }
+
                 PrimaryActionButton(
                     title = L10n.string("Sign in", "Войти"),
                     onClick = onVerify,

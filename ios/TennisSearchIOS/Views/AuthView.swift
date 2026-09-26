@@ -935,6 +935,11 @@ struct AuthView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     OTPCodeField(code: $code, verdict: codeVerdict)
 
+                    // Only a local server without an SMS.ru / email key returns it.
+                    if let debugCode = appModel.debugCode {
+                        AuthInlineMessage(text: "Debug OTP: \(debugCode)", tint: .orange, icon: "number")
+                    }
+
                     Button(L10n.string("Sign in", "Войти")) {
                         persistDraft()
                         Task {
