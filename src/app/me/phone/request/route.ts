@@ -6,7 +6,7 @@ import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
 import { prisma } from "@/lib/prisma";
 import { mePhoneRequestSchema } from "@/lib/validators";
 import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
-import { issuePhoneCode, PHONE_CODE_TTL_MINUTES, PhoneAuthError } from "@/server/phone-auth";
+import { issuePhoneCode, PHONE_CODE_RESEND_SECONDS, PHONE_CODE_TTL_MINUTES, PhoneAuthError } from "@/server/phone-auth";
 import { phoneAuthFailure } from "@/server/phone-auth-http";
 import { isSmsDevFallback } from "@/server/sms";
 
@@ -23,7 +23,12 @@ export async function POST(request: NextRequest) {
     if (owner && owner.id !== user.id) throw new PhoneAuthError("PHONE_TAKEN");
     await enforceAuthRateLimit("phone-request", body.phone, request);
     const code = await issuePhoneCode(body.phone, { ip: getLegalAcceptanceRequestMeta(request).ip });
-    return ok({ ok: true, expiresInMinutes: PHONE_CODE_TTL_MINUTES, debugCode: isSmsDevFallback() ? code : undefined });
+    return ok({
+      ok: true,
+      expiresInMinutes: PHONE_CODE_TTL_MINUTES,
+      resendAfterSeconds: PHONE_CODE_RESEND_SECONDS,
+      debugCode: isSmsDevFallback() ? code : undefined
+    });
   } catch (error) {
     return phoneAuthFailure(error, locale, phone);
   }

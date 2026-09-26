@@ -229,6 +229,8 @@ object RussianPhone {
 data class AuthChallenge(
     val message: String = "",
     val debugCode: String? = null,
+    /** SMS are paid: the server allows the next code to the same number only after this pause. */
+    val resendAfterSeconds: Int? = null,
 )
 
 // MARK: - Profile

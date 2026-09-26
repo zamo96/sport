@@ -585,7 +585,11 @@ final class LiveTennisRepository: TennisRepository {
             method: "POST",
             body: PhoneCodeRequest(phone: phone, userAgreement: UserAgreementAcceptanceRequest(accepted: true, version: userAgreementVersion))
         )
-        return AuthChallenge(message: L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode: response.debugCode)
+        return AuthChallenge(
+            message: L10n.string("We sent an SMS code", "Код отправлен по SMS"),
+            debugCode: response.debugCode,
+            resendAfterSeconds: response.resendAfterSeconds
+        )
     }
 
     func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
@@ -1329,6 +1333,7 @@ private struct PhoneLinkVerifyRequest: Encodable {
 private struct PhoneCodeEnvelope: Decodable {
     let ok: Bool
     let debugCode: String?
+    let resendAfterSeconds: Int?
 }
 
 private struct UserAgreementAcceptanceRequest: Encodable {

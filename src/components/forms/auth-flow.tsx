@@ -61,6 +61,9 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [debugCode, setDebugCode] = useState<string | null>(null);
+  // SMS are paid: the next code to the same number is allowed only after a pause.
+  const [resendAt, setResendAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [activeSportIndex, setActiveSportIndex] = useState(0);
   const [typedSport, setTypedSport] = useState("");
@@ -214,15 +217,26 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     }
   }
 
+  const resendSeconds = resendAt ? Math.max(0, Math.ceil((resendAt - now) / 1000)) : 0;
+
+  useEffect(() => {
+    if (step !== "code" || !resendAt || resendAt <= Date.now()) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [step, resendAt]);
+
   async function requestCode(event: FormEvent) {
     event.preventDefault();
+    await sendCode();
+  }
 
+  async function sendCode() {
     setLoading(true);
     setError(null);
 
     try {
       const target = country === "RU" ? "phone" : "email";
-      const data = await apiFetch<{ debugCode?: string }>(target === "phone" ? "/auth/phone/request" : "/auth/request-link", {
+      const data = await apiFetch<{ debugCode?: string; resendAfterSeconds?: number }>(target === "phone" ? "/auth/phone/request" : "/auth/request-link", {
         method: "POST",
         body: JSON.stringify(
           target === "phone"
@@ -233,6 +247,8 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
       setDebugCode(data.debugCode ?? null);
       setCodeTarget(target);
       setCode("");
+      setNow(Date.now());
+      setResendAt(data.resendAfterSeconds ? Date.now() + data.resendAfterSeconds * 1000 : null);
       setStep("code");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : t("auth.error.requestCode"));
@@ -662,6 +678,18 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                   placeholder="000000"
                 />
               </label>
+              {codeTarget === "phone" ? (
+                <button
+                  type="button"
+                  onClick={() => void sendCode()}
+                  disabled={loading || resendSeconds > 0}
+                  className="block w-full text-center text-sm font-semibold text-court disabled:text-ink/45"
+                >
+                  {resendSeconds > 0
+                    ? t("auth.code.resendIn", { time: formatCountdown(resendSeconds) })
+                    : t("auth.code.resend")}
+                </button>
+              ) : null}
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
                   {codeTarget === "phone" ? t("auth.code.changePhone") : t("auth.code.changeEmail")}
@@ -679,6 +707,10 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
       ) : null}
     </div>
   );
+}
+
+function formatCountdown(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 /**

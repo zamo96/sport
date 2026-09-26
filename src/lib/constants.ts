@@ -1,7 +1,12 @@
 import type { Sport } from "@prisma/client";
 
 export const SESSION_COOKIE = "tennis_session";
-export const SESSION_TTL_DAYS = 14;
+/** A session ends after this many days without activity; every use extends it. */
+export const SESSION_TTL_DAYS = 180;
+/** Extend at most once per this interval, not on every request. */
+export const SESSION_RENEW_INTERVAL_HOURS = 24;
+/** Browsers cap cookie lifetime at 400 days; the database decides whether the session is still valid. */
+export const SESSION_COOKIE_MAX_AGE_DAYS = 400;
 export const AUTH_CODE_TTL_MINUTES = 10;
 
 export const DEFAULT_CITY = "Санкт-Петербург";

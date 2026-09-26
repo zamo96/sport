@@ -1,7 +1,7 @@
 import { getRealtimeRedis } from "@/server/realtime";
 
 const SMS_RU_SEND_URL = "https://sms.ru/sms/send";
-const DEFAULT_DAILY_LIMIT = 500;
+const DEFAULT_DAILY_LIMIT = 100;
 
 export class SmsUnavailableError extends Error {}
 

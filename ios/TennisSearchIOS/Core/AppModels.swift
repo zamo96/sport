@@ -990,6 +990,8 @@ enum RussianPhone {
 struct AuthChallenge: Codable {
     let message: String
     let debugCode: String?
+    /// SMS are paid: the server allows the next code to the same number only after this pause.
+    var resendAfterSeconds: Int? = nil
 }
 
 // MARK: - Required onboarding fields

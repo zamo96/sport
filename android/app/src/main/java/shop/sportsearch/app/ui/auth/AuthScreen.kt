@@ -46,6 +46,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,11 +65,13 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import shop.sportsearch.app.R
 import shop.sportsearch.app.core.*
@@ -872,6 +875,35 @@ private fun EmailStep(
     }
 }
 
+/** SMS are paid, so another code is offered only after the server's pause. */
+@Composable
+private fun PhoneCodeResendButton(appModel: AppViewModel, onResend: () -> Unit) {
+    val availableAt = appModel.phoneCodeResendAvailableAt
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(availableAt) {
+        now = System.currentTimeMillis()
+        while (availableAt != null && now < availableAt) {
+            delay(1_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val remaining = if (availableAt == null) 0L else maxOf(0L, (availableAt - now + 999) / 1_000)
+    val enabled = remaining == 0L && !appModel.isBusy
+    Text(
+        if (remaining > 0) {
+            L10n.string("Send again in ${resendCountdown(remaining)}", "Отправить ещё раз через ${resendCountdown(remaining)}")
+        } else {
+            L10n.string("Send the code again", "Отправить код ещё раз")
+        },
+        style = AppText.subheadlineSemibold,
+        color = if (enabled) AppTheme.court else AppTheme.mutedInk,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onResend).padding(vertical = 6.dp),
+    )
+}
+
+private fun resendCountdown(seconds: Long) = "%d:%02d".format(seconds / 60, seconds % 60)
+
 /** Port of the segmented `Picker` on the iOS sign-in screen. */
 @Composable
 private fun CountrySelector(selected: AuthCountry, onSelect: (AuthCountry) -> Unit) {
@@ -913,6 +945,7 @@ private fun CodeStep(
     onChangeEmail: () -> Unit,
     onVerify: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
         Column(
             modifier = Modifier
@@ -943,6 +976,13 @@ private fun CodeStep(
                 // Only a local server without an SMS.ru / email key returns it.
                 appModel.debugCode?.let {
                     AuthInlineMessage("Debug OTP: $it", Color(0xFFFF9500), Icons.Filled.Numbers)
+                }
+
+                if (appModel.authCodeTarget == AuthCodeTarget.PHONE) {
+                    PhoneCodeResendButton(appModel) {
+                        onCodeChange("")
+                        scope.launch { appModel.requestPhoneCode() }
+                    }
                 }
 
                 PrimaryActionButton(

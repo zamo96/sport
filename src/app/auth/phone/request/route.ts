@@ -5,7 +5,7 @@ import { ok } from "@/lib/http";
 import { getServerRequestLocale } from "@/lib/i18n/server/request-locale";
 import { phoneRequestSchema } from "@/lib/validators";
 import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
-import { issuePhoneCode, PHONE_CODE_TTL_MINUTES } from "@/server/phone-auth";
+import { issuePhoneCode, PHONE_CODE_RESEND_SECONDS, PHONE_CODE_TTL_MINUTES } from "@/server/phone-auth";
 import { phoneAuthFailure } from "@/server/phone-auth-http";
 import { isSmsDevFallback } from "@/server/sms";
 
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
     return ok({
       ok: true,
       expiresInMinutes: PHONE_CODE_TTL_MINUTES,
+      resendAfterSeconds: PHONE_CODE_RESEND_SECONDS,
       // Как debugCode у email: только при локальной разработке без ключа SMS.ru.
       debugCode: isSmsDevFallback() ? code : undefined
     });

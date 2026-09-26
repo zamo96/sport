@@ -143,7 +143,11 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
             },
             deserializer = PhoneCodeEnvelope.serializer(),
         )
-        return AuthChallenge(message = L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode = envelope.debugCode)
+        return AuthChallenge(
+            message = L10n.string("We sent an SMS code", "Код отправлен по SMS"),
+            debugCode = envelope.debugCode,
+            resendAfterSeconds = envelope.resendAfterSeconds,
+        )
     }
 
     override suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser {
@@ -1018,7 +1022,7 @@ internal data class VerifyEnvelope(val ok: Boolean = false, val user: SessionUse
 internal data class MeEnvelope(val user: UserProfile)
 
 @kotlinx.serialization.Serializable
-internal data class PhoneCodeEnvelope(val ok: Boolean = false, val debugCode: String? = null)
+internal data class PhoneCodeEnvelope(val ok: Boolean = false, val debugCode: String? = null, val resendAfterSeconds: Int? = null)
 
 @kotlinx.serialization.Serializable
 internal data class LocaleOverrideEnvelope(val localeOverride: String? = null, val effectiveLocale: String = "en")

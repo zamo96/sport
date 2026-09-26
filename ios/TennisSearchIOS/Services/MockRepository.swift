@@ -417,7 +417,7 @@ actor MockRepository: TennisRepository {
     }
 
     func requestPhoneCode(phone: String, userAgreementVersion: String) async throws -> AuthChallenge {
-        AuthChallenge(message: "Код отправлен по SMS", debugCode: "111111")
+        AuthChallenge(message: "Код отправлен по SMS", debugCode: "111111", resendAfterSeconds: 60)
     }
 
     func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {

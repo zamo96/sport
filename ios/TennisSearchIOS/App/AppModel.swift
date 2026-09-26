@@ -72,6 +72,8 @@ final class AppModel: ObservableObject {
     @Published var authCountry: AuthCountry = .russia
     @Published var authPhone = "+7 "
     @Published var authCodeTarget: AuthCodeTarget = .email
+    /// When the code screen may ask for another SMS.
+    @Published private(set) var phoneCodeResendAvailableAt: Date?
     /// Кнопка VK ID видна, только когда на сервере задан VK_ID_CLIENT_ID.
     @Published private(set) var isVkIdAvailable = false
     /// «Позже» на предложении привязать номер — до следующего запуска приложения.
@@ -505,6 +507,7 @@ final class AppModel: ObservableObject {
             authCodeTarget = .phone
             authMessage = challenge.message
             debugCode = challenge.debugCode
+            phoneCodeResendAvailableAt = challenge.resendAfterSeconds.map { Date().addingTimeInterval(TimeInterval($0)) }
             errorMessage = nil
             return true
         } catch {

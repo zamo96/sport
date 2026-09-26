@@ -940,6 +940,10 @@ struct AuthView: View {
                         AuthInlineMessage(text: "Debug OTP: \(debugCode)", tint: .orange, icon: "number")
                     }
 
+                    if appModel.authCodeTarget == .phone {
+                        phoneCodeResendButton
+                    }
+
                     Button(L10n.string("Sign in", "Войти")) {
                         persistDraft()
                         Task {
@@ -967,6 +971,32 @@ struct AuthView: View {
                 .buttonStyle(SecondaryActionButtonStyle())
             }
         }
+    }
+
+    /// SMS are paid, so another code is offered only after the server's pause.
+    private var phoneCodeResendButton: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let availableAt = appModel.phoneCodeResendAvailableAt ?? context.date
+            let remaining = max(0, Int(availableAt.timeIntervalSince(context.date).rounded(.up)))
+            Button {
+                code = ""
+                Task { await appModel.requestPhoneCode() }
+            } label: {
+                Text(remaining > 0
+                     ? L10n.string("Send again in \(Self.countdown(remaining))", "Отправить ещё раз через \(Self.countdown(remaining))")
+                     : L10n.string("Send the code again", "Отправить код ещё раз"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(remaining > 0 ? AppTheme.mutedInk : AppTheme.court)
+                    .frame(maxWidth: .infinity)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.plain)
+            .disabled(remaining > 0 || appModel.isBusy)
+        }
+    }
+
+    private static func countdown(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func persistDraft() {

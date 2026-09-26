@@ -61,6 +61,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var authCountry by mutableStateOf(AuthCountry.suggested(guestDraft.location?.countryCode?.takeIf { it.isNotEmpty() }))
     var authPhone by mutableStateOf("+7 ")
     var authCodeTarget by mutableStateOf(AuthCodeTarget.EMAIL)
+    /** When the code screen may ask for another SMS, in epoch milliseconds. */
+    var phoneCodeResendAvailableAt by mutableStateOf<Long?>(null)
+        private set
     /** The VK ID button shows only once the server has VK_ID_CLIENT_ID. */
     var isVkIdAvailable by mutableStateOf(false)
         private set
@@ -329,6 +332,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             authCodeTarget = AuthCodeTarget.PHONE
             authMessage = challenge.message
             debugCode = challenge.debugCode
+            phoneCodeResendAvailableAt = challenge.resendAfterSeconds?.let { System.currentTimeMillis() + it * 1000L }
             errorMessage = null
             true
         } catch (error: Throwable) {

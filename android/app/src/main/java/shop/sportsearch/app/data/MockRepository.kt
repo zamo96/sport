@@ -229,7 +229,7 @@ class MockRepository : TennisRepository {
 
     override suspend fun requestPhoneCode(phone: String, userAgreementVersion: String): AuthChallenge {
         delay(240)
-        return AuthChallenge(message = "Код отправлен по SMS", debugCode = "111111")
+        return AuthChallenge(message = "Код отправлен по SMS", debugCode = "111111", resendAfterSeconds = 60)
     }
 
     override suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser {

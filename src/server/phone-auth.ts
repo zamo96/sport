@@ -9,10 +9,15 @@ import { sendSms } from "@/server/sms";
 import { recordUserEventsOnce } from "@/server/user-events";
 
 export const PHONE_CODE_TTL_MINUTES = 5;
+/** A new SMS to the same number no sooner than this: every SMS is paid. */
+export const PHONE_CODE_RESEND_SECONDS = 60;
 const MAX_CODE_ATTEMPTS = 5;
 
 export class PhoneAuthError extends Error {
-  constructor(readonly code: "PHONE_TAKEN" | "INVALID_CODE") {
+  constructor(
+    readonly code: "PHONE_TAKEN" | "INVALID_CODE" | "RESEND_TOO_SOON",
+    readonly retryAfterSeconds?: number
+  ) {
     super(code);
   }
 }
@@ -26,8 +31,16 @@ function hashCode(phone: string, code: string) {
  * Возвращает код, чтобы вне production его можно было отдать как debugCode.
  */
 export async function issuePhoneCode(phone: string, meta: { ip?: string | null } = {}) {
-  const code = String(randomInt(100000, 1000000));
   const now = new Date();
+  const previous = await prisma.phoneAuthCode.findFirst({
+    where: { phone },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true }
+  });
+  const waitMs = previous ? previous.createdAt.getTime() + PHONE_CODE_RESEND_SECONDS * 1000 - now.getTime() : 0;
+  if (waitMs > 0) throw new PhoneAuthError("RESEND_TOO_SOON", Math.ceil(waitMs / 1000));
+
+  const code = String(randomInt(100000, 1000000));
   await prisma.$transaction([
     prisma.phoneAuthCode.updateMany({ where: { phone, consumedAt: null }, data: { consumedAt: now } }),
     prisma.phoneAuthCode.create({

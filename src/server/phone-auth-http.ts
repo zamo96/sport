@@ -27,6 +27,10 @@ export function phoneAuthFailure(error: unknown, locale: SupportedLocale, phone?
     return fail(error.message, 401, "AUTH_VK_FAILED");
   }
   if (error instanceof PhoneAuthError) {
+    if (error.code === "RESEND_TOO_SOON") {
+      const seconds = String(error.retryAfterSeconds ?? 60);
+      return fail(translateServer(locale, "auth.error.resendTooSoon", { seconds }), 429, "AUTH_RESEND_TOO_SOON");
+    }
     return error.code === "PHONE_TAKEN"
       ? fail(phone ? phoneTakenMessage(phone) : "Номер уже привязан к другому аккаунту", 409, "AUTH_PHONE_TAKEN")
       : fail(translateServer(locale, "auth.error.invalidPhoneCode"), 401, "AUTH_INVALID_CODE");

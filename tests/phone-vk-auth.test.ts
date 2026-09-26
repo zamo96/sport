@@ -102,6 +102,19 @@ describe("SMS codes", () => {
     expect(mocks.sendSms).toHaveBeenCalledWith(phone, expect.stringContaining(code), { ip: "10.0.0.1" });
   });
 
+  it("sends a new SMS to the same number no sooner than 60 seconds later", async () => {
+    mocks.codeFindFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 20_000) });
+    const early = await issuePhoneCode(phone).catch((error: unknown) => error);
+    expect(early).toBeInstanceOf(PhoneAuthError);
+    expect(early).toMatchObject({ code: "RESEND_TOO_SOON", retryAfterSeconds: 40 });
+    expect(mocks.codeCreate).not.toHaveBeenCalled();
+    expect(mocks.sendSms).not.toHaveBeenCalled();
+
+    mocks.codeFindFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 61_000) });
+    await expect(issuePhoneCode(phone)).resolves.toMatch(/^\d{6}$/);
+    expect(mocks.sendSms).toHaveBeenCalledOnce();
+  });
+
   it("accepts the right code once", async () => {
     mocks.codeFindFirst.mockResolvedValue({ id: "c1", codeHash: hash("123456"), attempts: 0 });
     mocks.codeUpdateMany.mockResolvedValue({ count: 1 });
