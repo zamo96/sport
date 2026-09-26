@@ -416,6 +416,41 @@ actor MockRepository: TennisRepository {
         return currentUser
     }
 
+    func requestPhoneCode(phone: String, userAgreementVersion: String) async throws -> AuthChallenge {
+        AuthChallenge(message: "Код отправлен по SMS", debugCode: "111111")
+    }
+
+    func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
+        guard code == "111111" else {
+            throw APIError.server("В mock-режиме используй код 111111")
+        }
+        currentUser.phone = phone
+        currentUser.phoneLinkSuggested = false
+        return SessionUser(id: currentUser.id, email: currentUser.email, phone: phone, onboardingCompleted: currentUser.onboardingCompleted)
+    }
+
+    func fetchVkIdConfig() async throws -> VkIdConfig {
+        // В моках VK ID недоступен: вход через браузер не подменить.
+        VkIdConfig(available: false, clientId: nil, redirectUri: "", scope: "", authorizeUrl: "")
+    }
+
+    func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
+        throw APIError.server("VK ID недоступен в mock-режиме")
+    }
+
+    func requestPhoneLinkCode(phone: String) async throws -> AuthChallenge {
+        AuthChallenge(message: "Код отправлен по SMS", debugCode: "111111")
+    }
+
+    func verifyPhoneLink(phone: String, code: String) async throws -> UserProfile {
+        guard code == "111111" else {
+            throw APIError.server("В mock-режиме используй код 111111")
+        }
+        currentUser.phone = phone
+        currentUser.phoneLinkSuggested = false
+        return currentUser
+    }
+
     func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile {
         var consents = currentUser.consents ?? ConsentState()
         if update.acceptAgreementVersion != nil {

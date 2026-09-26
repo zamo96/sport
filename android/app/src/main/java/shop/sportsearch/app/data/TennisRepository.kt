@@ -35,6 +35,25 @@ interface TennisRepository {
     suspend fun fetchCurrentUser(): UserProfile
     suspend fun updateProfile(profile: UserProfile): UserProfile
     suspend fun updateConsents(update: ConsentUpdate): UserProfile
+
+    /** Sign-in for Russia: an SMS code to a Russian mobile number. */
+    suspend fun requestPhoneCode(phone: String, userAgreementVersion: String): AuthChallenge
+    suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser
+
+    /** Sign-in for Russia with VK ID: the app runs PKCE, the server exchanges the code. */
+    suspend fun fetchVkIdConfig(): VkIdConfig
+    suspend fun signInWithVk(
+        code: String,
+        codeVerifier: String,
+        deviceId: String,
+        state: String,
+        userAgreementVersion: String,
+        showOnMap: Boolean?,
+    ): SessionUser
+
+    /** Links a phone number to the account that is already signed in. */
+    suspend fun requestPhoneLinkCode(phone: String): AuthChallenge
+    suspend fun verifyPhoneLink(phone: String, code: String): UserProfile
     suspend fun updateLocaleOverride(locale: String?): String?
     suspend fun fetchLocationCountries(query: String?): List<GeoCountry>
     suspend fun fetchLocationCities(countryCode: String, query: String, limit: Int = 20): List<GeoPlace>

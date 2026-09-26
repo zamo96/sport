@@ -43,8 +43,8 @@ export type UserAgreementDocument = {
   sections: UserAgreementSection[];
 };
 
-export const PRIVACY_POLICY_VERSION = "2026-09-24";
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "24 сентября 2026 года";
+export const PRIVACY_POLICY_VERSION = "2026-09-26";
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "26 сентября 2026 года";
 export const PRIVACY_POLICY_TITLE = "Политика конфиденциальности НаТреню";
 export const PRIVACY_POLICY_SERVICE_NAME = "НаТреню";
 
@@ -77,7 +77,8 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
   {
     title: "3. Какие данные обрабатываются",
     bullets: [
-      "Данные аккаунта: email, идентификатор Apple ID, сведения о входе и подтверждении аккаунта.",
+      "Данные аккаунта: номер телефона, email, идентификаторы VK ID и Apple ID, страна, выбранная при входе, сведения о входе и подтверждении аккаунта.",
+      "Способ входа: для пользователей в России — по номеру телефона российского оператора (код по SMS) или через VK ID, как требует часть 10 статьи 8 Федерального закона N 149-ФЗ; для остальных — по email, через Apple ID или Google. При входе через VK ID оператор с разрешения пользователя в VK получает его идентификатор VK, имя, фамилию и подтвержденный номер телефона; в анкету попадает только имя.",
       "Данные профиля: имя, возраст, пол, город, район, предпочитаемые районы, виды спорта, спортивный уровень, доступность, описание профиля, фото и видео, если пользователь добавляет их сам.",
       "Данные игровых сценариев: активные поиски, игровые предложения, отклики, выбранные слоты, спортивные центры, комментарии, статусы договоренностей и история действий в сервисе.",
       "Сообщения и пользовательский контент: переписка, фотоотчеты, отзывы, жалобы и иные материалы, которые пользователь отправляет через сервис.",
@@ -113,6 +114,7 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
     paragraphs: [
       "Оператор не продает персональные данные пользователей.",
       "Данные могут передаваться техническим поставщикам, которые помогают обеспечивать работу сервиса: хостинг, хранение данных, отправка email, push-уведомления, аналитика, диагностика, безопасность и поддержка. Такие поставщики получают данные только в объеме, необходимом для выполнения своих функций.",
+      "Для отправки кода входа номер телефона и текст сообщения передаются SMS-сервису SMS.ru (sms.ru). Код хранится у оператора только в виде хеша и действует 5 минут.",
       "Данные также могут быть раскрыты, если это требуется законом, судебным актом, запросом уполномоченного органа или необходимо для защиты прав, безопасности и законных интересов Оператора, пользователей или третьих лиц."
     ]
   },
@@ -163,7 +165,7 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
     title: "1. Общие положения",
     paragraphs: [
       `Настоящее Пользовательское соглашение регулирует отношения между ${LEGAL_OPERATOR.legalName} (далее - Оператор) и лицом, использующим сервис ${LEGAL_OPERATOR.serviceName} через сайт, PWA, iOS-приложение, API или иные интерфейсы сервиса (далее - Пользователь).`,
-      "Соглашение является публичной офертой в смысле статей 435, 437 и 438 Гражданского кодекса Российской Федерации. Акцептом Соглашения является нажатие кнопки входа или регистрации (получение кода на email, вход через Apple ID или Google), рядом с которой размещена ссылка на Соглашение и указано, что нажатие означает его принятие. Для действующего аккаунта принятие новой редакции фиксируется отдельным действием в сервисе.",
+      "Соглашение является публичной офертой в смысле статей 435, 437 и 438 Гражданского кодекса Российской Федерации. Акцептом Соглашения является нажатие кнопки входа или регистрации (получение кода по SMS или на email, вход через VK ID, Apple ID или Google), рядом с которой размещена ссылка на Соглашение и указано, что нажатие означает его принятие. Для действующего аккаунта принятие новой редакции фиксируется отдельным действием в сервисе.",
       "Если Пользователь не согласен с условиями Соглашения, он обязан прекратить регистрацию и не использовать функции сервиса, требующие аккаунта."
     ]
   },
@@ -171,7 +173,7 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
     title: "2. Термины",
     bullets: [
       `Сервис - программный комплекс ${LEGAL_OPERATOR.serviceName} для поиска спортивных партнеров, игровых заявок, переписок, уведомлений и связанных функций.`,
-      "Аккаунт - учетная запись Пользователя, создаваемая через email-код или Apple ID.",
+      "Аккаунт - учетная запись Пользователя, создаваемая по номеру телефона, через VK ID, email-код или Apple ID.",
       "Профиль - сведения Пользователя о имени, возрасте, городе, районе, видах спорта, уровне, доступности, фото, видео и иных данных, которые Пользователь указывает в сервисе.",
       "Контент - тексты, сообщения, фото, видео, отзывы, заявки, отклики и иные материалы, размещаемые Пользователем.",
       "Игровая заявка - предложение или поиск игры, создаваемые Пользователем для согласования спорта, времени, места и состава участников."
@@ -311,7 +313,7 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
     title: "1. General provisions",
     paragraphs: [
       `These Terms of Use govern the relationship between ${LEGAL_OPERATOR.legalName} (the “Operator”) and the person using the ${LEGAL_OPERATOR.serviceName} service through the website, PWA, iOS application, API, or other service interfaces (the “User”).`,
-      "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. The Terms are accepted by pressing the sign-in or registration button (requesting an email code, signing in with Apple ID or Google) placed next to a link to these Terms together with a statement that pressing it means acceptance. For an existing Account, acceptance of a new version is recorded by a separate action in the service.",
+      "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. The Terms are accepted by pressing the sign-in or registration button (requesting a code by SMS or email, signing in with VK ID, Apple ID, or Google) placed next to a link to these Terms together with a statement that pressing it means acceptance. For an existing Account, acceptance of a new version is recorded by a separate action in the service.",
       "If the User does not agree to these Terms, the User must discontinue registration and must not use service features that require an account."
     ]
   },
@@ -319,7 +321,7 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
     title: "2. Definitions",
     bullets: [
       `Service means the ${LEGAL_OPERATOR.serviceName} software suite for finding sports partners, game requests, chats, notifications, and related features.`,
-      "Account means the User account created using an email code or Apple ID.",
+      "Account means the User account created with a phone number, VK ID, an email code, or Apple ID.",
       "Profile means information provided by the User in the service, including name, age, city, district, sports, skill level, availability, photos, videos, and other data.",
       "Content means texts, messages, photos, videos, reviews, requests, responses, and other materials posted by the User.",
       "Game Request means a game offer or search created by the User to arrange the sport, time, place, and participants."

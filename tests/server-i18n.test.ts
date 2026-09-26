@@ -52,7 +52,7 @@ describe("server auth localization", () => {
 
     expect(resolveLocalizedAuthError(invalidRequest.error, "en")).toMatchObject({
       errorCode: "AUTH_AGREEMENT_REQUIRED",
-      message: "Accept the current user agreement and consent to personal data processing",
+      message: "Accept the current user agreement",
       status: 400
     });
     expect(resolveLocalizedAuthError(new Error("ACCOUNT_DEACTIVATED"), "ru")).toMatchObject({

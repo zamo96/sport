@@ -93,6 +93,8 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 showOnMap?.let { put("showOnMap", it) }
                 // This build shows the consent screen: a new account stays hidden until it answers.
                 put("consentReview", true)
+                // Email and Google are for people outside Russia; Russia signs in by phone or VK ID.
+                put("country", "OTHER")
             },
             deserializer = VerifyEnvelope.serializer(),
         )
@@ -115,6 +117,8 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 showOnMap?.let { put("showOnMap", it) }
                 // This build shows the consent screen: a new account stays hidden until it answers.
                 put("consentReview", true)
+                // Email and Google are for people outside Russia; Russia signs in by phone or VK ID.
+                put("country", "OTHER")
             },
             deserializer = VerifyEnvelope.serializer(),
         )
@@ -128,6 +132,86 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
 
     override suspend fun fetchCurrentUser(): UserProfile =
         client.request(path = "me", deserializer = MeEnvelope.serializer()).user
+
+    override suspend fun requestPhoneCode(phone: String, userAgreementVersion: String): AuthChallenge {
+        val envelope = client.request(
+            path = "auth/phone/request",
+            method = "POST",
+            jsonBody = body {
+                put("phone", phone)
+                put("userAgreement", userAgreement(true, userAgreementVersion))
+            },
+            deserializer = PhoneCodeEnvelope.serializer(),
+        )
+        return AuthChallenge(message = L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode = envelope.debugCode)
+    }
+
+    override suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser {
+        val envelope = client.request(
+            path = "auth/phone/verify",
+            method = "POST",
+            jsonBody = body {
+                put("phone", phone)
+                put("code", code)
+                put("userAgreement", userAgreement(true, userAgreementVersion))
+                showOnMap?.let { put("showOnMap", it) }
+                put("consentReview", true)
+            },
+            deserializer = VerifyEnvelope.serializer(),
+        )
+        client.setSessionToken(envelope.sessionToken)
+        return envelope.user
+    }
+
+    override suspend fun fetchVkIdConfig(): VkIdConfig =
+        client.request(path = "auth/vk/config", deserializer = VkIdConfig.serializer())
+
+    override suspend fun signInWithVk(
+        code: String,
+        codeVerifier: String,
+        deviceId: String,
+        state: String,
+        userAgreementVersion: String,
+        showOnMap: Boolean?,
+    ): SessionUser {
+        val envelope = client.request(
+            path = "auth/vk",
+            method = "POST",
+            jsonBody = body {
+                put("code", code)
+                put("codeVerifier", codeVerifier)
+                put("deviceId", deviceId)
+                put("state", state)
+                put("userAgreement", userAgreement(true, userAgreementVersion))
+                showOnMap?.let { put("showOnMap", it) }
+                put("consentReview", true)
+            },
+            deserializer = VerifyEnvelope.serializer(),
+        )
+        client.setSessionToken(envelope.sessionToken)
+        return envelope.user
+    }
+
+    override suspend fun requestPhoneLinkCode(phone: String): AuthChallenge {
+        val envelope = client.request(
+            path = "me/phone/request",
+            method = "POST",
+            jsonBody = body { put("phone", phone) },
+            deserializer = PhoneCodeEnvelope.serializer(),
+        )
+        return AuthChallenge(message = L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode = envelope.debugCode)
+    }
+
+    override suspend fun verifyPhoneLink(phone: String, code: String): UserProfile =
+        client.request(
+            path = "me/phone/verify",
+            method = "POST",
+            jsonBody = body {
+                put("phone", phone)
+                put("code", code)
+            },
+            deserializer = MeEnvelope.serializer(),
+        ).user
 
     override suspend fun updateConsents(update: ConsentUpdate): UserProfile {
         val payload = body {
@@ -932,6 +1016,9 @@ internal data class VerifyEnvelope(val ok: Boolean = false, val user: SessionUse
 
 @kotlinx.serialization.Serializable
 internal data class MeEnvelope(val user: UserProfile)
+
+@kotlinx.serialization.Serializable
+internal data class PhoneCodeEnvelope(val ok: Boolean = false, val debugCode: String? = null)
 
 @kotlinx.serialization.Serializable
 internal data class LocaleOverrideEnvelope(val localeOverride: String? = null, val effectiveLocale: String = "en")

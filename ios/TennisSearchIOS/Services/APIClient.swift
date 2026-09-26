@@ -579,6 +579,63 @@ final class LiveTennisRepository: TennisRepository {
         return response.user
     }
 
+    func requestPhoneCode(phone: String, userAgreementVersion: String) async throws -> AuthChallenge {
+        let response: PhoneCodeEnvelope = try await client.request(
+            path: "auth/phone/request",
+            method: "POST",
+            body: PhoneCodeRequest(phone: phone, userAgreement: UserAgreementAcceptanceRequest(accepted: true, version: userAgreementVersion))
+        )
+        return AuthChallenge(message: L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode: response.debugCode)
+    }
+
+    func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
+        let generation = client.beginAuthenticationAttempt()
+        let response: VerifyEnvelope = try await client.request(
+            path: "auth/phone/verify",
+            method: "POST",
+            body: PhoneVerifyRequest(
+                phone: phone,
+                code: code,
+                showOnMap: showOnMap,
+                userAgreement: UserAgreementAcceptanceRequest(accepted: true, version: userAgreementVersion)
+            )
+        )
+        try client.setSessionToken(response.sessionToken, expectedGeneration: generation)
+        return response.user
+    }
+
+    func fetchVkIdConfig() async throws -> VkIdConfig {
+        try await client.request(path: "auth/vk/config")
+    }
+
+    func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
+        let generation = client.beginAuthenticationAttempt()
+        let response: VerifyEnvelope = try await client.request(
+            path: "auth/vk",
+            method: "POST",
+            body: VkSignInRequest(
+                code: code,
+                codeVerifier: codeVerifier,
+                deviceId: deviceId,
+                state: state,
+                showOnMap: showOnMap,
+                userAgreement: UserAgreementAcceptanceRequest(accepted: true, version: userAgreementVersion)
+            )
+        )
+        try client.setSessionToken(response.sessionToken, expectedGeneration: generation)
+        return response.user
+    }
+
+    func requestPhoneLinkCode(phone: String) async throws -> AuthChallenge {
+        let response: PhoneCodeEnvelope = try await client.request(path: "me/phone/request", method: "POST", body: PhoneLinkRequest(phone: phone))
+        return AuthChallenge(message: L10n.string("We sent an SMS code", "Код отправлен по SMS"), debugCode: response.debugCode)
+    }
+
+    func verifyPhoneLink(phone: String, code: String) async throws -> UserProfile {
+        let response: MeEnvelope = try await client.request(path: "me/phone/verify", method: "POST", body: PhoneLinkVerifyRequest(phone: phone, code: code))
+        return response.user
+    }
+
     func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile {
         let response: MeEnvelope = try await client.request(path: "me/consents", method: "POST", body: update)
         return response.user
@@ -1219,6 +1276,8 @@ private struct VerifyRequest: Encodable {
     let showOnMap: Bool?
     /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
     let consentReview = true
+    /// Email и Apple — для тех, кто не в России; для России — телефон или VK ID.
+    let country = "OTHER"
 }
 
 private struct AppleAuthRequest: Encodable {
@@ -1230,6 +1289,46 @@ private struct AppleAuthRequest: Encodable {
     let showOnMap: Bool?
     /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
     let consentReview = true
+    /// Email и Apple — для тех, кто не в России; для России — телефон или VK ID.
+    let country = "OTHER"
+}
+
+private struct PhoneCodeRequest: Encodable {
+    let phone: String
+    let userAgreement: UserAgreementAcceptanceRequest
+}
+
+private struct PhoneVerifyRequest: Encodable {
+    let phone: String
+    let code: String
+    let showOnMap: Bool?
+    /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
+    let consentReview = true
+    let userAgreement: UserAgreementAcceptanceRequest
+}
+
+private struct VkSignInRequest: Encodable {
+    let code: String
+    let codeVerifier: String
+    let deviceId: String
+    let state: String
+    let showOnMap: Bool?
+    let consentReview = true
+    let userAgreement: UserAgreementAcceptanceRequest
+}
+
+private struct PhoneLinkRequest: Encodable {
+    let phone: String
+}
+
+private struct PhoneLinkVerifyRequest: Encodable {
+    let phone: String
+    let code: String
+}
+
+private struct PhoneCodeEnvelope: Decodable {
+    let ok: Bool
+    let debugCode: String?
 }
 
 private struct UserAgreementAcceptanceRequest: Encodable {

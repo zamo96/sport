@@ -9,6 +9,15 @@ protocol TennisRepository {
     func fetchCurrentUser() async throws -> UserProfile
     func updateProfile(_ profile: UserProfile) async throws -> UserProfile
     func updateConsents(_ update: ConsentUpdate) async throws -> UserProfile
+    /// Вход для России: код по SMS на российский мобильный номер.
+    func requestPhoneCode(phone: String, userAgreementVersion: String) async throws -> AuthChallenge
+    func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
+    /// Вход для России через VK ID: клиент проходит авторизацию с PKCE, сервер меняет код.
+    func fetchVkIdConfig() async throws -> VkIdConfig
+    func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
+    /// Привязка номера к уже открытому аккаунту.
+    func requestPhoneLinkCode(phone: String) async throws -> AuthChallenge
+    func verifyPhoneLink(phone: String, code: String) async throws -> UserProfile
     func updateLocaleOverride(_ locale: String?) async throws -> String?
     func fetchLocationCountries(query: String?) async throws -> [GeoCountry]
     func fetchLocationCities(countryCode: String, query: String, limit: Int) async throws -> [GeoPlace]

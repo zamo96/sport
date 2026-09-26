@@ -1,3 +1,5 @@
+import AuthenticationServices
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -66,6 +68,14 @@ final class AppModel: ObservableObject {
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
     @Published var authEmail = ""
+    /// Страна на экране входа: для России — телефон или VK ID, для остальных — email или Apple.
+    @Published var authCountry: AuthCountry = .russia
+    @Published var authPhone = "+7 "
+    @Published var authCodeTarget: AuthCodeTarget = .email
+    /// Кнопка VK ID видна, только когда на сервере задан VK_ID_CLIENT_ID.
+    @Published private(set) var isVkIdAvailable = false
+    /// «Позже» на предложении привязать номер — до следующего запуска приложения.
+    @Published private(set) var isPhoneLinkPromptDismissed = false
     @Published var debugCode: String?
     @Published var authMessage: String?
     @Published var errorMessage: String?
@@ -120,7 +130,9 @@ final class AppModel: ObservableObject {
         let useMock = AppConfig.useMockData
         isUsingMockData = useMock
         if useMock || SportsActivityFeedPreview.isEnabled { sessionRestoreState = .ready }
-        guestDraft = guestDraftStore.load()
+        let loadedDraft = guestDraftStore.load()
+        guestDraft = loadedDraft
+        _authCountry = Published(initialValue: AuthCountry.suggested(for: loadedDraft))
         pendingDiscoverSimilarPlayersHint = discoverHintStore.hasPendingSimilarPlayersHint()
         pendingDiscoverFirstInterestHint = discoverHintStore.hasPendingFirstInterestHint()
 
@@ -474,6 +486,192 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Вход для России: телефон и VK ID (ч. 10 ст. 8 149-ФЗ)
+
+    @discardableResult
+    func requestPhoneCode() async -> Bool {
+        guard let phone = RussianPhone.normalized(authPhone) else {
+            errorMessage = L10n.string("Enter a Russian mobile number: +7 9XX XXX-XX-XX", "Укажите российский мобильный номер: +7 9XX XXX-XX-XX")
+            return false
+        }
+
+        let generation = sessionGeneration
+        isBusy = true
+        defer { if generation == sessionGeneration { isBusy = false } }
+
+        do {
+            let challenge = try await repository.requestPhoneCode(phone: phone, userAgreementVersion: LegalDocuments.userAgreementVersion)
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
+            authCodeTarget = .phone
+            authMessage = challenge.message
+            debugCode = challenge.debugCode
+            errorMessage = nil
+            return true
+        } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return false }
+            present(error: error)
+            return false
+        }
+    }
+
+    func verifyPhone(code: String) async {
+        guard let phone = RussianPhone.normalized(authPhone) else {
+            errorMessage = L10n.string("Enter your phone number first", "Сначала укажите номер телефона")
+            return
+        }
+        await performSignIn { [repository, guestDraft] in
+            try await repository.verifyPhoneCode(
+                phone: phone,
+                code: code,
+                userAgreementVersion: LegalDocuments.userAgreementVersion,
+                showOnMap: guestDraft.showOnMap
+            )
+        }
+    }
+
+    func loadVkIdAvailability() async {
+        guard !isVkIdAvailable, let config = try? await repository.fetchVkIdConfig() else { return }
+        isVkIdAvailable = config.available
+    }
+
+    /// Вход через VK ID: `authenticate` открывает страницу VK в
+    /// ASWebAuthenticationSession и возвращает адрес sportsearch://auth/vk.
+    func signInWithVk(authenticate: @escaping (URL) async throws -> URL) async {
+        errorMessage = nil
+        let config: VkIdConfig
+        do {
+            config = try await repository.fetchVkIdConfig()
+        } catch {
+            present(error: error)
+            return
+        }
+        guard config.available, let clientId = config.clientId, var components = URLComponents(string: config.authorizeUrl) else {
+            errorMessage = L10n.string("VK ID sign-in is not available yet. Use your phone number.", "Вход через VK ID пока недоступен. Войдите по номеру телефона.")
+            return
+        }
+
+        let codeVerifier = VkIdPKCE.randomString(byteCount: 48)
+        // Префикс ios_ говорит странице возврата, что код нужно вернуть в приложение.
+        let state = "ios_" + VkIdPKCE.randomString(byteCount: 32)
+        components.queryItems = [
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "client_id", value: clientId),
+            URLQueryItem(name: "redirect_uri", value: config.redirectUri),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "code_challenge", value: VkIdPKCE.challenge(for: codeVerifier)),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "scope", value: config.scope)
+        ]
+        guard let authorizeURL = components.url else { return }
+
+        let callbackURL: URL
+        do {
+            callbackURL = try await authenticate(authorizeURL)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            return
+        } catch {
+            present(error: error)
+            return
+        }
+
+        let items = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        guard let code = value("code"), let deviceId = value("device_id"), value("state") == state else {
+            errorMessage = L10n.string("Could not sign in with VK ID. Try again.", "Не удалось войти через VK ID. Попробуйте ещё раз.")
+            return
+        }
+
+        await performSignIn { [repository, guestDraft] in
+            try await repository.signInWithVk(
+                code: code,
+                codeVerifier: codeVerifier,
+                deviceId: deviceId,
+                state: state,
+                userAgreementVersion: LegalDocuments.userAgreementVersion,
+                showOnMap: guestDraft.showOnMap
+            )
+        }
+    }
+
+    /// Общий хвост входа по телефону и VK ID — тот же порядок, что у `verify(code:)`.
+    private func performSignIn(_ authenticate: @escaping () async throws -> SessionUser) async {
+        sessionGeneration = UUID()
+        let generation = sessionGeneration
+        isBusy = true
+        defer { if generation == sessionGeneration { isBusy = false } }
+
+        do {
+            _ = try await authenticate()
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            let fetchedUser = try await repository.fetchCurrentUser()
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            var user = await reconcileLocalePreference(fetchedUser)
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+
+            // Токен уже сохранён: аккаунт принимается до всего, что может бросить.
+            currentUser = user
+            adoptGuestUserIntentIfNeeded()
+            UpcomingGamesWidgetStore.setCurrentAccount(user.id)
+            notificationManager.startMonitoring(repository: repository)
+
+            if !user.isOnboardingComplete && guestDraft.isOnboardingComplete {
+                user = try await repository.updateProfile(makeProfileFromGuestDraft(user))
+                guard generation == sessionGeneration, !Task.isCancelled else { return }
+            }
+
+            prepareOnboardingDraft(for: user)
+            currentUser = user
+            if user.isOnboardingComplete { resetGuestDraft() }
+            authMessage = nil
+            debugCode = nil
+            errorMessage = nil
+            presentedAuthStep = nil
+        } catch {
+            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            if currentUser == nil { repository.logout(pushDeviceToken: nil) }
+            present(error: error)
+        }
+    }
+
+    /// Предложение привязать номер — после экрана согласия, один раз за запуск.
+    var isPhoneLinkPromptVisible: Bool {
+        guard !isConsentReviewRequired, !isPhoneLinkPromptDismissed, presentedAuthStep == nil,
+              let user = currentUser, user.isOnboardingComplete else { return false }
+        return user.phoneLinkSuggested
+    }
+
+    func dismissPhoneLinkPrompt() {
+        isPhoneLinkPromptDismissed = true
+    }
+
+    /// Возвращает (debugCode, текст ошибки): экран привязки показывает их сам.
+    func requestPhoneLinkCode(phone rawPhone: String) async -> (debugCode: String?, error: String?) {
+        guard let phone = RussianPhone.normalized(rawPhone) else {
+            return (nil, L10n.string("Enter a Russian mobile number: +7 9XX XXX-XX-XX", "Укажите российский мобильный номер: +7 9XX XXX-XX-XX"))
+        }
+        do {
+            let challenge = try await repository.requestPhoneLinkCode(phone: phone)
+            return (challenge.debugCode, nil)
+        } catch {
+            return (nil, error.isServerIssue ? error.serverRecoveryMessage : error.detailedMessage)
+        }
+    }
+
+    func verifyPhoneLink(phone rawPhone: String, code: String) async -> String? {
+        guard let phone = RussianPhone.normalized(rawPhone) else {
+            return L10n.string("Enter your phone number first", "Сначала укажите номер телефона")
+        }
+        let generation = sessionGeneration
+        do {
+            let updatedUser = try await repository.verifyPhoneLink(phone: phone, code: code)
+            guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+            currentUser = updatedUser
+            return nil
+        } catch {
+            return error.isServerIssue ? error.serverRecoveryMessage : error.detailedMessage
+        }
+    }
+
     /// Экран согласия показывается после анкеты, пока нет ответа, и аккаунтам,
     /// созданным до раздельных согласий, — поверх всего, кроме листа входа.
     var isConsentReviewRequired: Bool {
@@ -559,6 +757,9 @@ final class AppModel: ObservableObject {
         authMessage = nil
         errorMessage = nil
         authEmail = ""
+        authPhone = "+7 "
+        authCodeTarget = .email
+        isPhoneLinkPromptDismissed = false
         presentedAuthStep = nil
         pendingNavigationTarget = nil
         pendingChatMatchID = nil
@@ -1294,5 +1495,25 @@ enum AppVersion {
 
     private static func components(_ version: String) -> [Int] {
         version.split(separator: ".").map { Int($0) ?? 0 }
+    }
+}
+
+/// PKCE для VK ID: code_verifier остаётся в приложении, VK видит только его хеш.
+enum VkIdPKCE {
+    static func randomString(byteCount: Int) -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
+        _ = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
+        return base64URL(Data(bytes))
+    }
+
+    static func challenge(for verifier: String) -> String {
+        base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }

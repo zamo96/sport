@@ -40,6 +40,9 @@ struct SessionLifecycleTests {
         boot.pendingPersonalVisit = "guest-selected-court"
         boot.matchMoment = "match-with-previous-account"
         boot.gameConfirmation = "game-with-previous-account"
+        boot.authPhone = "+7 999 123-45-67"
+        boot.authCodeTarget = .phone
+        boot.isPhoneLinkPromptDismissed = true
         expect(boot.sessionRestoreState == .restoring, "Normal content stays gated while startup awaits authentication")
         boot.logout()
         bootGate.release(UserProfile(id: "A"))
@@ -49,6 +52,8 @@ struct SessionLifecycleTests {
         expect(boot.pendingPersonalVisit == nil, "Logout clears a guest visit continuation before the next account")
         expect(boot.matchMoment == nil, "Logout closes a match moment that belongs to the previous account")
         expect(boot.gameConfirmation == nil, "Logout closes a game confirmation that belongs to the previous account")
+        expect(boot.authPhone == "+7 " && boot.authCodeTarget == .email, "Logout forgets the previous account phone number")
+        expect(!boot.isPhoneLinkPromptDismissed, "The next account gets its own phone-link prompt")
         expect(boot.repository.logoutTokens == ["device-token"], "Logout passes the device token captured before state clearing")
         expect(boot.notificationManager.cleared == 1 && UpcomingGamesWidgetStore.account == nil, "Logout clears notification and widget state directly")
         expect(RemoteImagePipeline.shared.clearCount > 0, "Logout clears the image cache")

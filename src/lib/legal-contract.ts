@@ -24,7 +24,7 @@ export const LEGAL_ACCEPTANCE_ERROR = "Нужно принять пользов�
 export const PROFILE_VISIBILITY_CONSENT_VERSION = "2026-09-24";
 export const ANALYTICS_CONSENT_VERSION = "2026-09-24";
 
-export type LegalAcceptanceSource = "email_otp" | "apple" | "google";
+export type LegalAcceptanceSource = "email_otp" | "phone_otp" | "vk" | "apple" | "google";
 export type AcceptedUserAgreementVersion = (typeof ACCEPTED_USER_AGREEMENT_VERSIONS)[number];
 
 export type LatestUserAgreementPayload = {

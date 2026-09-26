@@ -86,6 +86,7 @@ import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.consents.ConsentReviewMode
 import shop.sportsearch.app.ui.consents.ConsentReviewScreen
+import shop.sportsearch.app.ui.consents.PhoneLinkScreen
 import shop.sportsearch.app.ui.theme.continuousShape
 
 /** Port of `struct ContentView`. */
@@ -127,6 +128,11 @@ fun RootScreen(appModel: AppViewModel) {
         if (appModel.isConsentReviewRequired && consentProfile != null) {
             Box(modifier = Modifier.fillMaxSize().zIndex(50f)) {
                 ConsentReviewScreen(appModel, consentProfile, ConsentReviewMode.REQUIRED)
+            }
+        } else if (appModel.isPhoneLinkPromptVisible) {
+            // After the consent screen, once per launch: a Russian account without a phone.
+            Box(modifier = Modifier.fillMaxSize().zIndex(50f)) {
+                PhoneLinkScreen(appModel, isPrompt = true) { appModel.dismissPhoneLinkPrompt() }
             }
         }
 

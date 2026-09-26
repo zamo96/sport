@@ -23,7 +23,7 @@ type CliOptions = {
 type SimUser = {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
   district: string | null;
   preferredDistricts: unknown;
   preferredSports: unknown;

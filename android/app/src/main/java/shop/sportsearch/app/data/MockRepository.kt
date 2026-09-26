@@ -227,6 +227,42 @@ class MockRepository : TennisRepository {
         return profile
     }
 
+    override suspend fun requestPhoneCode(phone: String, userAgreementVersion: String): AuthChallenge {
+        delay(240)
+        return AuthChallenge(message = "Код отправлен по SMS", debugCode = "111111")
+    }
+
+    override suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser {
+        delay(240)
+        if (code != "111111") throw ApiException.Server("Неверный код")
+        profile = profile.copy(phone = phone, phoneLinkSuggested = false)
+        return SessionUser(id = profile.id, email = profile.email, phone = phone, onboardingCompleted = true)
+    }
+
+    // VK ID opens a real browser page, which mock mode cannot fake.
+    override suspend fun fetchVkIdConfig(): VkIdConfig = VkIdConfig(available = false)
+
+    override suspend fun signInWithVk(
+        code: String,
+        codeVerifier: String,
+        deviceId: String,
+        state: String,
+        userAgreementVersion: String,
+        showOnMap: Boolean?,
+    ): SessionUser = throw ApiException.Server("VK ID недоступен в mock-режиме")
+
+    override suspend fun requestPhoneLinkCode(phone: String): AuthChallenge {
+        delay(240)
+        return AuthChallenge(message = "Код отправлен по SMS", debugCode = "111111")
+    }
+
+    override suspend fun verifyPhoneLink(phone: String, code: String): UserProfile {
+        delay(240)
+        if (code != "111111") throw ApiException.Server("Неверный код")
+        profile = profile.copy(phone = phone, phoneLinkSuggested = false)
+        return profile
+    }
+
     override suspend fun updateConsents(update: ConsentUpdate): UserProfile {
         delay(240)
         var consents = profile.consents ?: ConsentState(profileVisibility = "pending")

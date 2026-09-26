@@ -75,6 +75,8 @@ private func localizedOnboardingSportTitle(_ sport: Sport) -> String {
 
 struct AuthView: View {
     @Environment(\.dismiss) private var dismiss
+    /// Страница VK ID для входа в России открывается в ASWebAuthenticationSession.
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @EnvironmentObject private var appModel: AppModel
 
     @State private var code = ""
@@ -338,6 +340,7 @@ struct AuthView: View {
             introScreen
         case .email:
             emailStep
+                .task { await appModel.loadVkIdAvailability() }
         case .profile:
             profileStep
         case .availability:
@@ -831,6 +834,9 @@ struct AuthView: View {
     private var emailStep: some View {
         AuthSignInReferenceScreen(
             email: $appModel.authEmail,
+            country: $appModel.authCountry,
+            phone: $appModel.authPhone,
+            isVkIdAvailable: appModel.isVkIdAvailable,
             authMessage: appModel.authMessage,
             errorMessage: appModel.errorMessage,
             debugCode: appModel.debugCode,
@@ -859,7 +865,29 @@ struct AuthView: View {
                     }
                 }
             },
+            onRequestPhoneCode: {
+                persistDraft()
+                Task {
+                    guard await appModel.requestPhoneCode() else { return }
+                    withAnimation(AppMotion.standard) {
+                        step = .code
+                    }
+                }
+            },
+            onVkSignIn: {
+                persistDraft()
+                Task {
+                    await appModel.signInWithVk { url in
+                        try await webAuthenticationSession.authenticate(
+                            using: url,
+                            callbackURLScheme: "sportsearch",
+                            preferredBrowserSession: .shared
+                        )
+                    }
+                }
+            },
             onHaveCode: {
+                appModel.authCodeTarget = .email
                 guard !appModel.authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     appModel.errorMessage = L10n.string("Enter your email first.", "Сначала укажи email для входа.")
                     return
@@ -900,7 +928,9 @@ struct AuthView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionCard(
                 title: L10n.string("Verification", "Подтверждение"),
-                subtitle: L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
+                subtitle: appModel.authCodeTarget == .phone
+                    ? L10n.string("Enter the 6-digit code from the SMS. After verification, your profile will be saved to your account.", "Введи 6 цифр из SMS. После проверки профиль будет сохранён в аккаунте.")
+                    : L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     OTPCodeField(code: $code, verdict: codeVerdict)
@@ -908,7 +938,11 @@ struct AuthView: View {
                     Button(L10n.string("Sign in", "Войти")) {
                         persistDraft()
                         Task {
-                            await appModel.verify(code: code, userAgreementAccepted: true)
+                            if appModel.authCodeTarget == .phone {
+                                await appModel.verifyPhone(code: code)
+                            } else {
+                                await appModel.verify(code: code, userAgreementAccepted: true)
+                            }
                             await showCodeVerdict(accepted: appModel.isAuthenticated)
                         }
                     }
@@ -920,7 +954,9 @@ struct AuthView: View {
             }
 
             HStack {
-                Button(L10n.string("Change email", "Изменить email")) {
+                Button(appModel.authCodeTarget == .phone
+                       ? L10n.string("Change number", "Изменить номер")
+                       : L10n.string("Change email", "Изменить email")) {
                     step = .email
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
@@ -1240,6 +1276,9 @@ struct AuthView: View {
 private struct AuthSignInReferenceScreen: View {
     @EnvironmentObject private var localeStore: LocaleStore
     @Binding var email: String
+    @Binding var country: AuthCountry
+    @Binding var phone: String
+    let isVkIdAvailable: Bool
     let authMessage: String?
     let errorMessage: String?
     let debugCode: String?
@@ -1248,10 +1287,13 @@ private struct AuthSignInReferenceScreen: View {
     let onAppleRequest: (ASAuthorizationAppleIDRequest) -> Void
     let onAppleCompletion: (Result<ASAuthorization, Error>) -> Void
     let onRequestCode: () -> Void
+    let onRequestPhoneCode: () -> Void
+    let onVkSignIn: () -> Void
     let onHaveCode: () -> Void
     let onBack: () -> Void
 
     @FocusState private var isEmailFocused: Bool
+    @FocusState private var isPhoneFocused: Bool
     @State private var isEmailLoginExpanded = false
 
     var body: some View {
@@ -1311,13 +1353,119 @@ private struct AuthSignInReferenceScreen: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
-                Text(L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
+                Text(country == .russia
+                     ? L10n.string("In Russia you sign in with a phone number or VK ID. Your profile, matches, chats, and notifications are saved to your account.", "В России вход — по номеру телефона или через VK ID. Профиль, матчи, переписки и уведомления сохранятся в аккаунте.")
+                     : L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.string("Where are you?", "Где вы находитесь?"))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Picker(L10n.string("Where are you?", "Где вы находитесь?"), selection: $country) {
+                    ForEach(AuthCountry.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            if country == .russia {
+                russianSignIn
+            } else {
+                otherCountrySignIn
+            }
+
+            if let authMessage {
+                AuthInlineMessage(text: authMessage, tint: AppTheme.court, icon: "checkmark.circle")
+            }
+
+            if let errorMessage {
+                AuthInlineMessage(text: errorMessage, tint: .red, icon: "exclamationmark.triangle")
+            }
+
+            if let debugCode {
+                AuthInlineMessage(text: "Debug OTP: \(debugCode)", tint: .orange, icon: "number")
+                    .fontDesign(.monospaced)
+            }
+        }
+        .padding(.horizontal, 32)
+        .padding(.vertical, 40)
+        .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(.white.opacity(0.75), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.ink.opacity(0.08), radius: 30, x: 0, y: 18)
+    }
+
+    /// Для России (ч. 10 ст. 8 149-ФЗ): код по SMS на российский номер или VK ID.
+    @ViewBuilder
+    private var russianSignIn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.string("Phone number", "Номер телефона"))
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+
+            TextField("", text: $phone, prompt: Text("+7 999 123-45-67").foregroundColor(Color(red: 0.72, green: 0.74, blue: 0.78)))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
+                .focused($isPhoneFocused)
+                .padding(.horizontal, 18)
+                .frame(height: 68)
+                .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(isPhoneFocused ? AppTheme.court.opacity(0.72) : Color(.systemGray4), lineWidth: isPhoneFocused ? 1.5 : 1)
+                )
+        }
+
+        Button {
+            isPhoneFocused = false
+            onRequestPhoneCode()
+        } label: {
+            Text(L10n.string("Get an SMS code", "Получить код по SMS"))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 66)
+                .background(
+                    LinearGradient(
+                        colors: [Color(red: 0.06, green: 0.32, blue: 0.23), AppTheme.court.opacity(0.95)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .shadow(color: AppTheme.court.opacity(0.2), radius: 16, x: 0, y: 10)
+        }
+        .buttonStyle(AuthReferencePressStyle())
+
+        if isVkIdAvailable {
+            AuthDividerLabel(text: L10n.string("or", "или"))
+
+            Button(action: onVkSignIn) {
+                Text(L10n.string("Sign in with VK ID", "Войти через VK ID"))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 62)
+                    .background(Color(red: 0, green: 0.467, blue: 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(AuthReferencePressStyle())
+        }
+
+        LegalDocuments.signInNotice
+    }
+
+    @ViewBuilder
+    private var otherCountrySignIn: some View {
             ZStack {
                 SignInWithAppleButton(.continue, onRequest: onAppleRequest, onCompletion: onAppleCompletion)
                     .signInWithAppleButtonStyle(.black)
@@ -1420,28 +1568,6 @@ private struct AuthSignInReferenceScreen: View {
                 }
                 .buttonStyle(AuthReferencePressStyle())
             }
-
-            if let authMessage {
-                AuthInlineMessage(text: authMessage, tint: AppTheme.court, icon: "checkmark.circle")
-            }
-
-            if let errorMessage {
-                AuthInlineMessage(text: errorMessage, tint: .red, icon: "exclamationmark.triangle")
-            }
-
-            if let debugCode {
-                AuthInlineMessage(text: "Debug OTP: \(debugCode)", tint: .orange, icon: "number")
-                    .fontDesign(.monospaced)
-            }
-        }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 40)
-        .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(.white.opacity(0.75), lineWidth: 1)
-        )
-        .shadow(color: AppTheme.ink.opacity(0.08), radius: 30, x: 0, y: 18)
     }
 }
 

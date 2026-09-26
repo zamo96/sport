@@ -65,6 +65,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
+import shop.sportsearch.app.ui.consents.PhoneLinkScreen
 import shop.sportsearch.app.ui.consents.consentStatusText
 import shop.sportsearch.app.ui.components.AppAvailabilityWeekEditor
 import shop.sportsearch.app.ui.components.DismissOnSystemBack
@@ -204,6 +205,12 @@ fun ProfileAccountScreen(
     onLogout: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var isLinkingPhone by remember { mutableStateOf(false) }
+    if (isLinkingPhone) {
+        PhoneLinkScreen(appModel, isPrompt = false) { isLinkingPhone = false }
+        return
+    }
+
     DismissOnSystemBack(onBack)
     HideBottomBarWhileVisible(appModel)
 
@@ -218,7 +225,12 @@ fun ProfileAccountScreen(
     ) {
         ProfileSubscreenHeader(title = L10n.string("Account", "Аккаунт"), onBack = onBack)
 
+        val phone = appModel.currentUser?.phone
         ProfileDarkPanel {
+            ProfileInfoLine(
+                L10n.string("Phone", "Телефон"),
+                phone?.let(RussianPhone::formatted) ?: L10n.string("Not linked", "Не привязан"),
+            )
             ProfileInfoLine(
                 L10n.string("Email", "Почта"),
                 email ?: L10n.string("Not provided", "Не указана"),
@@ -229,6 +241,14 @@ fun ProfileAccountScreen(
             )
         }
 
+        if (phone == null) {
+            // Sign-in in Russia goes through a phone or VK ID: without a number there is no way back in.
+            PrimaryActionButton(
+                title = L10n.string("Link phone number", "Привязать номер телефона"),
+                onClick = { isLinkingPhone = true },
+                tint = AppTheme.court,
+            )
+        }
         SecondaryActionButton(title = L10n.string("Sign out", "Выйти"), onClick = onLogout, tint = Color.White)
         SecondaryActionButton(title = L10n.string("Delete profile", "Удалить профиль"), onClick = onDelete, tint = Color.Red)
     }

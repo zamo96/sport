@@ -392,3 +392,158 @@ struct ConsentReviewView: View {
         }
     }
 }
+
+/// Привязка номера к уже открытому аккаунту: вход в России теперь по телефону
+/// или VK ID, и без номера человек не попадёт в свой аккаунт после выхода.
+struct PhoneLinkView: View {
+    enum Mode {
+        /// После экрана согласия: «Позже» откладывает до следующего запуска.
+        case prompt
+        /// Из настроек аккаунта.
+        case settings
+    }
+
+    let mode: Mode
+    var onFinished: () -> Void = {}
+
+    @EnvironmentObject private var appModel: AppModel
+    @State private var phone = "+7 "
+    @State private var code = ""
+    @State private var isCodeSent = false
+    @State private var debugCode: String?
+    @State private var errorText: String?
+    @State private var isSaving = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case phone, code }
+
+    private var displayedPhone: String {
+        RussianPhone.formatted(RussianPhone.normalized(phone) ?? phone)
+    }
+
+    var body: some View {
+        ZStack {
+            AppTheme.pageBackground.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(L10n.string("Add your phone number", "Добавьте номер телефона"))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(L10n.string(
+                        "In Russia you now sign in with a phone number or VK ID. Add your number to keep signing in to this account.",
+                        "В России вход теперь по номеру телефона или через VK ID. Привяжите номер, чтобы и дальше входить в этот аккаунт."
+                    ))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    field(text: $phone, prompt: "+7 999 123-45-67", keyboard: .phonePad, content: .telephoneNumber, focus: .phone)
+                        .disabled(isCodeSent)
+
+                    if isCodeSent {
+                        Text(L10n.string("SMS code sent to \(displayedPhone)", "Код отправлен по SMS на \(displayedPhone)"))
+                            .font(.footnote)
+                            .foregroundStyle(AppTheme.mutedInk)
+                        if let debugCode {
+                            Text("Debug OTP: \(debugCode)")
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.orange)
+                        }
+                        field(text: $code, prompt: "000000", keyboard: .numberPad, content: .oneTimeCode, focus: .code)
+                    }
+
+                    if let errorText {
+                        Label(errorText, systemImage: "exclamationmark.triangle")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Button {
+                        if isCodeSent { confirm() } else { requestCode() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text(isCodeSent ? L10n.string("Confirm", "Подтвердить") : L10n.string("Get an SMS code", "Получить код по SMS"))
+                        }
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
+                    .disabled(isSaving || (isCodeSent && code.filter(\.isNumber).count != 6))
+
+                    if isCodeSent {
+                        Button(L10n.string("Change number", "Изменить номер")) {
+                            isCodeSent = false
+                            code = ""
+                            errorText = nil
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
+                    }
+
+                    Button(mode == .prompt ? L10n.string("Later", "Позже") : L10n.string("Cancel", "Отмена")) {
+                        onFinished()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.mutedInk)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 2)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 28)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        // Как экран согласия: светлый, даже если под ним тёмная тема.
+        .environment(\.colorScheme, .light)
+    }
+
+    private func field(text: Binding<String>, prompt: String, keyboard: UIKeyboardType, content: UITextContentType, focus: Field) -> some View {
+        TextField("", text: text, prompt: Text(prompt).foregroundColor(AppTheme.ink.opacity(0.4)))
+            .font(.system(size: 22, weight: .semibold, design: .rounded))
+            .foregroundStyle(AppTheme.ink)
+            .tint(AppTheme.court)
+            .keyboardType(keyboard)
+            .textContentType(content)
+            .focused($focusedField, equals: focus)
+            .padding(.horizontal, 16)
+            .frame(height: 58)
+            .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(focusedField == focus ? AppTheme.court.opacity(0.7) : Color(.systemGray4), lineWidth: 1)
+            )
+    }
+
+    private func requestCode() {
+        errorText = nil
+        isSaving = true
+        Task {
+            let result = await appModel.requestPhoneLinkCode(phone: phone)
+            isSaving = false
+            if let error = result.error {
+                errorText = error
+                AppHaptics.notification(.warning)
+            } else {
+                debugCode = result.debugCode
+                isCodeSent = true
+                focusedField = .code
+            }
+        }
+    }
+
+    private func confirm() {
+        errorText = nil
+        isSaving = true
+        Task {
+            let failure = await appModel.verifyPhoneLink(phone: phone, code: code.filter(\.isNumber))
+            isSaving = false
+            if let failure {
+                errorText = failure
+                AppHaptics.notification(.error)
+            } else {
+                AppHaptics.notification(.success)
+                onFinished()
+            }
+        }
+    }
+}

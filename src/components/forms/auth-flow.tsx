@@ -7,6 +7,7 @@ import { type Gender, type Sport } from "@prisma/client";
 import { ShieldCheck, Sparkles, Users } from "lucide-react";
 
 import { useLocale } from "@/components/i18n/locale-provider";
+import { promoteGuestDraftAfterSignIn } from "@/components/forms/guest-draft-promotion";
 import { apiFetch } from "@/lib/client-api";
 import {
   clearGuestOnboardingDraft,
@@ -14,13 +15,13 @@ import {
   guestDraftCanCompleteOnboarding,
   guestDraftHasProfileBasics,
   loadGuestOnboardingDraft,
-  mapVisibilityForGuestPromotion,
   saveGuestOnboardingDraft,
   type GuestOnboardingDraft
 } from "@/lib/guest-draft";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { AVAILABLE_CITIES } from "@/lib/constants";
-import { getPrimarySportLevel, type SportLevelValue } from "@/lib/sport-levels";
+import { type SportLevelValue } from "@/lib/sport-levels";
+import { startVkIdSignIn, type VkIdConfig } from "@/lib/vk-id-client";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportLevelGuideSheet } from "@/components/forms/sport-level-guide-sheet";
@@ -51,6 +52,12 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const searchParams = useSearchParams();
   const [step, setStep] = useState<"intro" | "profile" | "availability" | "email" | "code">(initialStep);
   const [email, setEmail] = useState("");
+  // Для России вход по телефону или VK ID (ч. 10 ст. 8 149-ФЗ), для остальных — по email.
+  const [country, setCountry] = useState<"RU" | "OTHER">(locale === "ru" ? "RU" : "OTHER");
+  const [phone, setPhone] = useState("+7 ");
+  const [codeTarget, setCodeTarget] = useState<"email" | "phone">("email");
+  const [vkConfig, setVkConfig] = useState<VkIdConfig | null>(null);
+  const [vkOpening, setVkOpening] = useState(false);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [debugCode, setDebugCode] = useState<string | null>(null);
@@ -184,6 +191,29 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     }));
   }
 
+  useEffect(() => {
+    if (step !== "email" || country !== "RU" || vkConfig) return;
+    apiFetch<VkIdConfig>("/auth/vk/config")
+      .then(setVkConfig)
+      .catch(() => setVkConfig({ available: false, clientId: null, redirectUri: "", scope: "", authorizeUrl: "" }));
+  }, [step, country, vkConfig]);
+
+  async function signInWithVk() {
+    if (!vkConfig?.available) {
+      setError(t("auth.vk.unavailable"));
+      return;
+    }
+    setVkOpening(true);
+    setError(null);
+    try {
+      saveGuestOnboardingDraft(draft);
+      await startVkIdSignIn(vkConfig, continueHref);
+    } catch {
+      setVkOpening(false);
+      setError(t("auth.vk.failed"));
+    }
+  }
+
   async function requestCode(event: FormEvent) {
     event.preventDefault();
 
@@ -191,14 +221,18 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     setError(null);
 
     try {
-      const data = await apiFetch<{ debugCode?: string }>("/auth/request-link", {
+      const target = country === "RU" ? "phone" : "email";
+      const data = await apiFetch<{ debugCode?: string }>(target === "phone" ? "/auth/phone/request" : "/auth/request-link", {
         method: "POST",
-        body: JSON.stringify({
-          email,
-          userAgreement: buildLatestUserAgreementPayload()
-        })
+        body: JSON.stringify(
+          target === "phone"
+            ? { phone, userAgreement: buildLatestUserAgreementPayload() }
+            : { email, userAgreement: buildLatestUserAgreementPayload() }
+        )
       });
       setDebugCode(data.debugCode ?? null);
+      setCodeTarget(target);
+      setCode("");
       setStep("code");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : t("auth.error.requestCode"));
@@ -214,51 +248,23 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     setError(null);
 
     try {
-      const data = await apiFetch<{ user: { onboardingCompleted: boolean; showOnMap?: boolean } }>("/auth/verify", {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          code,
-          showOnMap: draft.showOnMap,
-          // The consent screen asks for profile visibility after onboarding.
-          consentReview: true,
-          userAgreement: buildLatestUserAgreementPayload()
-        })
-      });
-
-      let onboardingCompleted = data.user.onboardingCompleted;
-      if (!onboardingCompleted && guestDraftCanCompleteOnboarding(draft)) {
-        await apiFetch("/me", {
-          method: "PATCH",
+      const credentials = codeTarget === "phone" ? { phone } : { email, country: "OTHER" };
+      const data = await apiFetch<{ user: { onboardingCompleted: boolean; showOnMap?: boolean } }>(
+        codeTarget === "phone" ? "/auth/phone/verify" : "/auth/verify",
+        {
+          method: "POST",
           body: JSON.stringify({
-            name: draft.name.trim(),
-            age: draft.age,
-            gender: draft.gender ?? null,
-            city: draft.city,
-            locationPlaceId: draft.locationPlaceId ?? undefined,
-            district: draft.preferredDistricts[0] ?? draft.district ?? null,
-            preferredDistricts: draft.preferredDistricts,
-            tennisLevel: getPrimarySportLevel(draft.preferredSports, draft.sportLevels, draft.sportLevels[draft.preferredSports[0]] ?? 5),
-            preferredSports: draft.preferredSports,
-            sportLevels: draft.sportLevels,
-            preferredPlayFormat: draft.preferredPlayFormat,
-            preferredSurface: draft.preferredSurface,
-            bio: "",
-            avatarUrl: null,
-            availableDays: draft.availableDays,
-            availableTimeRanges: draft.availableTimeRanges,
-            availabilityByDay: draft.availabilityByDay,
-            showOnMap: mapVisibilityForGuestPromotion(data.user.showOnMap, draft.showOnMap),
-            isLookingForGame: draft.isLookingForGame,
-            notificationGames: true,
-            notificationMatches: true,
-            notificationMessages: true,
-            notificationSound: true
+            ...credentials,
+            code,
+            showOnMap: draft.showOnMap,
+            // The consent screen asks for profile visibility after onboarding.
+            consentReview: true,
+            userAgreement: buildLatestUserAgreementPayload()
           })
-        });
-        onboardingCompleted = true;
-      }
+        }
+      );
 
+      const onboardingCompleted = await promoteGuestDraftAfterSignIn(data.user, draft);
       if (onboardingCompleted) clearGuestOnboardingDraft();
       router.push(onboardingCompleted ? continueHref : "/onboarding");
       router.refresh();
@@ -530,10 +536,12 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-court">
-                {step === "email" ? t("auth.email.eyebrow") : t("auth.code.eyebrow")}
+                {step === "code" ? t("auth.code.eyebrow") : country === "RU" ? t("auth.phone.eyebrow") : t("auth.email.eyebrow")}
               </div>
               <div className="mt-1 text-xl font-bold text-ink">
-                {step === "email" ? t("auth.email.title") : t("auth.code.title")}
+                {step === "email"
+                  ? t(country === "RU" ? "auth.phone.title" : "auth.email.title")
+                  : t(codeTarget === "phone" ? "auth.code.titlePhone" : "auth.code.title")}
               </div>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/60">
@@ -544,6 +552,71 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
           {step === "email" ? (
             <form className="space-y-4" onSubmit={requestCode}>
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.country.label")}</div>
+                <div className="grid grid-cols-2 gap-1 rounded-[20px] border border-white/80 bg-white/60 p-1" role="radiogroup" aria-label={t("auth.country.label")}>
+                  {(["RU", "OTHER"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={country === option}
+                      onClick={() => {
+                        setCountry(option);
+                        setError(null);
+                      }}
+                      className={`min-h-11 rounded-[16px] text-sm font-semibold transition ${country === option ? "bg-ink text-white" : "text-ink/70"}`}
+                    >
+                      {option === "RU" ? t("auth.country.ru") : t("auth.country.other")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {country === "RU" ? (
+                <>
+                  <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">{t("auth.country.hintRu")}</div>
+                  <label className="block">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.phone.label")}</div>
+                    <input
+                      required
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value.replace(/[^\d+()\s-]/g, "").slice(0, 20))}
+                      className="input border-white/80 bg-white/78 text-ink placeholder:text-ink/35"
+                      placeholder="+7 999 123-45-67"
+                    />
+                  </label>
+                  <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
+                    {loading ? t("auth.phone.sending") : t("auth.phone.getCode")}
+                  </Button>
+                  {vkConfig?.available ? (
+                    // Hidden until VK_ID_CLIENT_ID is set on the server, so there is no dead button.
+                    <>
+                      <div className="flex items-center gap-3 text-xs text-ink/45">
+                        <span className="h-px flex-1 bg-ink/10" />
+                        {t("auth.or")}
+                        <span className="h-px flex-1 bg-ink/10" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={signInWithVk}
+                        disabled={vkOpening}
+                        className="inline-flex min-h-12 w-full items-center justify-center rounded-[24px] bg-[#0077FF] px-4 text-sm font-semibold text-white transition active:scale-[0.985] disabled:opacity-60"
+                      >
+                        {vkOpening ? t("auth.vk.opening") : t("auth.vk.button")}
+                      </button>
+                    </>
+                  ) : null}
+                  <Button type="button" fullWidth variant="ghost" className="min-h-11 rounded-[24px]" onClick={() => router.push("/discover")}>
+                    {t("auth.email.later")}
+                  </Button>
+                  <LegalNotice />
+                </>
+              ) : (
+                <>
               <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">
                 {t("auth.email.description")}
               </div>
@@ -567,11 +640,13 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                 </Button>
               </div>
               <LegalNotice />
+                </>
+              )}
             </form>
           ) : (
             <form className="space-y-4" onSubmit={verify}>
               <div className="rounded-[24px] border border-white/80 bg-white/72 px-4 py-3 text-sm text-ink/72">
-                {t("auth.code.sent", { email })}
+                {codeTarget === "phone" ? t("auth.code.sentPhone", { phone }) : t("auth.code.sent", { email })}
                 {debugCode ? <div className="mt-2 font-semibold text-clay">{t("auth.code.demo", { code: debugCode })}</div> : null}
               </div>
               <label className="block">
@@ -579,6 +654,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                 <input
                   required
                   inputMode="numeric"
+                  autoComplete="one-time-code"
                   maxLength={6}
                   value={code}
                   onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -588,7 +664,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               </label>
               <div className="flex gap-3">
                 <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => setStep("email")}>
-                  {t("auth.code.changeEmail")}
+                  {codeTarget === "phone" ? t("auth.code.changePhone") : t("auth.code.changeEmail")}
                 </Button>
                 <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading || code.length !== 6}>
                   {loading ? t("auth.code.saving") : t("auth.code.submit")}

@@ -29,6 +29,9 @@ export function serializeMe<
     localeOverride?: string | null;
     showOnMap?: boolean;
     location?: Parameters<typeof serializeLocationRelation>[0];
+    phone?: string | null;
+    signupCountry?: string | null;
+    onboardingCompleted?: boolean;
   } & Parameters<typeof buildConsentState>[0]
 >(user: T, requestLocale: SupportedLocale = DEFAULT_LOCALE) {
   const { location, consentFullName: _consentFullName, ...legacyUser } = user;
@@ -38,11 +41,22 @@ export function serializeMe<
     ...legacyUser,
     showOnMap: user.showOnMap === true,
     consents: buildConsentState(user),
+    phoneLinkSuggested: isPhoneLinkSuggested(user, serializedLocation?.countryCode ?? null),
     localeOverride,
     effectiveLocale: localeOverride ?? requestLocale,
     location: serializedLocation,
     coverage: serializedLocation?.coverage ?? emptyCoverage()
   };
+}
+
+/**
+ * Российский аккаунт без номера телефона: вход для России — по телефону или VK
+ * ID, поэтому такому аккаунту предлагаем привязать номер, пока сессия жива.
+ */
+function isPhoneLinkSuggested(user: { phone?: string | null; signupCountry?: string | null; onboardingCompleted?: boolean }, countryCode: string | null) {
+  if (user.phone || user.onboardingCompleted === false) return false;
+  if (user.signupCountry) return user.signupCountry === "RU";
+  return countryCode === "RU";
 }
 
 type PreviewUserInput = Partial<User> & {

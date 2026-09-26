@@ -65,6 +65,8 @@ const userAgreementAcceptanceSchema = z.object({
 export const googleAuthSchema = z.object({
   showOnMap: z.boolean().optional(),
   consentReview: z.boolean().optional(),
+  // Google — только для тех, кто не в России (ч. 10 ст. 8 149-ФЗ).
+  country: z.enum(["RU", "OTHER"]).optional().refine((value) => value !== "RU", "Для России вход по номеру телефона или через VK ID"),
   idToken: z.string().min(1),
   userAgreement: userAgreementAcceptanceSchema
 });

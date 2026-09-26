@@ -2,7 +2,16 @@ import { createHash } from "node:crypto";
 
 import { getRealtimeRedis } from "@/server/realtime";
 
-type AuthAction = "request" | "verify";
+type AuthAction = "request" | "verify" | "phone-request" | "phone-verify" | "vk";
+
+/** [лимит на идентификатор, лимит на IP] за окно. SMS платные, поэтому их лимит строже. */
+const LIMITS: Record<AuthAction, [number, number]> = {
+  request: [5, 30],
+  verify: [10, 100],
+  "phone-request": [3, 20],
+  "phone-verify": [10, 100],
+  vk: [30, 30]
+};
 const WINDOW_MS = 10 * 60_000;
 const MAX_LOCAL_BUCKETS = 10_000;
 const localBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -22,16 +31,17 @@ function digest(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function enforceAuthRateLimit(action: AuthAction, email: string, request: Request) {
+/** `identifier` — email, номер телефона или имя способа входа, если своего идентификатора нет. */
+export async function enforceAuthRateLimit(action: AuthAction, identifier: string, request: Request) {
   // The production reverse proxy must replace these headers, never append untrusted input.
   const ip = request.headers.get("x-real-ip")?.trim()
     || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || "unknown";
   const keys = [
-    `tennis:auth:${action}:email:${digest(email.trim().toLowerCase())}`,
+    `tennis:auth:${action}:id:${digest(identifier.trim().toLowerCase())}`,
     `tennis:auth:${action}:ip:${digest(ip)}`
   ];
-  const limits = action === "request" ? [5, 30] : [10, 100];
+  const limits = LIMITS[action];
   const redis = getRealtimeRedis();
 
   if (redis) {

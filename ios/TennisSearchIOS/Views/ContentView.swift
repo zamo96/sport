@@ -33,6 +33,15 @@ struct ContentView: View {
                     AuthView(initialStep: appModel.isAuthenticated ? (appModel.guestDraft.hasProfileBasics ? .availability : .profile) : .intro, embedded: true)
                 }
             }
+            // Отдельно от листа входа и экрана согласия: они не показываются одновременно.
+            .sheet(isPresented: Binding(
+                get: { appModel.isPhoneLinkPromptVisible },
+                set: { isPresented in if !isPresented { appModel.dismissPhoneLinkPrompt() } }
+            )) {
+                PhoneLinkView(mode: .prompt) { appModel.dismissPhoneLinkPrompt() }
+                    .environmentObject(appModel)
+                    .presentationDetents([.large])
+            }
         }
         .sheet(item: $appModel.presentedAuthStep, onDismiss: {
             appModel.authenticationSheetDidDismiss()

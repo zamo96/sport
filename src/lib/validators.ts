@@ -24,6 +24,7 @@ import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RA
 import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
 import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR, USER_AGREEMENT_VERSION } from "@/lib/legal-contract";
 import { normalizeSupportedLocale } from "@/lib/locales";
+import { normalizeRussianMobile } from "@/lib/phone";
 import { CONSENT_FULL_NAME_PATTERN } from "@/lib/profile-visibility";
 import { isFormatAllowedForSport } from "@/lib/sport-playbook";
 import { CLIENT_REPORTABLE_EVENT_TYPES } from "@/lib/user-events";
@@ -101,6 +102,48 @@ export const requestLinkSchema = z.object({
   userAgreement: userAgreementAcceptanceSchema
 });
 
+const russianMobileSchema = z
+  .string()
+  .max(32)
+  .transform((value, context) => {
+    const phone = normalizeRussianMobile(value);
+    if (!phone) {
+      context.addIssue({ code: "custom", message: "Укажите российский мобильный номер: +7 9XX XXX-XX-XX" });
+      return z.NEVER;
+    }
+    return phone;
+  });
+
+export const phoneRequestSchema = z.object({
+  phone: russianMobileSchema,
+  userAgreement: userAgreementAcceptanceSchema
+});
+
+export const phoneVerifySchema = z.object({
+  phone: russianMobileSchema,
+  code: z.string().trim().regex(/^\d{6}$/, "Введите 6 цифр из SMS"),
+  showOnMap: z.boolean().optional(),
+  consentReview: z.boolean().optional(),
+  userAgreement: userAgreementAcceptanceSchema
+});
+
+export const vkAuthSchema = z.object({
+  code: z.string().min(1).max(2048),
+  codeVerifier: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/, "Некорректный code_verifier"),
+  deviceId: z.string().min(1).max(512),
+  state: z.string().regex(/^[A-Za-z0-9_-]{32,256}$/, "Некорректный state"),
+  showOnMap: z.boolean().optional(),
+  consentReview: z.boolean().optional(),
+  userAgreement: userAgreementAcceptanceSchema
+});
+
+export const mePhoneRequestSchema = z.object({ phone: russianMobileSchema });
+
+export const mePhoneVerifySchema = z.object({
+  phone: russianMobileSchema,
+  code: z.string().trim().regex(/^\d{6}$/, "Введите 6 цифр из SMS")
+});
+
 /**
  * Клиент умеет показывать экран согласий. Новый аккаунт тогда создаётся
  * скрытым до ответа; старые сборки этого поля не шлют и получают прежнее
@@ -108,9 +151,20 @@ export const requestLinkSchema = z.object({
  */
 const consentReviewSupportSchema = z.boolean().optional();
 
+/**
+ * Страна, которую человек выбрал на экране входа. Email, Apple и Google — для
+ * тех, кто не в России; для России вход по телефону или через VK ID
+ * (ч. 10 ст. 8 149-ФЗ). Старые сборки поле не шлют.
+ */
+const nonRussianSignInCountrySchema = z
+  .enum(["RU", "OTHER"])
+  .optional()
+  .refine((value) => value !== "RU", "Для России вход по номеру телефона или через VK ID");
+
 export const verifySchema = z.object({
   showOnMap: z.boolean().optional(),
   consentReview: consentReviewSupportSchema,
+  country: nonRussianSignInCountrySchema,
   email: z.string().email().transform((value) => value.toLowerCase()),
   code: z.string().length(6),
   userAgreement: userAgreementAcceptanceSchema
@@ -119,6 +173,7 @@ export const verifySchema = z.object({
 export const appleAuthSchema = z.object({
   showOnMap: z.boolean().optional(),
   consentReview: consentReviewSupportSchema,
+  country: nonRussianSignInCountrySchema,
   identityToken: z.string().min(1),
   email: z
     .string()

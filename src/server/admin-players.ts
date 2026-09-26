@@ -4,6 +4,7 @@ import { resolveLocationFromCity, resolveLocationFromDistrict } from "@/lib/geo"
 import { prisma } from "@/lib/prisma";
 import { getPrimarySportLevel, normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
 import type { AdminPlayerProfilePatch, AdminPlayerStatusPatch } from "@/lib/validators";
+import { accountContact } from "@/lib/account-contact";
 
 const adminPlayerSummarySelect = {
   id: true,
@@ -148,9 +149,9 @@ export async function updateAdminPlayerProfile(
     await tx.adminAuditLog.create({
       data: {
         actorUserId: actor.id,
-        actorEmail: actor.email,
+        actorEmail: accountContact(actor),
         targetUserId: current.id,
-        targetEmail: current.email,
+        targetEmail: accountContact(current),
         action: AdminAuditAction.PROFILE_UPDATED,
         before: toAuditFields(current, changedFields),
         after: toAuditFields(updated, changedFields)
@@ -218,9 +219,9 @@ export async function updateAdminPlayerStatus(
     await tx.adminAuditLog.create({
       data: {
         actorUserId: actor.id,
-        actorEmail: actor.email,
+        actorEmail: accountContact(actor),
         targetUserId: current.id,
-        targetEmail: current.email,
+        targetEmail: accountContact(current),
         action: deactivating ? AdminAuditAction.ACCOUNT_DEACTIVATED : AdminAuditAction.ACCOUNT_REACTIVATED,
         reason: input.reason,
         before: toAuditFields(current, ["accountStatus", "deactivatedAt", "deactivationReason"]),

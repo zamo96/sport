@@ -391,7 +391,7 @@ export async function verifyAuthCode(email: string, code: string, showOnMap = tr
  * Пришёл ли человек по чужой ссылке. Ошибку глотаем намеренно: приглашение —
  * приятный бонус, из-за него регистрация падать не должна.
  */
-async function attributeInviteFromCookie(userId: string) {
+export async function attributeInviteFromCookie(userId: string) {
   try {
     await attributeInvite(userId, cookies().get(INVITE_COOKIE_NAME)?.value ?? null);
   } catch (error) {

@@ -166,9 +166,64 @@ enum class LocationSource(val wire: String) {
 @Serializable
 data class SessionUser(
     val id: String,
-    val email: String = "",
+    /** Absent for accounts created by phone or VK ID. */
+    val email: String? = null,
+    val phone: String? = null,
     val onboardingCompleted: Boolean = false,
 )
+
+/** Port of `enum AuthCountry`: Russia signs in by phone or VK ID (149-FZ art. 8 part 10). */
+enum class AuthCountry(val wire: String) {
+    RUSSIA("RU"),
+    OTHER("OTHER");
+
+    val title: String
+        get() = when (this) {
+            RUSSIA -> L10n.string("Russia", "Россия")
+            OTHER -> L10n.string("Another country", "Другая страна")
+        }
+
+    companion object {
+        /** The guest's city beats the device region; without it, region or language. */
+        fun suggested(draftCountryCode: String?): AuthCountry {
+            if (draftCountryCode != null) return if (draftCountryCode == "RU") RUSSIA else OTHER
+            val region = java.util.Locale.getDefault().country
+            return if (region == "RU" || LocaleStore.current == AppLocale.RU) RUSSIA else OTHER
+        }
+    }
+}
+
+/** Port of `enum AuthCodeTarget`. */
+enum class AuthCodeTarget { EMAIL, PHONE }
+
+/** Port of `struct VkIdConfig`: parameters for the VK ID link from `GET /auth/vk/config`. */
+@Serializable
+data class VkIdConfig(
+    val available: Boolean = false,
+    val clientId: String? = null,
+    val redirectUri: String = "",
+    val scope: String = "",
+    val authorizeUrl: String = "",
+)
+
+/** Port of `enum RussianPhone`: same rules as `normalizeRussianMobile` on the server. */
+object RussianPhone {
+    fun normalized(input: String): String? {
+        val digits = input.filter(Char::isDigit)
+        val national = when {
+            digits.length == 11 && (digits.startsWith("7") || digits.startsWith("8")) -> digits.drop(1)
+            digits.length == 10 -> digits
+            else -> return null
+        }
+        return if (national.startsWith("9")) "+7$national" else null
+    }
+
+    fun formatted(phone: String): String {
+        val d = phone.filter(Char::isDigit)
+        if (d.length != 11) return phone
+        return "+7 ${d.substring(1, 4)} ${d.substring(4, 7)}-${d.substring(7, 9)}-${d.substring(9, 11)}"
+    }
+}
 
 @Serializable
 data class AuthChallenge(
@@ -304,6 +359,10 @@ data class UserProfile(
     val localeOverride: String? = null,
     /** Absent in responses from an older server; then the consent screen never shows. */
     val consents: ConsentState? = null,
+    /** Verified phone number for signing in from Russia. */
+    val phone: String? = null,
+    /** A Russian account without a phone: suggest linking one while the session is alive. */
+    val phoneLinkSuggested: Boolean = false,
 ) {
     val gender: Gender? get() = Gender.from(genderRaw)
     val locationSource: LocationSource? get() = LocationSource.from(locationSourceRaw)

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Warning
@@ -294,7 +295,16 @@ fun AuthScreen(
                     }
                 }
             },
+            onRequestPhoneCode = {
+                persistDraft()
+                scope.launch {
+                    if (appModel.requestPhoneCode()) {
+                        step = AuthStep.CODE
+                    }
+                }
+            },
             onHaveCode = {
+                appModel.authCodeTarget = AuthCodeTarget.EMAIL
                 if (appModel.authEmail.trim().isEmpty()) {
                     appModel.errorMessage = L10n.string("Enter your email first.", "Сначала укажи email для входа.")
                 } else {
@@ -310,7 +320,13 @@ fun AuthScreen(
             onChangeEmail = { step = AuthStep.EMAIL },
             onVerify = {
                 persistDraft()
-                scope.launch { appModel.verify(code, userAgreementAccepted = true) }
+                scope.launch {
+                    if (appModel.authCodeTarget == AuthCodeTarget.PHONE) {
+                        appModel.verifyPhone(code)
+                    } else {
+                        appModel.verify(code, userAgreementAccepted = true)
+                    }
+                }
             },
         )
     }
@@ -645,6 +661,7 @@ private fun EmailStep(
     embedded: Boolean,
     onBack: () -> Unit,
     onRequestCode: () -> Unit,
+    onRequestPhoneCode: () -> Unit,
     onHaveCode: () -> Unit,
 ) {
     DismissOnSystemBack(onBack)
@@ -654,6 +671,7 @@ private fun EmailStep(
     // Credential Manager draws its account picker over an Activity.
     val activityContext = LocalContext.current
     val cardShape = continuousShape(32.dp)
+    LaunchedEffect(Unit) { appModel.loadVkIdAvailability() }
 
     Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
         Column(
@@ -684,14 +702,85 @@ private fun EmailStep(
                     maxLines = 1,
                 )
                 Text(
-                    L10n.string(
-                        "Sign in with your email to save your profile, matches, chats, and notifications.",
-                        "Войди по email, чтобы сохранить профиль, матчи, переписки и уведомления.",
-                    ),
+                    if (appModel.authCountry == AuthCountry.RUSSIA) {
+                        L10n.string(
+                            "In Russia you sign in with a phone number or VK ID. Your profile, matches, chats, and notifications are saved to your account.",
+                            "В России вход — по номеру телефона или через VK ID. Профиль, матчи, переписки и уведомления сохранятся в аккаунте.",
+                        )
+                    } else {
+                        L10n.string(
+                            "Sign in with your email to save your profile, matches, chats, and notifications.",
+                            "Войди по email, чтобы сохранить профиль, матчи, переписки и уведомления.",
+                        )
+                    },
                     style = AppText.title3,
                     color = AppTheme.mutedInk,
                 )
 
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(L10n.string("Where are you?", "Где вы находитесь?"), style = AppText.headline, color = AppTheme.ink)
+                    CountrySelector(selected = appModel.authCountry) {
+                        appModel.authCountry = it
+                        appModel.errorMessage = null
+                    }
+                }
+
+                if (appModel.authCountry == AuthCountry.RUSSIA) {
+                    // 149-FZ art. 8 part 10: an SMS code to a Russian number or VK ID.
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(L10n.string("Phone number", "Номер телефона"), style = AppText.headline, color = AppTheme.ink)
+                        OutlinedTextField(
+                            value = appModel.authPhone,
+                            onValueChange = { value -> appModel.authPhone = value.filter { it.isDigit() || it in "+()- " }.take(20) },
+                            placeholder = { Text("+7 999 123-45-67", fontSize = 22.sp) },
+                            leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            shape = continuousShape(18.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedIndicatorColor = AppTheme.court.copy(alpha = 0.72f),
+                                unfocusedIndicatorColor = Color(0xFFD1D1D6),
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(68.dp),
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(66.dp)
+                            .appShadow(AppTheme.court.copy(alpha = 0.2f), radius = 16.dp, offsetY = 10.dp, shape = continuousShape(18.dp))
+                            .clip(continuousShape(18.dp))
+                            .background(Brush.linearGradient(listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f))))
+                            .clickable { onRequestPhoneCode() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(L10n.string("Get an SMS code", "Получить код по SMS"), style = AppText.title3Bold, color = Color.White)
+                    }
+
+                    if (appModel.isVkIdAvailable) {
+                        AuthDividerLabel(L10n.string("or", "или"))
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(62.dp)
+                                .clip(continuousShape(18.dp))
+                                .background(Color(0xFF0077FF))
+                                .clickable(enabled = !appModel.isBusy) {
+                                    haptics.selection()
+                                    scope.launch { appModel.startVkSignIn(activityContext) }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(L10n.string("Sign in with VK ID", "Войти через VK ID"), style = AppText.title3Bold, color = Color.White)
+                        }
+                    }
+
+                    LegalNotice()
+                } else {
                 // iOS puts Sign in with Apple here. Android has no Apple sign-in,
                 // so Google takes the same slot; hidden when the build has no
                 // Google client ID configured.
@@ -766,6 +855,7 @@ private fun EmailStep(
                 }
 
                 LegalNotice()
+                }
 
                 appModel.authMessage?.let { AuthInlineMessage(it, AppTheme.court, Icons.Filled.CheckCircle) }
                 appModel.errorMessage?.let { AuthInlineMessage(it, Color(0xFFD1493F), Icons.Filled.Warning) }
@@ -778,6 +868,39 @@ private fun EmailStep(
                 title = L10n.string("Back", "Назад"),
                 onClick = onBack,
             )
+        }
+    }
+}
+
+/** Port of the segmented `Picker` on the iOS sign-in screen. */
+@Composable
+private fun CountrySelector(selected: AuthCountry, onSelect: (AuthCountry) -> Unit) {
+    val shape = continuousShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Color(0xFFEEEEF0))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        AuthCountry.entries.forEach { option ->
+            val isSelected = option == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .clip(continuousShape(13.dp))
+                    .background(if (isSelected) Color.White else Color.Transparent)
+                    .clickable { onSelect(option) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    option.title,
+                    style = AppText.subheadlineSemibold,
+                    color = if (isSelected) AppTheme.ink else AppTheme.mutedInk,
+                )
+            }
         }
     }
 }
@@ -803,10 +926,17 @@ private fun CodeStep(
         ) {
             SectionCard(
                 title = L10n.string("Verification", "Подтверждение"),
-                subtitle = L10n.string(
-                    "Enter the 6-digit code from the email. After verification, your profile will be saved to your account.",
-                    "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.",
-                ),
+                subtitle = if (appModel.authCodeTarget == AuthCodeTarget.PHONE) {
+                    L10n.string(
+                        "Enter the 6-digit code from the SMS. After verification, your profile will be saved to your account.",
+                        "Введи 6 цифр из SMS. После проверки профиль будет сохранён в аккаунте.",
+                    )
+                } else {
+                    L10n.string(
+                        "Enter the 6-digit code from the email. After verification, your profile will be saved to your account.",
+                        "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.",
+                    )
+                },
             ) {
                 OtpCodeField(code = code, onCodeChange = onCodeChange, modifier = Modifier.fillMaxWidth())
 
@@ -821,7 +951,11 @@ private fun CodeStep(
             }
 
             SecondaryActionButton(
-                title = L10n.string("Change email", "Изменить email"),
+                title = if (appModel.authCodeTarget == AuthCodeTarget.PHONE) {
+                    L10n.string("Change number", "Изменить номер")
+                } else {
+                    L10n.string("Change email", "Изменить email")
+                },
                 onClick = onChangeEmail,
             )
 

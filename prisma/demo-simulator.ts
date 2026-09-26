@@ -597,7 +597,8 @@ async function createLiveUser(prisma: PrismaClient, currentUserCount: number, ra
 
   await prisma.user.upsert({
     where: {
-      email: user.email
+      // Generated demo users always have an email.
+      email: user.email!
     },
     update: {
       name: user.name,

@@ -8,7 +8,9 @@ import { apiFetch } from "@/lib/client-api";
 import { DAY_OPTIONS, DEFAULT_CITY, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { buildConsentState } from "@/lib/profile-visibility";
 import { normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
+import { PhoneLinkForm } from "@/components/auth/phone-link-form";
 import { ConsentSettingsPanel } from "@/components/consents/consent-settings-panel";
+import { formatRussianPhone } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { LocaleSelector } from "@/components/i18n/locale-selector";
@@ -18,6 +20,7 @@ export function SettingsForm({ user }: { user: User }) {
   const router = useRouter();
   const { t } = useLocale();
   const [loading, setLoading] = useState(false);
+  const [linkedPhone, setLinkedPhone] = useState(user.phone);
   const [values, setValues] = useState({
     notificationMatches: user.notificationMatches,
     notificationMessages: user.notificationMessages,
@@ -108,6 +111,18 @@ export function SettingsForm({ user }: { user: User }) {
           checked={values.notificationSound}
           onChange={(checked) => setValues((current) => ({ ...current, notificationSound: checked }))}
         />
+      </Panel>
+
+      <Panel className="space-y-3">
+        <div className="text-sm font-bold text-ink">{t("phoneLink.settingsTitle")}</div>
+        {linkedPhone ? (
+          <div className="rounded-2xl bg-cream px-4 py-3 text-sm text-ink/75">{formatRussianPhone(linkedPhone)}</div>
+        ) : (
+          <>
+            <div className="text-xs leading-5 text-ink/60">{t("phoneLink.text")}</div>
+            <PhoneLinkForm onLinked={setLinkedPhone} />
+          </>
+        )}
       </Panel>
 
       <ConsentSettingsPanel

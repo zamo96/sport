@@ -1735,6 +1735,8 @@ private struct ProfileLanguageSettingsScreen: View {
 
 private struct ProfileAccountScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var isLinkingPhone = false
 
     let email: String?
     let isVerified: Bool
@@ -1750,9 +1752,18 @@ private struct ProfileAccountScreen: View {
 
                 ProfileDarkPanel {
                     VStack(spacing: 0) {
+                        ProfileInfoLine(title: L10n.string("Phone", "Телефон"), value: appModel.currentUser?.phone.map(RussianPhone.formatted) ?? L10n.string("Not linked", "Не привязан"))
                         ProfileInfoLine(title: L10n.string("Email", "Почта"), value: email ?? L10n.string("Not provided", "Не указана"))
                         ProfileInfoLine(title: L10n.string("Status", "Статус"), value: isVerified ? L10n.string("Verified", "Подтверждён") : L10n.string("Not verified", "Не подтверждён"))
                     }
+                }
+
+                if appModel.currentUser?.phone == nil {
+                    // Вход в России — по телефону или VK ID: без номера в аккаунт после выхода не попасть.
+                    Button(L10n.string("Link phone number", "Привязать номер телефона")) {
+                        isLinkingPhone = true
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.court))
                 }
 
                 Button(L10n.string("Sign out", "Выйти")) {
@@ -1772,6 +1783,10 @@ private struct ProfileAccountScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .profileBackSwipe { dismiss() }
+        .sheet(isPresented: $isLinkingPhone) {
+            PhoneLinkView(mode: .settings) { isLinkingPhone = false }
+                .environmentObject(appModel)
+        }
     }
 }
 

@@ -36,6 +36,7 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|fontScale"
             android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.SportSearch">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,6 +48,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="sportsearch.shop" />
+            </intent-filter>
+
+            <!-- Возврат из VK ID: /auth/vk/callback перенаправляет сюда с кодом.
+                 singleTask — чтобы код попал в тот же экземпляр, где лежит
+                 code_verifier, через onNewIntent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sportsearch" android:host="auth" android:pathPrefix="/vk" />
             </intent-filter>
 
             <!-- `click_action` of the FCM payload (src/lib/fcm.ts). Without a
