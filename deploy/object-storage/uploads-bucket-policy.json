@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadOfPublicUploads",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::sportsearch-uploads/avatars/*",
+        "arn:aws:s3:::sportsearch-uploads/profile-media/*",
+        "arn:aws:s3:::sportsearch-uploads/courts/*",
+        "arn:aws:s3:::sportsearch-uploads/game-reports/*",
+        "arn:aws:s3:::sportsearch-uploads/personal-activities/*"
+      ]
+    },
+    {
+      "Sid": "AppServiceAccountFullAccess",
+      "Effect": "Allow",
+      "Principal": { "CanonicalUser": "aje1m9cejch35rchffe2" },
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::sportsearch-uploads", "arn:aws:s3:::sportsearch-uploads/*"]
+    },
+    {
+      "Sid": "OwnerConsoleAccess",
+      "Effect": "Allow",
+      "Principal": { "CanonicalUser": "aje9mci2ahto3u5g2n9s" },
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::sportsearch-uploads", "arn:aws:s3:::sportsearch-uploads/*"]
+    }
+  ]
+}
