@@ -19,20 +19,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Favorite
@@ -46,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,6 +60,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,6 +98,7 @@ import shop.sportsearch.app.ui.matches.GameProposalSheet
 import shop.sportsearch.app.ui.matches.ProposalSheetContext
 import shop.sportsearch.app.ui.notifications.NotificationsScreen
 import shop.sportsearch.app.ui.searches.RegularPairDetailSheet
+import shop.sportsearch.app.ui.theme.AppFont
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.theme.continuousShape
@@ -120,6 +132,9 @@ fun DiscoverScreen(
     onTabChanged: (DiscoverTab) -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
+    // `areIncomingLikesAcknowledged` in AppModel.swift: the island holds until the
+    // player opens the tab, and comes back only when a newer like arrives.
+    var acknowledgedLikes by remember { mutableStateOf(0) }
     var users by remember { mutableStateOf<List<DiscoverUser>>(emptyList()) }
     // The similar-players feed only loads while its own tab is open, so its size is
     // kept here for the tabs that do not reload it. Mirrors similarPlayersCount.
@@ -730,10 +745,55 @@ fun DiscoverScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             stickyHeaderRow {
+                val pendingConfirmations = upcomingRequests
+                    .count { !it.isArchivedForTimeline && it.isPendingForRecipient(appModel.currentUser?.id) }
+                val incomingLikes = appModel.activitySummary.incomingLikesCount
+                // Same order as `typedAttentionItems`: likes first, then games waiting on a reply.
+                val attention = when {
+                    !appModel.isAuthenticated -> null
+                    incomingLikes > 0 && incomingLikes > acknowledgedLikes -> DiscoverAttention(
+                        count = incomingLikes,
+                        title = if (incomingLikes == 1) {
+                            L10n.string("1 wants to play", "1 хочет сыграть")
+                        } else {
+                            L10n.string("$incomingLikes want to play", "$incomingLikes хотят сыграть")
+                        },
+                        subtitle = L10n.string("Want to play with you", "Хотят с тобой поиграть"),
+                        tab = DiscoverTab.LIKES,
+                    )
+                    pendingConfirmations > 0 -> DiscoverAttention(
+                        count = pendingConfirmations,
+                        title = if (pendingConfirmations == 1) {
+                            L10n.string("1 game awaiting response", "1 игра ждёт ответа")
+                        } else {
+                            L10n.string("$pendingConfirmations games awaiting response", "$pendingConfirmations игры ждут ответа")
+                        },
+                        subtitle = L10n.string("Confirm game", "Подтвердить игру"),
+                        tab = DiscoverTab.UPCOMING,
+                    )
+                    else -> null
+                }
+
                 DiscoverHeaderRow(
                     appModel = appModel,
+                    attention = attention,
+                    onOpenAttention = { tab ->
+                        haptics.selection()
+                        if (tab == DiscoverTab.LIKES) acknowledgedLikes = incomingLikes
+                        selectedTab = tab
+                        onTabChanged(tab)
+                    },
                     onOpenNotifications = { isNotificationsPresented = true },
                 ) {
+                if (selectedTab == DiscoverTab.LIKES) {
+                    // `discoverLikesControl`: the titles step aside for a way back, so the
+                    // deck of people waiting on you is never a room without a door.
+                    DiscoverLikesControl {
+                        haptics.selection()
+                        selectedTab = DiscoverTab.SWIPE
+                        onTabChanged(DiscoverTab.SWIPE)
+                    }
+                } else {
                 DiscoverTabBar(
                     trailing = {
                         // iOS keeps this control inside the same scrolling row as the pills.
@@ -771,10 +831,12 @@ fun DiscoverScreen(
                     },
                     onSelect = { tab ->
                         haptics.selection()
+                        if (tab == DiscoverTab.LIKES) acknowledgedLikes = incomingLikes
                         selectedTab = tab
                         onTabChanged(tab)
                     },
                 )
+                }
                 }
             }
 
@@ -1150,7 +1212,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeaderRow(
     content: @Composable () -> Unit,
 ) = item { content() }
 
-/** Port of `tabBar` in DiscoverView.swift: pills that expand to show a label when selected. */
+/**
+ * Port of `tabBar` in DiscoverView.swift: plain titles, the open one white over a 3dp
+ * underline, a hairline under the whole row, and one fixed slot after the last title for
+ * the display-mode control. Titles hold their place whatever is selected, so the row
+ * never shifts when a badge comes or goes; a badge hangs 4dp over its title, inside the
+ * 8dp gap to the next one. SwiftUI picks between full-size and shrunk titles with
+ * `ViewThatFits`; here each title shrinks itself when the row runs out of room.
+ */
 @Composable
 private fun DiscoverTabBar(
     selected: DiscoverTab,
@@ -1163,58 +1232,111 @@ private fun DiscoverTabBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.Black)
-            .padding(vertical = 6.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawRect(
+                    color = Color.White.copy(alpha = 0.12f),
+                    topLeft = Offset(0f, size.height - stroke),
+                    size = Size(size.width, stroke),
+                )
+            },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom,
     ) {
+        // SwiftUI measures the whole row and picks one size for every title; here the
+        // titles share one scale, so a title that runs out of room shrinks them all
+        // together rather than leaving the row in mixed sizes.
+        val titleScale = remember { mutableStateOf(1f) }
+
         DiscoverTab.userVisibleCases.forEach { tab ->
             val isSelected = tab == selected
-            val shape = continuousShape(22.dp)
-
-            Box {
-                Row(
-                    modifier = Modifier
-                        .heightIn(min = 44.dp)
-                        .clip(shape)
-                        .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.08f))
-                        .border(
-                            width = if (isSelected) 1.2.dp else 1.dp,
-                            color = if (isSelected) AppTheme.line else Color.White.copy(alpha = 0.8f).copy(alpha = 0.12f),
-                            shape = shape,
-                        )
-                        .clickable { onSelect(tab) }
-                        .padding(horizontal = if (isSelected) 14.dp else 12.dp, vertical = 11.dp),
-                    horizontalArrangement = Arrangement.spacedBy(if (isSelected) 7.dp else 0.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                    .width(IntrinsicSize.Max)
+                    .clickable { onSelect(tab) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier.heightIn(min = 44.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        tab.icon,
-                        contentDescription = tab.title,
-                        tint = if (isSelected) AppTheme.ink else Color.White.copy(alpha = 0.86f),
-                        modifier = Modifier.size(20.dp),
+                    DiscoverTabTitle(
+                        text = if (tab == DiscoverTab.SWIPE) L10n.string("Players", "Игроки") else tab.title,
+                        color = if (isSelected) Color.White else DiscoverHeaderIdleTitle,
+                        scale = titleScale,
                     )
-                    if (isSelected) {
-                        Text(
-                            tab.title,
-                            style = AppText.subheadlineSemibold,
-                            color = AppTheme.ink,
-                            maxLines = 2,
-                        )
-                    }
+
+                    // A badge pulls the player to a tab they are not on; on the open tab it
+                    // is noise, and leaving it out there keeps at most two badges in the row.
+                    DiscoverTabCountBadge(
+                        tab = tab,
+                        count = if (isSelected) null else badgeFor(tab),
+                        lastBadgeCounts = lastBadgeCounts,
+                        tint = if (tab == DiscoverTab.UPCOMING) DiscoverHeaderUrgent else DiscoverHeaderAccent,
+                        foreground = if (tab == DiscoverTab.UPCOMING) Color.White else DiscoverHeaderBadgeInk,
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp),
+                    )
                 }
 
-                // Shown on the open tab too: the counters read as "how much is in here".
-                DiscoverTabCountBadge(
-                    tab = tab,
-                    count = badgeFor(tab),
-                    lastBadgeCounts = lastBadgeCounts,
-                    modifier = Modifier.align(Alignment.TopEnd),
+                Spacer(modifier = Modifier.height(9.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(
+                            if (isSelected) DiscoverHeaderAccent else Color.Transparent,
+                            CircleShape,
+                        ),
                 )
             }
         }
 
-        trailing()
+        // One permanent slot after Searches keeps every title in the same place
+        // regardless of selection, including tabs without display modes.
+        Box(
+            modifier = Modifier
+                .width(88.dp)
+                .height(44.dp)
+                .padding(bottom = 9.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            trailing()
+        }
     }
+}
+
+/** `headerAccent` and the badge colours from DiscoverView.swift. */
+private val DiscoverHeaderAccent = Color(red = 0.60f, green = 0.92f, blue = 0.75f)
+private val DiscoverHeaderBadgeInk = Color(red = 0.02f, green = 0.20f, blue = 0.16f)
+private val DiscoverHeaderUrgent = Color(red = 1f, green = 0.23f, blue = 0.19f)
+private val DiscoverHeaderIdleTitle = Color(red = 0.48f, green = 0.48f, blue = 0.48f)
+
+/**
+ * `minimumScaleFactor(0.5)` from the flexible half of the SwiftUI `ViewThatFits`: the
+ * title steps down until it fits the width the row can spare, and no further.
+ */
+@Composable
+private fun DiscoverTabTitle(
+    text: String,
+    color: Color,
+    scale: MutableState<Float>,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text,
+        style = AppText.headline.copy(fontSize = AppFont.headline * scale.value),
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        onTextLayout = { layout ->
+            if (layout.hasVisualOverflow && scale.value > 0.5f) {
+                scale.value = maxOf(0.5f, scale.value - 0.05f)
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 /**
@@ -1228,6 +1350,8 @@ private fun DiscoverTabCountBadge(
     tab: DiscoverTab,
     count: Int?,
     lastBadgeCounts: MutableMap<DiscoverTab, Int>,
+    tint: Color,
+    foreground: Color,
     modifier: Modifier = Modifier,
 ) {
     val scale = remember { Animatable(1f) }
@@ -1273,13 +1397,13 @@ private fun DiscoverTabCountBadge(
         label = "tab-badge-count",
         modifier = modifier
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
-            .background(AppTheme.clay, RoundedCornerShape(percent = 50))
+            .background(tint, RoundedCornerShape(percent = 50))
             .padding(horizontal = 6.dp, vertical = 3.dp),
     ) { shown ->
         Text(
             shown,
             style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
-            color = Color.White,
+            color = foreground,
         )
     }
 }
@@ -1951,52 +2075,203 @@ private fun androidx.compose.foundation.lazy.LazyListScope.searchContent(
 
 
 /**
- * The iOS screen puts the bell in the navigation toolbar; Compose has no
- * toolbar here, so it sits at the end of the tab row, same badge and all.
+ * The rows above the deck, in the order DiscoverView.swift stacks them: the bell on its
+ * own line where iOS keeps its toolbar, then the attention island, then the titles.
  */
 @Composable
 private fun DiscoverHeaderRow(
     appModel: AppViewModel,
+    attention: DiscoverAttention?,
+    onOpenAttention: (DiscoverTab) -> Unit,
     onOpenNotifications: () -> Unit,
     tabs: @Composable () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth().background(Color.Black),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(modifier = Modifier.weight(1f)) { tabs() }
-
         if (appModel.isAuthenticated) {
             val unread = appModel.activitySummary.inboxBadgeCount
-            Box(modifier = Modifier.padding(start = 8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(continuousShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.82f))
-                        .clickable(onClick = onOpenNotifications),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Filled.Notifications,
-                        contentDescription = L10n.string("Notifications", "Уведомления"),
-                        tint = AppTheme.ink,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-
-                if (unread > 0) {
-                    Text(
-                        minOf(unread, 99).toString(),
-                        style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Box {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .background(AppTheme.clay, RoundedCornerShape(percent = 50))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                    )
+                            .size(34.dp)
+                            .clip(continuousShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.82f))
+                            .clickable(onClick = onOpenNotifications),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Notifications,
+                            contentDescription = L10n.string("Notifications", "Уведомления"),
+                            tint = AppTheme.ink,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+
+                    if (unread > 0) {
+                        Text(
+                            minOf(unread, 99).toString(),
+                            style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .background(DiscoverHeaderUrgent, RoundedCornerShape(percent = 50))
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        )
+                    }
                 }
             }
         }
+
+        attention?.let { item ->
+            DiscoverAttentionIsland(item) { onOpenAttention(item.tab) }
+        }
+
+        tabs()
+    }
+}
+
+/**
+ * Port of `discoverLikesControl` + `discoverLikesBackButton`: on the likes tab the titles
+ * give way to the way back and the name of what you are looking at.
+ */
+@Composable
+private fun DiscoverLikesControl(onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.07f))
+                .clickable(onClick = onBack)
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                L10n.string("All players", "Все игроки"),
+                style = AppText.subheadlineSemibold,
+                color = Color.White.copy(alpha = 0.85f),
+            )
+        }
+
+        Text(
+            L10n.string("Want to play with you", "Хотят с тобой поиграть"),
+            style = AppText.headline,
+            color = Color.White,
+            maxLines = 2,
+        )
+    }
+}
+
+/** One line of `typedAttentionItems` in DiscoverView.swift. */
+private data class DiscoverAttention(
+    val count: Int,
+    val title: String,
+    val subtitle: String,
+    val tab: DiscoverTab,
+)
+
+/**
+ * Port of `DiscoverSummaryCard` in its attention state with `islandStyle`: the amber
+ * plate that says what is waiting on the player. Tapping it opens the tab that holds it,
+ * which is why iOS has no separate title for likes in the row.
+ */
+@Composable
+private fun DiscoverAttentionIsland(
+    attention: DiscoverAttention,
+    onOpen: () -> Unit,
+) {
+    val accent = Color(red = 1f, green = 0.63f, blue = 0.23f)
+    val shape = continuousShape(26.dp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color(red = 0.19f, green = 0.11f, blue = 0.04f),
+                        Color(red = 0.22f, green = 0.13f, blue = 0.05f),
+                    ),
+                ),
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .background(accent.copy(alpha = 0.18f), CircleShape),
+            )
+            Icon(
+                if (attention.tab == DiscoverTab.LIKES) Icons.Filled.Favorite else Icons.Filled.CalendarMonth,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(20.dp),
+            )
+            if (attention.count > 1) {
+                Text(
+                    minOf(attention.count, 99).toString(),
+                    style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    modifier = Modifier
+                        .offset(x = 18.dp, y = (-18).dp)
+                        .background(DiscoverHeaderUrgent, CircleShape)
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                L10n.string("Needs attention", "Требует внимания").uppercase(),
+                style = AppText.caption2Semibold.copy(fontWeight = FontWeight.Bold),
+                color = accent,
+                maxLines = 1,
+            )
+            Text(
+                attention.title,
+                style = AppText.headlineBold,
+                color = Color.White,
+                maxLines = 2,
+            )
+            Text(
+                attention.subtitle,
+                style = AppText.subheadline,
+                color = Color.White.copy(alpha = 0.72f),
+                maxLines = 2,
+            )
+        }
+
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

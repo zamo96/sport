@@ -414,7 +414,9 @@ enum class DiscoverTab(val wire: String) {
         }
 
     companion object {
-        val userVisibleCases = listOf(UPCOMING, HOT, SWIPE, LIKES)
+        // `DiscoverTab.userVisibleCases` in AppModels.swift. Likes are not a title in
+        // the row: the attention island is how the player gets to them.
+        val userVisibleCases = listOf(SWIPE, UPCOMING, HOT)
         fun from(value: String?): DiscoverTab? = entries.firstOrNull { it.wire == value }
     }
 }
