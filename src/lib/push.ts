@@ -32,7 +32,7 @@ export async function sendPushToUser(payload: PushPayload) {
   await publishRealtimeEvent(payload.userId, {
     type: "notification",
     title: payload.title,
-    body: payload.body,
+    body: payload.inAppBody ?? payload.body,
     href: payload.href,
     deliveryId: payload.deliveryId
   });

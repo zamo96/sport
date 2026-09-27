@@ -11,7 +11,7 @@ import { touchUserActivity } from "@/server/user-activity";
 import { hasBlockBetweenUsers, lockActiveUsersForMutation } from "@/server/account-status";
 import {
   chatMessageAttachmentsInclude,
-  chatMessagePreview,
+  chatMessagePushContent,
   claimChatMessageAttachments,
   serializeChatMessage
 } from "@/server/chat-media";
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await sendPushToUser({
         userId: recipient.id,
         title: `Новое сообщение от ${user.name ?? "игрока"}`,
-        body: chatMessagePreview(message),
+        ...chatMessagePushContent(message),
         href: `/inbox/${match.id}`,
         sound: recipient.notificationSound ?? true
       });

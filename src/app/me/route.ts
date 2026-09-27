@@ -14,6 +14,7 @@ import {
   getLocationPlace,
   shouldPreserveCurrentGlobalLocation
 } from "@/server/locations";
+import { listUploadedChatMedia, removeChatMediaFiles, removeUnusedChatMedia } from "@/server/chat-media-cleanup";
 import { logMapVisibilityChange } from "@/server/consents";
 import { serializeMe } from "@/server/serializers";
 
@@ -182,12 +183,23 @@ function isDistrictCompatible(legacyCity: string | null, district: string | null
 export async function DELETE() {
   try {
     const currentUser = await requireSessionUser();
+    // Chat photos are files in storage: the database cascade below does not remove them.
+    const ownChatMedia = await listUploadedChatMedia(currentUser.id);
 
     await prisma.user.delete({
       where: { id: currentUser.id }
     });
 
     await destroySession();
+
+    try {
+      await removeChatMediaFiles(ownChatMedia);
+      // Photos the other side sent into chats that went away with this account.
+      await removeUnusedChatMedia();
+    } catch (error) {
+      // The account is already gone; maintenance retries the file cleanup.
+      console.error("chat media cleanup after account deletion failed:", error instanceof Error ? error.message : error);
+    }
 
     return ok({ success: true });
   } catch (error) {
