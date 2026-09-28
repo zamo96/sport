@@ -19,6 +19,7 @@
 		A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000203 /* AppModel+UserIntent.swift */; };
 		A31000000000000000000104 /* SportHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000204 /* SportHomeView.swift */; };
 		A39000000000000000000103 /* PersonalVisitsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000203 /* PersonalVisitsSection.swift */; };
+		A39000000000000000000104 /* PersonalVisitPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000204 /* PersonalVisitPass.swift */; };
 		A39000000000000000000102 /* PersonalVisitComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000202 /* PersonalVisitComposer.swift */; };
 		A31000000000000000000105 /* SportHomeWeek.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000205 /* SportHomeWeek.swift */; };
 		A39000000000000000000101 /* PersonalVisitPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000201 /* PersonalVisitPlanner.swift */; };
@@ -115,6 +116,7 @@
 		A31000000000000000000203 /* AppModel+UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+UserIntent.swift"; sourceTree = "<group>"; };
 		A31000000000000000000204 /* SportHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeView.swift; sourceTree = "<group>"; };
 		A39000000000000000000203 /* PersonalVisitsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitsSection.swift; sourceTree = "<group>"; };
+		A39000000000000000000204 /* PersonalVisitPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitPass.swift; sourceTree = "<group>"; };
 		A39000000000000000000202 /* PersonalVisitComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitComposer.swift; sourceTree = "<group>"; };
 		A31000000000000000000205 /* SportHomeWeek.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeWeek.swift; sourceTree = "<group>"; };
 		A39000000000000000000201 /* PersonalVisitPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitPlanner.swift; sourceTree = "<group>"; };
@@ -287,6 +289,7 @@
 				A10000000000000000000208 /* ContentView.swift */,
 				A31000000000000000000204 /* SportHomeView.swift */,
 				A39000000000000000000203 /* PersonalVisitsSection.swift */,
+				A39000000000000000000204 /* PersonalVisitPass.swift */,
 				A39000000000000000000202 /* PersonalVisitComposer.swift */,
 				A32000000000000000000202 /* ProfileWorkoutsSection.swift */,
 				A33000000000000000000204 /* PersonalActivityReportComposerSheet.swift */,
@@ -473,6 +476,7 @@
 				A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */,
 				A31000000000000000000104 /* SportHomeView.swift in Sources */,
 				A39000000000000000000103 /* PersonalVisitsSection.swift in Sources */,
+				A39000000000000000000104 /* PersonalVisitPass.swift in Sources */,
 				A39000000000000000000102 /* PersonalVisitComposer.swift in Sources */,
 				A31000000000000000000105 /* SportHomeWeek.swift in Sources */,
 				A39000000000000000000101 /* PersonalVisitPlanner.swift in Sources */,

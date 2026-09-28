@@ -710,17 +710,21 @@ enum PersonalVisitDateText {
 
     /// "Сегодня", "Завтра", "Вчера", else "Пт, 2 окт." (short) or "Пт, 2 октября" (full).
     static func day(_ date: Date, now: Date = Date(), style: Style) -> String {
+        if let relative = relative(date, now: now) { return relative }
+        let format = style == .full ? "EE, d MMMM" : "EE, d MMM"
+        let text = CachedDateFormatters.display(format: format).string(from: date)
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// "Сегодня", "Завтра" or "Вчера"; nil for any other day.
+    static func relative(_ date: Date, now: Date = Date()) -> String? {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
-        let offset = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: date)).day ?? 0
-        switch offset {
+        switch calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: date)).day ?? 0 {
         case 0: return L10n.string("Today", "Сегодня")
         case 1: return L10n.string("Tomorrow", "Завтра")
         case -1: return L10n.string("Yesterday", "Вчера")
-        default:
-            let format = style == .full ? "EE, d MMMM" : "EE, d MMM"
-            let text = CachedDateFormatters.display(format: format).string(from: date)
-            return text.prefix(1).uppercased() + text.dropFirst()
+        default: return nil
         }
     }
 }

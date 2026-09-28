@@ -1073,7 +1073,7 @@ struct DiscoverView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(32)
-                    .presentationBackground(Color.black)
+                    .presentationBackground(VisitStyle.sheet)
                 }
                 .sheet(item: $selectedPersonalActivityReport) { activity in
                     PersonalActivityReportComposerSheet(activity: activity) {
@@ -1086,7 +1086,7 @@ struct DiscoverView: View {
                     .presentationDetents([.fraction(0.78), .large])
                     .presentationDragIndicator(.visible)
                     .presentationCornerRadius(32)
-                    .presentationBackground(Color.black)
+                    .presentationBackground(VisitStyle.sheet)
                 }
                 .sheet(item: $selectedEditGameRequest) { request in
                     if let match = upcomingMatch(for: request) {
@@ -4582,28 +4582,8 @@ struct DiscoverView: View {
     }
 
     private func addPersonalActivityToCalendar(_ activity: PersonalActivity) async {
-        guard let startDate = activity.scheduledDate else { return }
         do {
-            let store = EKEventStore()
-            guard try await requestCalendarWriteAccess(store: store) else {
-                throw CalendarExportError.accessDenied
-            }
-            guard let calendar = store.defaultCalendarForNewEvents else {
-                throw CalendarExportError.calendarUnavailable
-            }
-            let event = EKEvent(eventStore: store)
-            event.calendar = calendar
-            event.title = [activity.sport.title, activity.court?.name].compactMap { $0 }.joined(separator: " · ")
-            event.startDate = startDate
-            event.endDate = startDate.addingTimeInterval(TimeInterval((activity.durationMinutes ?? 60) * 60))
-            event.location = [activity.court?.name, activity.court?.address].compactMap { $0 }.joined(separator: ", ")
-            event.notes = [activity.comment, "НаТреню: sportsearch://upcoming"]
-                .compactMap { value in
-                    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return trimmed?.isEmpty == false ? trimmed : nil
-                }
-                .joined(separator: "\n\n")
-            try store.save(event, span: .thisEvent)
+            try await PersonalVisitCalendar.add(activity)
             AppHaptics.notification(.success)
             showResponseToast(L10n.string("Visit added to your calendar.", "Визит добавлен в календарь."))
         } catch {
