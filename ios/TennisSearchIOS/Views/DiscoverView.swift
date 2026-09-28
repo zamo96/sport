@@ -231,7 +231,7 @@ struct DiscoverView: View {
     @State private var isUpcomingHistoryExpanded = false
     @State private var updatingUpcomingRequestIDs: Set<String> = []
     @State private var addingCalendarRequestIDs: Set<String> = []
-    @State private var updatingPersonalActivityIDs: Set<String> = []
+    @State private var visitNotice: PersonalVisitNotice?
     @State private var presentedRegularPairID: String?
     @State private var presentedSearchLobbyID: String?
     @State private var isWidgetHelpPresented = false
@@ -854,6 +854,25 @@ struct DiscoverView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
+            .overlay(alignment: .bottom) {
+                if let visitNotice {
+                    PersonalVisitSnackbar(
+                        notice: visitNotice,
+                        onAddPhotos: { activity in
+                            self.visitNotice = nil
+                            selectedPersonalActivityReport = activity
+                        },
+                        onClose: {
+                            guard self.visitNotice?.id == visitNotice.id else { return }
+                            self.visitNotice = nil
+                        }
+                    )
+                    .id(visitNotice.id)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(AppMotion.standard, value: visitNotice?.id)
             .overlay {
                 if let actionCelebration {
                     SuccessCelebrationOverlay(
@@ -1058,11 +1077,10 @@ struct DiscoverView: View {
                 }
                 .sheet(item: $selectedPersonalActivityReport) { activity in
                     PersonalActivityReportComposerSheet(activity: activity) {
-                        showActionCelebration(
-                            title: L10n.string("Visit result saved", "Итог визита сохранён"),
-                            subtitle: L10n.string("The visit was saved to your profile", "Визит сохранён в профиле"),
-                            icon: "📸"
-                        )
+                        showVisitNotice(PersonalVisitNotice(
+                            text: L10n.string("Saved to the visit", "Сохранили в визите"),
+                            photoTarget: nil
+                        ))
                         await loadDiscover()
                     }
                     .presentationDetents([.fraction(0.78), .large])
@@ -2295,48 +2313,21 @@ struct DiscoverView: View {
                     }
                 }
 
-                if !activePersonalActivities.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(L10n.string("Personal visits", "Личные визиты"))
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Text("\(activePersonalActivities.count)")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(AppTheme.court)
-                                .padding(.horizontal, 8)
-                                .frame(height: 24)
-                                .background(.white.opacity(0.08), in: Capsule())
-                        }
-
-                        ForEach(activePersonalActivities) { activity in
-                            PersonalActivityUpcomingCard(
-                                activity: activity,
-                                isUpdating: updatingPersonalActivityIDs.contains(activity.id),
-                                onAddPhotoReport: activity.canComplete || activity.status.lowercased() == "completed"
-                                    ? {
-                                        selectedPersonalActivityReport = activity
-                                    }
-                                    : nil,
-                                onCompleteWithoutPhoto: activity.canComplete
-                                    ? {
-                                        await completePersonalActivity(activity, withPhoto: false)
-                                    }
-                                    : nil,
-                                onCancel: activity.status.lowercased() == "planned"
-                                    ? {
-                                        await cancelPersonalActivity(activity)
-                                    }
-                                    : nil,
-                                onOpenCourt: {
-                                    openUpcomingCourt(activity.court)
-                                },
-                                onOpenDetails: { selectedPersonalActivityDetails = activity }
-                            )
-                        }
-                    }
-                }
+                PersonalVisitsSection(
+                    activities: personalActivities,
+                    currentUserID: appModel.currentUser?.id ?? "",
+                    arrivingID: appModel.plannedVisitHighlightID,
+                    onArrivalShown: { appModel.plannedVisitHighlightID = nil },
+                    onMark: { activity, happened in
+                        try await markPersonalActivity(activity, happened: happened)
+                    },
+                    onSettled: { settlePersonalActivity($0) },
+                    onOpenDetails: { selectedPersonalActivityDetails = $0 },
+                    onAddToCalendar: { activity in
+                        Task { await addPersonalActivityToCalendar(activity) }
+                    },
+                    onPlanAnother: { appModel.navigate(to: .courts(sport: nil)) }
+                )
 
                 if !archivedUpcomingGameRequests.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -4537,68 +4528,86 @@ struct DiscoverView: View {
         }
     }
 
-    private func completePersonalActivity(_ activity: PersonalActivity, withPhoto: Bool) async {
-        let generation = appModel.sessionGeneration
-        guard appModel.currentUser?.id == activity.userId, activity.canComplete,
-              !updatingPersonalActivityIDs.contains(activity.id), appModel.isCurrentSession(generation) else { return }
-        updatingPersonalActivityIDs.insert(activity.id)
-        defer { updatingPersonalActivityIDs.remove(activity.id) }
-
-        do {
-            _ = try await appModel.repository.updatePersonalActivity(
-                activityId: activity.id,
-                draft: PersonalActivityUpdateDraft(
-                    scheduledAt: nil,
-                    durationMinutes: nil,
-                    comment: nil,
-                    status: "completed",
-                    reportComment: withPhoto ? nil : activity.reportComment,
-                    photoUrls: nil
-                )
-            )
-            guard appModel.isCurrentSession(generation), appModel.currentUser?.id == activity.userId else { return }
-            showActionCelebration(
-                title: withPhoto ? L10n.string("Photo report uploaded", "Фотоотчёт загружен") : L10n.string("Visit completed", "Визит завершён"),
-                subtitle: withPhoto ? L10n.string("The visit was saved to your profile", "Визит сохранён в профиле") : L10n.string("Personal practice recorded", "Отметили личную тренировку"),
-                icon: withPhoto ? "📸" : "✅"
-            )
-            showResponseToast(withPhoto ? L10n.string("Photo report saved.", "Фотоотчёт сохранён.") : L10n.string("Visit completed.", "Визит завершён."))
-            await loadDiscover()
-        } catch {
-            guard appModel.isCurrentSession(generation), !error.isCancellationLike else {
-                return
-            }
-            appModel.present(error: error)
-        }
-    }
-
-    private func cancelPersonalActivity(_ activity: PersonalActivity) async {
+    /// Saves "happened" or "didn't happen" for an ended plan. The section plays the motion and
+    /// hands the visit back through `settlePersonalActivity` once it is over.
+    private func markPersonalActivity(_ activity: PersonalActivity, happened: Bool) async throws -> PersonalActivity {
         let generation = appModel.sessionGeneration
         guard appModel.currentUser?.id == activity.userId, activity.status.lowercased() == "planned",
-              !updatingPersonalActivityIDs.contains(activity.id), appModel.isCurrentSession(generation) else { return }
-        updatingPersonalActivityIDs.insert(activity.id)
-        defer { updatingPersonalActivityIDs.remove(activity.id) }
-
+              !happened || activity.canComplete, appModel.isCurrentSession(generation) else {
+            throw CancellationError()
+        }
         do {
-            _ = try await appModel.repository.updatePersonalActivity(
+            let updated = try await appModel.repository.updatePersonalActivity(
                 activityId: activity.id,
                 draft: PersonalActivityUpdateDraft(
                     scheduledAt: nil,
                     durationMinutes: nil,
                     comment: nil,
-                    status: "canceled",
+                    status: happened ? "completed" : "canceled",
                     reportComment: nil,
                     photoUrls: nil
                 )
             )
-            guard appModel.isCurrentSession(generation), appModel.currentUser?.id == activity.userId else { return }
-            AppHaptics.notification(.warning)
-            showResponseToast(L10n.string("Visit canceled.", "Визит отменён."))
-            await loadDiscover()
-        } catch {
-            guard appModel.isCurrentSession(generation), !error.isCancellationLike else {
-                return
+            guard appModel.isCurrentSession(generation), appModel.currentUser?.id == activity.userId else {
+                throw CancellationError()
             }
+            return updated
+        } catch {
+            if appModel.isCurrentSession(generation), !error.isCancellationLike {
+                AppHaptics.notification(.error)
+                appModel.present(error: error)
+            }
+            throw error
+        }
+    }
+
+    private func settlePersonalActivity(_ updated: PersonalActivity) {
+        if let index = personalActivities.firstIndex(where: { $0.id == updated.id }) {
+            personalActivities[index] = updated
+        }
+        let happened = updated.status.lowercased() == "completed"
+        showVisitNotice(PersonalVisitNotice(
+            text: happened
+                ? L10n.string("\(updated.sport.title) marked", "\(updated.sport.title) — отмечено")
+                : L10n.string("Marked as not happened", "Отметили: не получилось"),
+            photoTarget: happened ? updated : nil
+        ))
+        Task { await loadDiscover() }
+    }
+
+    private func showVisitNotice(_ notice: PersonalVisitNotice) {
+        withAnimation(AppMotion.standard) {
+            visitNotice = notice
+        }
+    }
+
+    private func addPersonalActivityToCalendar(_ activity: PersonalActivity) async {
+        guard let startDate = activity.scheduledDate else { return }
+        do {
+            let store = EKEventStore()
+            guard try await requestCalendarWriteAccess(store: store) else {
+                throw CalendarExportError.accessDenied
+            }
+            guard let calendar = store.defaultCalendarForNewEvents else {
+                throw CalendarExportError.calendarUnavailable
+            }
+            let event = EKEvent(eventStore: store)
+            event.calendar = calendar
+            event.title = [activity.sport.title, activity.court?.name].compactMap { $0 }.joined(separator: " · ")
+            event.startDate = startDate
+            event.endDate = startDate.addingTimeInterval(TimeInterval((activity.durationMinutes ?? 60) * 60))
+            event.location = [activity.court?.name, activity.court?.address].compactMap { $0 }.joined(separator: ", ")
+            event.notes = [activity.comment, "НаТреню: sportsearch://upcoming"]
+                .compactMap { value in
+                    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed?.isEmpty == false ? trimmed : nil
+                }
+                .joined(separator: "\n\n")
+            try store.save(event, span: .thisEvent)
+            AppHaptics.notification(.success)
+            showResponseToast(L10n.string("Visit added to your calendar.", "Визит добавлен в календарь."))
+        } catch {
+            AppHaptics.notification(.warning)
             appModel.present(error: error)
         }
     }

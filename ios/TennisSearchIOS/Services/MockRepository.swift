@@ -1185,6 +1185,10 @@ actor MockRepository: TennisRepository {
             ("previous-week", day(-6, hour: 11), .tennis, 75, nil, "completed"),
             ("previous-month", previousMonth, .padel, 60, "Первая тренировка в новом клубе.", "completed"),
             ("planned", day(1, hour: 18), .tennis, 60, nil, "planned"),
+            // Ended but not marked: Upcoming asks "happened / didn't happen".
+            ("waiting-mark", day(-1, hour: 19), .padel, 60, nil, "planned"),
+            ("waiting-today", now.addingTimeInterval(-150 * 60), .tennis, 60, nil, "planned"),
+            ("later-today", now.addingTimeInterval(80 * 60), .tennis, 90, nil, "planned"),
             ("canceled", day(-2, hour: 19), .padel, 90, nil, "canceled")
         ]
         for (id, date, sport, duration, comment, status) in entries {

@@ -38,6 +38,7 @@ struct SessionLifecycleTests {
         await bootGate.waitUntilSuspended()
         boot.guestDraft.isOnboardingComplete = true
         boot.pendingPersonalVisit = "guest-selected-court"
+        boot.plannedVisitHighlightID = "previous-account-visit"
         boot.matchMoment = "match-with-previous-account"
         boot.gameConfirmation = "game-with-previous-account"
         expect(boot.sessionRestoreState == .restoring, "Normal content stays gated while startup awaits authentication")
@@ -47,6 +48,7 @@ struct SessionLifecycleTests {
         expect(boot.currentUser == nil && !boot.notificationManager.monitoring, "Delayed bootstrap cannot restore a logged-out account")
         expect(!boot.guestDraft.isOnboardingComplete, "Logout clears the previous account onboarding draft")
         expect(boot.pendingPersonalVisit == nil, "Logout clears a guest visit continuation before the next account")
+        expect(boot.plannedVisitHighlightID == nil, "Logout forgets a just-planned visit so the next account does not replay it")
         expect(boot.matchMoment == nil, "Logout closes a match moment that belongs to the previous account")
         expect(boot.gameConfirmation == nil, "Logout closes a game confirmation that belongs to the previous account")
         expect(boot.repository.logoutTokens == ["device-token"], "Logout passes the device token captured before state clearing")

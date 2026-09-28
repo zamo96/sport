@@ -2142,12 +2142,9 @@ struct PersonalActivity: Codable, Identifiable {
         return Date().timeIntervalSince(scheduledDate) >= duration
     }
 
+    /// Only plans stay in "Upcoming". A marked or canceled visit lives in the week and the history.
     var isArchivedForTimeline: Bool {
-        let rawStatus = status.lowercased()
-        if rawStatus == "canceled" {
-            return true
-        }
-        return false
+        status.lowercased() != "planned"
     }
 
     var canComplete: Bool {

@@ -76,6 +76,8 @@ final class AppModel: ObservableObject {
     @Published var pendingCreateSearchPrefill: CreateSearchPrefill?
     @Published var pendingCourtID: String?
     @Published private(set) var pendingPersonalVisit: PersonalVisitContinuation?
+    /// A visit just planned from a club: Upcoming plays its arrival once, then clears this.
+    @Published var plannedVisitHighlightID: String?
     /// Announced only on a real change. @Published fires for every assignment, and Discover
     /// assigns .expanded each time it leaves the screen: covered by My week, the app-wide
     /// re-render made the navigation stack report that disappearance again, in a loop,
@@ -566,6 +568,7 @@ final class AppModel: ObservableObject {
         pendingCreateSearchPrefill = nil
         pendingCourtID = nil
         pendingPersonalVisit = nil
+        plannedVisitHighlightID = nil
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil

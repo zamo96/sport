@@ -87,6 +87,7 @@ struct DiscoverHintStore {
     var pendingCreateSearchPrefill: String?
     var pendingCourtID: String?
     var pendingPersonalVisit: String?
+    var plannedVisitHighlightID: String?
     enum Bar { case expanded }
     var bottomBarDisplayMode = Bar.expanded
     var pendingHighlightedDiscoverUserID: String?
