@@ -121,9 +121,9 @@ private enum CalendarExportError: LocalizedError {
 
 private struct DiscoverActionCelebration: Identifiable {
     let id = UUID()
+    let kind: ActionCelebrationKind
     let title: String
     let subtitle: String
-    let icon: String
 }
 
 private enum DiscoverIntroductionPhase { case none, swipe, opportunities }
@@ -875,10 +875,10 @@ struct DiscoverView: View {
             .animation(AppMotion.standard, value: visitNotice?.id)
             .overlay {
                 if let actionCelebration {
-                    SuccessCelebrationOverlay(
+                    ActionCelebrationOverlay(
+                        kind: actionCelebration.kind,
                         title: actionCelebration.title,
-                        subtitle: actionCelebration.subtitle,
-                        icon: actionCelebration.icon
+                        subtitle: actionCelebration.subtitle
                     )
                     .transition(.opacity)
                     .zIndex(20)
@@ -1053,9 +1053,9 @@ struct DiscoverView: View {
                 .sheet(item: $selectedPhotoReportRequest) { request in
                     GameReportComposerSheet(request: request) {
                         showActionCelebration(
+                            .photoReport,
                             title: L10n.string("Photo report uploaded", "Фотоотчёт загружен"),
-                            subtitle: L10n.string("The report was saved to the game", "Отчёт сохранён в игре"),
-                            icon: "📸"
+                            subtitle: L10n.string("The report was saved to the game", "Отчёт сохранён в игре")
                         )
                         await loadDiscover()
                         await appModel.notificationManager.manualRefresh(repository: appModel.repository)
@@ -4309,15 +4309,16 @@ struct DiscoverView: View {
         }
     }
 
-    private func showActionCelebration(title: String, subtitle: String, icon: String) {
-        let celebration = DiscoverActionCelebration(title: title, subtitle: subtitle, icon: icon)
-        AppHaptics.successCelebration()
+    /// The overlay plays its own haptics on its own beats.
+    private func showActionCelebration(_ kind: ActionCelebrationKind, title: String, subtitle: String) {
+        let celebration = DiscoverActionCelebration(kind: kind, title: title, subtitle: subtitle)
         withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
             actionCelebration = celebration
         }
 
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1650))
+            // Long enough for the slowest illustration to land and be read.
+            try? await Task.sleep(for: .milliseconds(2100))
             guard actionCelebration?.id == celebration.id else {
                 return
             }
@@ -4513,9 +4514,9 @@ struct DiscoverView: View {
         do {
             _ = try await appModel.repository.updateGameRequestOutcome(gameRequestId: request.id, outcome: outcome)
             showActionCelebration(
+                outcome == "played" ? .gamePlayed(request.sport) : .gameNotPlayed,
                 title: outcome == "played" ? L10n.string("Response saved", "Ответ сохранён") : L10n.string("Game updated", "Игра отмечена"),
-                subtitle: outcome == "played" ? L10n.string("Marked as played", "Отметили, что игра прошла") : L10n.string("Marked as not played", "Отметили, что сыграть не удалось"),
-                icon: outcome == "played" ? "✅" : "✕"
+                subtitle: outcome == "played" ? L10n.string("Marked as played", "Отметили, что игра прошла") : L10n.string("Marked as not played", "Отметили, что сыграть не удалось")
             )
             showResponseToast(outcome == "played" ? L10n.string("Marked as played.", "Отметили, что игра прошла.") : L10n.string("Marked as not played.", "Отметили, что сыграть не удалось."))
             await loadDiscover()
