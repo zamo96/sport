@@ -1137,6 +1137,9 @@ struct ConsentState: Codable, Equatable {
     var reviewRequired: Bool
 
     var isLegacy: Bool { profileVisibility == "legacy" }
+    var isHidden: Bool { profileVisibility == "hidden" }
+    /// Хоть что-то из объёма показа уже выбрано (при скрытии сервер хранит прежний выбор).
+    var hasChosenScope: Bool { visibleToGuests || showsBio || showsPhotos || showsVideos || showsSearches }
     var isVisible: Bool { profileVisibility == "visible" || profileVisibility == "legacy" }
 
     init(

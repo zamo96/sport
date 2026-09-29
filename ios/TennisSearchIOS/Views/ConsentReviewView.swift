@@ -13,10 +13,12 @@ struct ConsentScope: Equatable {
 
     /// До ответа лента предлагает показывать всё: человек соглашается
     /// кнопкой на то, что видит в карточке, а лента позволяет только сузить
-    /// показ. После ответа экран открывается с тем, что человек выбрал.
+    /// показ. После ответа экран открывается с тем, что человек выбрал; у скрытой
+    /// анкеты это прежний выбор, если он был.
     init(profile: UserProfile) {
-        guard let consents = profile.consents, consents.profileVisibility == "visible" else {
-            showOnMap = profile.showOnMap
+        showOnMap = profile.showOnMap
+        guard let consents = profile.consents,
+              consents.profileVisibility == "visible" || (consents.isHidden && consents.hasChosenScope) else {
             return
         }
         visibleToGuests = consents.visibleToGuests
@@ -24,7 +26,36 @@ struct ConsentScope: Equatable {
         showsPhotos = consents.showsPhotos
         showsVideos = consents.showsVideos
         showsSearches = consents.showsSearches
-        showOnMap = profile.showOnMap
+    }
+}
+
+/// Скрытая анкета везде выглядит одинаково: серая, чуть размытая, с замком.
+struct HiddenProfileEffect: ViewModifier {
+    let isOn: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .grayscale(isOn ? 0.75 : 0)
+            .blur(radius: isOn ? 1.2 : 0)
+            .opacity(isOn ? 0.62 : 1)
+    }
+}
+
+extension View {
+    func hiddenProfileEffect(_ isOn: Bool) -> some View { modifier(HiddenProfileEffect(isOn: isOn)) }
+}
+
+/// Замок с подписью поверх серой карточки.
+struct HiddenProfileBadge: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill").font(.system(size: 14, weight: .bold))
+            Text(L10n.string("Profile hidden", "Анкета скрыта")).font(.system(size: 14, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(AppTheme.ink.opacity(0.85), in: Capsule())
     }
 }
 
@@ -143,6 +174,9 @@ struct ConsentReviewView: View {
     private var consents: ConsentState { profile.consents ?? ConsentState() }
     private var isLegacy: Bool { consents.isLegacy }
     private var hidesAsSecondary: Bool { isLegacy || consents.profileVisibility == "visible" }
+    /// Экран открыт из настроек, а анкета уже скрыта / уже показывается: показываем это состояние.
+    private var startsHidden: Bool { consents.isHidden }
+    private var startsVisible: Bool { consents.profileVisibility == "visible" }
     private var isCompact: Bool { isNameFocused && stage == .form }
     private var needsSurname: Bool { fullName.split(whereSeparator: \.isWhitespace).count == 1 }
     /// Профиль с учётом загруженного на этом экране фото.
@@ -165,6 +199,8 @@ struct ConsentReviewView: View {
                             scope: scope,
                             stage: stage,
                             isCompact: isCompact,
+                            isHiddenNow: startsHidden && stage == .form,
+                            showsVisibleBadge: startsVisible && stage == .form,
                             restingPhotoHeight: stage == .form ? formPhotoHeight : ConsentProfileCard.restingPhotoHeight,
                             hasPhoto: hasPhoto,
                             localPhoto: localPhoto,
@@ -236,7 +272,11 @@ struct ConsentReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(isLegacy
                  ? L10n.string("We've updated our terms", "Мы обновили правила")
-                 : L10n.string("Show your profile?", "Показывать вашу анкету?"))
+                 : (startsHidden
+                    ? L10n.string("You are hidden right now", "Сейчас вас не видно")
+                    : (startsVisible
+                       ? L10n.string("Your profile is visible", "Ваша анкета видна")
+                       : L10n.string("Show your profile?", "Показывать вашу анкету?"))))
                 .font(.system(size: 26, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,7 +284,13 @@ struct ConsentReviewView: View {
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 14)
                 .accessibilityAddTraits(.isHeader)
-            if isLegacy {
+            if startsHidden {
+                Text(L10n.string("Your profile is hidden from search and the map. Turn showing on whenever you like.", "Анкета скрыта из поиска и с карты. Включите показ, когда захотите."))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 6)
+            } else if isLegacy {
                 Text(L10n.string("Consent to showing your profile is now a separate decision. Right now other players can see your profile.", "Согласие на показ анкеты теперь отдельное решение. Сейчас ваша анкета видна другим игрокам."))
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.mutedInk)
@@ -259,7 +305,10 @@ struct ConsentReviewView: View {
             ? L10n.string("Players and guests will see you like this in search and on the map.", "Так вас увидят игроки и гости в поиске и на карте.")
             : L10n.string("Signed-in players will see you like this in search and on the map.", "Так вас увидят игроки, вошедшие в аккаунт, в поиске и на карте.")
         let always = L10n.string("The map shows your chosen preferred districts. Name, age, city and sport are always visible.", "На карте — выбранные вами удобные районы для игры. Имя, возраст, город и спорт видны всегда.")
-        return Text("\(audience) \(always)")
+        let text = startsHidden
+            ? L10n.string("Players and guests do not see your profile now. Choose what to show, then turn showing on.", "Игроки и гости вашу анкету сейчас не видят. Выберите, что показывать, и включите показ.")
+            : "\(audience) \(always)"
+        return Text(text)
             .font(.system(size: 12.5))
             .foregroundStyle(AppTheme.mutedInk)
             .fixedSize(horizontal: false, vertical: true)
@@ -369,7 +418,9 @@ struct ConsentReviewView: View {
                     } else {
                         Text(isLegacy
                              ? L10n.string("Keep my profile visible", "Оставить анкету видимой")
-                             : L10n.string("Show my profile", "Показывать анкету"))
+                             : (startsVisible
+                                ? L10n.string("Save", "Сохранить")
+                                : L10n.string("Show my profile", "Показывать анкету")))
                     }
                 }
                 .font(.system(size: 17, weight: .bold))
@@ -382,11 +433,13 @@ struct ConsentReviewView: View {
             .padding(.top, 12)
 
             Button {
-                submit(visible: false)
+                if startsHidden { onFinished() } else { submit(visible: false) }
             } label: {
-                Text(hidesAsSecondary
-                     ? L10n.string("Hide my profile", "Скрыть анкету")
-                     : L10n.string("Not now", "Пока не показывать"))
+                Text(startsHidden
+                     ? L10n.string("Keep it hidden", "Оставить скрытой")
+                     : (hidesAsSecondary
+                        ? L10n.string("Hide my profile", "Скрыть анкету")
+                        : L10n.string("Not now", "Пока не показывать")))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(AppTheme.ink)
                     .frame(maxWidth: .infinity, minHeight: 46)
@@ -397,7 +450,7 @@ struct ConsentReviewView: View {
             .disabled(isSaving)
             .padding(.top, 8)
 
-            if mode == .settings {
+            if mode == .settings, !startsHidden {
                 Button(L10n.string("Cancel", "Отмена")) { onFinished() }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.mutedInk)
@@ -770,6 +823,10 @@ private struct ConsentProfileCard: View {
     let scope: ConsentScope
     let stage: ConsentReviewView.Stage
     let isCompact: Bool
+    /// Анкета уже скрыта и человек ещё не решил показывать: карточка серая, как после «Не сейчас».
+    var isHiddenNow = false
+    /// Анкета уже показывается: отметка вместо предложения.
+    var showsVisibleBadge = false
     var restingPhotoHeight: CGFloat = ConsentProfileCard.restingPhotoHeight
     let hasPhoto: Bool
     let localPhoto: UIImage?
@@ -787,6 +844,7 @@ private struct ConsentProfileCard: View {
     private var showsUserPhoto: Bool { hasPhoto && scope.showsPhotos }
     private var isConfirmed: Bool { stage == .confirmed }
     private var isDeclined: Bool { stage == .declined }
+    private var isDimmed: Bool { isDeclined || isHiddenNow }
     private var sport: Sport { profile.preferredSports.first ?? .tennis }
     private let lime = Color(red: 0.84, green: 0.98, blue: 0.34)
     private let deep = Color(red: 0.055, green: 0.165, blue: 0.13)
@@ -795,9 +853,7 @@ private struct ConsentProfileCard: View {
         card
             .scaleEffect((isConfirmed ? 1.02 : (isDeclined ? 0.97 : 1)))
             .offset(y: isConfirmed ? -10 : 0)
-            .grayscale(isDeclined ? 0.75 : 0)
-            .blur(radius: isDeclined ? 1.2 : 0)
-            .opacity(isDeclined ? 0.62 : 1)
+            .hiddenProfileEffect(isDimmed)
             .shadow(color: AppTheme.ink.opacity(isConfirmed ? 0.36 : 0.26), radius: isConfirmed ? 26 : 20, y: isConfirmed ? 16 : 10)
             .overlay {
                 if isConfirmed {
@@ -816,7 +872,7 @@ private struct ConsentProfileCard: View {
             .rotationEffect(.degrees(appeared ? 0 : -3.5))
             .opacity(appeared ? 1 : 0)
             .animation(.spring(response: 0.5, dampingFraction: 0.85), value: isConfirmed)
-            .animation(.easeOut(duration: 0.5), value: isDeclined)
+            .animation(.easeOut(duration: 0.5), value: isDimmed)
             .task {
                 guard !reduceMotion else { return }
                 try? await Task.sleep(nanoseconds: 1_600_000_000)
@@ -854,7 +910,7 @@ private struct ConsentProfileCard: View {
                     .scaleEffect(isPhotoDeveloped ? 1 : 1.15)
                     .transition(.opacity)
             } else if stage != .media {
-                avatar(size: isCompact ? 0 : min(stage == .done ? 76 : 92, restingPhotoHeight - 14))
+                avatar(size: isCompact ? 0 : min(stage == .done || showsVisibleBadge ? 76 : 92, restingPhotoHeight - 14))
                     .transition(.opacity)
             }
 
@@ -891,15 +947,21 @@ private struct ConsentProfileCard: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            if isDeclined {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.fill").font(.system(size: 14, weight: .bold))
-                    Text(L10n.string("Profile hidden", "Анкета скрыта")).font(.system(size: 14, weight: .bold))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(AppTheme.ink.opacity(0.85), in: Capsule())
-                .transition(.scale.combined(with: .opacity))
+            if isDeclined || (isHiddenNow && !isCompact) {
+                HiddenProfileBadge()
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            if showsVisibleBadge, !isCompact {
+                Text("✓ " + L10n.string("Profile is visible", "Анкета видна"))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(lime, in: Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(12)
+                    .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.4), value: showsUserPhoto)
