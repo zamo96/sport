@@ -19,10 +19,13 @@
 		A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000203 /* AppModel+UserIntent.swift */; };
 		A31000000000000000000104 /* SportHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000204 /* SportHomeView.swift */; };
 		A39000000000000000000103 /* PersonalVisitsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000203 /* PersonalVisitsSection.swift */; };
+		A39000000000000000000106 /* AnalyticsAskCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000206 /* AnalyticsAskCard.swift */; };
+		A39000000000000000000105 /* SportAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000205 /* SportAvatarView.swift */; };
 		A39000000000000000000104 /* PersonalVisitPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000204 /* PersonalVisitPass.swift */; };
 		A39000000000000000000102 /* PersonalVisitComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000202 /* PersonalVisitComposer.swift */; };
 		A31000000000000000000105 /* SportHomeWeek.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000205 /* SportHomeWeek.swift */; };
 		A39000000000000000000101 /* PersonalVisitPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000201 /* PersonalVisitPlanner.swift */; };
+		A39000000000000000000107 /* AnalyticsAskPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000207 /* AnalyticsAskPolicy.swift */; };
 		A1000000000000000000F1B0 /* MatchMomentSport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000F1B1 /* MatchMomentSport.swift */; };
 		A100000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
 		A200000000000000000001D1 /* SecureSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002D1 /* SecureSessionStore.swift */; };
@@ -118,10 +121,13 @@
 		A31000000000000000000203 /* AppModel+UserIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+UserIntent.swift"; sourceTree = "<group>"; };
 		A31000000000000000000204 /* SportHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeView.swift; sourceTree = "<group>"; };
 		A39000000000000000000203 /* PersonalVisitsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitsSection.swift; sourceTree = "<group>"; };
+		A39000000000000000000206 /* AnalyticsAskCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsAskCard.swift; sourceTree = "<group>"; };
+		A39000000000000000000205 /* SportAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportAvatarView.swift; sourceTree = "<group>"; };
 		A39000000000000000000204 /* PersonalVisitPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitPass.swift; sourceTree = "<group>"; };
 		A39000000000000000000202 /* PersonalVisitComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitComposer.swift; sourceTree = "<group>"; };
 		A31000000000000000000205 /* SportHomeWeek.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportHomeWeek.swift; sourceTree = "<group>"; };
 		A39000000000000000000201 /* PersonalVisitPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVisitPlanner.swift; sourceTree = "<group>"; };
+		A39000000000000000000207 /* AnalyticsAskPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsAskPolicy.swift; sourceTree = "<group>"; };
 		A1000000000000000000F1B1 /* MatchMomentSport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchMomentSport.swift; sourceTree = "<group>"; };
 		A100000000000000000002D1 /* SecureSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureSessionStore.swift; sourceTree = "<group>"; };
 		A100000000000000000002B0 /* ReportPhotoGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPhotoGallery.swift; sourceTree = "<group>"; };
@@ -254,6 +260,7 @@
 				A31000000000000000000201 /* UserIntent.swift */,
 				A31000000000000000000205 /* SportHomeWeek.swift */,
 				A39000000000000000000201 /* PersonalVisitPlanner.swift */,
+				A39000000000000000000207 /* AnalyticsAskPolicy.swift */,
 				A1000000000000000000F1B1 /* MatchMomentSport.swift */,
 				A32000000000000000000201 /* ProfileWorkoutHistory.swift */,
 				A10000000000000000000225 /* BookingCallFlow.swift */,
@@ -293,6 +300,8 @@
 				A10000000000000000000208 /* ContentView.swift */,
 				A31000000000000000000204 /* SportHomeView.swift */,
 				A39000000000000000000203 /* PersonalVisitsSection.swift */,
+				A39000000000000000000206 /* AnalyticsAskCard.swift */,
+				A39000000000000000000205 /* SportAvatarView.swift */,
 				A39000000000000000000204 /* PersonalVisitPass.swift */,
 				A39000000000000000000202 /* PersonalVisitComposer.swift */,
 				A32000000000000000000202 /* ProfileWorkoutsSection.swift */,
@@ -482,10 +491,13 @@
 				A31000000000000000000103 /* AppModel+UserIntent.swift in Sources */,
 				A31000000000000000000104 /* SportHomeView.swift in Sources */,
 				A39000000000000000000103 /* PersonalVisitsSection.swift in Sources */,
+				A39000000000000000000106 /* AnalyticsAskCard.swift in Sources */,
+				A39000000000000000000105 /* SportAvatarView.swift in Sources */,
 				A39000000000000000000104 /* PersonalVisitPass.swift in Sources */,
 				A39000000000000000000102 /* PersonalVisitComposer.swift in Sources */,
 				A31000000000000000000105 /* SportHomeWeek.swift in Sources */,
 				A39000000000000000000101 /* PersonalVisitPlanner.swift in Sources */,
+				A39000000000000000000107 /* AnalyticsAskPolicy.swift in Sources */,
 				A1000000000000000000F1B0 /* MatchMomentSport.swift in Sources */,
 				A32000000000000000000101 /* ProfileWorkoutHistory.swift in Sources */,
 				A32000000000000000000102 /* ProfileWorkoutsSection.swift in Sources */,

@@ -88,6 +88,7 @@ struct DiscoverHintStore {
     var pendingCourtID: String?
     var pendingPersonalVisit: String?
     var plannedVisitHighlightID: String?
+    var isConsentFlowHeld = false
     enum Bar { case expanded }
     var bottomBarDisplayMode = Bar.expanded
     var pendingHighlightedDiscoverUserID: String?
@@ -113,5 +114,6 @@ for name in ['    func isCurrentSession(', '    func bootstrap()', '    func req
 scaffold += '\n}\n'
 (Path(sys.argv[2]) / 'LifecycleProduction.swift').write_text(scaffold)
 PY
-swiftc "$temp_dir/LifecycleProduction.swift" "$test_dir/SessionLifecycleTests.swift" -o "$temp_dir/session-lifecycle-tests"
+# bootstrap() counts the launch for the analytics card: compile the real, Foundation-only policy with it.
+swiftc "$temp_dir/LifecycleProduction.swift" "$test_dir/../TennisSearchIOS/Core/AnalyticsAskPolicy.swift" "$test_dir/SessionLifecycleTests.swift" -o "$temp_dir/session-lifecycle-tests"
 "$temp_dir/session-lifecycle-tests"

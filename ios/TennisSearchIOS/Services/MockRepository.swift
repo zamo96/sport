@@ -33,8 +33,20 @@ actor MockRepository: TennisRepository {
         isVerified: true,
         // Аккаунт «до раздельных согласий»: после входа покажется экран согласия.
         // Like the server: before the first consent the field is prefilled with the profile name.
-        consents: ConsentState(profileVisibility: "legacy", fullName: "Анна", termsUpdateRequired: true, reviewRequired: true)
+        consents: MockRepository.initialConsents
     )
+
+    /// `-consent-review-new` starts the mock as a brand new account (no answer yet, nothing to accept
+    /// again) so the whole first-run consent flow can be walked through; without it the account is an
+    /// old one that has to confirm.
+    private static var initialConsents: ConsentState {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-consent-review-new") {
+            return ConsentState(profileVisibility: "pending", fullName: "Анна", reviewRequired: true)
+        }
+        #endif
+        return ConsentState(profileVisibility: "legacy", fullName: "Анна", termsUpdateRequired: true, reviewRequired: true)
+    }
 
     private var discoverUsers: [DiscoverUser] = [
         makeDiscoverUser(

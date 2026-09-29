@@ -3355,14 +3355,14 @@ private struct ConsentSettingsScreen: View {
                                 get: { appModel.currentUser?.consents?.analytics == true },
                                 set: { setAnalytics($0) }
                             )) {
-                                Text(L10n.string("Usage analytics", "Аналитика использования"))
+                                Text(L10n.string("Help us improve the app", "Помочь улучшить приложение"))
                                     .font(.headline)
                                     .foregroundStyle(.white)
                             }
                             .tint(.green)
                             .disabled(isSavingAnalytics)
 
-                            Text(L10n.string("Which screens you open and what you tap. No messages, photos, or videos. Kept up to 90 days.", "Какие экраны открываете и что нажимаете. Без переписки, фото и видео. Хранится до 90 дней."))
+                            Text(L10n.string("Screens and actions in your account. Kept for 90 days. No chats, photos or exact location.", "Экраны и действия в вашем аккаунте. Хранятся 90 дней. Без чатов, фото и точного места."))
                                 .font(.footnote)
                                 .foregroundStyle(.white.opacity(0.62))
                         }

@@ -2388,6 +2388,7 @@ struct DiscoverView: View {
                     .padding(.top, 8)
                 }
             }
+            .analyticsAskCardAbove()
         }
     }
 
