@@ -43,10 +43,18 @@ export type UserAgreementDocument = {
   sections: UserAgreementSection[];
 };
 
-export const PRIVACY_POLICY_VERSION = "2026-09-26";
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "26 сентября 2026 года";
+export const PRIVACY_POLICY_VERSION = "2026-10-01";
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "1 октября 2026 года";
 export const PRIVACY_POLICY_TITLE = "Политика конфиденциальности НаТреню";
 export const PRIVACY_POLICY_SERVICE_NAME = "НаТреню";
+
+const PRIVACY_OPERATOR_DETAILS = [
+  `Оператор: ${LEGAL_OPERATOR.entrepreneurName}`,
+  LEGAL_OPERATOR.inn,
+  LEGAL_OPERATOR.ogrnip,
+  LEGAL_OPERATOR.address,
+  `Email для обращений: ${LEGAL_OPERATOR.email}`
+];
 
 const LEGAL_OPERATOR_DETAILS = [
   `Оператор: ${LEGAL_OPERATOR.legalName}`,
@@ -60,7 +68,7 @@ export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
   {
     title: "1. Общие положения",
     paragraphs: [
-      `Настоящая Политика конфиденциальности описывает, как ${LEGAL_OPERATOR.legalName} (далее - Оператор) обрабатывает данные пользователей сервиса ${PRIVACY_POLICY_SERVICE_NAME}.`,
+      `Настоящая Политика конфиденциальности описывает, как ${LEGAL_OPERATOR.entrepreneurName} (${LEGAL_OPERATOR.ogrnip}, далее - Оператор) обрабатывает данные пользователей сервиса ${PRIVACY_POLICY_SERVICE_NAME}.`,
       "Политика применяется к iOS-приложению, сайту, PWA, API и другим интерфейсам сервиса.",
       "Политика описывает обработку данных и не является согласием на обработку. Отдельные согласия — на показ анкеты и на аналитику — оформляются отдельными действиями пользователя и могут быть изменены или отозваны в настройках профиля."
     ]
@@ -292,7 +300,7 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
   },
   {
     title: "17. Реквизиты и контакты",
-    bullets: LEGAL_OPERATOR_DETAILS
+    bullets: PRIVACY_OPERATOR_DETAILS
   }
 ];
 

@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage() {
           <div className="mt-3 space-y-1 text-sm leading-6 text-ink/68">
             <p>Редакция: {PRIVACY_POLICY_VERSION}</p>
             <p>Дата вступления в силу: {PRIVACY_POLICY_EFFECTIVE_DATE}</p>
-            <p>Оператор: {LEGAL_OPERATOR.legalName}</p>
+            <p>Оператор: {LEGAL_OPERATOR.entrepreneurName}, {LEGAL_OPERATOR.ogrnip}</p>
           </div>
         </header>
 

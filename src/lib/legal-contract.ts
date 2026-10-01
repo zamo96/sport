@@ -36,7 +36,12 @@ export const LEGAL_OPERATOR = {
   serviceName: "НаТреню",
   legalName: "Захаров Матвей Владимирович",
   inn: "ИНН: 471803649801",
+  // The accepted user agreement and consents name the operator by name and INN —
+  // the same person after registering as an individual entrepreneur — so they keep
+  // `ogrn` empty until a new agreement edition; the privacy policy uses the fields below.
   ogrn: "",
+  entrepreneurName: "индивидуальный предприниматель Захаров Матвей Владимирович",
+  ogrnip: "ОГРНИП: 326470400131678",
   address: "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
   email: "support@sportsearch.shop"
 };
