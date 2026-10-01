@@ -1,11 +1,18 @@
-/** Редакция без встроенного согласия на обработку данных: оно больше не часть соглашения. */
-export const USER_AGREEMENT_VERSION = "2026-09-24";
+/** Редакция со входом по SMS и VK ID и реквизитами оператора как ИП. */
+export const USER_AGREEMENT_VERSION = "2026-10-01";
+/**
+ * Первая редакция без встроенного согласия на обработку данных. Её шлют сборки
+ * iOS и Android, выпущенные до 2026-10-01: при входе и на экране согласий.
+ */
+// TODO(rollout): remove after every supported iOS/Android build uses USER_AGREEMENT_VERSION.
+export const SEPTEMBER_USER_AGREEMENT_VERSION = "2026-09-24";
 // TODO(rollout): remove after every supported iOS/Android build uses USER_AGREEMENT_VERSION.
 export const PREVIOUS_USER_AGREEMENT_VERSION = "2026-08-24";
 // TODO(rollout): remove after every supported iOS build uses USER_AGREEMENT_VERSION.
 export const LEGACY_USER_AGREEMENT_VERSION = "2026-07-05";
 export const ACCEPTED_USER_AGREEMENT_VERSIONS = [
   USER_AGREEMENT_VERSION,
+  SEPTEMBER_USER_AGREEMENT_VERSION,
   PREVIOUS_USER_AGREEMENT_VERSION,
   LEGACY_USER_AGREEMENT_VERSION
 ] as const;
@@ -16,7 +23,7 @@ export const ACCEPTED_USER_AGREEMENT_VERSIONS = [
  */
 const BUNDLED_CONSENT_AGREEMENT_VERSIONS: readonly string[] = [PREVIOUS_USER_AGREEMENT_VERSION, LEGACY_USER_AGREEMENT_VERSION];
 export const USER_AGREEMENT_KEY = "user_agreement";
-export const USER_AGREEMENT_EFFECTIVE_DATE = "24 сентября 2026 года";
+export const USER_AGREEMENT_EFFECTIVE_DATE = "1 октября 2026 года";
 export const USER_AGREEMENT_TITLE = "Пользовательское соглашение НаТреню";
 export const LEGAL_ACCEPTANCE_ERROR = "Нужно принять пользовательское соглашение";
 
@@ -36,10 +43,8 @@ export const LEGAL_OPERATOR = {
   serviceName: "НаТреню",
   legalName: "Захаров Матвей Владимирович",
   inn: "ИНН: 471803649801",
-  // The accepted user agreement and consents name the operator by name and INN —
-  // the same person after registering as an individual entrepreneur — so they keep
-  // `ogrn` empty until a new agreement edition; the privacy policy uses the fields below.
-  ogrn: "",
+  // Consent texts name the operator by `legalName` and INN: the same person before
+  // and after registering as an individual entrepreneur, so consents stay valid.
   entrepreneurName: "индивидуальный предприниматель Захаров Матвей Владимирович",
   ogrnip: "ОГРНИП: 326470400131678",
   address: "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",

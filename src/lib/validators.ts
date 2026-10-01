@@ -22,7 +22,12 @@ import { z } from "zod";
 
 import { AVAILABLE_CITIES, DAY_OPTIONS, DISTRICT_OPTIONS, SPORT_OPTIONS, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/lib/content-moderation";
-import { ACCEPTED_USER_AGREEMENT_VERSIONS, LEGAL_ACCEPTANCE_ERROR, USER_AGREEMENT_VERSION } from "@/lib/legal-contract";
+import {
+  ACCEPTED_USER_AGREEMENT_VERSIONS,
+  LEGAL_ACCEPTANCE_ERROR,
+  SEPTEMBER_USER_AGREEMENT_VERSION,
+  USER_AGREEMENT_VERSION
+} from "@/lib/legal-contract";
 import { normalizeSupportedLocale } from "@/lib/locales";
 import { normalizeRussianMobile } from "@/lib/phone";
 import { CONSENT_FULL_NAME_PATTERN } from "@/lib/profile-visibility";
@@ -903,8 +908,10 @@ export type UserEventPayload = z.infer<typeof userEventSchema>;
 export const consentUpdateSchema = z
   .object({
     source: z.enum(["web", "ios", "android"]),
+    // Builds released before 2026-10-01 still send the September edition; it is
+    // recorded as sent, and those people are asked again once they update the app.
     acceptAgreementVersion: z
-      .literal(USER_AGREEMENT_VERSION, "Нужно принять актуальную редакцию пользовательского соглашения")
+      .enum([USER_AGREEMENT_VERSION, SEPTEMBER_USER_AGREEMENT_VERSION], "Нужно принять актуальную редакцию пользовательского соглашения")
       .optional(),
     profile: z
       .object({

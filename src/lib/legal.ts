@@ -48,21 +48,13 @@ export const PRIVACY_POLICY_EFFECTIVE_DATE = "1 октября 2026 года";
 export const PRIVACY_POLICY_TITLE = "Политика конфиденциальности НаТреню";
 export const PRIVACY_POLICY_SERVICE_NAME = "НаТреню";
 
-const PRIVACY_OPERATOR_DETAILS = [
+const LEGAL_OPERATOR_DETAILS = [
   `Оператор: ${LEGAL_OPERATOR.entrepreneurName}`,
   LEGAL_OPERATOR.inn,
   LEGAL_OPERATOR.ogrnip,
   LEGAL_OPERATOR.address,
   `Email для обращений: ${LEGAL_OPERATOR.email}`
 ];
-
-const LEGAL_OPERATOR_DETAILS = [
-  `Оператор: ${LEGAL_OPERATOR.legalName}`,
-  LEGAL_OPERATOR.inn,
-  LEGAL_OPERATOR.ogrn,
-  LEGAL_OPERATOR.address,
-  `Email для обращений: ${LEGAL_OPERATOR.email}`
-].filter(Boolean);
 
 export const PRIVACY_POLICY_SECTIONS: UserAgreementSection[] = [
   {
@@ -172,7 +164,7 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
   {
     title: "1. Общие положения",
     paragraphs: [
-      `Настоящее Пользовательское соглашение регулирует отношения между ${LEGAL_OPERATOR.legalName} (далее - Оператор) и лицом, использующим сервис ${LEGAL_OPERATOR.serviceName} через сайт, PWA, iOS-приложение, API или иные интерфейсы сервиса (далее - Пользователь).`,
+      `Настоящее Пользовательское соглашение регулирует отношения между ${LEGAL_OPERATOR.entrepreneurName} (${LEGAL_OPERATOR.ogrnip}, далее - Оператор) и лицом, использующим сервис ${LEGAL_OPERATOR.serviceName} через сайт, PWA, iOS-приложение, API или иные интерфейсы сервиса (далее - Пользователь).`,
       "Соглашение является публичной офертой в смысле статей 435, 437 и 438 Гражданского кодекса Российской Федерации. Акцептом Соглашения является нажатие кнопки входа или регистрации (получение кода по SMS или на email, вход через VK ID, Apple ID или Google), рядом с которой размещена ссылка на Соглашение и указано, что нажатие означает его принятие. Для действующего аккаунта принятие новой редакции фиксируется отдельным действием в сервисе.",
       "Если Пользователь не согласен с условиями Соглашения, он обязан прекратить регистрацию и не использовать функции сервиса, требующие аккаунта."
     ]
@@ -300,16 +292,18 @@ export const USER_AGREEMENT_SECTIONS: UserAgreementSection[] = [
   },
   {
     title: "17. Реквизиты и контакты",
-    bullets: PRIVACY_OPERATOR_DETAILS
+    bullets: LEGAL_OPERATOR_DETAILS
   }
 ];
 
+const OPERATOR_OGRNIP = LEGAL_OPERATOR.ogrnip.replace(/^ОГРНИП:\s*/, "");
+
 const LEGAL_OPERATOR_DETAILS_EN = [
-  `Operator: ${LEGAL_OPERATOR.legalName}`,
+  `Operator: individual entrepreneur ${LEGAL_OPERATOR.legalName}`,
   LEGAL_OPERATOR.inn
     ? `Taxpayer Identification Number (INN): ${LEGAL_OPERATOR.inn.replace(/^ИНН:\s*/, "")}`
     : "",
-  LEGAL_OPERATOR.ogrn,
+  `Primary State Registration Number of the individual entrepreneur (OGRNIP): ${OPERATOR_OGRNIP}`,
   LEGAL_OPERATOR.address,
   `Contact email: ${LEGAL_OPERATOR.email}`
 ].filter(Boolean);
@@ -320,7 +314,7 @@ export const USER_AGREEMENT_SECTIONS_EN: UserAgreementSection[] = [
   {
     title: "1. General provisions",
     paragraphs: [
-      `These Terms of Use govern the relationship between ${LEGAL_OPERATOR.legalName} (the “Operator”) and the person using the ${LEGAL_OPERATOR.serviceName} service through the website, PWA, iOS application, API, or other service interfaces (the “User”).`,
+      `These Terms of Use govern the relationship between individual entrepreneur ${LEGAL_OPERATOR.legalName} (OGRNIP ${OPERATOR_OGRNIP}, the “Operator”) and the person using the ${LEGAL_OPERATOR.serviceName} service through the website, PWA, iOS application, API, or other service interfaces (the “User”).`,
       "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. The Terms are accepted by pressing the sign-in or registration button (requesting a code by SMS or email, signing in with VK ID, Apple ID, or Google) placed next to a link to these Terms together with a statement that pressing it means acceptance. For an existing Account, acceptance of a new version is recorded by a separate action in the service.",
       "If the User does not agree to these Terms, the User must discontinue registration and must not use service features that require an account."
     ]

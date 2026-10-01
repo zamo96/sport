@@ -805,7 +805,7 @@ enum AuthStep: String, Identifiable {
 enum LegalDocuments {
     /// Редакция без встроенного согласия на обработку данных: соглашение
     /// принимается кнопкой входа, согласия спрашиваются отдельно.
-    static let userAgreementVersion = "2026-09-24"
+    static let userAgreementVersion = "2026-10-01"
     static var acceptanceError: String {
         L10n.string(
             "Accept the User Agreement.",

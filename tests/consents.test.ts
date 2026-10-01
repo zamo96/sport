@@ -24,6 +24,7 @@ import {
   LEGACY_USER_AGREEMENT_VERSION,
   PREVIOUS_USER_AGREEMENT_VERSION,
   PROFILE_VISIBILITY_CONSENT_VERSION,
+  SEPTEMBER_USER_AGREEMENT_VERSION,
   USER_AGREEMENT_VERSION
 } from "@/lib/legal-contract";
 import {
@@ -174,6 +175,8 @@ describe("consent update payload", () => {
 
   it("rejects an outdated agreement version and empty updates", () => {
     expect(consentUpdateSchema.safeParse({ source: "web", acceptAgreementVersion: PREVIOUS_USER_AGREEMENT_VERSION }).success).toBe(false);
+    // Builds released before 2026-10-01 still send the September edition.
+    expect(consentUpdateSchema.safeParse({ source: "ios", acceptAgreementVersion: SEPTEMBER_USER_AGREEMENT_VERSION }).success).toBe(true);
     expect(consentUpdateSchema.safeParse({ source: "web" }).success).toBe(false);
     expect(consentUpdateSchema.safeParse({ source: "web", analytics: false }).success).toBe(true);
   });
@@ -225,6 +228,15 @@ describe("applyConsentUpdate", () => {
       analyticsConsent: true
     });
     expect(mocks.deleteEvents).not.toHaveBeenCalled();
+  });
+
+  it("records the edition an older app accepted, so its user is asked again after updating", async () => {
+    await applyConsentUpdate("user-1", { source: "android", acceptAgreementVersion: SEPTEMBER_USER_AGREEMENT_VERSION });
+
+    expect(mocks.createAcceptances.mock.calls[0][0].data[0]).toMatchObject({ agreementVersion: SEPTEMBER_USER_AGREEMENT_VERSION });
+    const saved = mocks.updateUser.mock.calls[0][0].data;
+    expect(saved.agreementVersion).toBe(SEPTEMBER_USER_AGREEMENT_VERSION);
+    expect(buildConsentState({ ...storedUser, ...saved }).termsUpdateRequired).toBe(true);
   });
 
   it("hides the profile and logs the refusal without asking for a name", async () => {
