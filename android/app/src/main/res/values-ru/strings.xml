@@ -1,4 +1,5 @@
 <resources>
+    <string name="app_name">НаТреню</string>
     <string name="upcoming_games_widget_label">Ближайшие игры</string>
     <string name="upcoming_games_widget_description">Показывает следующую подтверждённую игру.</string>
     <string name="upcoming_games_widget_preview_title">Анна Волкова</string>
