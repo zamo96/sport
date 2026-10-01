@@ -29,7 +29,7 @@ vi.mock("@/server/sms", async (importOriginal) => {
   return { ...original, sendSms: mocks.sendSms };
 });
 
-import { formatRussianPhone, normalizeRussianMobile } from "@/lib/phone";
+import { formatRussianPhone, normalizeRussianMobile, russianPhoneDigits } from "@/lib/phone";
 import { phoneVerifySchema, verifySchema, vkAuthSchema } from "@/lib/validators";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { consumePhoneCode, issuePhoneCode, linkPhoneToUser, PhoneAuthError, signInWithPhone } from "@/server/phone-auth";
@@ -48,6 +48,17 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+describe("phone field digits", () => {
+  it("keeps only the ten digits after +7, whatever was typed or pasted", () => {
+    for (const input of ["+7 (999) 123-45-67", "8 999 123 45 67", "79991234567", "999-123-45-67", "9991234567"]) {
+      expect(russianPhoneDigits(input)).toBe("9991234567");
+    }
+    expect(russianPhoneDigits("99912345678")).toBe("9991234567");
+    expect(russianPhoneDigits("999a")).toBe("999");
+    expect(normalizeRussianMobile(`+7${russianPhoneDigits("8 (999) 123-45-67")}`)).toBe("+79991234567");
+  });
 });
 
 describe("Russian mobile numbers", () => {

@@ -1389,7 +1389,7 @@ private struct AuthSignInReferenceScreen: View {
                     .minimumScaleFactor(0.82)
 
                 Text(country == .russia
-                     ? L10n.string("In Russia you sign in with a phone number or VK ID. Your profile, matches, chats, and notifications are saved to your account.", "В России вход — по номеру телефона или через VK ID. Профиль, матчи, переписки и уведомления сохранятся в аккаунте.")
+                     ? L10n.string("Sign in to save your profile, matches, chats, and notifications.", "Войди, чтобы сохранить профиль, матчи, переписки и уведомления.")
                      : L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -1446,12 +1446,22 @@ private struct AuthSignInReferenceScreen: View {
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
 
-            TextField("", text: $phone, prompt: Text("+7 999 123-45-67").foregroundColor(Color(red: 0.72, green: 0.74, blue: 0.78)))
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
-                .keyboardType(.phonePad)
-                .textContentType(.telephoneNumber)
-                .focused($isPhoneFocused)
+            HStack(spacing: 10) {
+                Text("+7")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                // Digits only: "+7" is fixed, a pasted number is reduced to its ten digits.
+                TextField("", text: $phone, prompt: Text("9991234567").foregroundColor(Color(red: 0.72, green: 0.74, blue: 0.78)))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .keyboardType(.numberPad)
+                    .textContentType(.telephoneNumber)
+                    .focused($isPhoneFocused)
+                    .onChange(of: phone) { value in
+                        let digits = RussianPhone.digits(value)
+                        if digits != value { phone = digits }
+                    }
+            }
                 .padding(.horizontal, 18)
                 .frame(height: 68)
                 .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))

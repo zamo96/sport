@@ -407,7 +407,7 @@ struct PhoneLinkView: View {
     var onFinished: () -> Void = {}
 
     @EnvironmentObject private var appModel: AppModel
-    @State private var phone = "+7 "
+    @State private var phone = ""
     @State private var code = ""
     @State private var isCodeSent = false
     @State private var debugCode: String?
@@ -430,15 +430,19 @@ struct PhoneLinkView: View {
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                     Text(L10n.string(
-                        "In Russia you now sign in with a phone number or VK ID. Add your number to keep signing in to this account.",
-                        "В России вход теперь по номеру телефона или через VK ID. Привяжите номер, чтобы и дальше входить в этот аккаунт."
+                        "Add your phone number to sign in to this account with it.",
+                        "Привяжите номер телефона, чтобы входить по нему в этот аккаунт."
                     ))
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
 
-                    field(text: $phone, prompt: "+7 999 123-45-67", keyboard: .phonePad, content: .telephoneNumber, focus: .phone)
+                    field(text: $phone, prefix: "+7", prompt: "9991234567", keyboard: .numberPad, content: .telephoneNumber, focus: .phone)
                         .disabled(isCodeSent)
+                        .onChange(of: phone) { value in
+                            let digits = RussianPhone.digits(value)
+                            if digits != value { phone = digits }
+                        }
 
                     if isCodeSent {
                         Text(L10n.string("SMS code sent to \(displayedPhone)", "Код отправлен по SMS на \(displayedPhone)"))
@@ -497,14 +501,21 @@ struct PhoneLinkView: View {
         .environment(\.colorScheme, .light)
     }
 
-    private func field(text: Binding<String>, prompt: String, keyboard: UIKeyboardType, content: UITextContentType, focus: Field) -> some View {
-        TextField("", text: text, prompt: Text(prompt).foregroundColor(AppTheme.ink.opacity(0.4)))
-            .font(.system(size: 22, weight: .semibold, design: .rounded))
-            .foregroundStyle(AppTheme.ink)
-            .tint(AppTheme.court)
-            .keyboardType(keyboard)
-            .textContentType(content)
-            .focused($focusedField, equals: focus)
+    private func field(text: Binding<String>, prefix: String? = nil, prompt: String, keyboard: UIKeyboardType, content: UITextContentType, focus: Field) -> some View {
+        HStack(spacing: 8) {
+            if let prefix {
+                Text(prefix)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+            }
+            TextField("", text: text, prompt: Text(prompt).foregroundColor(AppTheme.ink.opacity(0.4)))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .tint(AppTheme.court)
+                .keyboardType(keyboard)
+                .textContentType(content)
+                .focused($focusedField, equals: focus)
+        }
             .padding(.horizontal, 16)
             .frame(height: 58)
             .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

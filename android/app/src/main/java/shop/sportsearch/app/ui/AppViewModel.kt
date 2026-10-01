@@ -59,7 +59,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var authEmail by mutableStateOf("")
     /** Sign-in country: Russia uses a phone or VK ID, everyone else email or Google. */
     var authCountry by mutableStateOf(AuthCountry.suggested(guestDraft.location?.countryCode?.takeIf { it.isNotEmpty() }))
-    var authPhone by mutableStateOf("+7 ")
+    /** Ten digits after +7; the field accepts digits only. */
+    var authPhone by mutableStateOf("")
     var authCodeTarget by mutableStateOf(AuthCodeTarget.EMAIL)
     /** When the code screen may ask for another SMS, in epoch milliseconds. */
     var phoneCodeResendAvailableAt by mutableStateOf<Long?>(null)
@@ -531,7 +532,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         authMessage = null
         errorMessage = null
         authEmail = ""
-        authPhone = "+7 "
+        authPhone = ""
         authCodeTarget = AuthCodeTarget.EMAIL
         isPhoneLinkPromptDismissed = false
         pendingVkSignIn = null

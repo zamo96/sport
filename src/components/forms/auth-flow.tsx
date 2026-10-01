@@ -21,7 +21,9 @@ import {
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { AVAILABLE_CITIES } from "@/lib/constants";
 import { type SportLevelValue } from "@/lib/sport-levels";
+import { formatRussianPhone } from "@/lib/phone";
 import { startVkIdSignIn, type VkIdConfig } from "@/lib/vk-id-client";
+import { RussianPhoneInput } from "@/components/auth/russian-phone-input";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportLevelGuideSheet } from "@/components/forms/sport-level-guide-sheet";
@@ -54,7 +56,8 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   const [email, setEmail] = useState("");
   // Для России вход по телефону или VK ID (ч. 10 ст. 8 149-ФЗ), для остальных — по email.
   const [country, setCountry] = useState<"RU" | "OTHER">(locale === "ru" ? "RU" : "OTHER");
-  const [phone, setPhone] = useState("+7 ");
+  // Ten digits after +7: the field accepts digits only.
+  const [phone, setPhone] = useState("");
   const [codeTarget, setCodeTarget] = useState<"email" | "phone">("email");
   const [vkConfig, setVkConfig] = useState<VkIdConfig | null>(null);
   const [vkOpening, setVkOpening] = useState(false);
@@ -240,7 +243,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
         method: "POST",
         body: JSON.stringify(
           target === "phone"
-            ? { phone, userAgreement: buildLatestUserAgreementPayload() }
+            ? { phone: `+7${phone}`, userAgreement: buildLatestUserAgreementPayload() }
             : { email, userAgreement: buildLatestUserAgreementPayload() }
         )
       });
@@ -264,7 +267,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     setError(null);
 
     try {
-      const credentials = codeTarget === "phone" ? { phone } : { email, country: "OTHER" };
+      const credentials = codeTarget === "phone" ? { phone: `+7${phone}` } : { email, country: "OTHER" };
       const data = await apiFetch<{ user: { onboardingCompleted: boolean; showOnMap?: boolean } }>(
         codeTarget === "phone" ? "/auth/phone/verify" : "/auth/verify",
         {
@@ -591,19 +594,9 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
 
               {country === "RU" ? (
                 <>
-                  <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">{t("auth.country.hintRu")}</div>
                   <label className="block">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.phone.label")}</div>
-                    <input
-                      required
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value.replace(/[^\d+()\s-]/g, "").slice(0, 20))}
-                      className="input border-white/80 bg-white/78 text-ink placeholder:text-ink/35"
-                      placeholder="+7 999 123-45-67"
-                    />
+                    <RussianPhoneInput value={phone} onChange={setPhone} className="border-white/80 bg-white/78" />
                   </label>
                   <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
                     {loading ? t("auth.phone.sending") : t("auth.phone.getCode")}
@@ -662,7 +655,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           ) : (
             <form className="space-y-4" onSubmit={verify}>
               <div className="rounded-[24px] border border-white/80 bg-white/72 px-4 py-3 text-sm text-ink/72">
-                {codeTarget === "phone" ? t("auth.code.sentPhone", { phone }) : t("auth.code.sent", { email })}
+                {codeTarget === "phone" ? t("auth.code.sentPhone", { phone: formatRussianPhone(`+7${phone}`) }) : t("auth.code.sent", { email })}
                 {debugCode ? <div className="mt-2 font-semibold text-clay">{t("auth.code.demo", { code: debugCode })}</div> : null}
               </div>
               <label className="block">

@@ -218,6 +218,16 @@ object RussianPhone {
         return if (national.startsWith("9")) "+7$national" else null
     }
 
+    /**
+     * Ten digits after +7 — what the phone field holds. A pasted number in any
+     * form ("+7 (999) 123-45-67", "8 999…") is reduced to those digits.
+     */
+    fun digits(input: String): String {
+        var digits = input.filter(Char::isDigit)
+        if (digits.length == 11 && (digits.startsWith("7") || digits.startsWith("8"))) digits = digits.drop(1)
+        return digits.take(10)
+    }
+
     fun formatted(phone: String): String {
         val d = phone.filter(Char::isDigit)
         if (d.length != 11) return phone

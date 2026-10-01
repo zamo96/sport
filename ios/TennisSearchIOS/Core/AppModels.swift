@@ -978,6 +978,16 @@ enum RussianPhone {
         return "+7\(national)"
     }
 
+    /// Ten digits after +7 — what the phone field holds. A pasted number in any
+    /// form ("+7 (999) 123-45-67", "8 999…") is reduced to those digits.
+    static func digits(_ input: String) -> String {
+        var digits = input.filter(\.isNumber)
+        if digits.count == 11, digits.first == "7" || digits.first == "8" {
+            digits.removeFirst()
+        }
+        return String(digits.prefix(10))
+    }
+
     /// +7 999 123-45-67
     static func formatted(_ phone: String) -> String {
         let digits = Array(phone.filter(\.isNumber))

@@ -16,6 +16,18 @@ export function normalizeRussianMobile(input: string): string | null {
   return /^9\d{9}$/.test(national) ? `+7${national}` : null;
 }
 
+/**
+ * Цифры номера после +7 — то, что человек вводит в поле телефона. Вставленный
+ * номер в любом виде («+7 (999) 123-45-67», «8 999…») сводится к 10 цифрам.
+ */
+export function russianPhoneDigits(input: string) {
+  let digits = input.replace(/\D/g, "");
+  if (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8"))) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(0, 10);
+}
+
 /** +7 999 123-45-67 — для писем, экранов и админки. */
 export function formatRussianPhone(phone: string) {
   const match = /^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/.exec(phone);

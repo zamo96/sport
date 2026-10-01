@@ -4,7 +4,9 @@ import { useState, type FormEvent } from "react";
 
 import { useLocale } from "@/components/i18n/locale-provider";
 import { Button } from "@/components/ui/button";
+import { RussianPhoneInput } from "@/components/auth/russian-phone-input";
 import { apiFetch } from "@/lib/client-api";
+import { formatRussianPhone } from "@/lib/phone";
 
 /**
  * Привязка номера к уже открытому аккаунту: номер → код из SMS → готово.
@@ -12,7 +14,7 @@ import { apiFetch } from "@/lib/client-api";
  */
 export function PhoneLinkForm({ onLinked }: { onLinked: (phone: string) => void }) {
   const { t } = useLocale();
-  const [phone, setPhone] = useState("+7 ");
+  const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [debugCode, setDebugCode] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export function PhoneLinkForm({ onLinked }: { onLinked: (phone: string) => void 
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<{ debugCode?: string }>("/me/phone/request", { method: "POST", body: JSON.stringify({ phone }) });
+      const data = await apiFetch<{ debugCode?: string }>("/me/phone/request", { method: "POST", body: JSON.stringify({ phone: `+7${phone}` }) });
       setDebugCode(data.debugCode ?? null);
       setCode("");
       setStep("code");
@@ -40,7 +42,7 @@ export function PhoneLinkForm({ onLinked }: { onLinked: (phone: string) => void 
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<{ user: { phone: string } }>("/me/phone/verify", { method: "POST", body: JSON.stringify({ phone, code }) });
+      const data = await apiFetch<{ user: { phone: string } }>("/me/phone/verify", { method: "POST", body: JSON.stringify({ phone: `+7${phone}`, code }) });
       onLinked(data.user.phone);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : t("auth.error.verify"));
@@ -51,17 +53,7 @@ export function PhoneLinkForm({ onLinked }: { onLinked: (phone: string) => void 
 
   return step === "phone" ? (
     <form className="space-y-3" onSubmit={requestCode}>
-      <input
-        required
-        type="tel"
-        inputMode="tel"
-        autoComplete="tel"
-        value={phone}
-        onChange={(event) => setPhone(event.target.value.replace(/[^\d+()\s-]/g, "").slice(0, 20))}
-        className="input border-line bg-white text-ink placeholder:text-ink/35"
-        placeholder="+7 999 123-45-67"
-        aria-label={t("auth.phone.label")}
-      />
+      <RussianPhoneInput value={phone} onChange={setPhone} ariaLabel={t("auth.phone.label")} className="border-line" />
       {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       <Button type="submit" fullWidth disabled={loading}>
         {loading ? t("auth.phone.sending") : t("auth.phone.getCode")}
@@ -70,7 +62,7 @@ export function PhoneLinkForm({ onLinked }: { onLinked: (phone: string) => void 
   ) : (
     <form className="space-y-3" onSubmit={verify}>
       <div className="text-sm text-ink/70">
-        {t("auth.code.sentPhone", { phone })}
+        {t("auth.code.sentPhone", { phone: formatRussianPhone(`+7${phone}`) })}
         {debugCode ? <div className="mt-1 font-semibold text-clay">{t("auth.code.demo", { code: debugCode })}</div> : null}
       </div>
       <input

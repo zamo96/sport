@@ -637,7 +637,7 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
     HideBottomBarWhileVisible(appModel)
     val haptics = rememberAppHaptics()
     val scope = rememberCoroutineScope()
-    var phone by remember { mutableStateOf("+7 ") }
+    var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var isCodeSent by remember { mutableStateOf(false) }
     var debugCode by remember { mutableStateOf<String?>(null) }
@@ -687,8 +687,8 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
             Text(L10n.string("Add your phone number", "Добавьте номер телефона"), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = AppTheme.ink)
             Text(
                 L10n.string(
-                    "In Russia you now sign in with a phone number or VK ID. Add your number to keep signing in to this account.",
-                    "В России вход теперь по номеру телефона или через VK ID. Привяжите номер, чтобы и дальше входить в этот аккаунт.",
+                    "Add your phone number to sign in to this account with it.",
+                    "Привяжите номер телефона, чтобы входить по нему в этот аккаунт.",
                 ),
                 style = AppText.subheadline,
                 color = AppTheme.mutedInk,
@@ -696,10 +696,11 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
 
             PhoneLinkField(
                 value = phone,
-                onValueChange = { value -> phone = value.filter { it.isDigit() || it in "+()- " }.take(20) },
-                placeholder = "+7 999 123-45-67",
-                keyboardType = KeyboardType.Phone,
+                onValueChange = { value -> phone = RussianPhone.digits(value) },
+                placeholder = "9991234567",
+                keyboardType = KeyboardType.Number,
                 enabled = !isCodeSent,
+                prefix = "+7 ",
             )
 
             if (isCodeSent) {
@@ -757,11 +758,19 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
 }
 
 @Composable
-private fun PhoneLinkField(value: String, onValueChange: (String) -> Unit, placeholder: String, keyboardType: KeyboardType, enabled: Boolean) {
+private fun PhoneLinkField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    keyboardType: KeyboardType,
+    enabled: Boolean,
+    prefix: String? = null,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         placeholder = { Text(placeholder, fontSize = 20.sp) },
+        prefix = prefix?.let { { Text(it, fontSize = 20.sp, color = AppTheme.ink) } },
         singleLine = true,
         enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),

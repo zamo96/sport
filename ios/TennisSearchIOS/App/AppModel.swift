@@ -70,7 +70,8 @@ final class AppModel: ObservableObject {
     @Published var authEmail = ""
     /// Страна на экране входа: для России — телефон или VK ID, для остальных — email или Apple.
     @Published var authCountry: AuthCountry = .russia
-    @Published var authPhone = "+7 "
+    /// Ten digits after +7; the field accepts digits only.
+    @Published var authPhone = ""
     @Published var authCodeTarget: AuthCodeTarget = .email
     /// When the code screen may ask for another SMS.
     @Published private(set) var phoneCodeResendAvailableAt: Date?
@@ -760,7 +761,7 @@ final class AppModel: ObservableObject {
         authMessage = nil
         errorMessage = nil
         authEmail = ""
-        authPhone = "+7 "
+        authPhone = ""
         authCodeTarget = .email
         isPhoneLinkPromptDismissed = false
         presentedAuthStep = nil

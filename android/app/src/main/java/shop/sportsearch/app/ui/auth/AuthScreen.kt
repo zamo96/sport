@@ -707,8 +707,8 @@ private fun EmailStep(
                 Text(
                     if (appModel.authCountry == AuthCountry.RUSSIA) {
                         L10n.string(
-                            "In Russia you sign in with a phone number or VK ID. Your profile, matches, chats, and notifications are saved to your account.",
-                            "В России вход — по номеру телефона или через VK ID. Профиль, матчи, переписки и уведомления сохранятся в аккаунте.",
+                            "Sign in to save your profile, matches, chats, and notifications.",
+                            "Войди, чтобы сохранить профиль, матчи, переписки и уведомления.",
                         )
                     } else {
                         L10n.string(
@@ -734,11 +734,13 @@ private fun EmailStep(
                         Text(L10n.string("Phone number", "Номер телефона"), style = AppText.headline, color = AppTheme.ink)
                         OutlinedTextField(
                             value = appModel.authPhone,
-                            onValueChange = { value -> appModel.authPhone = value.filter { it.isDigit() || it in "+()- " }.take(20) },
-                            placeholder = { Text("+7 999 123-45-67", fontSize = 22.sp) },
+                            // Digits only: "+7" is fixed, a pasted number is reduced to its ten digits.
+                            onValueChange = { value -> appModel.authPhone = RussianPhone.digits(value) },
+                            placeholder = { Text("9991234567", fontSize = 22.sp) },
                             leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+                            prefix = { Text("+7 ", fontSize = 22.sp, color = AppTheme.ink) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = continuousShape(18.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
