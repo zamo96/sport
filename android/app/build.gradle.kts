@@ -66,8 +66,8 @@ android {
         applicationId = "shop.sportsearch.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2026090602
-        versionName = "1.1.1"
+        versionCode = 2026100201
+        versionName = "1.2.1"
 
         vectorDrawables.useSupportLibrary = true
 
