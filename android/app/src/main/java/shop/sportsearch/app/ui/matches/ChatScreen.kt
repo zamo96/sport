@@ -70,6 +70,7 @@ import shop.sportsearch.app.core.*
 import shop.sportsearch.app.ui.AppViewModel
 import shop.sportsearch.app.ui.components.*
 import shop.sportsearch.app.ui.components.DismissOnSystemBack
+import shop.sportsearch.app.ui.moments.GameConfirmation
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.theme.continuousShape
@@ -325,7 +326,13 @@ fun ChatScreen(
             isUpdatingRequest = true
             runCatching { appModel.repository.updateGameRequestStatus(request.id, status) }
                 .onSuccess {
-                    if (status == "accepted") haptics.success() else haptics.warning()
+                    if (status == "accepted") {
+                        // The moment carries its own haptics.
+                        appModel.gameConfirmation =
+                            GameConfirmation.of(request, appModel.currentUser?.id)
+                    } else {
+                        haptics.warning()
+                    }
                     refreshChatState()
                 }
                 .onFailure(appModel::present)

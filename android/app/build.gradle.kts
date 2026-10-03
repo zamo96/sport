@@ -103,6 +103,9 @@ android {
         }
         release {
             if (hasUploadKey) signingConfig = signingConfigs.getByName("upload")
+            // Play asks for these on every upload: without them a native crash
+            // report is a list of addresses instead of a stack.
+            ndk { debugSymbolLevel = "FULL" }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

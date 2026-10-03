@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.data.ApiClient
+import shop.sportsearch.app.ui.moments.GameConfirmation
 import shop.sportsearch.app.data.ApiException
 import shop.sportsearch.app.data.LiveTennisRepository
 import shop.sportsearch.app.data.MockRepository
@@ -76,6 +77,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var hasActiveUpcomingGameRequests by mutableStateOf(false)
     var serverRecoveryNotice by mutableStateOf<ServerRecoveryNotice?>(null)
     var pendingLocaleRecommendation by mutableStateOf<LocaleRecommendation?>(null)
+
+    /** The full-screen moment after a game is agreed; `gameConfirmation` in AppModel.swift. */
+    var gameConfirmation by mutableStateOf<GameConfirmation?>(null)
 
     private val tabContentLoadingKeys = mutableStateListOf<String>()
 

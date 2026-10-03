@@ -99,6 +99,7 @@ import shop.sportsearch.app.ui.matches.ProposalSheetContext
 import shop.sportsearch.app.ui.notifications.NotificationsScreen
 import shop.sportsearch.app.ui.searches.RegularPairDetailSheet
 import shop.sportsearch.app.ui.theme.AppFont
+import shop.sportsearch.app.ui.moments.GameConfirmation
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.theme.continuousShape
@@ -880,8 +881,10 @@ fun DiscoverScreen(
                             updatingRequestIds = updatingRequestIds + request.id
                             runCatching { appModel.repository.updateGameRequestStatus(request.id, "accepted") }
                                 .onSuccess {
-                                    haptics.success()
-                                    responseMessage = L10n.string("Game confirmed.", "Игра подтверждена.")
+                                    // The moment itself carries the news and its own haptic,
+                                    // so the toast and the success tap would double it.
+                                    appModel.gameConfirmation =
+                                        GameConfirmation.of(request, appModel.currentUser?.id)
                                     loadDiscover()
                                 }
                                 .onFailure(appModel::present)
