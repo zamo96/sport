@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import shop.sportsearch.app.core.*
 import shop.sportsearch.app.data.ApiClient
 import shop.sportsearch.app.ui.moments.GameConfirmation
+import shop.sportsearch.app.ui.moments.MatchMoment
 import shop.sportsearch.app.data.ApiException
 import shop.sportsearch.app.data.LiveTennisRepository
 import shop.sportsearch.app.data.MockRepository
@@ -80,6 +81,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The full-screen moment after a game is agreed; `gameConfirmation` in AppModel.swift. */
     var gameConfirmation by mutableStateOf<GameConfirmation?>(null)
+
+    /** The full-screen moment for a mutual like; `matchMoment` in AppModel.swift. */
+    var matchMoment by mutableStateOf<MatchMoment?>(null)
 
     private val tabContentLoadingKeys = mutableStateListOf<String>()
 

@@ -82,6 +82,7 @@ import shop.sportsearch.app.ui.matches.MatchesScreen
 import shop.sportsearch.app.ui.profile.ProfileScreen
 import shop.sportsearch.app.ui.searches.SearchesScreen
 import shop.sportsearch.app.ui.moments.GameConfirmedOverlay
+import shop.sportsearch.app.ui.moments.MatchMomentOverlay
 import shop.sportsearch.app.ui.theme.AppRadius
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
@@ -128,6 +129,19 @@ fun RootScreen(appModel: AppViewModel) {
         if (appModel.isConsentReviewRequired && consentProfile != null) {
             Box(modifier = Modifier.fillMaxSize().zIndex(50f)) {
                 ConsentReviewScreen(appModel, consentProfile, ConsentReviewMode.REQUIRED)
+            }
+        }
+
+        appModel.matchMoment?.let { moment ->
+            Box(modifier = Modifier.fillMaxSize().zIndex(60f)) {
+                MatchMomentOverlay(
+                    moment = moment,
+                    onPlanGame = {
+                        appModel.matchMoment = null
+                        appModel.navigate(AppNavigationTarget.Chat(moment.matchId))
+                    },
+                    onKeepBrowsing = { appModel.matchMoment = null },
+                )
             }
         }
 

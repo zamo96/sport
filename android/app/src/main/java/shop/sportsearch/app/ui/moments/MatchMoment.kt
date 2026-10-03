@@ -199,6 +199,73 @@ fun DrawScope.drawProjectile(kind: MatchMomentProjectile, center: Offset, size: 
     }
 }
 
+/**
+ * Port of `MatchMomentSportResolver`. The deck's sport filter wins: it is what the viewer
+ * was browsing for. Otherwise the first sport both players list, in the viewer's own
+ * order; then the other player's main sport, since theirs is the card that was liked;
+ * then the viewer's; the fallback only when neither profile names a sport.
+ */
+fun matchMomentSport(
+    deckFilter: Sport?,
+    viewer: List<Sport>,
+    player: List<Sport>,
+    fallback: Sport = Sport.TENNIS,
+): Sport {
+    deckFilter?.let { return it }
+    viewer.firstOrNull { player.contains(it) }?.let { return it }
+    return player.firstOrNull() ?: viewer.firstOrNull() ?: fallback
+}
+
+/** Port of `MatchMomentCopy`: what the moment says, in the words of this sport. */
+fun matchMomentTitle(sport: Sport): String = when (sport) {
+    Sport.RUNNING -> L10n.string("You both want to run", "Вы оба хотите побегать")
+    Sport.FITNESS, Sport.BOXING -> L10n.string("You both want to train", "Вы оба хотите потренироваться")
+    Sport.YOGA -> L10n.string("You both want to practice", "Вы оба хотите позаниматься")
+    Sport.SUPBOARD -> L10n.string("You both want to paddle", "Вы оба хотите покататься на сапе")
+    Sport.TENNIS, Sport.PADEL, Sport.SQUASH, Sport.BADMINTON,
+    Sport.TABLE_TENNIS, Sport.VOLLEYBALL, Sport.FOOTBALL,
+    -> L10n.string("You both want to play", "Вы оба хотите сыграть")
+}
+
+fun matchMomentSubtitle(sport: Sport): String {
+    val venueEn: String
+    val venueRu: String
+    when (sport) {
+        Sport.TENNIS, Sport.PADEL, Sport.SQUASH, Sport.BADMINTON -> {
+            venueEn = "court"; venueRu = "корте"
+        }
+        Sport.VOLLEYBALL -> {
+            venueEn = "court"; venueRu = "площадке"
+        }
+        Sport.FOOTBALL -> {
+            venueEn = "pitch"; venueRu = "поле"
+        }
+        Sport.RUNNING -> {
+            venueEn = "route"; venueRu = "маршруте"
+        }
+        Sport.FITNESS, Sport.BOXING -> {
+            venueEn = "gym"; venueRu = "зале"
+        }
+        Sport.TABLE_TENNIS, Sport.YOGA, Sport.SUPBOARD -> {
+            venueEn = "place"; venueRu = "месте"
+        }
+    }
+    return L10n.string(
+        "Now agree on a time and a $venueEn.",
+        "Осталось договориться о времени и $venueRu.",
+    )
+}
+
+fun matchMomentAction(sport: Sport): String = when (sport) {
+    Sport.RUNNING -> L10n.string("Plan the run", "Договориться о пробежке")
+    Sport.FITNESS, Sport.BOXING -> L10n.string("Plan the session", "Договориться о тренировке")
+    Sport.YOGA -> L10n.string("Plan the class", "Договориться о занятии")
+    Sport.SUPBOARD -> L10n.string("Plan the trip", "Договориться о прогулке")
+    Sport.TENNIS, Sport.PADEL, Sport.SQUASH, Sport.BADMINTON,
+    Sport.TABLE_TENNIS, Sport.VOLLEYBALL, Sport.FOOTBALL,
+    -> L10n.string("Plan the game", "Договориться об игре")
+}
+
 /** Headline once a game in this sport is agreed. Port of `MatchMomentCopy`. */
 fun matchMomentConfirmedTitle(sport: Sport): String = when (sport) {
     Sport.RUNNING -> L10n.string("Run confirmed", "Пробежка подтверждена")

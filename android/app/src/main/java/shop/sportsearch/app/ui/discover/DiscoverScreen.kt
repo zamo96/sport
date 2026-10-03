@@ -100,6 +100,8 @@ import shop.sportsearch.app.ui.notifications.NotificationsScreen
 import shop.sportsearch.app.ui.searches.RegularPairDetailSheet
 import shop.sportsearch.app.ui.theme.AppFont
 import shop.sportsearch.app.ui.moments.GameConfirmation
+import shop.sportsearch.app.ui.moments.MatchMoment
+import shop.sportsearch.app.ui.moments.matchMomentSport
 import shop.sportsearch.app.ui.theme.AppText
 import shop.sportsearch.app.ui.theme.AppTheme
 import shop.sportsearch.app.ui.theme.continuousShape
@@ -727,9 +729,18 @@ fun DiscoverScreen(
             runCatching { appModel.repository.swipe(user.id, action) }
                 .onSuccess { createdMatchId ->
                     if (createdMatchId != null && action == SwipeAction.LIKE) {
-                        matchMessage = L10n.string(
-                            "You matched with ${user.displayName}.",
-                            "С ${user.displayName} случился новый мэтч.",
+                        // The moment says it better than the toast did, and carries the haptic.
+                        appModel.matchMoment = MatchMoment(
+                            matchId = createdMatchId,
+                            sport = matchMomentSport(
+                                deckFilter = null,
+                                viewer = appModel.currentUser?.preferredSports.orEmpty(),
+                                player = user.preferredSports,
+                            ),
+                            viewerName = appModel.currentUser?.name.orEmpty(),
+                            viewerImagePath = appModel.currentUser?.avatarUrl,
+                            playerName = user.displayName,
+                            playerImagePath = user.avatarUrl,
                         )
                     }
                 }
