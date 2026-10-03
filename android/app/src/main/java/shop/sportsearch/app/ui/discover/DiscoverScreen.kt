@@ -406,6 +406,16 @@ fun DiscoverScreen(
                 hotSearchesCount = listedHotSearchCount(feed, appModel.currentUser?.id, localResponseStatuses)
             }
         }
+
+        // The badge used to appear only after opening Players, because the number came
+        // from the loaded deck. Fetching the deck from another tab is not an option: every
+        // serve records an impression per card, and these cards were never on screen.
+        // Mirrors `fetchBackgroundPlayersCount(skip:)` in DiscoverView.swift.
+        if (appModel.isAuthenticated && selectedTab != DiscoverTab.SWIPE) {
+            runCatching { appModel.repository.fetchPlayersCount() }.getOrNull()?.let { count ->
+                similarPlayersCount = count
+            }
+        }
     }
 
     LaunchedEffect(selectedTab, appModel.currentUser?.id) {

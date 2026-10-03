@@ -48,6 +48,13 @@ interface TennisRepository {
     suspend fun fetchChatMedia(path: String): ByteArray
 
     suspend fun fetchDiscoverUsers(view: DiscoverTab, sport: Sport? = null): List<DiscoverUser>
+
+    /**
+     * The Players badge while another tab is open. Asks for the number only: serving the
+     * feed records a DiscoverImpression per card, and these cards were never on screen,
+     * which would poison the ranker's training data.
+     */
+    suspend fun fetchPlayersCount(sport: Sport? = null): Int
     suspend fun fetchGuestDiscoverUsers(draft: GuestOnboardingDraft, view: DiscoverTab, sport: Sport? = null): List<DiscoverUser>
     suspend fun swipe(userId: String, action: SwipeAction): String?
     suspend fun reportUser(userId: String, reason: UserSafetyReason, details: String?, context: UserSafetyContext): UserSafetyReport

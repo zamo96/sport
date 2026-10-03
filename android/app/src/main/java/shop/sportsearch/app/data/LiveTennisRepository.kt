@@ -303,6 +303,12 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
             )
         }.users
 
+    override suspend fun fetchPlayersCount(sport: Sport?): Int = client.request(
+        path = "users/discover/count",
+        query = buildList { if (sport != null) add("sport" to sport.wire) },
+        deserializer = DiscoverCountEnvelope.serializer(),
+    ).count
+
     override suspend fun fetchGuestDiscoverUsers(
         draft: GuestOnboardingDraft,
         view: DiscoverTab,
@@ -953,6 +959,9 @@ internal data class ChatMediaUploadEnvelope(val asset: ChatMediaAttachment)
 
 @kotlinx.serialization.Serializable
 internal data class DiscoverEnvelope(val users: List<DiscoverUser> = emptyList())
+
+@kotlinx.serialization.Serializable
+internal data class DiscoverCountEnvelope(val count: Int = 0)
 
 @kotlinx.serialization.Serializable
 internal data class MatchesEnvelope(val matches: List<MatchSummary> = emptyList())

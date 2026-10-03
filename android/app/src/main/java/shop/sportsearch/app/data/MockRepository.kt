@@ -296,6 +296,9 @@ class MockRepository : TennisRepository {
 
     override suspend fun fetchChatMedia(path: String): ByteArray = chatMedia[path] ?: ByteArray(0)
 
+    override suspend fun fetchPlayersCount(sport: Sport?): Int =
+        fetchDiscoverUsers(DiscoverTab.SWIPE, sport).size
+
     override suspend fun fetchDiscoverUsers(view: DiscoverTab, sport: Sport?): List<DiscoverUser> {
         delay(180)
         return when (view) {
