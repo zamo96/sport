@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -58,6 +59,7 @@ import shop.sportsearch.app.ui.theme.continuousShape
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.sin
 import kotlin.math.min
 
 /** A mutual like, as the viewer sees it. Port of `AppModel.MatchMoment`. */
@@ -95,21 +97,15 @@ fun MatchMomentOverlay(
     val reduceMotion = remember {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
-    val rally = remember(moment.sport) { MatchMomentRally.of(moment.sport) }
-    val beats = rally?.beats ?: MatchMomentBeats.meet.copy(
-        rest = matchMomentRest(moment.sport),
-        gentle = matchMomentLandsGently(moment.sport),
-    )
+    val style = remember(moment.sport) { MatchMomentStyle(moment.sport) }
+    val rally = style.rally
+    val beats = style.beats
     var settled by remember(moment.id) { mutableStateOf(reduceMotion) }
     var time by remember(moment.id) {
         mutableStateOf(if (reduceMotion) FINAL_FRAME else 0.0)
     }
-    val accent = when (moment.sport) {
-        Sport.YOGA -> AppTheme.mint
-        Sport.SUPBOARD -> MatchMomentPalette.water
-        else -> MatchMomentProjectile.of(moment.sport)?.accent ?: MatchMomentPalette.ball
-    }
-    val settle = beats.landing + matchMomentRest(moment.sport)
+    val accent = style.accent
+    val settle = beats.settle
 
     LaunchedEffect(moment.id) {
         if (reduceMotion) {
@@ -131,7 +127,7 @@ fun MatchMomentOverlay(
                 }
             }
             if (!landingCue && elapsed >= beats.landing) {
-                if (matchMomentLandsGently(moment.sport)) haptics.success() else haptics.impactHeavy()
+                if (beats.gentle) haptics.success() else haptics.impactHeavy()
                 landingCue = true
             }
             if (elapsed >= settle) {
@@ -159,14 +155,18 @@ fun MatchMomentOverlay(
             },
     ) {
         val density = LocalDensity.current
-        val stage = remember(maxWidth, maxHeight, rally) {
-            MatchMomentStage(maxWidth, maxHeight, rally?.ground?.aspect ?: MatchMomentGround.TENNIS.aspect)
+        val stage = remember(maxWidth, maxHeight, style) {
+            MatchMomentStage(maxWidth, maxHeight, style.ground?.aspect ?: MatchMomentGround.TENNIS.aspect)
         }
+        val landingUnits = style.landingPoint(stage)
         val landingPx = with(density) {
-            Offset(stage.centerX.toPx(), (stage.centerY + stage.landingY).toPx())
+            Offset(
+                stage.centerX.toPx() + landingUnits.x.dp.toPx(),
+                stage.centerY.toPx() + landingUnits.y.dp.toPx(),
+            )
         }
         val landed = time - beats.landing
-        val particles = remember(moment.sport) { MatchMomentParticle.forSport(moment.sport) }
+        val particles = style.particles
 
         // The flash of the meeting, dying away under the cards.
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -183,23 +183,29 @@ fun MatchMomentOverlay(
                 )
             }
 
-            // `rings`, default case: two waves out of the meeting point.
-            listOf(0.0, 0.1).forEach { delay ->
-                val progress = (time - (beats.landing + delay)) / 0.75
+            // The waves out of the landing point; on the water they lie flat.
+            style.rings.forEach { ring ->
+                val progress = (time - ring.start) / ring.duration
                 if (progress in 0.0..1.0) {
-                    val radius = 24.dp.toPx() + 150.dp.toPx() * MatchMomentCurve.easeOut(progress).toFloat()
-                    drawCircle(
-                        color = accent.copy(alpha = (0.6 * (1 - progress)).toFloat()),
-                        radius = radius,
-                        center = landingPx,
+                    val radius = 24.dp.toPx() + ring.radius.dp.toPx() * MatchMomentCurve.easeOut(progress).toFloat()
+                    drawOval(
+                        color = accent.copy(alpha = (ring.strength * (1 - progress)).toFloat()),
+                        topLeft = Offset(landingPx.x - radius, landingPx.y - radius * ring.flatten),
+                        size = Size(2 * radius, 2 * radius * ring.flatten),
                         style = Stroke(width = (0.5 + 3 * (1 - progress)).dp.toPx()),
                     )
                 }
             }
         }
 
-        if (rally != null) {
-            MatchMomentGroundView(rally = rally, time = time, stage = stage, converge = beats.converge)
+        style.ground?.let { ground ->
+            MatchMomentGroundView(ground = ground, style = style, time = time, stage = stage)
+        }
+
+        if (style.scene == MatchMomentScene.SPRINT) {
+            MatchMomentFinishTape(time = time, stage = stage, beats = beats)
+            MatchMomentSpeedLines(side = -1, time = time, stage = stage, style = style)
+            MatchMomentSpeedLines(side = 1, time = time, stage = stage, style = style)
         }
 
         MatchMomentPlayerCard(
@@ -210,7 +216,7 @@ fun MatchMomentOverlay(
             side = -1,
             time = time,
             stage = stage,
-            beats = beats,
+            style = style,
         )
         MatchMomentPlayerCard(
             name = moment.playerName,
@@ -220,7 +226,7 @@ fun MatchMomentOverlay(
             side = 1,
             time = time,
             stage = stage,
-            beats = beats,
+            style = style,
         )
 
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -250,10 +256,20 @@ fun MatchMomentOverlay(
             }
         }
 
-        if (rally == null) {
-            MatchMomentSportBadge(sport = moment.sport, time = time, stage = stage, landing = beats.landing)
-        } else {
-            MatchMomentProjectileView(rally = rally, time = time, stage = stage)
+        when (style.scene) {
+            MatchMomentScene.RALLY -> MatchMomentProjectileView(rally = rally!!, time = time, stage = stage)
+            MatchMomentScene.GLOVES -> {
+                MatchMomentGloveView(side = -1, time = time, stage = stage, style = style)
+                MatchMomentGloveView(side = 1, time = time, stage = stage, style = style)
+            }
+            MatchMomentScene.LIFT -> MatchMomentBarbellView(time = time, stage = stage, beats = beats)
+            else -> MatchMomentSportBadge(
+                sport = moment.sport,
+                time = time,
+                stage = stage,
+                landing = beats.landing,
+                gentle = beats.gentle,
+            )
         }
 
         Column(
@@ -362,18 +378,12 @@ private fun MatchMomentPlayerCard(
     side: Int,
     time: Double,
     stage: MatchMomentStage,
-    beats: MatchMomentBeats,
+    style: MatchMomentStyle,
 ) {
-    val entrance = if (side < 0) 0.05 else 0.12
-    val entered = MatchMomentCurve.spring(time - entrance, response = 0.55, damping = 0.74)
-    val met = MatchMomentCurve.spring(time - beats.converge, response = 0.5, damping = 0.66)
-    val offstage = stage.offstageX.value * side
-    val baseline = stage.baselineX * side
-    val meet = stage.meetX.value * side
-    var x = offstage + (baseline - offstage) * entered
-    x += (meet - x) * met
-    var rotation = side * (14 + (4 - 14) * entered)
-    rotation += (side * stage.settledTilt - rotation) * met
+    val beats = style.beats
+    val pose = matchMomentPose(side, time, stage, style)
+    val x = pose.x
+    val rotation = pose.rotation
 
     // A hit (or the two cards colliding) lunges the card at the centre and squeezes it,
     // then springs back; the same hits flash it white.
@@ -382,6 +392,28 @@ private fun MatchMomentPlayerCard(
     val flash = hits.sumOf { hit ->
         val since = time - hit
         if (since < 0) 0.0 else 0.35 * exp(-14 * since)
+    }
+
+    // Lifters sink and drive under the bar; on the mat the cards breathe.
+    val stature: Float
+    val girth: Float
+    when (style.scene) {
+        MatchMomentScene.LIFT -> {
+            val squat = MatchMomentLift.squat(time, beats)
+            stature = MatchMomentLift.stature(squat)
+            girth = (1 + 0.03 * squat).toFloat()
+        }
+        MatchMomentScene.BREATHE -> {
+            val calm = min(time, beats.settle)
+            val fade = if (calm < beats.landing) 1.0 else exp(-2 * (calm - beats.landing))
+            val breath = (1 + 0.025 * sin(2 * Math.PI * (calm - 0.35) / 1.6) * fade).toFloat()
+            stature = breath
+            girth = breath
+        }
+        else -> {
+            stature = 1f
+            girth = 1f
+        }
     }
 
     Box(
@@ -434,8 +466,13 @@ private fun MatchMomentPlayerCard(
 
 /** The sport's badge landing in the gap between the cards. Port of `sportBadge`. */
 @Composable
-private fun MatchMomentSportBadge(sport: Sport, time: Double, stage: MatchMomentStage, landing: Double) {
-    val gentle = matchMomentLandsGently(sport)
+private fun MatchMomentSportBadge(
+    sport: Sport,
+    time: Double,
+    stage: MatchMomentStage,
+    landing: Double,
+    gentle: Boolean,
+) {
     val pop = if (gentle) {
         MatchMomentCurve.easeOut((time - landing) / 0.6)
     } else {
@@ -474,22 +511,23 @@ private fun MatchMomentCardInitials(name: String) {
 }
 
 /**
- * The court, its markings and the net, drawn in as the scene opens and stepping back
- * once the players leave their places for the centre. Port of `ground(_:at:stage:style:)`.
+ * The ground under the cards — court, track, ring, gym floor, mat or water — drawn in as
+ * the scene opens and stepping back once the players leave for the centre.
+ * Port of `ground(_:at:stage:style:)`.
  *
  * SwiftUI trims the markings path as it draws; here they fade in over the same window —
  * Compose has no cheap trim across a path of many contours.
  */
 @Composable
 private fun MatchMomentGroundView(
-    rally: MatchMomentRally,
+    ground: MatchMomentGround,
+    style: MatchMomentStyle,
     time: Double,
     stage: MatchMomentStage,
-    converge: Double,
 ) {
     val drawn = MatchMomentCurve.easeInOut((time - 0.1) / 0.7).toFloat()
     val stretched = MatchMomentCurve.easeInOut((time - 0.25) / 0.35).toFloat()
-    val recede = (1 - 0.5 * MatchMomentCurve.easeInOut((time - converge) / 0.4)).toFloat()
+    val recede = (1 - 0.5 * MatchMomentCurve.easeInOut((time - style.groundRecedes) / 0.4)).toFloat()
     if (drawn <= 0.001f) return
 
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -502,18 +540,23 @@ private fun MatchMomentGroundView(
         )
 
         drawRoundRect(
-            color = rally.ground.surface.copy(alpha = 0.26f * drawn * recede),
+            color = ground.surface.copy(alpha = 0.26f * drawn * recede),
             topLeft = Offset(rect.left, rect.top),
             size = Size(rect.width, rect.height),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
         )
+        val lines = if (style.scene == MatchMomentScene.RALLY) {
+            matchMomentGroundLines(ground, rect)
+        } else {
+            matchMomentSceneGroundLines(ground, rect)
+        }
         drawPath(
-            path = matchMomentGroundLines(rally.ground, rect),
-            color = Color.White.copy(alpha = rally.ground.lineOpacity * drawn * recede),
-            style = Stroke(width = rally.ground.lineWidth.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            path = lines,
+            color = Color.White.copy(alpha = ground.lineOpacity * drawn * recede),
+            style = Stroke(width = ground.lineWidth.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
         )
 
-        rally.ground.netWidth?.let { netWidth ->
+        ground.netWidth?.let { netWidth ->
             val netHeight = (height + 28.dp.toPx()) * stretched
             drawRoundRect(
                 color = Color.White.copy(alpha = 0.45f * recede),
@@ -521,6 +564,42 @@ private fun MatchMomentGroundView(
                 size = Size(netWidth.dp.toPx(), netHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(netWidth.dp.toPx() / 2),
             )
+        }
+
+        when (ground) {
+            // The water keeps moving until the timeline rests, then holds still.
+            MatchMomentGround.WATER -> drawPath(
+                path = matchMomentWaves(rect, min(time, style.beats.settle)),
+                color = Color.White.copy(alpha = 0.3f * drawn * recede),
+                style = Stroke(width = 1.5.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            )
+            // Corner posts: red and blue for the two corners, neutral white for the others.
+            MatchMomentGround.RING -> listOf(
+                Offset(rect.left, rect.top) to Color(0xFFDB3D33),
+                Offset(rect.right, rect.top) to Color.White,
+                Offset(rect.left, rect.bottom) to Color.White,
+                Offset(rect.right, rect.bottom) to Color(0xFF336BDB),
+            ).forEach { (corner, color) ->
+                drawCircle(color.copy(alpha = 0.9f * drawn * recede), 6.dp.toPx(), corner)
+            }
+            // The squash front wall above the floor: its face, the out line and the tin.
+            MatchMomentGround.SQUASH -> {
+                val faceY = center.y + stage.wallY.dp.toPx() - 16.dp.toPx()
+                val faceWidth = rect.width * stretched
+                drawRect(
+                    color = Color.White.copy(alpha = 0.1f * recede),
+                    topLeft = Offset(center.x - faceWidth / 2, faceY - 16.dp.toPx()),
+                    size = Size(faceWidth, 32.dp.toPx()),
+                )
+                listOf(faceY - 16.dp.toPx() to 2.dp.toPx(), faceY + 13.dp.toPx() to 3.dp.toPx()).forEach { (y, h) ->
+                    drawRect(
+                        color = AppTheme.clay.copy(alpha = 0.8f * recede),
+                        topLeft = Offset(center.x - faceWidth / 2, y),
+                        size = Size(faceWidth, h),
+                    )
+                }
+            }
+            else -> Unit
         }
     }
 }
@@ -555,6 +634,254 @@ private fun MatchMomentProjectileView(
             scale(flight.squashX, flight.squashY, position) {
                 drawProjectile(rally.projectile, position, flight.size.dp.toPx())
             }
+        }
+    }
+}
+
+/** Where a card is, in stage units. Port of `pose(of:at:stage:style:)`. */
+private data class MatchMomentPose(val x: Float, val y: Float, val rotation: Double)
+
+private fun matchMomentPose(
+    side: Int,
+    time: Double,
+    stage: MatchMomentStage,
+    style: MatchMomentStyle,
+): MatchMomentPose {
+    val beats = style.beats
+    val offstage = stage.offstageX.value * side
+    val meet = style.meetX * side
+    val settledTilt = side * style.settledTilt
+    val entrance = if (side < 0) 0.05 else 0.12
+
+    when (style.scene) {
+        // Unhurried and without overshoot, straight to each other.
+        MatchMomentScene.BREATHE -> {
+            val drift = MatchMomentCurve.spring(time - entrance * 2, response = 1.4, damping = 0.9)
+            return MatchMomentPose(
+                x = (offstage + (meet - offstage) * drift).toFloat(),
+                y = 0f,
+                rotation = side * 12 + (settledTilt - side * 12) * drift,
+            )
+        }
+        // Bobbing and rolling out of step with each other, calming once they touch; the
+        // phase stops with the timeline so the final frame matches the last one.
+        MatchMomentScene.FLOAT -> {
+            val drift = MatchMomentCurve.spring(time - entrance, response = 1.0, damping = 0.82)
+            val calm = min(time, beats.settle)
+            val swell = if (calm < beats.landing) 1.0 else exp(-3 * (calm - beats.landing))
+            val phase = 2 * Math.PI * calm / 1.7 + if (side < 0) 0.0 else 1.9
+            return MatchMomentPose(
+                x = (offstage + (meet - offstage) * drift).toFloat(),
+                y = (5 * sin(phase) * swell).toFloat(),
+                rotation = side * 10 + (settledTilt - side * 10) * drift + 3 * sin(phase + 0.8) * swell,
+            )
+        }
+        // Straight in from off-screen, accelerating, bobbing each stride, leaning in.
+        MatchMomentScene.SPRINT -> {
+            val run = MatchMomentCurve.clamp((time - beats.converge) / (beats.landing - beats.converge))
+            val finished = MatchMomentCurve.spring(time - beats.landing, response = 0.45, damping = 0.7)
+            val stride = if (time < beats.landing) -8 * abs(sin(run * Math.PI * 5)) else 0.0
+            val lean = -side * 10.0
+            return MatchMomentPose(
+                x = (offstage + (meet - offstage) * run * run).toFloat(),
+                y = stride.toFloat(),
+                rotation = lean + (settledTilt - lean) * finished,
+            )
+        }
+        else -> Unit
+    }
+
+    val entered = MatchMomentCurve.spring(time - entrance, response = 0.55, damping = 0.74)
+    val met = MatchMomentCurve.spring(time - beats.converge, response = 0.5, damping = 0.66)
+    val baseline = stage.baselineX * side
+    var x = offstage + (baseline - offstage) * entered
+    x += (meet - x) * met
+    var rotation = side * (14 + (4 - 14) * entered)
+    rotation += (settledTilt - rotation) * met
+    return MatchMomentPose(x.toFloat(), 0f, rotation)
+}
+
+/**
+ * Stretched across the finish line like the net; the cards break it, and each half snaps
+ * back to its post with a wobble. Port of `finishTape`.
+ */
+@Composable
+private fun MatchMomentFinishTape(time: Double, stage: MatchMomentStage, beats: MatchMomentBeats) {
+    val half = stage.courtHeight / 2 + 18
+    val stretched = MatchMomentCurve.easeInOut((time - 0.25) / 0.35).toFloat()
+    val broken = time - beats.landing
+    val snap = if (broken < 0) 0.0 else MatchMomentCurve.spring(broken, response = 0.5, damping = 0.45)
+    val wobble = if (broken < 0) 0.0 else 18 * exp(-5 * broken) * sin(20 * broken)
+    val length = half * stretched
+    val shrink = maxOf(0.14f, (1 - 0.86 * snap).toFloat())
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(stage.centerX.toPx(), stage.centerY.toPx())
+        listOf(-1f, 1f).forEach { end ->
+            drawCircle(
+                color = Color.White.copy(alpha = 0.7f),
+                radius = 4.5.dp.toPx(),
+                center = Offset(center.x, center.y + (end * half).dp.toPx()),
+            )
+            rotate(
+                degrees = (-wobble * end).toFloat(),
+                pivot = Offset(center.x, center.y + (end * half).dp.toPx()),
+            ) {
+                val tapeLength = (length * shrink).dp.toPx()
+                drawRoundRect(
+                    color = MatchMomentPalette.ball,
+                    topLeft = Offset(
+                        center.x - 2.dp.toPx(),
+                        center.y + (end * half).dp.toPx() - if (end < 0) 0f else tapeLength,
+                    ),
+                    size = Size(4.dp.toPx(), tapeLength),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                )
+            }
+        }
+    }
+}
+
+/** The air a sprinter drags behind them. Port of `speedLines`. */
+@Composable
+private fun MatchMomentSpeedLines(
+    side: Int,
+    time: Double,
+    stage: MatchMomentStage,
+    style: MatchMomentStyle,
+) {
+    val beats = style.beats
+    val run = MatchMomentCurve.clamp((time - beats.converge) / (beats.landing - beats.converge))
+    val strength = if (time < beats.landing) run else maxOf(0.0, 1 - (time - beats.landing) / 0.25)
+    if (strength <= 0.001) return
+    val pose = matchMomentPose(side, time, stage, style)
+    val behind = side * (CARD_WIDTH_UNITS / 2 + 22)
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(stage.centerX.toPx(), stage.centerY.toPx())
+        listOf(-38f, 4f, 42f).forEachIndexed { index, row ->
+            val length = 30f + 14f * index
+            val x = pose.x + behind + side * length / 2
+            drawRoundRect(
+                color = Color.White.copy(alpha = (0.4 * strength).toFloat()),
+                topLeft = Offset(
+                    center.x + (x - length / 2).dp.toPx(),
+                    center.y + (pose.y + row).dp.toPx() - 1.5.dp.toPx(),
+                ),
+                size = Size(length.dp.toPx(), 3.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5.dp.toPx()),
+            )
+        }
+    }
+}
+
+/**
+ * Each glove stays on its own boxer's side of the centre: they touch, not cross.
+ * Port of `glove(of:at:stage:style:)`.
+ */
+@Composable
+private fun MatchMomentGloveView(
+    side: Int,
+    time: Double,
+    stage: MatchMomentStage,
+    style: MatchMomentStyle,
+) {
+    val landing = style.beats.landing
+    val contact = style.landingPoint(stage)
+    val pose = matchMomentPose(side, time, stage, style)
+    val appear = MatchMomentCurve.easeOut((time - (landing - 0.5)) / 0.2)
+    if (appear <= 0.001) return
+
+    val heldX = pose.x - side * 40
+    val heldY = contact.y + 8
+    val strikeX = side * 17f
+    val restX = side * 23f
+    val point: Offset
+    if (time >= landing) {
+        val recoil = MatchMomentCurve.spring(time - landing, response = 0.35, damping = 0.55).toFloat()
+        point = Offset(strikeX + (restX - strikeX) * recoil, contact.y)
+    } else {
+        val punch = MatchMomentCurve.anticipate((time - (landing - 0.24)) / 0.24).toFloat()
+        point = Offset(heldX + (strikeX - heldX) * punch, heldY + (contact.y - heldY) * punch)
+    }
+    val impact = (1 + 0.12 * MatchMomentCurve.bump(time - landing)).toFloat()
+    val color = if (side < 0) Color(0xFFDB3D33) else Color(0xFF336BDB)
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(
+            stage.centerX.toPx() + point.x.dp.toPx(),
+            stage.centerY.toPx() + point.y.dp.toPx(),
+        )
+        scale(side * impact, impact, center) {
+            // The wrist wrap, the mitt and the thumb.
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.92f * appear.toFloat()),
+                topLeft = Offset(center.x - 17.dp.toPx() - 6.5.dp.toPx(), center.y - 12.dp.toPx()),
+                size = Size(13.dp.toPx(), 24.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()),
+            )
+            drawRoundRect(
+                color = color.copy(alpha = appear.toFloat()),
+                topLeft = Offset(center.x + 3.dp.toPx() - 19.dp.toPx(), center.y - 16.dp.toPx()),
+                size = Size(38.dp.toPx(), 32.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(15.dp.toPx()),
+            )
+            drawRoundRect(
+                color = color.copy(alpha = appear.toFloat()),
+                topLeft = Offset(center.x + 1.dp.toPx() - 8.5.dp.toPx(), center.y - 12.dp.toPx() - 5.dp.toPx()),
+                size = Size(17.dp.toPx(), 10.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()),
+            )
+        }
+    }
+}
+
+/** The bar dropping onto the cards, riding the squat and going overhead. Port of `barbell`. */
+@Composable
+private fun MatchMomentBarbellView(time: Double, stage: MatchMomentStage, beats: MatchMomentBeats) {
+    val caught = beats.contacts[0].time
+    val dropStart = caught - 0.3
+    val appear = MatchMomentCurve.clamp((time - dropStart) / 0.08).toFloat()
+    if (appear <= 0.001f) return
+
+    val squat = MatchMomentLift.squat(time, beats)
+    val press = MatchMomentLift.press(time, beats)
+    val y = if (time < caught) {
+        val fall = MatchMomentCurve.clamp((time - dropStart) / 0.3)
+        val shoulders = MatchMomentLift.barY(0.0, 0.0)
+        (-300 + (shoulders + 300) * (fall * fall)).toFloat()
+    } else {
+        MatchMomentLift.barY(squat, press)
+    }
+    val bend = (7 * (MatchMomentCurve.bump(time - caught) + 0.7 * MatchMomentCurve.bump(time - beats.landing))).toFloat()
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(stage.centerX.toPx(), stage.centerY.toPx() + y.dp.toPx())
+        drawRoundRect(
+            color = Color(0xFFB4B4B4).copy(alpha = appear),
+            topLeft = Offset(center.x - 146.dp.toPx(), center.y - 3.dp.toPx()),
+            size = Size(292.dp.toPx(), 6.dp.toPx()),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+        )
+        listOf(-1f, 1f).forEach { side ->
+            drawRoundRect(
+                color = MatchMomentPalette.ball.copy(alpha = appear),
+                topLeft = Offset(center.x + (side * 133 - 7).dp.toPx(), center.y + (bend - 29).dp.toPx()),
+                size = Size(14.dp.toPx(), 58.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()),
+            )
+            drawRoundRect(
+                color = AppTheme.clay.copy(alpha = appear),
+                topLeft = Offset(center.x + (side * 121 - 5).dp.toPx(), center.y + (bend * 0.8f - 21).dp.toPx()),
+                size = Size(10.dp.toPx(), 42.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+            )
+            drawRoundRect(
+                color = Color(0xFFCCCCCC).copy(alpha = appear),
+                topLeft = Offset(center.x + (side * 112 - 3).dp.toPx(), center.y + (bend * 0.6f - 8).dp.toPx()),
+                size = Size(6.dp.toPx(), 16.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+            )
         }
     }
 }

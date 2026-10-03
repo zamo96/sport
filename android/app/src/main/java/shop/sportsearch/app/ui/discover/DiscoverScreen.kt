@@ -738,9 +738,11 @@ fun DiscoverScreen(
                                 player = user.preferredSports,
                             ),
                             viewerName = appModel.currentUser?.name.orEmpty(),
-                            viewerImagePath = appModel.currentUser?.avatarUrl,
+                            // The card shows the first profile photo, as `profileHeroImagePath`
+                            // does on iOS — not the small avatar.
+                            viewerImagePath = appModel.currentUser?.profileHeroImagePath,
                             playerName = user.displayName,
-                            playerImagePath = user.avatarUrl,
+                            playerImagePath = user.profileHeroImagePath,
                         )
                     }
                 }

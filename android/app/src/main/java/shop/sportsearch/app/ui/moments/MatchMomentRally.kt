@@ -46,7 +46,54 @@ data class MatchMomentBeats(
     }
 
     companion object {
+        /** The cards head for each other almost as soon as they enter and touch at `landing`. */
         val meet = MatchMomentBeats(emptyList(), converge = 0.3, landing = 0.6, cardsTouch = true)
+
+        /** From off-screen straight to the tape, one light tick per stride. */
+        val sprint: MatchMomentBeats = run {
+            val start = 0.12
+            val finish = 1.0
+            MatchMomentBeats(
+                contacts = (1..4).map { step ->
+                    MatchMomentContact(start + (finish - start) * step / 5, null, MatchMomentFeel.LIGHT)
+                },
+                converge = start,
+                landing = finish,
+                cardsTouch = true,
+            )
+        }
+
+        /** They square up, then the gloves meet. */
+        val gloves = MatchMomentBeats(emptyList(), converge = 0.7, landing = 1.05, cardsTouch = false)
+
+        /**
+         * Both walk in under the bar, catch it as it drops, sit into one squat and press
+         * it overhead together.
+         */
+        val lift = MatchMomentBeats(
+            contacts = listOf(
+                MatchMomentContact(1.02, null, MatchMomentFeel.RIGID),
+                MatchMomentContact(1.42, null, MatchMomentFeel.MEDIUM),
+            ),
+            converge = 0.25,
+            landing = 1.72,
+            cardsTouch = false,
+        )
+
+        /** One soft pulse on the first inhale; they arrive on the exhale. */
+        val breathe = MatchMomentBeats(
+            contacts = listOf(MatchMomentContact(0.75, null, MatchMomentFeel.SOFT)),
+            converge = 0.0,
+            landing = 1.55,
+            cardsTouch = false,
+            rest = 2.1,
+            gentle = true,
+        )
+
+        /** The boards touch as the drift arrives (its spring is ~98% there by 0.85 s). */
+        val float = MatchMomentBeats(
+            emptyList(), converge = 0.0, landing = 0.9, cardsTouch = true, rest = 1.5, gentle = true,
+        )
 
         /** Serve, return, closing shot: the shape every net rally shares. */
         fun exchange(
@@ -85,7 +132,15 @@ enum class MatchMomentGround(
     TABLE_TENNIS(2.74f / 1.525f, Color(0xFF1F4D8F), 0.5f, 2.5f),
     VOLLEYBALL(18f / 9f, AppTheme.clay, 0.2f, 3.5f),
     SQUASH(2.1f, Color(0xFFC79E66), 0.2f, null),
-    FOOTBALL(105f / 68f, Color(0xFF29803D), 0.2f, null);
+    FOOTBALL(105f / 68f, Color(0xFF29803D), 0.2f, null),
+
+    // The grounds of the scenes that hit nothing: the track, the ring's apron, the gym
+    // floor, the mat and the water.
+    TRACK(2.2f, Color(0xFFBD4D38), 0.2f, null),
+    RING(2f, Color(0xFFDBD4C2), 0.5f, null),
+    GYM(2.2f, Color(0xFF575757), 0.12f, null),
+    MAT(3f, Color(0xFF8066AD), 0.3f, null),
+    WATER(2f, Color(0xFF1F73AD), 0.2f, null);
 
     val lineWidth: Float get() = if (this == TABLE_TENNIS) 2.5f else 1.5f
 }
@@ -404,6 +459,9 @@ fun matchMomentGroundLines(ground: MatchMomentGround, rect: Rect): Path = Path()
                 addRect(Rect(goalX, rect.center.y - goalWidth / 2, goalX + 6, rect.center.y + goalWidth / 2))
             }
         }
+        MatchMomentGround.TRACK, MatchMomentGround.RING, MatchMomentGround.GYM,
+        MatchMomentGround.MAT, MatchMomentGround.WATER,
+        -> Unit
     }
 }
 
