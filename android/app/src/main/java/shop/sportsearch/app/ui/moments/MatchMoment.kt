@@ -89,16 +89,20 @@ object MatchMomentPalette {
  */
 enum class MatchMomentProjectile(
     val flightSize: Float,
+    /** The size it grows to once it lands as the seal between the cards. */
+    val sealSize: Float,
     val accent: Color,
     val isShuttle: Boolean = false,
+    /** A football rests at the feet and turns as it rolls instead of spinning in the air. */
+    val rolls: Boolean = false,
 ) {
-    TENNIS_BALL(32f, MatchMomentPalette.ball),
-    PADEL_BALL(30f, MatchMomentPalette.ball),
-    SHUTTLECOCK(30f, Color.White, isShuttle = true),
-    PING_PONG(18f, Color.White),
-    VOLLEYBALL(34f, MatchMomentPalette.volleyballYellow),
-    FOOTBALL(34f, Color.White),
-    SQUASH_BALL(18f, MatchMomentPalette.ball);
+    TENNIS_BALL(32f, 46f, MatchMomentPalette.ball),
+    PADEL_BALL(30f, 44f, MatchMomentPalette.ball),
+    SHUTTLECOCK(30f, 44f, Color.White, isShuttle = true),
+    PING_PONG(18f, 34f, Color.White),
+    VOLLEYBALL(34f, 48f, MatchMomentPalette.volleyballYellow),
+    FOOTBALL(34f, 48f, Color.White, rolls = true),
+    SQUASH_BALL(18f, 34f, MatchMomentPalette.ball);
 
     companion object {
         /** `MatchMomentRally(sport:)`: the sports without one play their own scene. */

@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -70,17 +71,7 @@ data class MatchMoment(
     val playerImagePath: String?,
 )
 
-/**
- * Beats of the neutral scene (`MatchMomentBeats.meet`): both cards come in from their
- * sides, meet in the middle, and the sport's badge lands between them.
- */
-private object MatchMomentBeat {
-    const val CONVERGE = 0.3
-    const val LANDING = 0.6
-    const val COPY = LANDING - 0.11
-    const val ACTIONS = LANDING + 0.17
-    const val FINAL_FRAME = 10.0
-}
+private const val FINAL_FRAME = 10.0
 
 private val CARD_WIDTH = 116.dp
 private val CARD_HEIGHT = 148.dp
@@ -104,16 +95,21 @@ fun MatchMomentOverlay(
     val reduceMotion = remember {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
+    val rally = remember(moment.sport) { MatchMomentRally.of(moment.sport) }
+    val beats = rally?.beats ?: MatchMomentBeats.meet.copy(
+        rest = matchMomentRest(moment.sport),
+        gentle = matchMomentLandsGently(moment.sport),
+    )
     var settled by remember(moment.id) { mutableStateOf(reduceMotion) }
     var time by remember(moment.id) {
-        mutableStateOf(if (reduceMotion) MatchMomentBeat.FINAL_FRAME else 0.0)
+        mutableStateOf(if (reduceMotion) FINAL_FRAME else 0.0)
     }
     val accent = when (moment.sport) {
         Sport.YOGA -> AppTheme.mint
         Sport.SUPBOARD -> MatchMomentPalette.water
         else -> MatchMomentProjectile.of(moment.sport)?.accent ?: MatchMomentPalette.ball
     }
-    val settle = MatchMomentBeat.LANDING + matchMomentRest(moment.sport)
+    val settle = beats.landing + matchMomentRest(moment.sport)
 
     LaunchedEffect(moment.id) {
         if (reduceMotion) {
@@ -121,16 +117,25 @@ fun MatchMomentOverlay(
             return@LaunchedEffect
         }
         val start = withFrameNanos { it }
+        val pending = beats.contacts.toMutableList()
         var landingCue = false
         while (!settled) {
             val elapsed = (withFrameNanos { it } - start) / 1_000_000_000.0
             time = elapsed
-            if (!landingCue && elapsed >= MatchMomentBeat.LANDING) {
+            // Each contact lands in the hand as hard as it does on screen.
+            while (pending.isNotEmpty() && elapsed >= pending.first().time) {
+                when (pending.removeAt(0).feel) {
+                    MatchMomentFeel.LIGHT, MatchMomentFeel.SOFT -> haptics.impactLight()
+                    MatchMomentFeel.MEDIUM -> haptics.impactMedium()
+                    MatchMomentFeel.RIGID -> haptics.impactHeavy()
+                }
+            }
+            if (!landingCue && elapsed >= beats.landing) {
                 if (matchMomentLandsGently(moment.sport)) haptics.success() else haptics.impactHeavy()
                 landingCue = true
             }
             if (elapsed >= settle) {
-                time = MatchMomentBeat.FINAL_FRAME
+                time = FINAL_FRAME
                 settled = true
             }
         }
@@ -146,19 +151,21 @@ fun MatchMomentOverlay(
             .pointerInput(moment.id) {
                 detectTapGestures {
                     if (!settled) {
-                        if (time < MatchMomentBeat.LANDING) haptics.success()
-                        time = MatchMomentBeat.FINAL_FRAME
+                        if (time < beats.landing) haptics.success()
+                        time = FINAL_FRAME
                         settled = true
                     }
                 }
             },
     ) {
         val density = LocalDensity.current
-        val stage = remember(maxWidth, maxHeight) { MatchMomentStage(maxWidth, maxHeight) }
+        val stage = remember(maxWidth, maxHeight, rally) {
+            MatchMomentStage(maxWidth, maxHeight, rally?.ground?.aspect ?: MatchMomentGround.TENNIS.aspect)
+        }
         val landingPx = with(density) {
             Offset(stage.centerX.toPx(), (stage.centerY + stage.landingY).toPx())
         }
-        val landed = time - MatchMomentBeat.LANDING
+        val landed = time - beats.landing
         val particles = remember(moment.sport) { MatchMomentParticle.forSport(moment.sport) }
 
         // The flash of the meeting, dying away under the cards.
@@ -178,7 +185,7 @@ fun MatchMomentOverlay(
 
             // `rings`, default case: two waves out of the meeting point.
             listOf(0.0, 0.1).forEach { delay ->
-                val progress = (time - (MatchMomentBeat.LANDING + delay)) / 0.75
+                val progress = (time - (beats.landing + delay)) / 0.75
                 if (progress in 0.0..1.0) {
                     val radius = 24.dp.toPx() + 150.dp.toPx() * MatchMomentCurve.easeOut(progress).toFloat()
                     drawCircle(
@@ -191,6 +198,10 @@ fun MatchMomentOverlay(
             }
         }
 
+        if (rally != null) {
+            MatchMomentGroundView(rally = rally, time = time, stage = stage, converge = beats.converge)
+        }
+
         MatchMomentPlayerCard(
             name = moment.viewerName,
             caption = L10n.string("You", "Ты"),
@@ -199,6 +210,7 @@ fun MatchMomentOverlay(
             side = -1,
             time = time,
             stage = stage,
+            beats = beats,
         )
         MatchMomentPlayerCard(
             name = moment.playerName,
@@ -208,6 +220,7 @@ fun MatchMomentOverlay(
             side = 1,
             time = time,
             stage = stage,
+            beats = beats,
         )
 
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -237,7 +250,11 @@ fun MatchMomentOverlay(
             }
         }
 
-        MatchMomentSportBadge(sport = moment.sport, time = time, stage = stage)
+        if (rally == null) {
+            MatchMomentSportBadge(sport = moment.sport, time = time, stage = stage, landing = beats.landing)
+        } else {
+            MatchMomentProjectileView(rally = rally, time = time, stage = stage)
+        }
 
         Column(
             modifier = Modifier
@@ -251,7 +268,7 @@ fun MatchMomentOverlay(
                 L10n.string("New match", "Новый мэтч").uppercase(),
                 style = AppText.captionBold,
                 color = Color(0xFFC2F7CC),
-                modifier = Modifier.matchMomentReveal(time, MatchMomentBeat.COPY),
+                modifier = Modifier.matchMomentReveal(time, beats.copy),
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
@@ -259,7 +276,7 @@ fun MatchMomentOverlay(
                 style = AppText.titleBold,
                 color = Color.White,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.matchMomentReveal(time, MatchMomentBeat.COPY + 0.08),
+                modifier = Modifier.matchMomentReveal(time, beats.copy + 0.08),
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
@@ -267,22 +284,22 @@ fun MatchMomentOverlay(
                 style = AppText.subheadlineSemibold,
                 color = Color.White.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.matchMomentReveal(time, MatchMomentBeat.COPY + 0.16),
+                modifier = Modifier.matchMomentReveal(time, beats.copy + 0.16),
             )
             Spacer(modifier = Modifier.weight(1f))
             MatchMomentPrimaryButton(
                 text = matchMomentAction(moment.sport),
-                enabled = time >= MatchMomentBeat.ACTIONS,
+                enabled = time >= beats.actions,
                 onClick = onPlanGame,
-                modifier = Modifier.matchMomentReveal(time, MatchMomentBeat.ACTIONS),
+                modifier = Modifier.matchMomentReveal(time, beats.actions),
             )
             Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp)
-                    .matchMomentReveal(time, MatchMomentBeat.ACTIONS + 0.08)
-                    .clickable(enabled = time >= MatchMomentBeat.ACTIONS, onClick = onKeepBrowsing),
+                    .matchMomentReveal(time, beats.actions + 0.08)
+                    .clickable(enabled = time >= beats.actions, onClick = onKeepBrowsing),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -295,29 +312,37 @@ fun MatchMomentOverlay(
     }
 }
 
-/** Port of `MatchMomentStage` for the neutral scene, which draws no ground. */
-private class MatchMomentStage(width: Dp, height: Dp) {
-    val centerX: Dp = (width.value / 2).dp
+/** Port of `MatchMomentStage`. Units are dp relative to the stage centre, as on iOS. */
+private class MatchMomentStage(
+    width: Dp,
+    height: Dp,
+    groundAspect: Float,
+) : MatchMomentStageGeometry {
+    val centerX: Dp
     val centerY: Dp
     val copyTop: Dp
-    val baselineX: Dp
     val offstageX: Dp
+    override val courtWidth: Float
+    override val courtHeight: Float
+    override val baselineX: Float
 
     init {
-        val courtWidth = min(width.value - 24f, 380f)
-        val courtHeight = courtWidth / 1.6f
-        // Centre the settled picture in the space above the actions.
+        courtWidth = min(width.value - 24f, 380f)
+        courtHeight = courtWidth / groundAspect
+        // Centre the settled picture (seal, court, copy) in the space above the actions;
+        // the highest lob still needs headroom on short screens.
         val settledAboveCenter = 96f
         val settledHeight = settledAboveCenter + courtHeight / 2 + 40 + 110
         val y = maxOf(230f, (height.value - 120 - settledHeight) / 2 + settledAboveCenter)
+        centerX = (width.value / 2).dp
         centerY = y.dp
         copyTop = (y + courtHeight / 2 + 40).dp
-        baselineX = (courtWidth / 2 - CARD_WIDTH.value / 2 - 4).dp
-        offstageX = (width.value / 2 + CARD_WIDTH.value).dp
+        baselineX = courtWidth / 2 - CARD_WIDTH_UNITS / 2 - 4
+        offstageX = (width.value / 2 + CARD_WIDTH_UNITS).dp
     }
 
-    /** The gap between the two cards' top corners once they meet. */
-    val landingY: Dp = (-CARD_HEIGHT.value / 2 + 4).dp
+    val landingY: Dp get() = landing.y.dp
+    val baselineXDp: Dp get() = baselineX.dp
 
     /** Where the cards settle, left and right of the centre. */
     val meetX: Dp = 54.dp
@@ -337,21 +362,25 @@ private fun MatchMomentPlayerCard(
     side: Int,
     time: Double,
     stage: MatchMomentStage,
+    beats: MatchMomentBeats,
 ) {
     val entrance = if (side < 0) 0.05 else 0.12
     val entered = MatchMomentCurve.spring(time - entrance, response = 0.55, damping = 0.74)
-    val met = MatchMomentCurve.spring(time - MatchMomentBeat.CONVERGE, response = 0.5, damping = 0.66)
+    val met = MatchMomentCurve.spring(time - beats.converge, response = 0.5, damping = 0.66)
     val offstage = stage.offstageX.value * side
-    val baseline = stage.baselineX.value * side
+    val baseline = stage.baselineX * side
     val meet = stage.meetX.value * side
     var x = offstage + (baseline - offstage) * entered
     x += (meet - x) * met
     var rotation = side * (14 + (4 - 14) * entered)
     rotation += (side * stage.settledTilt - rotation) * met
 
-    // `cardsTouch`: the neutral scene's single hit is the meeting itself.
-    val swing = MatchMomentCurve.bump(time - MatchMomentBeat.LANDING)
-    val flash = (time - MatchMomentBeat.LANDING).let { since ->
+    // A hit (or the two cards colliding) lunges the card at the centre and squeezes it,
+    // then springs back; the same hits flash it white.
+    val hits = beats.hits(side)
+    val swing = hits.sumOf { MatchMomentCurve.bump(time - it) }
+    val flash = hits.sumOf { hit ->
+        val since = time - hit
         if (since < 0) 0.0 else 0.35 * exp(-14 * since)
     }
 
@@ -405,12 +434,12 @@ private fun MatchMomentPlayerCard(
 
 /** The sport's badge landing in the gap between the cards. Port of `sportBadge`. */
 @Composable
-private fun MatchMomentSportBadge(sport: Sport, time: Double, stage: MatchMomentStage) {
+private fun MatchMomentSportBadge(sport: Sport, time: Double, stage: MatchMomentStage, landing: Double) {
     val gentle = matchMomentLandsGently(sport)
     val pop = if (gentle) {
-        MatchMomentCurve.easeOut((time - MatchMomentBeat.LANDING) / 0.6)
+        MatchMomentCurve.easeOut((time - landing) / 0.6)
     } else {
-        MatchMomentCurve.spring(time - MatchMomentBeat.LANDING, response = 0.42, damping = 0.55)
+        MatchMomentCurve.spring(time - landing, response = 0.42, damping = 0.55)
     }
     if (pop <= 0.001) return
 
@@ -441,5 +470,91 @@ private fun MatchMomentCardInitials(name: String) {
             color = Color.White.copy(alpha = 0.92f),
             modifier = Modifier.offset(y = (-10).dp),
         )
+    }
+}
+
+/**
+ * The court, its markings and the net, drawn in as the scene opens and stepping back
+ * once the players leave their places for the centre. Port of `ground(_:at:stage:style:)`.
+ *
+ * SwiftUI trims the markings path as it draws; here they fade in over the same window —
+ * Compose has no cheap trim across a path of many contours.
+ */
+@Composable
+private fun MatchMomentGroundView(
+    rally: MatchMomentRally,
+    time: Double,
+    stage: MatchMomentStage,
+    converge: Double,
+) {
+    val drawn = MatchMomentCurve.easeInOut((time - 0.1) / 0.7).toFloat()
+    val stretched = MatchMomentCurve.easeInOut((time - 0.25) / 0.35).toFloat()
+    val recede = (1 - 0.5 * MatchMomentCurve.easeInOut((time - converge) / 0.4)).toFloat()
+    if (drawn <= 0.001f) return
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(stage.centerX.toPx(), stage.centerY.toPx())
+        val width = stage.courtWidth.dp.toPx()
+        val height = stage.courtHeight.dp.toPx()
+        val rect = androidx.compose.ui.geometry.Rect(
+            center.x - width / 2, center.y - height / 2,
+            center.x + width / 2, center.y + height / 2,
+        )
+
+        drawRoundRect(
+            color = rally.ground.surface.copy(alpha = 0.26f * drawn * recede),
+            topLeft = Offset(rect.left, rect.top),
+            size = Size(rect.width, rect.height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+        )
+        drawPath(
+            path = matchMomentGroundLines(rally.ground, rect),
+            color = Color.White.copy(alpha = rally.ground.lineOpacity * drawn * recede),
+            style = Stroke(width = rally.ground.lineWidth.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+        )
+
+        rally.ground.netWidth?.let { netWidth ->
+            val netHeight = (height + 28.dp.toPx()) * stretched
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.45f * recede),
+                topLeft = Offset(center.x - netWidth.dp.toPx() / 2, center.y - (height + 28.dp.toPx()) / 2),
+                size = Size(netWidth.dp.toPx(), netHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(netWidth.dp.toPx() / 2),
+            )
+        }
+    }
+}
+
+/** The ball, shuttle or cork mid-rally, with the ghosts of where it just was. */
+@Composable
+private fun MatchMomentProjectileView(
+    rally: MatchMomentRally,
+    time: Double,
+    stage: MatchMomentStage,
+) {
+    val flight = MatchMomentFlight.state(time, stage, rally) ?: return
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(stage.centerX.toPx(), stage.centerY.toPx())
+        fun place(offset: Offset) = Offset(center.x + offset.x.dp.toPx(), center.y + offset.y.dp.toPx())
+
+        if (flight.isInFlight) {
+            for (index in 1..4) {
+                val ghost = MatchMomentFlight.state(time - 0.022 * index, stage, rally) ?: continue
+                if (!ghost.isInFlight) continue
+                drawCircle(
+                    color = rally.projectile.accent.copy(alpha = (0.26 * (1 - index / 5.0)).toFloat()),
+                    radius = rally.projectile.flightSize.dp.toPx() * ghost.depth * (1 - 0.1f * index) / 2,
+                    center = place(ghost.position),
+                )
+            }
+        }
+
+        val position = place(flight.position)
+        rotate(flight.rotation, position) {
+            scale(flight.squashX, flight.squashY, position) {
+                drawProjectile(rally.projectile, position, flight.size.dp.toPx())
+            }
+        }
     }
 }
