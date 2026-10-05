@@ -340,6 +340,7 @@ struct AuthView: View {
             introScreen
         case .email:
             emailStep
+                .onAppear { appModel.syncAuthCountryWithDraft() }
                 .task { await appModel.loadSignInOptions() }
                 // Sign-in is drawn light. In system dark mode the system colors here
                 // (.secondary text, the segmented picker) turned white on the white card.

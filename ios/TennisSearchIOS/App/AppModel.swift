@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     @Published var guestDraft: GuestOnboardingDraft
     @Published var isBusy = false
     @Published var authEmail = ""
-    /// Страна на экране входа: для России — телефон или VK ID, для остальных — email или Apple.
+    /// Страна на экране входа: для России — email или VK ID, для остальных — email или Apple.
     @Published var authCountry: AuthCountry = .russia
     /// Ten digits after +7; the field accepts digits only.
     @Published var authPhone = ""
@@ -535,6 +535,13 @@ final class AppModel: ObservableObject {
                 showOnMap: guestDraft.showOnMap
             )
         }
+    }
+
+    /// The city picked in the questionnaire decides the sign-in country. The guess made
+    /// at launch came before that choice; without a city it stays as it was.
+    func syncAuthCountryWithDraft() {
+        guard guestDraft.location?.countryCode != nil else { return }
+        authCountry = AuthCountry.suggested(for: guestDraft)
     }
 
     func loadSignInOptions() async {
