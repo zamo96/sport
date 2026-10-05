@@ -540,8 +540,14 @@ final class AppModel: ObservableObject {
     /// The city picked in the questionnaire decides the sign-in country. The guess made
     /// at launch came before that choice; without a city it stays as it was.
     func syncAuthCountryWithDraft() {
-        guard guestDraft.location?.countryCode != nil else { return }
+        guard isAuthCountryKnownFromDraft else { return }
         authCountry = AuthCountry.suggested(for: guestDraft)
+    }
+
+    /// A city in the questionnaire already tells where the person is: the sign-in
+    /// screen then skips the «Где вы находитесь?» switch.
+    var isAuthCountryKnownFromDraft: Bool {
+        !(guestDraft.location?.countryCode ?? "").isEmpty
     }
 
     func loadSignInOptions() async {

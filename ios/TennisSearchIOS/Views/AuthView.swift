@@ -843,6 +843,7 @@ struct AuthView: View {
             phone: $appModel.authPhone,
             isVkIdAvailable: appModel.isVkIdAvailable,
             isSmsAvailable: appModel.isSmsSignInAvailable,
+            isCountryChoiceVisible: !appModel.isAuthCountryKnownFromDraft,
             authMessage: appModel.authMessage,
             errorMessage: appModel.errorMessage,
             debugCode: appModel.debugCode,
@@ -1321,6 +1322,9 @@ private struct AuthSignInReferenceScreen: View {
     @Binding var phone: String
     let isVkIdAvailable: Bool
     let isSmsAvailable: Bool
+    /// The country is asked only when the questionnaire has no city: otherwise the
+    /// person already said where they are, and the sign-in follows it.
+    let isCountryChoiceVisible: Bool
     let authMessage: String?
     let errorMessage: String?
     let debugCode: String?
@@ -1407,16 +1411,18 @@ private struct AuthSignInReferenceScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.string("Where are you?", "Где вы находитесь?"))
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Picker(L10n.string("Where are you?", "Где вы находитесь?"), selection: $country) {
-                    ForEach(AuthCountry.allCases) { option in
-                        Text(option.title).tag(option)
+            if isCountryChoiceVisible {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.string("Where are you?", "Где вы находитесь?"))
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Picker(L10n.string("Where are you?", "Где вы находитесь?"), selection: $country) {
+                        ForEach(AuthCountry.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
                     }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
             }
 
             if country == .russia {
