@@ -25,9 +25,9 @@ describe("user agreement localization", () => {
     expect(getUserAgreementDocument("en")).toBe(USER_AGREEMENT_DOCUMENTS.en);
   });
 
-  it("keeps the complete 17-section structure in both languages", () => {
-    expect(USER_AGREEMENT_SECTIONS).toHaveLength(17);
-    expect(USER_AGREEMENT_SECTIONS_EN).toHaveLength(17);
+  it("keeps the complete nine-section structure in both languages", () => {
+    expect(USER_AGREEMENT_SECTIONS).toHaveLength(9);
+    expect(USER_AGREEMENT_SECTIONS_EN).toHaveLength(9);
     expect(USER_AGREEMENT_SECTIONS_EN).toHaveLength(USER_AGREEMENT_SECTIONS.length);
   });
 

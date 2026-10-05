@@ -9,7 +9,7 @@ import { directMessageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 import {
   chatMessageAttachmentsInclude,
-  chatMessagePreview,
+  chatMessagePushContent,
   claimChatMessageAttachments,
   serializeChatMessage
 } from "@/server/chat-media";
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await sendPushToUser({
         userId: recipient.id,
         title: `Сообщение по игре от ${user.name ?? "игрока"}`,
-        body: chatMessagePreview(message),
+        ...chatMessagePushContent(message),
         href: `/play/games/${gameRequest.id}`,
         sound: recipient.notificationSound ?? true
       });

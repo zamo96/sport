@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
-import { mkdir, readFile, unlink, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from "fs/promises";
 import path from "path";
 
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import sharp from "sharp";
 
@@ -260,6 +260,42 @@ export async function readChatImage(storageKey: string) {
   return readFile(safeLocalPath(storageKey));
 }
 
+/** Every stored chat photo and when it was written, to find files the database no longer knows. */
+export async function listStoredChatImages(): Promise<Array<{ storageKey: string; storedAt: Date }>> {
+  if (usesS3()) {
+    const client = getPrivateS3Client();
+    const bucket = requiredEnv("S3_BUCKET");
+    const files: Array<{ storageKey: string; storedAt: Date }> = [];
+    let continuationToken: string | undefined;
+    do {
+      const page = await client.send(
+        new ListObjectsV2Command({ Bucket: bucket, Prefix: `${CHAT_MEDIA_PREFIX}/`, ContinuationToken: continuationToken })
+      );
+      for (const object of page.Contents ?? []) {
+        if (object.Key && object.LastModified) files.push({ storageKey: object.Key, storedAt: object.LastModified });
+      }
+      continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return files;
+  }
+
+  const files: Array<{ storageKey: string; storedAt: Date }> = [];
+  async function walk(directory: string, keyPrefix: string) {
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      const key = `${keyPrefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        await walk(entryPath, key);
+      } else if (entry.isFile()) {
+        files.push({ storageKey: key, storedAt: (await stat(entryPath)).mtime });
+      }
+    }
+  }
+  await walk(localChatMediaRoot(), CHAT_MEDIA_PREFIX);
+  return files;
+}
+
 export async function removeStoredChatImage(storageKey: string) {
   if (usesS3()) {
     await getPrivateS3Client()
@@ -297,6 +333,17 @@ export function serializeChatMessage<T extends MessageWithAttachments>(message: 
     attachments: message.attachments.map(serializeChatAttachment),
     createdAt: message.createdAt.toISOString()
   };
+}
+
+/** What a device push says about a new chat message: never the message itself. */
+export const CHAT_PUSH_BODY = "Откройте, чтобы прочитать";
+
+/**
+ * Apple and Google deliver pushes, so the text of a private message must not go
+ * into one; the preview is shown only in the in-app banner.
+ */
+export function chatMessagePushContent(message: { text: string; attachments: Array<unknown> }) {
+  return { body: CHAT_PUSH_BODY, inAppBody: chatMessagePreview(message) };
 }
 
 export function chatMessagePreview(message: { text: string; attachments: Array<unknown> }) {

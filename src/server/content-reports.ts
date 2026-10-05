@@ -19,6 +19,7 @@ import type {
   ResolveContentReportInput
 } from "@/lib/validators";
 import { lockActiveUsersForMutation } from "@/server/account-status";
+import { accountContact } from "@/lib/account-contact";
 
 const REPORT_SLA_MS = 24 * 60 * 60 * 1000;
 const REMOVED_MESSAGE = "Сообщение удалено модератором";
@@ -175,8 +176,8 @@ export async function createUserContentReport(
 
   const report = await prisma.$transaction(async (tx) => {
     const [reporter, target] = await Promise.all([
-      tx.user.findUnique({ where: { id: reporterUserId }, select: { id: true, email: true, name: true } }),
-      tx.user.findUnique({ where: { id: reportedUserId }, select: { id: true, email: true, name: true } })
+      tx.user.findUnique({ where: { id: reporterUserId }, select: { id: true, email: true, phone: true, name: true } }),
+      tx.user.findUnique({ where: { id: reportedUserId }, select: { id: true, email: true, phone: true, name: true } })
     ]);
     if (!reporter) throw new Error("UNAUTHORIZED");
     if (!target) throw new Error("REPORTED_USER_NOT_FOUND");
@@ -185,10 +186,10 @@ export async function createUserContentReport(
     return tx.contentReport.create({
       data: {
         reporterUserId,
-        reporterEmail: reporter.email,
+        reporterEmail: accountContact(reporter),
         reporterName: reporter.name,
         reportedUserId,
-        reportedEmail: target.email,
+        reportedEmail: accountContact(target),
         reportedName: target.name,
         origin: ContentReportOrigin.report,
         reason: input.reason,
@@ -215,8 +216,8 @@ export async function blockUserAndReport(
     if (!locked.has(reporterUserId)) throw new Error("UNAUTHORIZED");
     if (!locked.has(reportedUserId)) throw new Error("REPORTED_USER_NOT_FOUND");
     const [reporter, target] = await Promise.all([
-      tx.user.findUnique({ where: { id: reporterUserId }, select: { id: true, email: true, name: true } }),
-      tx.user.findUnique({ where: { id: reportedUserId }, select: { id: true, email: true, name: true } })
+      tx.user.findUnique({ where: { id: reporterUserId }, select: { id: true, email: true, phone: true, name: true } }),
+      tx.user.findUnique({ where: { id: reportedUserId }, select: { id: true, email: true, phone: true, name: true } })
     ]);
     if (!reporter) throw new Error("UNAUTHORIZED");
     if (!target) throw new Error("REPORTED_USER_NOT_FOUND");
@@ -243,10 +244,10 @@ export async function blockUserAndReport(
     const created = await tx.contentReport.create({
       data: {
         reporterUserId,
-        reporterEmail: reporter.email,
+        reporterEmail: accountContact(reporter),
         reporterName: reporter.name,
         reportedUserId,
-        reportedEmail: target.email,
+        reportedEmail: accountContact(target),
         reportedName: target.name,
         blockId: block.id,
         origin: ContentReportOrigin.block,
@@ -265,11 +266,11 @@ export async function blockUserAndReport(
 }
 
 const reportInclude = {
-  reporterUser: { select: { id: true, email: true, name: true } },
+  reporterUser: { select: { id: true, email: true, phone: true, name: true } },
   reportedUser: {
     select: { id: true, email: true, name: true, accountStatus: true, avatarUrl: true, updatedAt: true }
   },
-  reviewedByUser: { select: { id: true, email: true, name: true } }
+  reviewedByUser: { select: { id: true, email: true, phone: true, name: true } }
 } satisfies Prisma.ContentReportInclude;
 
 export async function listAdminContentReports(query: AdminContentReportsQuery) {

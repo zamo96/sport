@@ -59,6 +59,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var isBusy by mutableStateOf(false)
     var authEmail by mutableStateOf("")
+    /** Sign-in country: Russia uses email, VK ID or SMS; elsewhere email or Google. */
+    var authCountry by mutableStateOf(AuthCountry.suggested(guestDraft.location?.countryCode?.takeIf { it.isNotEmpty() }))
+    /** Ten digits after +7; the field accepts digits only. */
+    var authPhone by mutableStateOf("")
+    var authCodeTarget by mutableStateOf(AuthCodeTarget.EMAIL)
+    /** When the code screen may ask for another SMS, in epoch milliseconds. */
+    var phoneCodeResendAvailableAt by mutableStateOf<Long?>(null)
+        private set
+    /** The VK ID button shows only once the server has VK_ID_CLIENT_ID. */
+    var isVkIdAvailable by mutableStateOf(false)
+        private set
+    /** SMS sign-in is switched on separately on the server (SMS_SIGN_IN_ENABLED). */
+    var isSmsSignInAvailable by mutableStateOf(false)
+        private set
+    /** PKCE of the VK ID sign-in in flight: only this app knows the verifier. */
+    private var pendingVkSignIn: Pair<String, String>? = null
     var debugCode by mutableStateOf<String?>(null)
     var authMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
@@ -311,6 +327,131 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // MARK: - Sign-in for Russia: phone and VK ID (149-FZ art. 8 part 10)
+
+    suspend fun requestPhoneCode(): Boolean {
+        val phone = RussianPhone.normalized(authPhone)
+        if (phone == null) {
+            errorMessage = L10n.string("Enter a Russian mobile number: +7 9XX XXX-XX-XX", "Укажите российский мобильный номер: +7 9XX XXX-XX-XX")
+            return false
+        }
+        isBusy = true
+        return try {
+            val challenge = repository.requestPhoneCode(phone, LegalDocuments.USER_AGREEMENT_VERSION)
+            authCodeTarget = AuthCodeTarget.PHONE
+            authMessage = challenge.message
+            debugCode = challenge.debugCode
+            phoneCodeResendAvailableAt = challenge.resendAfterSeconds?.let { System.currentTimeMillis() + it * 1000L }
+            errorMessage = null
+            true
+        } catch (error: Throwable) {
+            present(error)
+            false
+        } finally {
+            isBusy = false
+        }
+    }
+
+    suspend fun verifyPhone(code: String) {
+        val phone = RussianPhone.normalized(authPhone)
+        if (phone == null) {
+            errorMessage = L10n.string("Enter your phone number first", "Сначала укажите номер телефона")
+            return
+        }
+        isBusy = true
+        try {
+            repository.verifyPhoneCode(phone, code, LegalDocuments.USER_AGREEMENT_VERSION, guestDraft.showOnMap)
+            completeSignIn()
+        } catch (error: Throwable) {
+            present(error)
+        } finally {
+            isBusy = false
+        }
+    }
+
+    suspend fun loadSignInOptions() {
+        val options = runCatching { repository.fetchSignInOptions() }.getOrNull() ?: return
+        isVkIdAvailable = options.vk.available
+        isSmsSignInAvailable = options.sms
+    }
+
+    /**
+     * Opens VK ID in a Custom Tab. VK returns to /auth/vk/callback, which
+     * redirects to sportsearch://auth/vk; MainActivity (singleTask) hands that
+     * back to [handleIncomingUri].
+     */
+    suspend fun startVkSignIn(context: Context) {
+        errorMessage = null
+        val config = try {
+            repository.fetchVkIdConfig()
+        } catch (error: Throwable) {
+            present(error)
+            return
+        }
+        val clientId = config.clientId
+        if (!config.available || clientId == null) {
+            errorMessage = L10n.string("VK ID sign-in is not available yet. Sign in with email.", "Вход через VK ID пока недоступен. Войдите по email.")
+            return
+        }
+        val verifier = VkIdPkce.randomString(48)
+        // The android_ prefix tells the return page to hand the code back to the app.
+        val state = "android_" + VkIdPkce.randomString(32)
+        pendingVkSignIn = verifier to state
+        val uri = android.net.Uri.parse(config.authorizeUrl).buildUpon()
+            .appendQueryParameter("response_type", "code")
+            .appendQueryParameter("client_id", clientId)
+            .appendQueryParameter("redirect_uri", config.redirectUri)
+            .appendQueryParameter("state", state)
+            .appendQueryParameter("code_challenge", VkIdPkce.challenge(verifier))
+            .appendQueryParameter("code_challenge_method", "S256")
+            .appendQueryParameter("scope", config.scope)
+            .build()
+        androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(context, uri)
+    }
+
+    private suspend fun completeVkSignIn(uri: android.net.Uri) {
+        val pending = pendingVkSignIn
+        pendingVkSignIn = null
+        val code = uri.getQueryParameter("code")
+        val deviceId = uri.getQueryParameter("device_id")
+        val state = uri.getQueryParameter("state")
+        if (pending == null || code == null || deviceId == null || state != pending.second) {
+            errorMessage = L10n.string("Could not sign in with VK ID. Try again.", "Не удалось войти через VK ID. Попробуйте ещё раз.")
+            return
+        }
+        isBusy = true
+        try {
+            repository.signInWithVk(code, pending.first, deviceId, state, LegalDocuments.USER_AGREEMENT_VERSION, guestDraft.showOnMap)
+            completeSignIn()
+        } catch (error: Throwable) {
+            present(error)
+        } finally {
+            isBusy = false
+        }
+    }
+
+    /** Returns (debugCode, error message): the link screen shows them itself. */
+    suspend fun requestPhoneLinkCode(rawPhone: String): Pair<String?, String?> {
+        val phone = RussianPhone.normalized(rawPhone)
+            ?: return null to L10n.string("Enter a Russian mobile number: +7 9XX XXX-XX-XX", "Укажите российский мобильный номер: +7 9XX XXX-XX-XX")
+        return try {
+            repository.requestPhoneLinkCode(phone).debugCode to null
+        } catch (error: Throwable) {
+            null to (if (error.isServerIssue) error.serverRecoveryMessage else error.detailedMessage)
+        }
+    }
+
+    suspend fun verifyPhoneLink(rawPhone: String, code: String): String? {
+        val phone = RussianPhone.normalized(rawPhone)
+            ?: return L10n.string("Enter your phone number first", "Сначала укажите номер телефона")
+        return try {
+            currentUser = repository.verifyPhoneLink(phone, code)
+            null
+        } catch (error: Throwable) {
+            if (error.isServerIssue) error.serverRecoveryMessage else error.detailedMessage
+        }
+    }
+
     /**
      * Everything after the backend has issued a session, shared by the email
      * code and Google paths so the ordering below cannot drift between them.
@@ -387,6 +528,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         authMessage = null
         errorMessage = null
         authEmail = ""
+        authPhone = ""
+        authCodeTarget = AuthCodeTarget.EMAIL
+        pendingVkSignIn = null
         presentedAuthStep = null
         pendingNavigationTarget = null
         pendingChatMatchID = null
@@ -480,6 +624,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun handleIncomingUri(uri: android.net.Uri): Boolean {
+        if (uri.scheme == "sportsearch" && uri.host == "auth" && uri.path?.startsWith("/vk") == true) {
+            viewModelScope.launch { completeVkSignIn(uri) }
+            return true
+        }
         val target = AppNavigationTarget.fromDeepLink(uri) ?: return false
         navigate(target)
         return true
@@ -626,4 +774,20 @@ private class DiscoverHintStore(context: Context) {
         const val FIRST_INTEREST_PENDING = "discover.hint.first-interest.pending"
         const val FIRST_INTEREST_DONE = "discover.hint.first-interest.completed"
     }
+}
+
+/** PKCE for VK ID: the verifier stays in the app, VK only sees its hash. */
+private object VkIdPkce {
+    private val random = java.security.SecureRandom()
+
+    fun randomString(byteCount: Int): String {
+        val bytes = ByteArray(byteCount).also(random::nextBytes)
+        return base64Url(bytes)
+    }
+
+    fun challenge(verifier: String): String =
+        base64Url(java.security.MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
+
+    private fun base64Url(bytes: ByteArray): String =
+        android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
 }

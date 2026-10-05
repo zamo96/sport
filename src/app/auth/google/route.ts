@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
     const sessionToken = await createSession(userWithAgreement.id);
     await prisma.user.update({
       where: { id: userWithAgreement.id },
-      data: { lastActiveAt: new Date() }
+      // Заявление человека на экране входа: «не в России» — email, Apple, Google.
+      data: { lastActiveAt: new Date(), ...(body.country ? { signupCountry: body.country } : {}) }
     });
 
     return ok({

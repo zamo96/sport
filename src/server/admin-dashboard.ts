@@ -2,6 +2,7 @@ import type { GameRequestStatus, GameSearchStatus, Prisma } from "@prisma/client
 
 import { prisma } from "@/lib/prisma";
 import { formatLocalDateTime } from "@/lib/timezone";
+import { accountContact } from "@/lib/account-contact";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ACTIVITY_DAYS = 14;
@@ -222,6 +223,7 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
         id: true,
         name: true,
         email: true,
+        phone: true,
         city: true,
         district: true,
         createdAt: true,
@@ -237,7 +239,8 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
         user: {
           select: {
             name: true,
-            email: true
+            email: true,
+            phone: true
           }
         }
       }
@@ -388,7 +391,8 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
         user: {
           select: {
             name: true,
-            email: true
+            email: true,
+            phone: true
           }
         }
       }
@@ -500,7 +504,7 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
       id: `push:${device.id}`,
       source: "push",
       severity: "warning",
-      title: device.user.name ?? device.user.email,
+      title: device.user.name ?? accountContact(device.user),
       message: device.lastFailureReason ?? "Push delivery failed",
       occurredAt: device.lastFailureAt ?? device.updatedAt
     })),
@@ -550,7 +554,7 @@ export async function getAdminDashboardData(options: AdminDashboardOptions = {})
     searchStatusCounts,
     requestStatusCounts,
     authCodeStats,
-    recentUsers,
+    recentUsers: recentUsers.map(({ phone: _phone, ...user }) => ({ ...user, email: accountContact({ email: user.email, phone: _phone }) })),
     recentActivity,
     operationalEvents,
     maintenanceRuns
@@ -768,6 +772,7 @@ async function getPlayerRoadmaps(query: string, since7d: Date): Promise<AdminPla
       id: true,
       name: true,
       email: true,
+      phone: true,
       city: true,
       district: true,
       preferredSports: true,
@@ -789,7 +794,7 @@ async function getPlayerRoadmaps(query: string, since7d: Date): Promise<AdminPla
       {
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: accountContact(user),
         city: user.city,
         district: user.district,
         preferredSports: toStringArray(user.preferredSports),

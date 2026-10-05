@@ -40,7 +40,9 @@ export async function POST(request: NextRequest) {
     await prisma.user.update({
       where: { id: userWithAgreement.id },
       data: {
-        lastActiveAt: new Date()
+        lastActiveAt: new Date(),
+        // Заявление человека на экране входа: «не в России» — email, Apple, Google.
+        ...(body.country ? { signupCountry: body.country } : {})
       }
     });
 

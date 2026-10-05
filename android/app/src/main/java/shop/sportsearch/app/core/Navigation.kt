@@ -20,8 +20,8 @@ object AppConfig {
 
 /** Port of `enum LegalDocuments`. */
 object LegalDocuments {
-    /** The version without bundled personal-data consent: the sign-in button accepts it. */
-    const val USER_AGREEMENT_VERSION = "2026-09-24"
+    /** The 2026-10-05 edition published on the server: the sign-in button accepts it. */
+    const val USER_AGREEMENT_VERSION = "2026-10-05"
 
     val acceptanceError: String
         get() = L10n.string(

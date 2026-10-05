@@ -28,7 +28,7 @@ vi.mock("@/server/chat-media", () => ({
   claimGameSearchMessageAttachments: vi.fn(),
   gameSearchMessageAttachmentsInclude: {},
   serializeChatMessage: vi.fn(),
-  chatMessagePreview: vi.fn()
+  chatMessagePushContent: vi.fn()
 }));
 
 import { POST } from "@/app/game-searches/[id]/messages/route";

@@ -265,9 +265,18 @@ model Metro {
 
 model User {
   id                                 String                              @id @default(cuid())
-  email                              String                              @unique
+  /// Нет у аккаунтов, созданных входом по телефону или через VK ID.
+  email                              String?                             @unique
+  /// Подтверждённый номер в формате +7XXXXXXXXXX — способ входа для России
+  /// (ч. 10 ст. 8 149-ФЗ): SMS-код или VK ID с подтверждённым VK телефоном.
+  phone                              String?                             @unique
+  phoneVerifiedAt                    DateTime?
   appleSubject                       String?                             @unique
   googleSubject                      String?                             @unique
+  vkSubject                          String?                             @unique
+  /// Страна, которую человек указал при входе: RU — телефон или VK ID,
+  /// OTHER — email, Apple или Google. Пусто у аккаунтов до этого выбора.
+  signupCountry                      String?
   name                               String?
   age                                Int?
   gender                             Gender?
@@ -1117,6 +1126,19 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+/// Код входа по SMS. Хранится только хеш кода; попытки ограничены.
+model PhoneAuthCode {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, createdAt])
 }
 
 model AuthCode {

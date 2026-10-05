@@ -21,6 +21,8 @@ FILENAMES = {
  '05_recommendation_rules': '05_Правила_рекомендаций.docx',
  '06_internal_data_procedure': '06_Внутренний_порядок_обработки_данных.docx',
  '07_request_and_response_forms': '07_Формы_обращений_и_ответов.docx',
+ '08_messaging_technical_description': '08_Переписка_техническое_описание_ОРИ.docx',
+ '09_rkn_notifications': '09_Уведомления_в_РКН_черновики.docx',
 }
 
 def font(style, size, bold=False):

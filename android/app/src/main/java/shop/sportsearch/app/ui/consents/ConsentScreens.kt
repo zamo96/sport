@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,6 +53,11 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.platform.LocalFocusManager
+import shop.sportsearch.app.ui.components.RussianPhoneVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
@@ -62,6 +68,7 @@ import shop.sportsearch.app.core.ConsentState
 import shop.sportsearch.app.core.ConsentUpdate
 import shop.sportsearch.app.core.L10n
 import shop.sportsearch.app.core.LegalDocuments
+import shop.sportsearch.app.core.RussianPhone
 import shop.sportsearch.app.core.UserProfile
 import shop.sportsearch.app.core.localizedDistrictName
 import shop.sportsearch.app.ui.AppViewModel
@@ -622,4 +629,168 @@ fun ConsentSettingsScreen(appModel: AppViewModel, onBack: () -> Unit) {
         }
         Spacer(Modifier.size(1.dp))
     }
+}
+
+/**
+ * Port of `struct PhoneLinkView`: links a phone number to the signed-in account,
+ * from the account settings — another way back in while SMS sign-in is switched on.
+ */
+@Composable
+fun PhoneLinkScreen(appModel: AppViewModel, onFinished: () -> Unit) {
+    DismissOnSystemBack(onFinished)
+    HideBottomBarWhileVisible(appModel)
+    val haptics = rememberAppHaptics()
+    val scope = rememberCoroutineScope()
+    var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var isCodeSent by remember { mutableStateOf(false) }
+    var debugCode by remember { mutableStateOf<String?>(null) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+    val displayedPhone = RussianPhone.normalized(phone)?.let(RussianPhone::formatted) ?: phone
+
+    fun submit() {
+        errorText = null
+        isSaving = true
+        scope.launch {
+            if (isCodeSent) {
+                val failure = appModel.verifyPhoneLink(phone, code.filter(Char::isDigit))
+                isSaving = false
+                if (failure != null) {
+                    errorText = failure
+                    haptics.warning()
+                } else {
+                    haptics.success()
+                    onFinished()
+                }
+            } else {
+                val (debug, failure) = appModel.requestPhoneLinkCode(phone)
+                isSaving = false
+                if (failure != null) {
+                    errorText = failure
+                    haptics.warning()
+                } else {
+                    debugCode = debug
+                    isCodeSent = true
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 22.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(L10n.string("Add your phone number", "Добавьте номер телефона"), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = AppTheme.ink)
+            Text(
+                L10n.string(
+                    "Add your phone number to sign in to this account with it.",
+                    "Привяжите номер телефона, чтобы входить по нему в этот аккаунт.",
+                ),
+                style = AppText.subheadline,
+                color = AppTheme.mutedInk,
+            )
+
+            PhoneLinkField(
+                value = phone,
+                onValueChange = { value -> phone = RussianPhone.digits(value) },
+                placeholder = "999 123-45-67",
+                keyboardType = KeyboardType.Number,
+                enabled = !isCodeSent,
+                prefix = "+7 ",
+                isPhone = true,
+            )
+
+            if (isCodeSent) {
+                Text(
+                    L10n.string("SMS code sent to $displayedPhone", "Код отправлен по SMS на $displayedPhone"),
+                    style = AppText.footnote,
+                    color = AppTheme.mutedInk,
+                )
+                debugCode?.let { Text("Debug OTP: $it", style = AppText.footnote, color = Color(0xFFFF9500)) }
+                PhoneLinkField(
+                    value = code,
+                    onValueChange = { value -> code = value.filter(Char::isDigit).take(6) },
+                    placeholder = "000000",
+                    keyboardType = KeyboardType.NumberPassword,
+                    enabled = true,
+                )
+            }
+
+            errorText?.let {
+                Text(it, style = AppText.footnote.copy(fontWeight = FontWeight.Medium), color = errorColor)
+            }
+
+            PrimaryActionButton(
+                title = when {
+                    isSaving -> L10n.string("Saving…", "Сохраняем…")
+                    isCodeSent -> L10n.string("Confirm", "Подтвердить")
+                    else -> L10n.string("Get an SMS code", "Получить код по SMS")
+                },
+                onClick = ::submit,
+                tint = AppTheme.ink,
+                enabled = !isSaving && (!isCodeSent || code.length == 6),
+            )
+
+            if (isCodeSent) {
+                SecondaryActionButton(
+                    title = L10n.string("Change number", "Изменить номер"),
+                    onClick = {
+                        isCodeSent = false
+                        code = ""
+                        errorText = null
+                    },
+                    tint = AppTheme.ink,
+                )
+            }
+
+            Text(
+                L10n.string("Cancel", "Отмена"),
+                style = AppText.subheadlineSemibold,
+                color = AppTheme.mutedInk,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onFinished).padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhoneLinkField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    keyboardType: KeyboardType,
+    enabled: Boolean,
+    prefix: String? = null,
+    isPhone: Boolean = false,
+) {
+    val focusManager = LocalFocusManager.current
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = { Text(placeholder, fontSize = 20.sp) },
+        prefix = prefix?.let { { Text(it, fontSize = 20.sp, color = AppTheme.ink) } },
+        visualTransformation = if (isPhone) RussianPhoneVisualTransformation else VisualTransformation.None,
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        singleLine = true,
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+        shape = continuousShape(16.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White,
+            disabledContainerColor = Color.White,
+            focusedIndicatorColor = AppTheme.court.copy(alpha = 0.7f),
+            unfocusedIndicatorColor = Color(0xFFD1D1D6),
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }

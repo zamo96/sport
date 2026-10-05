@@ -3,6 +3,7 @@ import { AdminCourtAuditAction, CourtStatus, Prisma, type User } from "@prisma/c
 import { prisma } from "@/lib/prisma";
 import { normalizeClubAddressIdentity, normalizeClubIdentityText } from "@/lib/club-sync";
 import type { AdminClubProfilePatch, AdminClubsQuery, AdminClubStatusPatch } from "@/lib/validators";
+import { accountContact } from "@/lib/account-contact";
 
 const LIST_FIELDS = {
   id: true,
@@ -209,7 +210,7 @@ export async function updateAdminClubProfile(
     await tx.adminCourtAuditLog.create({
       data: {
         actorUserId: actor.id,
-        actorEmail: actor.email,
+        actorEmail: accountContact(actor),
         courtId,
         courtName: updated.name,
         action: AdminCourtAuditAction.PROFILE_UPDATED,
@@ -265,7 +266,7 @@ export async function updateAdminClubStatus(
     await tx.adminCourtAuditLog.create({
       data: {
         actorUserId: actor.id,
-        actorEmail: actor.email,
+        actorEmail: accountContact(actor),
         courtId,
         courtName: updated.name,
         action: AdminCourtAuditAction.STATUS_CHANGED,

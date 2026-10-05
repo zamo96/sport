@@ -29,6 +29,9 @@ export function serializeMe<
     localeOverride?: string | null;
     showOnMap?: boolean;
     location?: Parameters<typeof serializeLocationRelation>[0];
+    phone?: string | null;
+    signupCountry?: string | null;
+    onboardingCompleted?: boolean;
   } & Parameters<typeof buildConsentState>[0]
 >(user: T, requestLocale: SupportedLocale = DEFAULT_LOCALE) {
   const { location, consentFullName: _consentFullName, ...legacyUser } = user;

@@ -1,0 +1,68 @@
+{
+  "language": "en",
+  "title": "Consent to showing your profile",
+  "description": "Consent to the processing of personal data permitted for distribution",
+  "version": "2026-09-24",
+  "versionLabel": "Version",
+  "operatorLabel": "Operator",
+  "sections": [
+    {
+      "title": "1. Who gives consent and to whom",
+      "paragraphs": [
+        "I, a NaTrenyu user who has entered my surname and first name in this consent form, with the contact email of my account, freely, of my own will and in my own interest, consent to the processing of my personal data that I permit for distribution under Article 10.1 of Federal Law No. 152-FZ of July 27, 2006, On Personal Data.",
+        "Operator: Захаров Матвей Владимирович, INN 471803649801, place of residence: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15, email: support@sportsearch.shop.",
+        "This consent is given separately from the Terms of Use and other consents. The surname, first name, and email from this form are not published on its basis."
+      ]
+    },
+    {
+      "title": "2. Purpose",
+      "paragraphs": [
+        "To make the data I choose available to other people for finding sports partners: showing my profile in search, on the map, in the sports-venue catalog, and showing my game searches."
+      ]
+    },
+    {
+      "title": "3. What data I allow to be shown",
+      "paragraphs": [
+        "Category: other personal data. Special categories and biometric personal data are not distributed. Only the groups I switch on in the consent screen are shown; there is no permission for groups that are switched off."
+      ],
+      "bullets": [
+        "Profile card: display name, age, city, district and chosen play districts, sports and my level, format and surface, days and times I can play, the \"looking for a game\" mark, a recent-activity mark, approximate distance and match reasons calculated by the service.",
+        "Profile description.",
+        "Profile photos.",
+        "Profile videos.",
+        "District point on the map — a nominal city or district mark, not my location.",
+        "My game searches: sport, level, date, time, venue or address, route, comment, and search status."
+      ]
+    },
+    {
+      "title": "4. To whom and where",
+      "paragraphs": [
+        "The audience is chosen in the consent screen: only users signed in to a NaTrenyu account, or also guests without an account. The group of registered users is not defined in advance.",
+        "Operator resources: https://sportsearch.shop/discover, https://sportsearch.shop/play/courts, https://sportsearch.shop/play/searches, the NaTrenyu iOS app (https://apps.apple.com/app/id6768862885) and the NaTrenyu Android app, which receive data from https://sportsearch.shop. Transfer is made over information and telecommunication networks only on these resources."
+      ]
+    },
+    {
+      "title": "5. Conditions and prohibitions",
+      "paragraphs": [
+        "I prohibit the operator from transferring my data outside the listed resources, and I prohibit an indefinite number of people from collecting it, copying it into third-party databases, or using it for advertising. This prohibition does not apply to accessing the data on the service's resources or to processing in state, public, and other public interests defined by law.",
+        "I can set other conditions and prohibitions by writing to support@sportsearch.shop. The operator may not refuse to set them and publishes information about them no later than three business days after receiving them."
+      ]
+    },
+    {
+      "title": "6. Term, changes, and withdrawal",
+      "paragraphs": [
+        "The consent is valid from the moment I press \"Show my profile\" (or \"Keep my profile visible\") until it is withdrawn, the account is deleted, or the purpose ends.",
+        "At any time I can change the data and audience or hide my profile in the profile settings, and I can demand that distribution stop by writing to support@sportsearch.shop with my surname, first name, contact, and the data that should no longer be shown. The consent ends in the relevant part when the demand is received.",
+        "Refusing this consent does not restrict searching for partners, messaging, or joining games: without it my data is received only by the participants I interact with."
+      ]
+    }
+  ],
+  "operator": {
+    "serviceName": "НаТреню",
+    "legalName": "Захаров Матвей Владимирович",
+    "inn": "ИНН: 471803649801",
+    "ogrn": "",
+    "address": "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
+    "email": "support@sportsearch.shop"
+  }
+}

@@ -5,6 +5,7 @@ import {
   buildAnalyticsFunnel, normalizeAnalyticsFilters,
   type AdminAnalyticsData, type AdminAnalyticsOptions, type AnalyticsFilters, type AnalyticsJournalItem
 } from "@/lib/admin-analytics";
+import { accountContact } from "@/lib/account-contact";
 
 export type { AdminAnalyticsData, AdminAnalyticsOptions, AnalyticsJournalItem } from "@/lib/admin-analytics";
 
@@ -46,10 +47,10 @@ async function journalItems(where: Prisma.UserEventWhereInput, take: number, ski
     where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take, skip,
     select: {
       id: true, userId: true, type: true, entityType: true, entityId: true, context: true, createdAt: true,
-      user: { select: { name: true, email: true } }
+      user: { select: { name: true, email: true, phone: true } }
     }
   });
-  return events.map(({ user, ...event }) => ({ ...event, label: analyticsEventLabel(event.type), userName: user.name, userEmail: user.email }));
+  return events.map(({ user, ...event }) => ({ ...event, label: analyticsEventLabel(event.type), userName: user.name, userEmail: accountContact(user) }));
 }
 
 export async function getAdminAnalyticsExport(options: AdminAnalyticsOptions = {}) {

@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { createGameSearchMessageSchema } from "@/lib/validators";
 import { isUserActiveInChat, publishRealtimeEventToUsers } from "@/server/realtime";
 import {
-  chatMessagePreview,
+  chatMessagePushContent,
   claimGameSearchMessageAttachments,
   gameSearchMessageAttachmentsInclude,
   serializeChatMessage
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         candidateRealtimeRecipientIds.map(async (id) => ({ id, blocked: await hasBlockBetweenUsers(prisma, user.id, id) }))
       )
     ).filter((item) => !item.blocked).map((item) => item.id);
-    const pushBody = chatMessagePreview(message);
+    const pushContent = chatMessagePushContent(message);
 
     await Promise.all(
       unblockedRecipients.map(async (recipient) => {
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         await sendPushToUser({
           userId: recipient.id,
           title: `Сообщение в лобби от ${user.name ?? "игрока"}`,
-          body: pushBody,
+          ...pushContent,
           href: `/play/searches/${params.id}`,
           sound: recipient.notificationSound ?? true
         });

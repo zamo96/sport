@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@prisma/client";
 
@@ -8,7 +8,9 @@ import { apiFetch } from "@/lib/client-api";
 import { DAY_OPTIONS, DEFAULT_CITY, TIME_RANGE_OPTIONS } from "@/lib/constants";
 import { buildConsentState } from "@/lib/profile-visibility";
 import { normalizeSports, normalizeSportLevels } from "@/lib/sport-levels";
+import { PhoneLinkForm } from "@/components/auth/phone-link-form";
 import { ConsentSettingsPanel } from "@/components/consents/consent-settings-panel";
+import { formatRussianPhone } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { LocaleSelector } from "@/components/i18n/locale-selector";
@@ -18,6 +20,15 @@ export function SettingsForm({ user }: { user: User }) {
   const router = useRouter();
   const { t } = useLocale();
   const [loading, setLoading] = useState(false);
+  const [linkedPhone, setLinkedPhone] = useState(user.phone);
+  // Linking a phone needs an SMS; the section shows only when SMS sign-in is on.
+  const [smsSignIn, setSmsSignIn] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ sms: boolean }>("/auth/options")
+      .then((options) => setSmsSignIn(options.sms))
+      .catch(() => setSmsSignIn(false));
+  }, []);
   const [values, setValues] = useState({
     notificationMatches: user.notificationMatches,
     notificationMessages: user.notificationMessages,
@@ -109,6 +120,20 @@ export function SettingsForm({ user }: { user: User }) {
           onChange={(checked) => setValues((current) => ({ ...current, notificationSound: checked }))}
         />
       </Panel>
+
+      {linkedPhone || smsSignIn ? (
+      <Panel className="space-y-3">
+        <div className="text-sm font-bold text-ink">{t("phoneLink.settingsTitle")}</div>
+        {linkedPhone ? (
+          <div className="rounded-2xl bg-cream px-4 py-3 text-sm text-ink/75">{formatRussianPhone(linkedPhone)}</div>
+        ) : (
+          <>
+            <div className="text-xs leading-5 text-ink/60">{t("phoneLink.text")}</div>
+            <PhoneLinkForm onLinked={setLinkedPhone} />
+          </>
+        )}
+      </Panel>
+      ) : null}
 
       <ConsentSettingsPanel
         profile={{

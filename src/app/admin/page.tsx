@@ -28,6 +28,7 @@ import {
   type AdminPlayerRoadmap,
   type AdminTimelineItem
 } from "@/server/admin-dashboard";
+import { accountContact } from "@/lib/account-contact";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function AdminPage({
   }
 
   if (!access.configured || !access.isAdmin) {
-    return <AdminAccessDenied configured={access.configured} email={access.user.email} />;
+    return <AdminAccessDenied configured={access.configured} email={accountContact(access.user)} />;
   }
 
   const dashboard = await getAdminDashboardData({ playerQuery });

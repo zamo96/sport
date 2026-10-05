@@ -4,7 +4,13 @@ import { createPublicKey, randomInt, randomUUID, verify as verifySignature, type
 
 import { cookies, headers } from "next/headers";
 
-import { AUTH_CODE_TTL_MINUTES, SESSION_COOKIE, SESSION_TTL_DAYS } from "@/lib/constants";
+import {
+  AUTH_CODE_TTL_MINUTES,
+  SESSION_COOKIE,
+  SESSION_COOKIE_MAX_AGE_DAYS,
+  SESSION_RENEW_INTERVAL_HOURS,
+  SESSION_TTL_DAYS
+} from "@/lib/constants";
 import {
   buildUserAgreementAcceptanceRecord,
   type AcceptedUserAgreementVersion,
@@ -52,8 +58,22 @@ const LOCAL_APP_REVIEW_DEMO_CODE = "000000";
 
 let appleJwksCache: { keys: AppleJwk[]; expiresAt: number } | null = null;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SESSION_TTL_MS = SESSION_TTL_DAYS * DAY_MS;
+const SESSION_RENEW_INTERVAL_MS = SESSION_RENEW_INTERVAL_HOURS * 60 * 60 * 1000;
+
 function sessionExpiresAt() {
-  return new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() + SESSION_TTL_MS);
+}
+
+function setSessionCookie(token: string) {
+  cookies().set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    expires: new Date(Date.now() + SESSION_COOKIE_MAX_AGE_DAYS * DAY_MS),
+    path: "/"
+  });
 }
 
 function authCodeExpiresAt() {
@@ -391,7 +411,7 @@ export async function verifyAuthCode(email: string, code: string, showOnMap = tr
  * Пришёл ли человек по чужой ссылке. Ошибку глотаем намеренно: приглашение —
  * приятный бонус, из-за него регистрация падать не должна.
  */
-async function attributeInviteFromCookie(userId: string) {
+export async function attributeInviteFromCookie(userId: string) {
   try {
     await attributeInvite(userId, cookies().get(INVITE_COOKIE_NAME)?.value ?? null);
   } catch (error) {
@@ -499,13 +519,7 @@ export async function createSession(userId: string) {
     });
   });
 
-  cookies().set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    expires: expiresAt,
-    path: "/"
-  });
+  setSessionCookie(token);
 
   return token;
 }
@@ -564,7 +578,31 @@ export async function getSessionUser() {
     return null;
   }
 
+  await renewSession(session.id, session.expiresAt, token);
   return session.user;
+}
+
+/**
+ * Sliding expiry: an active person never has to sign in again, so a paid SMS code is
+ * needed only on a new device, after signing out or after half a year away.
+ */
+async function renewSession(sessionId: string, expiresAt: Date, token: string) {
+  const now = Date.now();
+  if (expiresAt.getTime() - now > SESSION_TTL_MS - SESSION_RENEW_INTERVAL_MS) return;
+
+  try {
+    await prisma.session.update({ where: { id: sessionId }, data: { expiresAt: new Date(now + SESSION_TTL_MS) } });
+  } catch {
+    // A missed renewal only shortens the session; it must not fail the request.
+    return;
+  }
+
+  if (getBearerSessionToken()) return;
+  try {
+    setSessionCookie(token);
+  } catch {
+    // Server Components cannot set cookies; the 400-day cookie still outlives the session.
+  }
 }
 
 export async function requireSessionUser() {

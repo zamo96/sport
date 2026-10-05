@@ -75,6 +75,8 @@ private func localizedOnboardingSportTitle(_ sport: Sport) -> String {
 
 struct AuthView: View {
     @Environment(\.dismiss) private var dismiss
+    /// Страница VK ID для входа в России открывается в ASWebAuthenticationSession.
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @EnvironmentObject private var appModel: AppModel
 
     @State private var code = ""
@@ -338,6 +340,7 @@ struct AuthView: View {
             introScreen
         case .email:
             emailStep
+                .task { await appModel.loadSignInOptions() }
         case .profile:
             profileStep
         case .availability:
@@ -831,6 +834,10 @@ struct AuthView: View {
     private var emailStep: some View {
         AuthSignInReferenceScreen(
             email: $appModel.authEmail,
+            country: $appModel.authCountry,
+            phone: $appModel.authPhone,
+            isVkIdAvailable: appModel.isVkIdAvailable,
+            isSmsAvailable: appModel.isSmsSignInAvailable,
             authMessage: appModel.authMessage,
             errorMessage: appModel.errorMessage,
             debugCode: appModel.debugCode,
@@ -859,7 +866,29 @@ struct AuthView: View {
                     }
                 }
             },
+            onRequestPhoneCode: {
+                persistDraft()
+                Task {
+                    guard await appModel.requestPhoneCode() else { return }
+                    withAnimation(AppMotion.standard) {
+                        step = .code
+                    }
+                }
+            },
+            onVkSignIn: {
+                persistDraft()
+                Task {
+                    await appModel.signInWithVk { url in
+                        try await webAuthenticationSession.authenticate(
+                            using: url,
+                            callbackURLScheme: "sportsearch",
+                            preferredBrowserSession: .shared
+                        )
+                    }
+                }
+            },
             onHaveCode: {
+                appModel.authCodeTarget = .email
                 guard !appModel.authEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     appModel.errorMessage = L10n.string("Enter your email first.", "Сначала укажи email для входа.")
                     return
@@ -900,15 +929,30 @@ struct AuthView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionCard(
                 title: L10n.string("Verification", "Подтверждение"),
-                subtitle: L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
+                subtitle: appModel.authCodeTarget == .phone
+                    ? L10n.string("Enter the 6-digit code from the SMS. After verification, your profile will be saved to your account.", "Введи 6 цифр из SMS. После проверки профиль будет сохранён в аккаунте.")
+                    : L10n.string("Enter the 6-digit code from the email. After verification, your profile will be saved to your account.", "Введи 6 цифр из письма. После проверки профиль будет сохранён в аккаунте.")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     OTPCodeField(code: $code, verdict: codeVerdict)
 
+                    // Only a local server without an SMS.ru / email key returns it.
+                    if let debugCode = appModel.debugCode {
+                        AuthInlineMessage(text: "Debug OTP: \(debugCode)", tint: .orange, icon: "number")
+                    }
+
+                    if appModel.authCodeTarget == .phone {
+                        phoneCodeResendButton
+                    }
+
                     Button(L10n.string("Sign in", "Войти")) {
                         persistDraft()
                         Task {
-                            await appModel.verify(code: code, userAgreementAccepted: true)
+                            if appModel.authCodeTarget == .phone {
+                                await appModel.verifyPhone(code: code)
+                            } else {
+                                await appModel.verify(code: code, userAgreementAccepted: true)
+                            }
                             await showCodeVerdict(accepted: appModel.isAuthenticated)
                         }
                     }
@@ -920,12 +964,40 @@ struct AuthView: View {
             }
 
             HStack {
-                Button(L10n.string("Change email", "Изменить email")) {
+                Button(appModel.authCodeTarget == .phone
+                       ? L10n.string("Change number", "Изменить номер")
+                       : L10n.string("Change email", "Изменить email")) {
                     step = .email
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
             }
         }
+    }
+
+    /// SMS are paid, so another code is offered only after the server's pause.
+    private var phoneCodeResendButton: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let availableAt = appModel.phoneCodeResendAvailableAt ?? context.date
+            let remaining = max(0, Int(availableAt.timeIntervalSince(context.date).rounded(.up)))
+            Button {
+                code = ""
+                Task { await appModel.requestPhoneCode() }
+            } label: {
+                Text(remaining > 0
+                     ? L10n.string("Send again in \(Self.countdown(remaining))", "Отправить ещё раз через \(Self.countdown(remaining))")
+                     : L10n.string("Send the code again", "Отправить код ещё раз"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(remaining > 0 ? AppTheme.mutedInk : AppTheme.court)
+                    .frame(maxWidth: .infinity)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.plain)
+            .disabled(remaining > 0 || appModel.isBusy)
+        }
+    }
+
+    private static func countdown(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func persistDraft() {
@@ -1240,6 +1312,10 @@ struct AuthView: View {
 private struct AuthSignInReferenceScreen: View {
     @EnvironmentObject private var localeStore: LocaleStore
     @Binding var email: String
+    @Binding var country: AuthCountry
+    @Binding var phone: String
+    let isVkIdAvailable: Bool
+    let isSmsAvailable: Bool
     let authMessage: String?
     let errorMessage: String?
     let debugCode: String?
@@ -1248,10 +1324,13 @@ private struct AuthSignInReferenceScreen: View {
     let onAppleRequest: (ASAuthorizationAppleIDRequest) -> Void
     let onAppleCompletion: (Result<ASAuthorization, Error>) -> Void
     let onRequestCode: () -> Void
+    let onRequestPhoneCode: () -> Void
+    let onVkSignIn: () -> Void
     let onHaveCode: () -> Void
     let onBack: () -> Void
 
     @FocusState private var isEmailFocused: Bool
+    @State private var isPhoneFocused = false
     @State private var isEmailLoginExpanded = false
 
     var body: some View {
@@ -1260,17 +1339,19 @@ private struct AuthSignInReferenceScreen: View {
                 AuthReferenceBackground()
 
                 VStack(spacing: 20) {
-                    HStack {
-                        Spacer()
-                        if !embedded {
+                    // The row exists only for «Закрыть»: an empty one would push the
+                    // agreement notice under the fold.
+                    if !embedded {
+                        HStack {
+                            Spacer()
                             Button(L10n.string("Close", "Закрыть"), action: onClose)
                                 .font(.title3.weight(.medium))
                                 .foregroundStyle(.blue)
                         }
+                        .frame(height: 44)
+                        .padding(.top, max(8, geometry.safeAreaInsets.top * 0.35))
+                        .padding(.horizontal, 24)
                     }
-                    .frame(height: 44)
-                    .padding(.top, max(8, geometry.safeAreaInsets.top * 0.35))
-                    .padding(.horizontal, 24)
 
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 28) {
@@ -1303,7 +1384,8 @@ private struct AuthSignInReferenceScreen: View {
     }
 
     private var signInCard: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        // Compact enough that «Нажимая кнопку…» under the last button is on screen without scrolling.
+        VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(L10n.string("Sign in", "Вход в профиль"))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -1311,114 +1393,31 @@ private struct AuthSignInReferenceScreen: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
-                Text(L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
+                Text(country == .russia
+                     ? L10n.string("Sign in to save your profile, matches, chats, and notifications.", "Войди, чтобы сохранить профиль, матчи, переписки и уведомления.")
+                     : L10n.string("Sign in with Apple to save your profile, matches, chats, and notifications.", "Войди через Apple, чтобы сохранить профиль, матчи, переписки и уведомления."))
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ZStack {
-                SignInWithAppleButton(.continue, onRequest: onAppleRequest, onCompletion: onAppleCompletion)
-                    .signInWithAppleButtonStyle(.black)
-                    .environment(\.locale, localeStore.effectiveLocale.locale)
-                    .id("apple-sign-in-\(localeStore.effectiveLocale.rawValue)")
-                    .frame(height: 68)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.string("Where are you?", "Где вы находитесь?"))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Picker(L10n.string("Where are you?", "Где вы находитесь?"), selection: $country) {
+                    ForEach(AuthCountry.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
-            LegalDocuments.signInNotice
-
-            if isEmailLoginExpanded {
-                AuthDividerLabel(text: L10n.string("or sign in with email", "или войти по Email"))
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Email")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-
-                    ZStack(alignment: .leading) {
-                        if email.isEmpty {
-                            HStack(spacing: 14) {
-                                Image(systemName: "envelope.fill")
-                                    .font(.system(size: 22, weight: .semibold))
-                                Text("example@mail.com")
-                                    .font(.system(size: 22, weight: .regular, design: .rounded))
-                            }
-                            .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.78))
-                            .padding(.horizontal, 18)
-                        }
-
-                        TextField("", text: $email)
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
-                            .foregroundStyle(AppTheme.ink)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($isEmailFocused)
-                            .padding(.horizontal, 18)
-                    }
-                    .frame(height: 68)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(isEmailFocused ? AppTheme.court.opacity(0.72) : Color(.systemGray4), lineWidth: isEmailFocused ? 1.5 : 1)
-                    )
-                }
-
-                Button {
-                    onRequestCode()
-                } label: {
-                    Text(L10n.string("Get a code by email", "Получить код по email"))
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 66)
-                        .background(
-                            LinearGradient(
-                                colors: [Color(red: 0.06, green: 0.32, blue: 0.23), AppTheme.court.opacity(0.95)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        )
-                        .shadow(color: AppTheme.court.opacity(0.2), radius: 16, x: 0, y: 10)
-                }
-                .buttonStyle(AuthReferencePressStyle())
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(L10n.string("Use email sign-in if you previously registered without Apple ID.", "Email-вход нужен, если ты уже регистрировался без Apple ID."))
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .lineSpacing(3)
-
-                    Button {
-                        onHaveCode()
-                    } label: {
-                        Text(L10n.string("I already have a code", "У меня уже есть код"))
-                            .font(.title3.weight(.medium))
-                            .foregroundStyle(AppTheme.court)
-                    }
-                }
+            if country == .russia {
+                russianSignIn
             } else {
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                        isEmailLoginExpanded = true
-                    }
-                } label: {
-                    Label(L10n.string("Sign in with email", "Войти по email"), systemImage: "envelope")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 58)
-                        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color(.systemGray4), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(AuthReferencePressStyle())
+                otherCountrySignIn
             }
 
             if let authMessage {
@@ -1434,14 +1433,208 @@ private struct AuthSignInReferenceScreen: View {
                     .fontDesign(.monospaced)
             }
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 40)
+        .padding(.horizontal, 28)
+        .padding(.vertical, 28)
         .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 32, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 32, style: .continuous)
                 .stroke(.white.opacity(0.75), lineWidth: 1)
         )
         .shadow(color: AppTheme.ink.opacity(0.08), radius: 30, x: 0, y: 18)
+    }
+
+    /// Для России: email (код проверяет наш сервер), VK ID и SMS, если его включили на
+    /// сервере. Apple и Google — иностранные сервисы входа, здесь их нет (ч. 10 ст. 8 149-ФЗ).
+    @ViewBuilder
+    private var russianSignIn: some View {
+        emailForm
+
+        if isVkIdAvailable {
+            AuthDividerLabel(text: L10n.string("or", "или"))
+
+            Button(action: onVkSignIn) {
+                HStack(spacing: 10) {
+                    // Логотип с кнопки One Tap из VK ID SDK; цвета бренда не перекрашиваем.
+                    Image("VKIDLogo")
+                        .resizable()
+                        .frame(width: 32, height: 32)
+                    Text(L10n.string("Sign in with VK ID", "Войти с VK ID"))
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 62)
+                .background(Color(red: 0, green: 0.467, blue: 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(AuthReferencePressStyle())
+        }
+
+        if isSmsAvailable {
+            AuthDividerLabel(text: L10n.string("or", "или"))
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(L10n.string("Phone number", "Номер телефона"))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+
+                HStack(spacing: 10) {
+                    Text("+7")
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                    RussianPhoneField(digits: $phone, isFocused: $isPhoneFocused)
+                }
+                    .padding(.horizontal, 18)
+                    .frame(height: 68)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(isPhoneFocused ? AppTheme.court.opacity(0.72) : Color(.systemGray4), lineWidth: isPhoneFocused ? 1.5 : 1)
+                    )
+            }
+
+            Button {
+                isPhoneFocused = false
+                onRequestPhoneCode()
+            } label: {
+                Text(L10n.string("Get an SMS code", "Получить код по SMS"))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 66)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 0.06, green: 0.32, blue: 0.23), AppTheme.court.opacity(0.95)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .shadow(color: AppTheme.court.opacity(0.2), radius: 16, x: 0, y: 10)
+            }
+            .buttonStyle(AuthReferencePressStyle())
+        }
+
+        LegalDocuments.signInNotice
+    }
+
+    @ViewBuilder
+    private var otherCountrySignIn: some View {
+            ZStack {
+                SignInWithAppleButton(.continue, onRequest: onAppleRequest, onCompletion: onAppleCompletion)
+                    .signInWithAppleButtonStyle(.black)
+                    .environment(\.locale, localeStore.effectiveLocale.locale)
+                    .id("apple-sign-in-\(localeStore.effectiveLocale.rawValue)")
+                    .frame(height: 68)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            }
+
+            LegalDocuments.signInNotice
+
+            emailSignIn
+    }
+
+    /// Email sign-in outside Russia: collapsed behind a button under Sign in with Apple.
+    @ViewBuilder
+    private var emailSignIn: some View {
+        if isEmailLoginExpanded {
+            AuthDividerLabel(text: L10n.string("or sign in with email", "или войти по Email"))
+
+            emailForm
+        } else {
+            Button {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    isEmailLoginExpanded = true
+                }
+            } label: {
+                Label(L10n.string("Sign in with email", "Войти по email"), systemImage: "envelope")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color(.systemGray4), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(AuthReferencePressStyle())
+        }
+    }
+
+    /// The email field and its code button: the first method in Russia, the second elsewhere.
+    @ViewBuilder
+    private var emailForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Email")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+
+            ZStack(alignment: .leading) {
+                if email.isEmpty {
+                    HStack(spacing: 14) {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                        Text("example@mail.com")
+                            .font(.system(size: 22, weight: .regular, design: .rounded))
+                    }
+                    .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.78))
+                    .padding(.horizontal, 18)
+                }
+
+                TextField("", text: $email)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($isEmailFocused)
+                    .padding(.horizontal, 18)
+            }
+            .frame(height: 68)
+            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isEmailFocused ? AppTheme.court.opacity(0.72) : Color(.systemGray4), lineWidth: isEmailFocused ? 1.5 : 1)
+            )
+        }
+
+        Button {
+            onRequestCode()
+        } label: {
+            Text(L10n.string("Get a code by email", "Получить код по email"))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 66)
+                .background(
+                    LinearGradient(
+                        colors: [Color(red: 0.06, green: 0.32, blue: 0.23), AppTheme.court.opacity(0.95)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .shadow(color: AppTheme.court.opacity(0.2), radius: 16, x: 0, y: 10)
+        }
+        .buttonStyle(AuthReferencePressStyle())
+
+        VStack(alignment: .leading, spacing: 14) {
+            if country == .other {
+                Text(L10n.string("Use email sign-in if you previously registered without Apple ID.", "Email-вход нужен, если ты уже регистрировался без Apple ID."))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+            }
+
+            Button {
+                onHaveCode()
+            } label: {
+                Text(L10n.string("I already have a code", "У меня уже есть код"))
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(AppTheme.court)
+            }
+        }
     }
 }
 
@@ -1487,6 +1680,8 @@ private struct AuthDividerLabel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
+                // The lines take what is left; without this they squeeze the label to «или войт…».
+                .layoutPriority(1)
             Rectangle()
                 .fill(Color(.systemGray4))
                 .frame(height: 1)

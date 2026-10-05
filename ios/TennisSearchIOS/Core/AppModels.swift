@@ -803,9 +803,9 @@ enum AuthStep: String, Identifiable {
 }
 
 enum LegalDocuments {
-    /// Редакция без встроенного согласия на обработку данных: соглашение
+    /// Редакция от 5 октября 2026 года, опубликованная на сервере: соглашение
     /// принимается кнопкой входа, согласия спрашиваются отдельно.
-    static let userAgreementVersion = "2026-09-24"
+    static let userAgreementVersion = "2026-10-05"
     static var acceptanceError: String {
         L10n.string(
             "Accept the User Agreement.",
@@ -914,13 +914,110 @@ struct UserSafetyReport: Codable, Identifiable {
 
 struct SessionUser: Codable {
     let id: String
-    let email: String
+    /// Нет у аккаунтов, созданных входом по телефону или через VK ID.
+    let email: String?
+    var phone: String? = nil
     let onboardingCompleted: Bool
+}
+
+/// Страна на экране входа: в России вход по телефону или через VK ID
+/// (ч. 10 ст. 8 149-ФЗ), для остальных — по email или через Apple.
+enum AuthCountry: String, CaseIterable, Identifiable {
+    case russia = "RU"
+    case other = "OTHER"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .russia: return L10n.string("Russia", "Россия")
+        case .other: return L10n.string("Another country", "Другая страна")
+        }
+    }
+
+    /// Город из анкеты гостя надёжнее региона устройства; без него — регион или язык.
+    static func suggested(for draft: GuestOnboardingDraft) -> AuthCountry {
+        if let countryCode = draft.location?.countryCode {
+            return countryCode == "RU" ? .russia : .other
+        }
+        if Locale.current.region?.identifier == "RU" || LocaleStore.currentEffectiveLocale == .ru {
+            return .russia
+        }
+        return .other
+    }
+}
+
+/// Куда отправлен код входа — от этого зависят тексты и запрос проверки.
+enum AuthCodeTarget {
+    case email
+    case phone
+}
+
+/// Параметры ссылки на VK ID из `GET /auth/vk/config`.
+/// Which sign-in methods the server offers right now.
+struct SignInOptions: Decodable {
+    let sms: Bool
+    let vk: VkIdConfig
+}
+
+struct VkIdConfig: Decodable {
+    let available: Bool
+    let clientId: String?
+    let redirectUri: String
+    let scope: String
+    let authorizeUrl: String
+}
+
+enum RussianPhone {
+    /// +79XXXXXXXXX или nil — как `normalizeRussianMobile` на сервере.
+    static func normalized(_ input: String) -> String? {
+        let digits = input.filter(\.isNumber)
+        let national: Substring
+        if digits.count == 11, digits.first == "7" || digits.first == "8" {
+            national = digits.dropFirst()
+        } else if digits.count == 10 {
+            national = Substring(digits)
+        } else {
+            return nil
+        }
+        guard national.first == "9" else { return nil }
+        return "+7\(national)"
+    }
+
+    /// Ten digits after +7 — what the phone field holds. A pasted number in any
+    /// form ("+7 (999) 123-45-67", "8 999…") is reduced to those digits.
+    static func digits(_ input: String) -> String {
+        var digits = input.filter(\.isNumber)
+        if digits.count == 11, digits.first == "7" || digits.first == "8" {
+            digits.removeFirst()
+        }
+        return String(digits.prefix(10))
+    }
+
+    /// "999 123-45-67" — how the digits after +7 are shown while typing.
+    static func formattedDigits(_ digits: String) -> String {
+        let d = Array(digits.prefix(10))
+        var out = String(d.prefix(3))
+        if d.count > 3 { out += " " + String(d[3..<min(6, d.count)]) }
+        if d.count > 6 { out += "-" + String(d[6..<min(8, d.count)]) }
+        if d.count > 8 { out += "-" + String(d[8..<d.count]) }
+        return out
+    }
+
+    /// +7 999 123-45-67
+    static func formatted(_ phone: String) -> String {
+        let digits = Array(phone.filter(\.isNumber))
+        guard digits.count == 11 else { return phone }
+        let part = { (range: Range<Int>) in String(digits[range]) }
+        return "+7 \(part(1..<4)) \(part(4..<7))-\(part(7..<9))-\(part(9..<11))"
+    }
 }
 
 struct AuthChallenge: Codable {
     let message: String
     let debugCode: String?
+    /// SMS are paid: the server allows the next code to the same number only after this pause.
+    var resendAfterSeconds: Int? = nil
 }
 
 // MARK: - Required onboarding fields
@@ -1216,6 +1313,8 @@ struct UserProfile: Codable, Identifiable {
     var localeOverride: String?
     /// Нет у ответов старого сервера — тогда экран согласий не показывается.
     var consents: ConsentState?
+    /// Подтверждённый номер для входа в России.
+    var phone: String?
 
     var isOnboardingComplete: Bool {
         OnboardingRequirements.isComplete(
@@ -1260,7 +1359,8 @@ struct UserProfile: Codable, Identifiable {
         notificationGames: Bool = true,
         notificationSound: Bool = true,
         localeOverride: String? = nil,
-        consents: ConsentState? = nil
+        consents: ConsentState? = nil,
+        phone: String? = nil
     ) {
         self.id = id
         self.email = email
@@ -1297,6 +1397,7 @@ struct UserProfile: Codable, Identifiable {
         self.notificationSound = notificationSound
         self.localeOverride = localeOverride
         self.consents = consents
+        self.phone = phone
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1335,6 +1436,7 @@ struct UserProfile: Codable, Identifiable {
         case notificationSound
         case localeOverride
         case consents
+        case phone
     }
 
     init(from decoder: Decoder) throws {
@@ -1376,6 +1478,7 @@ struct UserProfile: Codable, Identifiable {
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
         localeOverride = try container.decodeIfPresent(String.self, forKey: .localeOverride)
         consents = try container.decodeIfPresent(ConsentState.self, forKey: .consents)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
     }
 }
 

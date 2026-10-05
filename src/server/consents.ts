@@ -3,8 +3,7 @@ import type { Prisma, User } from "@prisma/client";
 import {
   ANALYTICS_CONSENT_VERSION,
   PROFILE_VISIBILITY_CONSENT_VERSION,
-  USER_AGREEMENT_KEY,
-  USER_AGREEMENT_VERSION
+  USER_AGREEMENT_KEY
 } from "@/lib/legal-contract";
 import { prisma } from "@/lib/prisma";
 import type { ConsentUpdatePayload } from "@/lib/validators";
@@ -60,7 +59,8 @@ export async function applyConsentUpdate(userId: string, payload: ConsentUpdateP
         ],
         skipDuplicates: true
       });
-      userData.agreementVersion = USER_AGREEMENT_VERSION;
+      // The edition the person actually accepted, not the latest one.
+      userData.agreementVersion = payload.acceptAgreementVersion;
     }
 
     if (payload.profile) {

@@ -76,6 +76,9 @@ struct DiscoverHintStore {
     var dismissedDiscoverSummary: String?
     var acknowledgedIncomingLikes: String?
     var authEmail = "a@example.com"
+    enum AuthCodeTarget { case email, phone }
+    var authPhone = ""
+    var authCodeTarget = AuthCodeTarget.email
     var authMessage: String?
     var debugCode: String?
     var errorMessage: String?

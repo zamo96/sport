@@ -3,7 +3,7 @@
     "file": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/deliverables/00_Инструкция_и_сведения_для_РКН.docx",
     "title": "Комплект документов НаТреню",
     "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/00_readiness_and_rkn.md",
-    "paragraphs": 77,
+    "paragraphs": 94,
     "tables": 4
   },
   {
@@ -24,14 +24,14 @@
     "file": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/deliverables/03_Согласия_на_обработку_данных.docx",
     "title": "Согласия на необязательную обработку данных НаТреню",
     "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/03_optional_processing_consents.md",
-    "paragraphs": 31,
+    "paragraphs": 35,
     "tables": 0
   },
   {
     "file": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/deliverables/04_Согласие_на_распространение.docx",
     "title": "Согласие на распространение данных НаТреню",
     "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/04_dissemination_consent.md",
-    "paragraphs": 55,
+    "paragraphs": 33,
     "tables": 0
   },
   {
@@ -54,5 +54,19 @@
     "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/07_request_and_response_forms.md",
     "paragraphs": 50,
     "tables": 0
+  },
+  {
+    "file": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/deliverables/08_Переписка_техническое_описание_ОРИ.docx",
+    "title": "Переписка в НаТреню: техническое описание для оценки по статье 10.1 закона № 149-ФЗ",
+    "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/08_messaging_technical_description.md",
+    "paragraphs": 36,
+    "tables": 4
+  },
+  {
+    "file": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/deliverables/09_Уведомления_в_РКН_черновики.docx",
+    "title": "Уведомления в Роскомнадзор: черновики для подачи",
+    "source": "/Users/matvey/Desktop/TennisSearch/docs/legal/2026-09-08/source/09_rkn_notifications.md",
+    "paragraphs": 46,
+    "tables": 9
   }
 ]

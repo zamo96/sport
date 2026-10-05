@@ -196,6 +196,10 @@ function sanitizeObjectKey(value: string) {
   return key;
 }
 
+// Anonymous reads are allowed only for the top-level folders listed in
+// deploy/object-storage/uploads-bucket-policy.json (avatars, profile-media, courts,
+// game-reports, personal-activities). A new public folder must be added there too,
+// or its files answer 403.
 async function uploadImageToS3({
   bytes,
   originalName,

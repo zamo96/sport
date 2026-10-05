@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { fail, ok } from "@/lib/http";
+import { removeUnusedChatMedia } from "@/server/chat-media-cleanup";
 import { runGameRequestMaintenance } from "@/server/game-request-maintenance";
 import { runHotSearchDigestMaintenance } from "@/server/hot-search-digest";
 import { runLifecycleCampaigns } from "@/server/lifecycle-campaigns";
@@ -51,6 +52,9 @@ async function handleMaintenance(request: NextRequest) {
   const hotSearchDigest = await runHotSearchDigestMaintenance(now, { dryRun, simulatedDeliveries });
   const lifecycleCampaigns = await runLifecycleCampaigns(now, { dryRun, simulatedDeliveries });
   const userEvents = dryRun ? null : await purgeExpiredUserEvents(now);
+  const chatMedia = dryRun
+    ? null
+    : await removeUnusedChatMedia(now).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }));
 
-  return ok({ success: true, dryRun, gameRequests, pendingActionReminders, hotSearchDigest, lifecycleCampaigns, userEvents });
+  return ok({ success: true, dryRun, gameRequests, pendingActionReminders, hotSearchDigest, lifecycleCampaigns, userEvents, chatMedia });
 }
