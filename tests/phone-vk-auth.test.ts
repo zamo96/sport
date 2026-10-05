@@ -36,6 +36,8 @@ import { consumePhoneCode, issuePhoneCode, linkPhoneToUser, PhoneAuthError, sign
 import { fetchVkProfile, signInWithVk } from "@/server/vk-auth";
 import { isPublicIp, isSmsSignInEnabled, SmsUnavailableError } from "@/server/sms";
 import { phoneAuthFailure } from "@/server/phone-auth-http";
+import * as signInOptionsRoute from "@/app/auth/options/route";
+import * as vkConfigRoute from "@/app/auth/vk/config/route";
 
 const phone = "+79991234567";
 const hash = (code: string) => createHash("sha256").update(`${phone}:${code}`).digest("hex");
@@ -135,6 +137,12 @@ describe("sign-in request validation", () => {
     vi.stubEnv("SMSRU_API_ID", "");
     vi.stubEnv("NODE_ENV", "production");
     expect(isSmsSignInEnabled()).toBe(false);
+  });
+
+  it("reads the sign-in settings at request time, not at build time", () => {
+    // The env with VK_ID_CLIENT_ID and SMS_SIGN_IN_ENABLED exists only at runtime.
+    expect(signInOptionsRoute.dynamic).toBe("force-dynamic");
+    expect(vkConfigRoute.dynamic).toBe("force-dynamic");
   });
 
   it("points to email and VK ID when SMS sign-in is switched off", async () => {
