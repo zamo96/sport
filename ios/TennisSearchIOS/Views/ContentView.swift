@@ -14,6 +14,8 @@ struct ContentView: View {
                 if appModel.sessionRestoreState == .restoring {
                     ProgressView(L10n.string("Restoring your session…", "Восстанавливаем вход…"))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // The light page background stays light in dark mode; so must the text.
+                        .environment(\.colorScheme, .light)
                 } else if appModel.sessionRestoreState == .failed {
                     VStack(spacing: 18) {
                         Text(L10n.string("Could not restore your session", "Не удалось восстановить вход"))
@@ -31,6 +33,7 @@ struct ContentView: View {
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .environment(\.colorScheme, .light)
                 } else if appModel.isOnboardingComplete || appModel.isGuestModeAvailable {
                     MainTabView()
                         .id(appModel.sessionGeneration)

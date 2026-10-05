@@ -341,6 +341,9 @@ struct AuthView: View {
         case .email:
             emailStep
                 .task { await appModel.loadSignInOptions() }
+                // Sign-in is drawn light. In system dark mode the system colors here
+                // (.secondary text, the segmented picker) turned white on the white card.
+                .environment(\.colorScheme, .light)
         case .profile:
             profileStep
         case .availability:
@@ -359,6 +362,7 @@ struct AuthView: View {
                 }
                 .padding()
             }
+            .environment(\.colorScheme, .light)
         }
         }
     }
