@@ -113,6 +113,14 @@ describe("SMS codes", () => {
     expect(mocks.sendSms).toHaveBeenCalledWith(phone, expect.stringContaining(code), { ip: "10.0.0.1" });
   });
 
+  it("sends exactly the text of the SMS.ru template, with the code last and in a single SMS", async () => {
+    const code = await issuePhoneCode(phone);
+    const text = mocks.sendSms.mock.calls[0][1] as string;
+    expect(text).toBe(`Никому не сообщайте код. Код для входа в НаТреню: ${code}`);
+    // Cyrillic SMS: 70 characters per part.
+    expect(text.length).toBeLessThanOrEqual(70);
+  });
+
   it("sends a new SMS to the same number no sooner than 60 seconds later", async () => {
     mocks.codeFindFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 20_000) });
     const early = await issuePhoneCode(phone).catch((error: unknown) => error);

@@ -11,6 +11,8 @@ import { recordUserEventsOnce } from "@/server/user-events";
 export const PHONE_CODE_TTL_MINUTES = 5;
 /** A new SMS to the same number no sooner than this: every SMS is paid. */
 export const PHONE_CODE_RESEND_SECONDS = 60;
+/** The SMS text up to the code; changing it means a new operator template. */
+export const PHONE_CODE_SMS_PREFIX = "Никому не сообщайте код. Код для входа в НаТреню: ";
 const MAX_CODE_ATTEMPTS = 5;
 
 export class PhoneAuthError extends Error {
@@ -51,7 +53,9 @@ export async function issuePhoneCode(phone: string, meta: { ip?: string | null }
       }
     })
   ]);
-  await sendSms(phone, `НаТреню: код входа ${code}. Никому его не сообщайте.`, meta);
+  // Matches the SMS.ru operator template "Никому не сообщайте код. Код для входа в НаТреню: %d"
+  // word for word: a template variable must stand apart, so the code goes last.
+  await sendSms(phone, `${PHONE_CODE_SMS_PREFIX}${code}`, meta);
   return code;
 }
 
