@@ -238,6 +238,10 @@ struct ProfileView: View {
             profileHeader
             ProfileScreenModePicker(selection: $profileScreenMode)
 
+            if profile.consents?.isHidden == true {
+                ProfileHiddenNotice()
+            }
+
             if profileScreenMode == .editing {
                 ProfileSelectionMediaCard(
                     profile: profile,
@@ -378,7 +382,7 @@ struct ProfileView: View {
                     .buttonStyle(.plain)
                 }
             } else {
-                ProfileSwipeCardPreview(profile: profile)
+                ProfileSwipeCardPreview(profile: profile, isHidden: profile.consents?.isHidden == true)
             }
         } else {
             ProfileDarkPanel {
@@ -2323,8 +2327,44 @@ private struct ProfileScreenModePicker: View {
     }
 }
 
+/// Пока анкета скрыта, человек должен знать, что его не видно, и попасть к настройке одним нажатием.
+private struct ProfileHiddenNotice: View {
+    var body: some View {
+        NavigationLink {
+            ConsentSettingsScreen()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 40, height: 40)
+                    .background(.orange.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.string("You are hidden right now", "Сейчас вас не видно"))
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(L10n.string("Not in search or on the map. Tap to turn showing on.", "Вас нет в поиске и на карте. Нажмите, чтобы включить показ."))
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.68))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(14)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.orange.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct ProfileSwipeCardPreview: View {
     let profile: UserProfile
+    /// Анкета скрыта: игроки этой карточки не видят, поэтому она серая и с замком.
+    var isHidden = false
 
     private var previewUser: DiscoverUser {
         DiscoverUser(profile: profile)
@@ -2352,8 +2392,14 @@ private struct ProfileSwipeCardPreview: View {
                 onLike: {}
             )
             .frame(height: 520)
+            .hiddenProfileEffect(isHidden)
+            .overlay { if isHidden { HiddenProfileBadge().transition(.scale.combined(with: .opacity)) } }
+            .animation(.easeOut(duration: 0.4), value: isHidden)
 
-            Label(L10n.string("Preview: swipes and actions are disabled", "Предпросмотр: свайпы и действия отключены"), systemImage: "eye.fill")
+            Label(isHidden
+                  ? L10n.string("Players do not see this card while your profile is hidden", "Пока анкета скрыта, игроки эту карточку не видят")
+                  : L10n.string("Preview: swipes and actions are disabled", "Предпросмотр: свайпы и действия отключены"),
+                  systemImage: isHidden ? "eye.slash.fill" : "eye.fill")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.56))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -3354,9 +3400,27 @@ private struct ConsentSettingsScreen: View {
 
                     ProfileDarkPanel {
                         VStack(alignment: .leading, spacing: 14) {
-                            Text(Self.statusText(for: appModel.currentUser?.consents))
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white)
+                            if appModel.currentUser?.consents?.isHidden == true {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "eye.slash")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(.orange)
+                                        .frame(width: 40, height: 40)
+                                        .background(.orange.opacity(0.14), in: Circle())
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(L10n.string("You are hidden right now", "Сейчас вас не видно"))
+                                            .font(.title3.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                        Text(Self.statusText(for: appModel.currentUser?.consents))
+                                            .font(.footnote)
+                                            .foregroundStyle(.white.opacity(0.68))
+                                    }
+                                }
+                            } else {
+                                Text(Self.statusText(for: appModel.currentUser?.consents))
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
                             Button(L10n.string("Change", "Изменить")) {
                                 AppHaptics.selection()
                                 isEditing = true
@@ -3371,14 +3435,14 @@ private struct ConsentSettingsScreen: View {
                                 get: { appModel.currentUser?.consents?.analytics == true },
                                 set: { setAnalytics($0) }
                             )) {
-                                Text(L10n.string("Usage analytics", "Аналитика использования"))
+                                Text(L10n.string("Help us improve the app", "Помочь улучшить приложение"))
                                     .font(.headline)
                                     .foregroundStyle(.white)
                             }
                             .tint(.green)
                             .disabled(isSavingAnalytics)
 
-                            Text(L10n.string("Which screens you open and what you tap. No messages, photos, or videos. Kept up to 90 days.", "Какие экраны открываете и что нажимаете. Без переписки, фото и видео. Хранится до 90 дней."))
+                            Text(L10n.string("Screens and actions in your account. Kept for 90 days. No chats, photos or exact location.", "Экраны и действия в вашем аккаунте. Хранятся 90 дней. Без чатов, фото и точного места."))
                                 .font(.footnote)
                                 .foregroundStyle(.white.opacity(0.62))
                         }

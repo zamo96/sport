@@ -89,6 +89,9 @@ final class AppModel: ObservableObject {
     @Published var pendingCreateSearchPrefill: CreateSearchPrefill?
     @Published var pendingCourtID: String?
     @Published private(set) var pendingPersonalVisit: PersonalVisitContinuation?
+    @Published private(set) var isConsentFlowHeld = false
+    /// A visit just planned from a club: Upcoming plays its arrival once, then clears this.
+    @Published var plannedVisitHighlightID: String?
     /// Announced only on a real change. @Published fires for every assignment, and Discover
     /// assigns .expanded each time it leaves the screen: covered by My week, the app-wide
     /// re-render made the navigation stack report that disappearance again, in a loop,
@@ -256,6 +259,7 @@ final class AppModel: ObservableObject {
             currentUser = user
             UpcomingGamesWidgetStore.setCurrentAccount(user.id)
             notificationManager.startMonitoring(repository: repository)
+            AnalyticsAskStore.update(userID: user.id) { AnalyticsAskPolicy.recordLaunch(&$0, now: Date()) }
             sessionRestoreState = .ready
         } catch {
             guard generation == sessionGeneration, !Task.isCancelled else { return }
@@ -673,7 +677,13 @@ final class AppModel: ObservableObject {
               sessionRestoreState == .ready,
               let user = currentUser,
               user.isOnboardingComplete else { return false }
-        return user.consents?.reviewRequired == true
+        return user.consents?.reviewRequired == true || isConsentFlowHeld
+    }
+
+    /// The server clears "review required" with the answer, but the consent screen still plays its
+    /// finish and offers a photo. It holds itself open until it is done, and lets go here.
+    func holdConsentFlow(_ hold: Bool) {
+        isConsentFlowHeld = hold
     }
 
     /// Отправляет ответ с экрана согласия. Возвращает текст ошибки: экран
@@ -760,6 +770,8 @@ final class AppModel: ObservableObject {
         pendingCreateSearchPrefill = nil
         pendingCourtID = nil
         pendingPersonalVisit = nil
+        plannedVisitHighlightID = nil
+        isConsentFlowHeld = false
         bottomBarDisplayMode = .expanded
         pendingHighlightedDiscoverUserID = nil
         pendingHighlightedSearchID = nil

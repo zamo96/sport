@@ -18,54 +18,40 @@ struct PersonalActivityReportComposerSheet: View {
     @State private var isPreparing = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
-    private let lime = Color(red: 0.77, green: 0.94, blue: 0.38)
+    private let lime = VisitStyle.accent
     private var count: Int { existing.count + pending.count }
     private var commentLength: Int { comment.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count }
 
+    private var isCompleted: Bool { activity.status.lowercased() == "completed" }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        VStack(spacing: 0) {
+            header
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
+                    visitRow
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(activity.sport.title).font(.title2.weight(.semibold))
-                        Text(activity.scheduledAt.formattedDateTime()).font(.subheadline).foregroundStyle(.white.opacity(0.6))
-                        if let court = activity.court { Text(court.name).font(.subheadline).foregroundStyle(.white.opacity(0.7)) }
+                        Text(L10n.string("How did it go?", "Как прошло?"))
+                            .font(.system(size: 30, weight: .heavy))
+                            .accessibilityAddTraits(.isHeader)
+                        Text(isCompleted
+                             ? L10n.string("The session already counts. Photos and a note are for you and your profile, if you like.", "Занятие уже засчитано. Фото и заметка — для себя и для профиля, по желанию.")
+                             : L10n.string("Saving marks the session as happened. Photos and a note are optional.", "Сохранение отметит занятие как состоявшееся. Фото и заметка — по желанию."))
+                            .font(.system(size: 15))
+                            .foregroundStyle(VisitStyle.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(L10n.string("Photos, videos and a note are optional. Saving marks this visit as completed.", "Фото, видео и заметка — по желанию. Сохранение отмечает визит как состоявшийся."))
-                        .font(.footnote).foregroundStyle(.white.opacity(0.65))
                     mediaSection
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(L10n.string("How did it go?", "Как прошло занятие?")).font(.headline)
-                        TextField(L10n.string("What would you like to remember?", "Что хочется запомнить?"), text: $comment, axis: .vertical)
-                            .lineLimit(3...8).padding(14)
-                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
-                        Text("\(commentLength)/240")
-                            .font(.caption).foregroundStyle(commentLength > 240 ? .red : .white.opacity(0.5))
-                    }
-                    Button { Task { await save() } } label: {
-                        HStack {
-                            if isSubmitting { ProgressView().tint(.black) }
-                            Text(isSubmitting ? L10n.string("Saving…", "Сохраняем…") : L10n.string("Save result", "Сохранить результат"))
-                        }
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(lime, in: RoundedRectangle(cornerRadius: 18))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isSubmitting || isPreparing || commentLength > 240)
-                    .accessibilityIdentifier("visit-report-save")
+                    noteSection
                 }
-                .padding(20)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 24)
             }
-            .foregroundStyle(.white).background(Color.black.ignoresSafeArea())
-            .navigationTitle(L10n.string("Visit result", "Итог визита"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.string("Close", "Закрыть")) { dismiss() }.disabled(isSubmitting)
-                }
-            }
+            footer
         }
+        .foregroundStyle(.white)
+        .background(VisitStyle.sheet.ignoresSafeArea())
         .preferredColorScheme(.dark).tint(lime)
         .interactiveDismissDisabled(isSubmitting)
         .onAppear {
@@ -92,54 +78,169 @@ struct PersonalActivityReportComposerSheet: View {
         } message: { Text(errorMessage ?? "") }
     }
 
+    private var header: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isSubmitting)
+            .accessibilityLabel(L10n.string("Close", "Закрыть"))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+
+    private var visitRow: some View {
+        HStack(spacing: 12) {
+            PersonalVisitArtwork(court: activity.court, sport: activity.sport, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(visitTitle)
+                    .font(.system(size: 15, weight: .semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                if let court = activity.court {
+                    Text(court.name)
+                        .font(.system(size: 13))
+                        .foregroundStyle(VisitStyle.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if isCompleted {
+                Text(L10n.string("Marked", "Отмечено"))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(VisitStyle.onAccent)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(VisitStyle.accent, in: Capsule())
+            }
+        }
+    }
+
+    private var visitTitle: String {
+        guard let start = activity.scheduledDate, let range = activity.visitTimeRange else { return activity.sport.title }
+        return "\(activity.sport.title) · \(PersonalVisitDateText.day(start, style: .short)) · \(range)"
+    }
+
     private var mediaSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.string("Photos and videos · \(count)/8", "Фото и видео · \(count)/8")).font(.headline)
-            ScrollView(.horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(Array(existing.enumerated()), id: \.offset) { index, item in
-                        ZStack(alignment: .topTrailing) {
-                            ActivityMediaThumbnail(item: item).frame(width: 108, height: 108).clipShape(RoundedRectangle(cornerRadius: 16))
-                            removeButton { existing.remove(at: index) }
-                        }
-                    }
-                    ForEach(pending) { item in
-                        ZStack(alignment: .topTrailing) {
-                            Group {
-                                if item.kind == .video {
-                                    VideoThumbnailView(url: item.url)
-                                        .overlay(Image(systemName: "play.circle.fill").font(.title).foregroundStyle(.white))
-                                } else if let image = UIImage(contentsOfFile: item.url.path) {
-                                    Image(uiImage: image).resizable().scaledToFill()
-                                }
-                            }
-                            .frame(width: 108, height: 108).clipShape(RoundedRectangle(cornerRadius: 16))
-                            removeButton {
-                                try? FileManager.default.removeItem(at: item.url)
-                                pending.removeAll { $0.id == item.id }
-                            }
-                        }
+        VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(Array(existing.enumerated()), id: \.offset) { index, item in
+                    mediaTile {
+                        ActivityMediaThumbnail(item: item)
+                    } onRemove: {
+                        existing.remove(at: index)
                     }
                 }
-            }
-            PhotosPicker(selection: $pickerItems, maxSelectionCount: max(1, 8 - count), matching: .any(of: [.images, .videos]), preferredItemEncoding: .current) {
-                HStack {
-                    if isPreparing { ProgressView().tint(lime) }
-                    Label(L10n.string("Add photos or videos", "Добавить фото или видео"), systemImage: "plus")
+                ForEach(pending) { item in
+                    mediaTile {
+                        if item.kind == .video {
+                            VideoThumbnailView(url: item.url)
+                                .overlay(Image(systemName: "play.circle.fill").font(.title).foregroundStyle(.white))
+                        } else if let image = UIImage(contentsOfFile: item.url.path) {
+                            Image(uiImage: image).resizable().scaledToFill()
+                        }
+                    } onRemove: {
+                        try? FileManager.default.removeItem(at: item.url)
+                        pending.removeAll { $0.id == item.id }
+                    }
                 }
-                .font(.subheadline.weight(.semibold)).foregroundStyle(lime).frame(minHeight: 44)
+                if count < 8 {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: max(1, 8 - count), matching: .any(of: [.images, .videos]), preferredItemEncoding: .current) {
+                        VStack(spacing: 8) {
+                            if isPreparing {
+                                ProgressView().tint(lime)
+                            } else {
+                                Image(systemName: "camera")
+                                    .font(.system(size: 24, weight: .semibold))
+                            }
+                            Text(count == 0 ? L10n.string("Add", "Добавить") : L10n.string("More", "Ещё"))
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundStyle(lime)
+                        .frame(maxWidth: .infinity, minHeight: 136)
+                        .background(lime.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(lime.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                        )
+                    }
+                    .disabled(isPreparing || isSubmitting)
+                    .accessibilityLabel(L10n.string("Add photos or videos", "Добавить фото или видео"))
+                    .accessibilityIdentifier("visit-report-add-media")
+                }
             }
-            .disabled(count >= 8 || isPreparing || isSubmitting)
-            .accessibilityIdentifier("visit-report-add-media")
-            Text(L10n.string("Up to 8 attachments. Photos up to 20 MB; MP4 or MOV videos up to 60 MB.", "До 8 вложений. Фото до 20 МБ; видео MP4 или MOV до 60 МБ."))
-                .font(.caption).foregroundStyle(.white.opacity(0.55))
+            Text(L10n.string("\(count) of 8 · photos and videos", "\(count) из 8 · фото и видео"))
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.5))
+        }
+    }
+
+    private func mediaTile<Content: View>(@ViewBuilder _ content: () -> Content, onRemove: @escaping () -> Void) -> some View {
+        Color.clear
+            .frame(maxWidth: .infinity, minHeight: 136, maxHeight: 136)
+            .overlay { content() }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                removeButton(action: onRemove)
+            }
+    }
+
+    private var noteSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.string("Note for yourself", "Заметка для себя"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(VisitStyle.secondaryText)
+            TextField(L10n.string("What worked, what to work on next time", "Что получилось, над чем поработать в следующий раз"), text: $comment, axis: .vertical)
+                .lineLimit(3...8)
+                .textInputAutocapitalization(.sentences)
+                .padding(14)
+                .background(VisitStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(VisitStyle.line, lineWidth: 1))
+            Text("\(commentLength)/240")
+                .font(.caption)
+                .foregroundStyle(commentLength > 240 ? VisitStyle.destructive : Color.white.opacity(0.5))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private var footer: some View {
+        Button { Task { await save() } } label: {
+            HStack(spacing: 10) {
+                if isSubmitting { ProgressView().tint(VisitStyle.onAccent) }
+                Text(isSubmitting ? L10n.string("Saving…", "Сохраняем…") : L10n.string("Save", "Сохранить"))
+            }
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(VisitStyle.onAccent)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(lime, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isSubmitting || isPreparing || commentLength > 240)
+        .accessibilityIdentifier("visit-report-save")
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(VisitStyle.sheet)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
         }
     }
 
     private func removeButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.white)
-                .shadow(color: .black, radius: 3).frame(width: 44, height: 44)
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Color.black.opacity(0.6), in: Circle())
+                .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain).disabled(isSubmitting)
         .accessibilityLabel(L10n.string("Remove attachment", "Удалить вложение"))

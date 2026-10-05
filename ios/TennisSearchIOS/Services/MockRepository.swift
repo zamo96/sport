@@ -33,8 +33,20 @@ actor MockRepository: TennisRepository {
         isVerified: true,
         // Аккаунт «до раздельных согласий»: после входа покажется экран согласия.
         // Like the server: before the first consent the field is prefilled with the profile name.
-        consents: ConsentState(profileVisibility: "legacy", fullName: "Анна", termsUpdateRequired: true, reviewRequired: true)
+        consents: MockRepository.initialConsents
     )
+
+    /// `-consent-review-new` starts the mock as a brand new account (no answer yet, nothing to accept
+    /// again) so the whole first-run consent flow can be walked through; without it the account is an
+    /// old one that has to confirm.
+    private static var initialConsents: ConsentState {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-consent-review-new") {
+            return ConsentState(profileVisibility: "pending", fullName: "Анна", reviewRequired: true)
+        }
+        #endif
+        return ConsentState(profileVisibility: "legacy", fullName: "Анна", termsUpdateRequired: true, reviewRequired: true)
+    }
 
     private var discoverUsers: [DiscoverUser] = [
         makeDiscoverUser(
@@ -1222,6 +1234,10 @@ actor MockRepository: TennisRepository {
             ("previous-week", day(-6, hour: 11), .tennis, 75, nil, "completed"),
             ("previous-month", previousMonth, .padel, 60, "Первая тренировка в новом клубе.", "completed"),
             ("planned", day(1, hour: 18), .tennis, 60, nil, "planned"),
+            // Ended but not marked: Upcoming asks "happened / didn't happen".
+            ("waiting-mark", day(-1, hour: 19), .padel, 60, nil, "planned"),
+            ("waiting-today", now.addingTimeInterval(-150 * 60), .tennis, 60, nil, "planned"),
+            ("later-today", now.addingTimeInterval(80 * 60), .tennis, 90, nil, "planned"),
             ("canceled", day(-2, hour: 19), .padel, 90, nil, "canceled")
         ]
         for (id, date, sport, duration, comment, status) in entries {

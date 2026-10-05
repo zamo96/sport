@@ -94,104 +94,6 @@ enum AppMotion {
     }
 }
 
-struct SuccessCelebrationOverlay: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var launched = false
-    @State private var cardVisible = false
-
-    private static let particles: [CelebrationParticle] = [
-        .init(id: 0, color: Color(red: 0.18, green: 0.85, blue: 0.47), endX: -132, endY: -196, rotation: -38, size: CGSize(width: 9, height: 18)),
-        .init(id: 1, color: Color(red: 1.0, green: 0.82, blue: 0.23), endX: -74, endY: -224, rotation: 24, size: CGSize(width: 10, height: 16)),
-        .init(id: 2, color: Color(red: 0.31, green: 0.55, blue: 1.0), endX: 92, endY: -214, rotation: 54, size: CGSize(width: 8, height: 17)),
-        .init(id: 3, color: Color(red: 1.0, green: 0.37, blue: 0.37), endX: 138, endY: -172, rotation: -28, size: CGSize(width: 11, height: 15)),
-        .init(id: 4, color: Color(red: 0.68, green: 0.42, blue: 1.0), endX: -156, endY: -86, rotation: 72, size: CGSize(width: 8, height: 14)),
-        .init(id: 5, color: Color(red: 0.16, green: 0.78, blue: 0.78), endX: 168, endY: -96, rotation: -64, size: CGSize(width: 9, height: 16)),
-        .init(id: 6, color: Color(red: 1.0, green: 0.61, blue: 0.18), endX: -108, endY: 18, rotation: 34, size: CGSize(width: 10, height: 15)),
-        .init(id: 7, color: Color(red: 0.26, green: 0.74, blue: 0.42), endX: 122, endY: 24, rotation: -44, size: CGSize(width: 8, height: 16))
-    ]
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.24)
-                .ignoresSafeArea()
-
-            // Reduce Motion: no confetti flight, the card just fades in.
-            ForEach(reduceMotion ? [] : Self.particles) { particle in
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(particle.color)
-                    .frame(width: particle.size.width, height: particle.size.height)
-                    .rotationEffect(.degrees(launched ? particle.rotation : 0))
-                    .offset(x: launched ? particle.endX : 0, y: launched ? particle.endY : -18)
-                    .opacity(launched ? 0 : 1)
-                    .scaleEffect(launched ? 1 : 0.2)
-            }
-
-            VStack(spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.court)
-                        .frame(width: 96, height: 96)
-                        .shadow(color: AppTheme.court.opacity(0.36), radius: 26, x: 0, y: 16)
-
-                    Circle()
-                        .stroke(.white.opacity(0.34), lineWidth: 10)
-                        .frame(width: launched ? 128 : 82, height: launched ? 128 : 82)
-                        .opacity(launched ? 0 : 1)
-
-                    Text(icon)
-                        .font(.system(size: 46))
-                        .rotationEffect(.degrees(launched ? -12 : 0))
-                        .offset(y: launched ? -5 : 4)
-                }
-                .scaleEffect(cardVisible ? 1 : 0.72)
-
-                VStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 21, weight: .black))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-
-                    Text(subtitle)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 28)
-            .background(
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(Color(red: 0.05, green: 0.13, blue: 0.10).opacity(0.94))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .stroke(.white.opacity(0.12), lineWidth: 1)
-            )
-            .scaleEffect(cardVisible ? 1 : 0.86)
-            .opacity(cardVisible ? 1 : 0)
-        }
-        .allowsHitTesting(false)
-        .onAppear {
-            guard !reduceMotion else {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    cardVisible = true
-                }
-                return
-            }
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
-                cardVisible = true
-            }
-            withAnimation(.easeOut(duration: 1.25)) {
-                launched = true
-            }
-        }
-    }
-}
-
 struct GameReportViewerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let report: GameReport
@@ -305,15 +207,6 @@ private struct GameReportViewerPhoto: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 12)
     }
-}
-
-private struct CelebrationParticle: Identifiable {
-    let id: Int
-    let color: Color
-    let endX: CGFloat
-    let endY: CGFloat
-    let rotation: Double
-    let size: CGSize
 }
 
 struct SportIconView: View {

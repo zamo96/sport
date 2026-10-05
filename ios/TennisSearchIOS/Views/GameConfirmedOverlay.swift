@@ -296,7 +296,7 @@ private struct GameConfirmedLayout {
 
 /// The agreed game as a ticket: sport and length, the day, the time, then past the
 /// perforation where and with whom.
-private struct GameConfirmedTicket: View {
+struct GameConfirmedTicket: View {
     static let perforation: CGFloat = 152
 
     let confirmation: AppModel.GameConfirmation
@@ -409,7 +409,7 @@ private struct GameConfirmedTicket: View {
 }
 
 /// A rounded ticket with a half-circle notch bitten out of each side at the perforation.
-private struct GameConfirmedTicketShape: Shape {
+struct GameConfirmedTicketShape: Shape {
     let notchY: CGFloat
 
     func path(in rect: CGRect) -> Path {
@@ -436,11 +436,13 @@ private struct GameConfirmedTicketShape: Shape {
 }
 
 /// A rubber stamp, set at an angle as if pressed by hand.
-private struct GameConfirmedStamp: View {
+struct GameConfirmedStamp: View {
+    var label = L10n.string("Confirmed", "Подтверждено")
+
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "checkmark.seal.fill")
-            Text(L10n.string("Confirmed", "Подтверждено"))
+            Text(label)
                 .textCase(.uppercase)
                 .tracking(1)
         }
@@ -451,6 +453,6 @@ private struct GameConfirmedStamp: View {
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppTheme.mint.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AppTheme.court, lineWidth: 3))
         .rotationEffect(.degrees(-12))
-        .accessibilityLabel(L10n.string("Confirmed", "Подтверждено"))
+        .accessibilityLabel(label)
     }
 }

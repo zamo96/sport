@@ -15,6 +15,7 @@ struct SearchesView: View {
     @State private var updatingResponseID: String?
     @State private var updatingSearchID: String?
     @State private var presentedSearchLobbyID: String?
+    @State private var completedRoster: RosterCompletion?
     @State private var createButtonPressed = false
     @State private var isCreateFABExpanded = true
     @State private var hasInteractedWithCreateFAB = false
@@ -56,6 +57,26 @@ struct SearchesView: View {
             .simultaneousGesture(createFABScrollGesture)
 
             createSearchFAB
+        }
+        .overlay {
+            if let completedRoster {
+                RosterCompleteOverlay(
+                    completion: completedRoster,
+                    onOpenRoster: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            self.completedRoster = nil
+                        }
+                        presentedSearchLobbyID = completedRoster.searchId
+                    },
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            self.completedRoster = nil
+                        }
+                    }
+                )
+                .id(completedRoster.id)
+                .transition(.opacity)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .simultaneousGesture(backToDiscoverSwipe)
@@ -554,6 +575,9 @@ struct SearchesView: View {
         updatingResponseID = responseId
         defer { updatingResponseID = nil }
 
+        let owningSearch = searches.first { $0.responses.contains { $0.id == responseId } }
+        let approvedBefore = owningSearch?.responses.filter { $0.status == "approved" }.count ?? 0
+
         do {
             let result = try await appModel.repository.updateSearchResponseStatus(responseId: responseId, status: status)
             searches = searches.applying(responseUpdate: result)
@@ -562,6 +586,15 @@ struct SearchesView: View {
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
 
             guard status == "approved" else {
+                return
+            }
+
+            if let owningSearch,
+               let updated = searches.first(where: { $0.id == owningSearch.id }),
+               let completion = RosterCompletion.afterApproval(of: updated, approvedBefore: approvedBefore, host: appModel.currentUser) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    completedRoster = completion
+                }
                 return
             }
 
@@ -2024,6 +2057,7 @@ private struct SearchResponsesSheet: View {
     @State private var selectedFilter: SearchResponsesFilter = .all
     @State private var selectedPlayer: DiscoverUser?
     @State private var isFinalizingRoster = false
+    @State private var completedRoster: RosterCompletion?
 
     private var filteredResponses: [SearchResponse] {
         switch selectedFilter {
@@ -2055,6 +2089,13 @@ private struct SearchResponsesSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
                     searchSummaryCard
+                    if search.playersNeeded > 1, let host = appModel.currentUser {
+                        RosterSlotsStrip(
+                            host: RosterPerson(host),
+                            players: search.responses.filter { $0.status == "approved" }.map { RosterPerson($0.responderUser) },
+                            capacity: search.playersNeeded
+                        )
+                    }
                     responsesFilterRail
 
                     ForEach(filteredResponses) { response in
@@ -2132,6 +2173,34 @@ private struct SearchResponsesSheet: View {
                         foreground: AppTheme.court
                     )
                 }
+            }
+        }
+        .overlay {
+            if let completedRoster {
+                RosterCompleteOverlay(
+                    completion: completedRoster,
+                    onOpenRoster: onOpenLobby.map { openLobby in
+                        {
+                            self.completedRoster = nil
+                            openLobby()
+                        }
+                    },
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            self.completedRoster = nil
+                        }
+                    }
+                )
+                .id(completedRoster.id)
+                .transition(.opacity)
+            }
+        }
+        // The approval that fills a group roster plays its moment here, over the list
+        // where it happened.
+        .onChange(of: approvedResponsesCount) { [approvedResponsesCount] _ in
+            guard let completion = RosterCompletion.afterApproval(of: search, approvedBefore: approvedResponsesCount, host: appModel.currentUser) else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                completedRoster = completion
             }
         }
         .sheet(item: $selectedPlayer) { player in
@@ -5018,10 +5087,10 @@ struct SearchComposerView: View {
                 }
 
                 if isRocketLaunchPresented {
-                    SuccessCelebrationOverlay(
+                    ActionCelebrationOverlay(
+                        kind: .searchPublished(selectedSport),
                         title: L10n.string("Urgent search published", "Срочный поиск опубликован"),
-                        subtitle: L10n.string("Players will see it in the feed", "Игроки увидят его в ленте"),
-                        icon: "🚀"
+                        subtitle: L10n.string("Players will see it in the feed", "Игроки увидят его в ленте")
                     )
                         .transition(.opacity)
                         .zIndex(20)
@@ -6604,11 +6673,11 @@ struct SearchComposerView: View {
             }
             let shouldCelebratePublish = initialSearch == nil && payload.searchType == .hot
             if shouldCelebratePublish {
-                AppHaptics.successCelebration()
+                // The radar plays its own haptics as it finds players.
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isRocketLaunchPresented = true
                 }
-                try? await Task.sleep(for: .milliseconds(1700))
+                try? await Task.sleep(for: .milliseconds(2100))
             }
             await appModel.notificationManager.manualRefresh(repository: appModel.repository)
             onCreate(created)

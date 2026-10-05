@@ -2,6 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var appModel: AppModel
+    #if DEBUG
+    @State private var celebrationPreview: CelebrationPreview?
+    @State private var rosterPreviewPlayers: [RosterPerson]?
+    @State private var rosterPreviewCompletion: RosterCompletion?
+    #endif
 
     var body: some View {
         AppScreen {
@@ -144,10 +149,37 @@ struct ContentView: View {
             }
         }
         .animation(AppMotion.standard, value: appModel.serverRecoveryNotice?.id)
+        .overlay { celebrationPreviewOverlay }
         .task {
             await presentMatchMomentPreviewIfRequested()
         }
     }
+
+    @ViewBuilder
+    private var celebrationPreviewOverlay: some View {
+        #if DEBUG
+        if let celebrationPreview {
+            ActionCelebrationOverlay(kind: celebrationPreview.kind, title: celebrationPreview.title, subtitle: "Preview")
+                .id(celebrationPreview.id)
+        }
+        if let rosterPreviewPlayers {
+            ZStack(alignment: .top) {
+                Color(white: 0.96).ignoresSafeArea()
+                RosterSlotsStrip(host: Self.rosterPreviewHost, players: rosterPreviewPlayers, capacity: 3)
+                    .padding(16)
+                    .padding(.top, 80)
+                if let rosterPreviewCompletion {
+                    RosterCompleteOverlay(completion: rosterPreviewCompletion, onOpenRoster: {}, onDismiss: {})
+                        .transition(.opacity)
+                }
+            }
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private static let rosterPreviewHost = RosterPerson(id: "host", name: "Анна", imagePath: nil)
+    #endif
 
     /// On mock data, `-match-moment-preview` replays the mutual-like moment at launch and
     /// `-game-confirmed-preview` the agreed-game one, so the choreography can be reviewed
@@ -156,30 +188,66 @@ struct ContentView: View {
     private func presentMatchMomentPreviewIfRequested() async {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
+        let previewsCelebrations = arguments.contains("-action-celebrations-preview")
+        let previewsRoster = arguments.contains("-roster-preview")
         guard AppConfig.useMockData,
-              arguments.contains("-match-moment-preview") || arguments.contains("-game-confirmed-preview"),
+              arguments.contains("-match-moment-preview") || arguments.contains("-game-confirmed-preview") || previewsCelebrations || previewsRoster,
               let player = try? await appModel.repository.fetchDiscoverUsers(view: .swipe, sport: nil).first else {
             return
         }
         let sport = arguments.firstIndex(of: "-match-moment-sport")
             .flatMap { arguments.indices.contains($0 + 1) ? Sport(rawValue: arguments[$0 + 1]) : nil }
         try? await Task.sleep(for: .milliseconds(800))
-        if arguments.contains("-game-confirmed-preview") {
-            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-            appModel.presentGameConfirmation(AppModel.GameConfirmation(
-                sport: sport ?? .tennis,
-                date: Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: tomorrow),
-                durationMinutes: 90,
-                place: sport == .running ? "Крестовский остров" : "Tennis Prime",
-                partnerName: player.displayName,
-                partnerImagePath: player.profileHeroImagePath
-            ))
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let game = AppModel.GameConfirmation(
+            sport: sport ?? .tennis,
+            date: Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: tomorrow),
+            durationMinutes: 90,
+            place: sport == .running ? "Крестовский остров" : "Tennis Prime",
+            partnerName: player.displayName,
+            partnerImagePath: player.profileHeroImagePath
+        )
+        if previewsRoster {
+            // `-roster-preview` fills a three-player roster one approval at a time.
+            let joiners = ((try? await appModel.repository.fetchDiscoverUsers(view: .swipe, sport: nil)) ?? []).prefix(3).map(RosterPerson.init)
+            let host = Self.rosterPreviewHost
+            rosterPreviewPlayers = []
+            try? await Task.sleep(for: .milliseconds(700))
+            for joiner in joiners {
+                rosterPreviewPlayers?.append(joiner)
+                try? await Task.sleep(for: .milliseconds(900))
+            }
+            rosterPreviewCompletion = RosterCompletion(searchId: "preview", sport: sport ?? .padel, people: [host] + joiners)
+        } else if previewsCelebrations {
+            // `-action-celebrations-preview` plays every smaller celebration in turn.
+            let kinds: [(ActionCelebrationKind, String)] = [
+                (.searchPublished(sport ?? .tennis), "searchPublished"),
+                (.photoReport, "photoReport"),
+                (.gamePlayed(sport ?? .tennis), "gamePlayed"),
+                (.gameNotPlayed, "gameNotPlayed"),
+                (.gameUpdated(game), "gameUpdated")
+            ]
+            for (kind, title) in kinds {
+                celebrationPreview = CelebrationPreview(kind: kind, title: title)
+                try? await Task.sleep(for: .milliseconds(2600))
+            }
+            celebrationPreview = nil
+        } else if arguments.contains("-game-confirmed-preview") {
+            appModel.presentGameConfirmation(game)
         } else {
             appModel.presentMatchMoment(matchID: "match-\(player.id)", with: player, deckSport: sport)
         }
         #endif
     }
 }
+
+#if DEBUG
+private struct CelebrationPreview {
+    let id = UUID()
+    let kind: ActionCelebrationKind
+    let title: String
+}
+#endif
 
 private enum MainTab: String, CaseIterable, Identifiable {
     case discover

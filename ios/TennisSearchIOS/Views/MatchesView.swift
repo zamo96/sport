@@ -2919,7 +2919,8 @@ struct GameProposalSheet: View {
     @State private var localError: String?
     @State private var draft: GameProposalDraft
     @State private var isExactDateTimeSelected = false
-    @State private var isGameUpdateCelebrationPresented = false
+    /// The edited game as it now stands, while its "updated" moment plays.
+    @State private var updatedGame: AppModel.GameConfirmation?
     @State private var requiresBookingDateTimeChange = false
     @State private var bookingDateTimeBaseline: Date?
     @StateObject private var bookingCallFlow = BookingCallFlow()
@@ -3040,11 +3041,11 @@ struct GameProposalSheet: View {
                     .padding(.bottom, 40)
                 }
 
-                if isGameUpdateCelebrationPresented {
-                    SuccessCelebrationOverlay(
+                if let updatedGame {
+                    ActionCelebrationOverlay(
+                        kind: .gameUpdated(updatedGame),
                         title: L10n.string("Game updated", "Игра изменена"),
-                        subtitle: L10n.string("Waiting for your partner's confirmation", "Ждем подтверждения партнера"),
-                        icon: "✅"
+                        subtitle: L10n.string("Waiting for your partner's confirmation", "Ждем подтверждения партнера")
                     )
                     .transition(.opacity)
                     .zIndex(20)
@@ -3780,11 +3781,17 @@ struct GameProposalSheet: View {
         do {
             if context != .new, let requestId = seedRequest?.id {
                 _ = try await appModel.repository.updateGameRequest(gameRequestId: requestId, draft: draft)
-                AppHaptics.successCelebration()
                 withAnimation(.easeInOut(duration: 0.18)) {
-                    isGameUpdateCelebrationPresented = true
+                    updatedGame = AppModel.GameConfirmation(
+                        sport: draft.sport,
+                        date: draft.proposedDatetime,
+                        durationMinutes: draft.durationMinutes,
+                        place: selectedCourt?.name,
+                        partnerName: match.otherUser.displayName,
+                        partnerImagePath: match.otherUser.profileHeroImagePath
+                    )
                 }
-                try? await Task.sleep(for: .milliseconds(1700))
+                try? await Task.sleep(for: .milliseconds(2000))
             } else {
                 _ = try await appModel.repository.createGameRequest(matchId: match.id, draft: draft)
                 AppHaptics.notification(.success)

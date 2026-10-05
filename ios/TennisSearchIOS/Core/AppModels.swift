@@ -1234,6 +1234,9 @@ struct ConsentState: Codable, Equatable {
     var reviewRequired: Bool
 
     var isLegacy: Bool { profileVisibility == "legacy" }
+    var isHidden: Bool { profileVisibility == "hidden" }
+    /// Хоть что-то из объёма показа уже выбрано (при скрытии сервер хранит прежний выбор).
+    var hasChosenScope: Bool { visibleToGuests || showsBio || showsPhotos || showsVideos || showsSearches }
     var isVisible: Bool { profileVisibility == "visible" || profileVisibility == "legacy" }
 
     init(
@@ -2245,12 +2248,9 @@ struct PersonalActivity: Codable, Identifiable {
         return Date().timeIntervalSince(scheduledDate) >= duration
     }
 
+    /// Only plans stay in "Upcoming". A marked or canceled visit lives in the week and the history.
     var isArchivedForTimeline: Bool {
-        let rawStatus = status.lowercased()
-        if rawStatus == "canceled" {
-            return true
-        }
-        return false
+        status.lowercased() != "planned"
     }
 
     var canComplete: Bool {
