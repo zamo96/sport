@@ -1,0 +1,901 @@
+{
+  "terms": {
+    "ru": {
+      "title": "Пользовательское соглашение НаТреню",
+      "description": "Редакция от 5 октября 2026 года. Применяется после опубликования и принятия Пользователем.",
+      "sections": [
+        {
+          "title": "1. Владелец и предмет соглашения",
+          "paragraphs": [
+            "1.1. Владелец сервиса и сторона настоящего соглашения — Захаров Матвей Владимирович, ИНН 471803649801. Адрес для юридически значимых обращений: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15. Электронная почта: support@sportsearch.shop. Далее он именуется Владелец.",
+            "1.2. Сервис НаТреню включает сайт https://sportsearch.shop, PWA, официальные мобильные приложения и связанные серверные функции для поиска спортивных партнёров, согласования игр и общения. Далее они совместно именуются Сервис. Настоящее соглашение регулирует отношения Владельца с использующим Сервис физическим лицом — Пользователем.",
+            "1.3. Владелец предоставляет техническую возможность создать аккаунт и профиль, указать спортивные предпочтения и доступность, искать партнёров и площадки, создавать игровые поиски и предложения, отвечать на них, переписываться и получать связанные с этими действиями уведомления. Набор доступных функций зависит от версии приложения и выбранного региона.",
+            "1.4. Использование функций Сервиса бесплатно. Сервис не принимает оплату за подписку, участие в игре или бронирование площадки. Настоящее соглашение не разрешает будущие списания. При изменении модели Сервиса платные услуги потребуют самостоятельных условий и отдельного действия Пользователя.",
+            "1.5. Владелец предоставляет средство поиска и общения; использование Сервиса само по себе не делает его тренером, организатором мероприятия, медицинским консультантом, владельцем площадки или стороной договорённости участников. Если Владелец отдельно принимает такие обязанности, их содержание определяется соответствующей договорённостью и законом."
+          ]
+        },
+        {
+          "title": "2. Регистрация и заключение договора",
+          "paragraphs": [
+            "2.1. Аккаунт может создать лицо, достигшее 18 лет и обладающее необходимой дееспособностью. Пользователь сообщает достоверный возраст и сведения, необходимые для работы выбранных функций. Спортивный уровень, указанный Пользователем, является его самооценкой, если рядом прямо не предусмотрен другой способ подтверждения.",
+            "2.2. Соглашение является офертой. До принятия Пользователь может бесплатно ознакомиться с полным текстом. Договор заключается при отдельном действии, прямо обозначенном в интерфейсе как принятие соглашения: нажатии кнопки регистрации или входа рядом со ссылкой на текст и пояснением о принятии либо подтверждении новой редакции в аккаунте. Просмотр страниц, молчание и заранее проставленная отметка сами по себе не считаются принятием. Владелец фиксирует редакцию, время и способ принятия.",
+            "2.3. Пользователь использует принадлежащие ему средства входа и сохраняет конфиденциальность кодов, устройства и активного сеанса. При обнаружении постороннего доступа следует обратиться на support@sportsearch.shop. Владелец не просит сообщать код входа представителю поддержки. Пользователь отвечает за собственные виновные действия; положения о сохранности доступа не освобождают Владельца от его обязанностей по защите Сервиса.",
+            "2.4. Без регистрации могут быть доступны отдельные карточки, приглашения и разделы. Посетитель, заполняющий черновик профиля без завершённой регистрации, также относится к гостевой аудитории. Гостевой доступ не даёт права создавать сторонние базы анкет, обходить ограничения или нарушать права на материалы."
+          ]
+        },
+        {
+          "title": "3. Поиск и договорённости об игре",
+          "paragraphs": [
+            "3.1. Пользователь самостоятельно выбирает виды спорта, уровень, город и районы, доступное время и другие параметры поиска. Он может изменять свои сведения и доступность в соответствующих функциях.",
+            "3.2. Рекомендация, взаимный интерес, отклик или статус «принято» отражают действия участников в Сервисе. Они сами по себе не подтверждают бронирование или оплату площадки, проверку личности либо гарантированную явку партнёра. Участники уточняют место, время, стоимость услуг самой площадки, правила встречи и состав игроков между собой и, при необходимости, у площадки.",
+            "3.3. Спортивная нагрузка связана с рисками. Перед занятием Пользователь оценивает соответствие нагрузки своему состоянию и подготовке и соблюдает правила площадки. Это положение не является отказом от требований к лицу, причинившему вред, и не исключает предусмотренную законом ответственность Владельца.",
+            "3.4. При отмене или задержке участнику следует своевременно сообщить об этом партнёрам. Сервис хранит статусы и историю согласования выбранных игровых сценариев для их работы. Пользователь может оспорить ошибочные сведения через поддержку. Используемые для подбора сигналы взаимодействий отдельно описываются в правилах рекомендаций; наличие отзыва или отмены само по себе не означает расчёт рейтинга надёжности.",
+            "3.5. Информация о спортивных центрах может изменяться; перед поездкой следует уточнить у площадки адрес, расписание, наличие мест и стоимость её услуг. Обнаруженные ошибки можно сообщить в поддержку. В экстренной ситуации необходимо обращаться в соответствующие экстренные службы."
+          ]
+        },
+        {
+          "title": "4. Персональные данные и видимость профиля",
+          "paragraphs": [
+            "4.1. Порядок обработки персональных данных определён отдельной Политикой обработки персональных данных: https://sportsearch.shop/legal/privacy. Обработка, необходимая для заключения и исполнения договора по инициативе Пользователя, осуществляется в необходимом объёме на основании пункта 5 части 1 статьи 6 Федерального закона от 27.07.2006 № 152-ФЗ. Для других действий используются самостоятельные основания, указанные в Политике.",
+            "4.2. Принятие соглашения не является согласием на распространение персональных данных, необязательную аналитику или рекламные сообщения. Такие согласия оформляются отдельно, без объединения с принятием настоящего документа.",
+            "4.3. Анкета, связанные с ней материалы и игровые поиски показываются в поисковой выдаче, на карте, в каталоге и гостевых приглашениях только в пределах отдельного согласия на обработку персональных данных, разрешённых для распространения: https://sportsearch.shop/legal/profile-visibility. Пользователь выбирает сведения и аудиторию. Обобщённая точка района на карте не является местонахождением человека в реальном времени.",
+            "4.4. Без согласия на распространение Пользователь может использовать функции поиска и личного взаимодействия в предусмотренном Сервисом объёме. Сведения, необходимые для выбранного закрытого взаимодействия, получают его конкретные участники. Отказ от аналитики не ограничивает основные функции. Изменение настройки карты отключает этот способ показа, но само по себе не означает скрытия анкеты из всех остальных разделов.",
+            "4.5. Прекратить распространение и отозвать согласие можно в настройках либо обращением на support@sportsearch.shop. Прекращение показа анкет, удаления материалов и дальнейшей обработки осуществляется по Политике и закону. Наличие аккаунта до введения отдельного согласия не заменяет согласие на распространение.",
+            "4.6. Пользователь не размещает медицинские документы, паспортные сведения, точный домашний адрес и другую информацию, не требующуюся для спортивного поиска. Персональные данные и изображения других лиц можно передавать только при наличии необходимого правового основания."
+          ]
+        },
+        {
+          "title": "5. Сообщения и права на материалы",
+          "paragraphs": [
+            "5.1. Сообщения доступны участникам соответствующего чата или закрытого игрового сценария. Доступ Владельца и привлекаемых им исполнителей возможен в необходимом объёме для эксплуатации, рассмотрения жалоб, защиты прав и исполнения закона, с соблюдением конфиденциальности и ограничением полномочий.",
+            "5.2. Пользователь сохраняет права на свои тексты, фотографии и видео. В пределах принадлежащих ему прав он предоставляет Владельцу простую неисключительную безвозмездную лицензию на воспроизведение и хранение материалов, техническое преобразование формата и размера, отображение и доведение до всеобщего сведения только там, где выбранная функция и согласованные условия видимости разрешают такой показ.",
+            "5.3. Лицензия действует на время правомерного размещения материала в Сервисе на территории всего мира, поскольку разрешённый доступ через Интернет возможен из разных стран. Она не разрешает самостоятельную продажу материалов или их использование в рекламе. Технические поставщики вправе выполнять необходимые действия по поручению Владельца только в пределах указанной цели и предоставленных им прав.",
+            "5.4. Лицензия не заменяет основания обработки персональных данных или разрешения на использование изображения гражданина. После удаления материала его дальнейший показ в подконтрольных Владельцу интерфейсах прекращается; ограниченное хранение копий возможно только на самостоятельном законном основании в установленный срок.",
+            "5.5. Права на программное обеспечение, интерфейсы, дизайн и другие элементы Сервиса принадлежат их правообладателям. Пользователю предоставляется возможность использовать Сервис по назначению. Это не передаёт ему исключительных прав или права массового копирования баз данных."
+          ]
+        },
+        {
+          "title": "6. Правила поведения и модерация",
+          "paragraphs": [
+            "6.1. В Сервисе действует нулевая терпимость к незаконным и нежелательным материалам и злоупотреблениям. Запрещены угрозы, преследование, домогательства, оскорбления, дискриминация, мошенничество, спам, выдача себя за другое лицо, незаконные и нарушающие чужие права материалы, вмешательство в работу Сервиса и обход блокировок. Запрещены массовый сбор анкет, несанкционированный доступ и передача данных участников в сторонние базы без законного основания.",
+            "6.2. Пользователь может пожаловаться на другого участника и заблокировать его доступными средствами Сервиса, а также направить жалобу на support@sportsearch.shop. После блокировки контент заблокированного участника немедленно перестает показываться заблокировавшему Пользователю, а Оператор получает уведомление для проверки. В жалобе желательно указать аккаунт или материал, обстоятельства нарушения и контакт для ответа. Для обращения о нарушении исключительного права также указываются объект права и основание принадлежности права заявителю.",
+            "6.3. Владелец проверяет жалобы и вправе временно ограничить показ материала или доступ к функции, скрыть или удалить нарушающий материал, ограничить аккаунт либо прекратить доступ при существенном или повторном нарушении. Мера должна соответствовать обстоятельствам нарушения, защите участников и закону. Срочное ограничение возможно до окончания проверки при угрозе безопасности или обязательном требовании уполномоченного органа.",
+            "6.4. Жалобы на нежелательный контент и злоупотребления рассматриваются в течение 24 часов. При подтверждении нарушения Владелец удаляет или скрывает соответствующий контент и прекращает доступ нарушившего Пользователя к Сервису. Если требуются дополнительные сведения, заявителю сообщается об этом. Установленные законом сроки и обязанности имеют приоритет.",
+            "6.5. О причине ограничения Пользователю сообщается, если это не запрещено законом и не создаёт угрозы другим лицам или проверке. Решение можно обжаловать через поддержку. Блокировка не прекращает право предъявить законное требование или получить ответ на обращение."
+          ]
+        },
+        {
+          "title": "7. Рекомендации и уведомления",
+          "paragraphs": [
+            "7.1. В Сервисе применяются рекомендательные технологии. Правила их применения, используемые категории сведений, источники и методы доступны бесплатно на русском языке по адресу https://sportsearch.shop/legal/recommendations. Рекомендация не гарантирует совместимость людей, достоверность самооценки или безопасность встречи.",
+            "7.2. Сервисные сообщения связаны со входом, безопасностью аккаунта, игровыми предложениями, сообщениями и изменениями договорённостей. Пользователь управляет доступными категориями уведомлений в настройках Сервиса и устройства. Для сообщений о безопасности и ответов на юридически значимые обращения может использоваться контакт аккаунта.",
+            "7.3. Настоящее соглашение не содержит согласия на рекламную рассылку. Если реклама или необязательные рекламные технологии будут введены, до начала соответствующей обработки будут определены отдельные законные основания и необходимые согласия. Само по себе размещение рекламы не означает введения платы для Пользователей."
+          ]
+        },
+        {
+          "title": "8. Прекращение использования и изменения",
+          "paragraphs": [
+            "8.1. Пользователь может прекратить использование Сервиса и удалить аккаунт доступным способом либо обратиться за удалением в поддержку. Сроки удаления данных и законные исключения определены Политикой; прекращение договора не отменяет предусмотренных законом прав и обязанностей.",
+            "8.2. Владелец исправляет ошибки и обновляет технические функции. Изменения условий договора публикуются с новой редакцией и датой; изменения, затрагивающие права и обязанности Пользователя, применяются к нему после отдельного принятия, кроме изменений, прямо вытекающих из обязательного закона. Простая публикация новой редакции не разрешает произвольного изменения уже возникших обязательств и не заменяет нового согласия на обработку данных, если оно требуется.",
+            "8.3. При отказе от новых условий стороны решают вопрос продолжения или прекращения договора по закону; сохраняются возможность удаления аккаунта, обращения в поддержку и предъявления требований. Новая редакция не распространяется задним числом на совершённые действия.",
+            "8.4. При плановом прекращении работы Сервиса Владелец по возможности заранее уведомляет Пользователей и выполняет применимые обязанности по прекращению обработки и уничтожению данных. Временные ограничения из-за обслуживания, сбоев или угроз безопасности применяются в необходимом объёме."
+          ]
+        },
+        {
+          "title": "9. Ответственность и споры",
+          "paragraphs": [
+            "9.1. Стороны несут ответственность по законодательству Российской Федерации. Владелец не обещает конкретного спортивного результата, наличия подходящих партнёров, их явки или постоянной доступности всех функций, но выполняет свои договорные и обязательные законные обязанности, включая защиту данных.",
+            "9.2. Каждый участник отвечает за собственные действия по закону. Самостоятельные договорённости Пользователей не создают у Владельца обязанностей, которые он не принимал и которые не возложены на него законом. Это не исключает его ответственность за собственное нарушение, причинение вреда или иные случаи обязательной ответственности.",
+            "9.3. Ни одно положение соглашения не исключает и не ограничивает права, от которых нельзя отказаться договором, в том числе применимые права потребителя. Пользователь не отказывается от требований в связи с недостатками Сервиса или нарушением закона.",
+            "9.4. Вопросы и претензии можно направить на support@sportsearch.shop или по адресу Владельца. Обращение в поддержку добровольно, если обязательный досудебный порядок прямо не установлен законом; оно не препятствует обращению в уполномоченный орган или суд. Применимые специальные сроки ответа и исполнения требований соблюдаются независимо от внутреннего порядка поддержки.",
+            "9.5. Применяется право Российской Федерации. Подсудность определяется законом, включая право потребителя выбрать суд в предусмотренных законом случаях. Недействительность отдельного условия не отменяет действительность остальных условий, если договор может действовать без него."
+          ]
+        }
+      ]
+    },
+    "en": {
+      "title": "NaTrenyu Terms of Use",
+      "description": "Revision dated October 5, 2026. Applies after publication and acceptance by the User.",
+      "sections": [
+        {
+          "title": "1. Owner and scope",
+          "paragraphs": [
+            "1.1. The service owner and contracting party is Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Address for legally significant correspondence: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email: support@sportsearch.shop. He is referred to as the Owner.",
+            "1.2. NaTrenyu includes https://sportsearch.shop, its PWA, official mobile applications and related server functions for finding sports partners, arranging games and communicating, collectively the Service. These Terms govern the relationship between the Owner and an individual using the Service, the User.",
+            "1.3. The Service enables Users to create an account and profile, specify sports preferences and availability, find partners and facilities, create and respond to game searches and proposals, communicate and receive related notifications. Available features depend on the application version and region.",
+            "1.4. Service features are free. The Service does not collect payment for subscriptions, games or facility bookings. These Terms do not authorize future charges. Paid services, if introduced, require separate terms and a separate User action.",
+            "1.5. Providing a search and communication tool does not itself make the Owner a coach, event organizer, medical adviser, facility owner or party to arrangements between participants. Separately assumed obligations are determined by the relevant agreement and law."
+          ]
+        },
+        {
+          "title": "2. Registration and contract formation",
+          "paragraphs": [
+            "2.1. Accounts are available to individuals aged at least 18 with the necessary legal capacity. Users provide accurate age and information needed for selected features. A stated sports level is a self-assessment unless another verification method is expressly indicated.",
+            "2.2. These Terms are an offer. Users can read the full text free of charge before acceptance. The contract is formed by an explicit action labelled as acceptance: a registration or sign-in button beside the link and acceptance notice, or confirmation of a new revision in the account. Browsing, silence and preselected boxes do not themselves constitute acceptance. The Owner records the revision, time and method.",
+            "2.3. Users use their own sign-in credentials and protect codes, devices and active sessions. Unauthorized access should be reported to support@sportsearch.shop. The Owner does not ask Users to give a sign-in code to support staff. Users are responsible for their own culpable conduct; this does not release the Owner from security duties.",
+            "2.4. Some cards, invitations and sections are available without registration. Visitors completing a draft profile before registration are also guests. Guest access does not authorize external profile databases, circumvention or infringement of rights in materials."
+          ]
+        },
+        {
+          "title": "3. Search and game arrangements",
+          "paragraphs": [
+            "3.1. Users choose and update sports, levels, cities, districts, availability and other search parameters.",
+            "3.2. A recommendation, mutual interest, response or accepted status reflects participants' actions. It does not itself confirm facility booking or payment, identity verification or attendance. Participants confirm location, time, facility charges, rules and players with one another and, where needed, the facility.",
+            "3.3. Physical activity carries risks. Users assess whether an activity suits their condition and preparation and follow facility rules. This does not waive claims against a person causing harm or exclude the Owner's statutory liability.",
+            "3.4. Participants should promptly tell partners about cancellation or delay. The Service stores statuses and the coordination history required for game functions. Incorrect information can be challenged through support. Recommendation inputs are explained separately; a review or cancellation does not itself imply calculation of a reliability rating.",
+            "3.5. Facility information may change. Users should confirm the address, schedule, availability and price before travelling and may report errors to support. Emergencies should be referred to the appropriate emergency services."
+          ]
+        },
+        {
+          "title": "4. Personal data and profile visibility",
+          "paragraphs": [
+            "4.1. Data processing is described in the separate policy at https://sportsearch.shop/legal/privacy. Processing necessary to enter into and perform the contract at the User's initiative uses clause 5, part 1, article 6 of Federal Law No. 152-FZ of July 27, 2006. Other operations use separate grounds described in the policy.",
+            "4.2. Acceptance does not consent to dissemination, optional analytics or advertising. Those consents are obtained separately.",
+            "4.3. Profiles, related materials and game searches are shown in search, maps, directories and guest invitations only within the separate dissemination consent at https://sportsearch.shop/legal/profile-visibility. Users select data and audience. A district marker does not show a person's real-time location.",
+            "4.4. Without dissemination consent, Users retain search and direct interaction features as provided by the Service. Necessary information is supplied to the specific participants of the selected private interaction. Refusing analytics does not restrict core features. Turning off a map marker alone does not hide the profile elsewhere.",
+            "4.5. Dissemination and consent can be stopped in settings or through support@sportsearch.shop. Display, deletion and subsequent processing follow the policy and law. An account predating separate consents does not substitute for consent.",
+            "4.6. Users should not post unnecessary medical documents, passport information, exact home addresses or similar data. Another person's data or image may be supplied only with the necessary lawful grounds."
+          ]
+        },
+        {
+          "title": "5. Messages and rights in materials",
+          "paragraphs": [
+            "5.1. Messages are available to participants of the relevant chat or private game scenario. The Owner and engaged providers may access only what is necessary for operation, complaints, protecting rights and legal duties, subject to confidentiality and limited authority.",
+            "5.2. Users retain rights in their text, photographs and videos. To the extent of their rights, they grant the Owner a nonexclusive, royalty-free licence to reproduce and store materials, technically change format or size, display and make them available only where the selected feature and visibility conditions permit.",
+            "5.3. The licence lasts while materials are lawfully hosted and covers the world because permitted Internet access may occur from different countries. It does not permit independent sale or advertising use. Technical providers may perform necessary actions only for that purpose and within their granted rights.",
+            "5.4. The licence does not replace data-processing grounds or permission to use a person's image. Display in the Owner's controlled interfaces stops after deletion; limited copies can remain only on a separate lawful ground for a defined period.",
+            "5.5. Software, interfaces, design and other Service elements belong to their right holders. Users may use the Service as intended; no exclusive rights or right to mass-copy databases is transferred."
+          ]
+        },
+        {
+          "title": "6. Conduct and moderation",
+          "paragraphs": [
+            "6.1. The Service has zero tolerance for unlawful or objectionable materials and abuse. Threats, stalking, harassment, insults, discrimination, fraud, spam, impersonation, unlawful or rights-infringing materials, interference and circumvention of blocks are prohibited. Mass collection of profiles, unauthorized access and external databases of participants' data without lawful grounds are prohibited.",
+            "6.2. A User may report another User and block that User in the Service or send a complaint to support@sportsearch.shop. Blocked content is immediately removed from the blocking User's feed and the Operator is notified for review. Complaints should identify the account or material, circumstances and reply contact. Intellectual-property complaints should also identify the protected work and the claimant's rights.",
+            "6.3. The Owner reviews complaints and may temporarily restrict materials or features, remove offending content, restrict an account or terminate access for serious or repeated violations. Measures must be appropriate to circumstances, participant protection and law. Urgent restrictions may precede a completed review where safety or a binding authority request requires them.",
+            "6.4. Complaints about objectionable content and abuse are reviewed within 24 hours. Upon confirmation, the Owner removes or hides the relevant Content and ejects the offending User from the Service. If more information is required, the complainant is informed. Statutory time limits and duties prevail.",
+            "6.5. Users are told the reason for a restriction unless prohibited by law or threatening others or the investigation. Decisions can be appealed through support. A block does not remove the right to make a lawful claim or receive a response."
+          ]
+        },
+        {
+          "title": "7. Recommendations and notifications",
+          "paragraphs": [
+            "7.1. The Service uses recommendation technologies. Rules, data categories, sources and methods are available free of charge in Russian at https://sportsearch.shop/legal/recommendations. Recommendations do not guarantee compatibility, accurate self-assessment or meeting safety.",
+            "7.2. Service messages concern sign-in, security, proposals, messages and arrangements. Users manage available categories in Service and device settings. The account contact may be used for security notices and replies to legally significant requests.",
+            "7.3. These Terms do not consent to advertising messages. Advertising or optional advertising technologies require separate lawful grounds and necessary consents before processing starts. Advertising alone does not introduce a User fee."
+          ]
+        },
+        {
+          "title": "8. Ending use and changes",
+          "paragraphs": [
+            "8.1. Users may stop using the Service and delete an account using available tools or support. Deletion periods and lawful exceptions follow the policy; ending the contract does not cancel statutory rights or duties.",
+            "8.2. The Owner fixes errors and updates technical features. Contract changes are published with a new revision and date; changes affecting User rights or duties apply after separate acceptance, except changes directly required by mandatory law. Publication alone does not authorize arbitrary changes to existing obligations or replace a required new data consent.",
+            "8.3. If a User refuses new terms, continuation or termination is resolved under law, preserving account deletion, support and claims. New terms do not apply retrospectively to previous actions.",
+            "8.4. When planning to close the Service, the Owner informs Users in advance where possible and performs applicable termination and data-destruction duties. Temporary maintenance, failure or security restrictions are limited to what is necessary."
+          ]
+        },
+        {
+          "title": "9. Liability and disputes",
+          "paragraphs": [
+            "9.1. The parties are liable under Russian law. The Owner does not promise a particular sports result, suitable partners, attendance or continuous availability of every feature, but performs contractual and mandatory duties, including data protection.",
+            "9.2. Each participant is responsible for their own acts under law. Independent arrangements do not impose on the Owner obligations not assumed or imposed by law. The Owner remains liable for their own breaches, harm and other mandatory cases.",
+            "9.3. Nothing excludes rights that cannot be waived, including applicable consumer rights or lawful claims relating to Service defects or legal violations.",
+            "9.4. Questions and claims may be sent to support@sportsearch.shop or the Owner's address. Support contact is voluntary unless law expressly requires a pretrial process and does not bar an authority or court complaint. Applicable special response and performance periods prevail over internal support procedures.",
+            "9.5. Russian law applies. Jurisdiction follows law, including a consumer's choice of court where applicable. Invalidity of one term does not invalidate the remaining terms if the contract can operate without it."
+          ]
+        }
+      ]
+    }
+  },
+  "privacy": {
+    "ru": {
+      "title": "Политика обработки персональных данных НаТреню",
+      "description": "Редакция от 5 октября 2026 года. Применяется с момента опубликования.",
+      "sections": [
+        {
+          "title": "1. Оператор и область действия",
+          "paragraphs": [
+            "Оператор — Захаров Матвей Владимирович, ИНН 471803649801. Адрес для обращений: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15; email: support@sportsearch.shop.",
+            "Политика применяется к сайту https://sportsearch.shop, PWA, официальному приложению НаТреню для iOS, обработке обращений других клиентов к API и связанным серверным функциям, включая гостевое посещение, регистрацию, профиль, поиск партнёров, согласование игр, переписку и обращения. Документ доступен бесплатно без регистрации.",
+            "Политика информирует об обработке и не является согласием. Принятие пользовательского соглашения не включает согласие на публичный показ анкеты, необязательную аналитику или рекламу. Отдельные согласия оформляются самостоятельными действиями.",
+            "Сервис предназначен для лиц от 18 лет. При выявлении аккаунта несовершеннолетнего Оператор проверяет обстоятельства, ограничивает доступ и прекращает обработку, для которой отсутствует законное основание. Данные для проверки собираются в необходимом объёме."
+          ]
+        },
+        {
+          "title": "2. Принципы, категории и источники",
+          "paragraphs": [
+            "Обработка осуществляется по Федеральному закону от 27.07.2006 № 152-ФЗ «О персональных данных» для определённых законных целей, в необходимом объёме, с ограничением доступа и сроков хранения. Данные уточняются, блокируются и уничтожаются в предусмотренных законом случаях.",
+            "Субъекты — посетители, регистрирующиеся и зарегистрированные пользователи, участники игровых сценариев и переписки, лица, обращающиеся в поддержку, заявители жалоб и затронутые такими обращениями лица. Источники — сам человек и его действия, устройство и браузер, выбранный способ входа, другие участники в пределах выбранного взаимодействия или обращения и результаты обработки перечисленных сведений. При получении данных не от самого человека Оператор выполняет требования статьи 18 закона № 152-ФЗ, если закон не предусматривает исключения.",
+            "Основные данные относятся к категории иных персональных данных. Оператор не запрашивает медицинские сведения, убеждения и другие специальные категории для поиска спортивных партнёров. Их не следует включать в описание или обращения без необходимости; получение таких сведений требует отдельной проверки основания обработки. Фотографии и видео предназначены для показа материалов профиля и не используются Сервисом для биометрического установления личности. Внедрение такой идентификации требует отдельного соблюдения закона и не разрешается этой Политикой."
+          ]
+        },
+        {
+          "title": "3. Цели, состав, основания и сроки",
+          "paragraphs": [
+            "Для каждой цели используются только необходимые данные. Срок заканчивается раньше, если цель достигнута или основание прекращено. Срок действительности кода или cookie не равен сроку удаления серверной записи. Особые сроки и порядок уничтожения определены разделом 8.",
+            "Ручной выбор города и района доступен без точных координат. При выбранном пользователем определении города по геопозиции координаты используются только для определения места поиска. Системное разрешение устройства не разрешает иных целей обработки. Геопозиция не публикуется как текущее местонахождение пользователя.",
+            "Сервис бесплатен и не обрабатывает платёжные реквизиты для оплаты собственных функций. Согласие на аналитику не разрешает рекламный сбор или рассылку. Новые рекламные функции потребуют самостоятельной оценки и необходимых оснований до начала обработки."
+          ],
+          "table": {
+            "headers": [
+              "Цель и субъекты",
+              "Данные",
+              "Основание",
+              "Срок или условие прекращения"
+            ],
+            "rows": [
+              [
+                "Аккаунт, вход и сеансы: регистрирующиеся и пользователи",
+                "Email, идентификатор аккаунта, идентификатор выбранного способа входа и полученные от него имя/email, сведения о подтверждении, коды и сеансы; IP и user-agent необходимых журналов входа",
+                "П. 5 ч. 1 ст. 6: заключение и исполнение договора по инициативе человека; соразмерная защита также по п. 7",
+                "Пока необходимы для аккаунта и безопасности; код действителен 10 минут, сеанс — 14 дней. Истёкшие сведения удаляются при прекращении цели в порядке раздела 8"
+              ],
+              [
+                "Профиль и выбранный поиск: пользователи",
+                "Имя, возраст, пол, город, район и предпочитаемые районы, спорт и уровень, формат/покрытие, дни и время, радиус, статус поиска, добавленные описание, фото и видео, идентификаторы материалов",
+                "П. 5 ч. 1 ст. 6 в необходимом объёме выбранной функции; публичный показ — отдельное основание",
+                "Пока данные нужны для выбранных функций и действует аккаунт; отдельные поля и материалы изменяются и удаляются раньше по действию пользователя"
+              ],
+              [
+                "Игровые поиски, предложения, регулярные встречи и закрытая переписка: участники",
+                "Участники, спорт, уровень, время, площадка, слоты, отклики, статусы, сообщения, комментарии, история согласования, отмены, подтверждения, отзывы и отчёты",
+                "П. 5 ч. 1 ст. 6 для инициированного взаимодействия; обязательная обработка по применимому закону — п. 2",
+                "До прекращения цели соответствующего взаимодействия или аккаунта; сохранение после этого — только в ограниченном объёме на самостоятельном законном основании"
+              ],
+              [
+                "Публичный показ: пользователи, давшие согласие",
+                "Только выбранные группы, аудитория, ресурсы, условия и ограничения отдельного согласия",
+                "Ст. 10.1 и п. 1 ч. 1 ст. 6: отдельное согласие на данные, разрешённые для распространения",
+                "До отзыва, изменения объёма, удаления материала или аккаунта, прекращения цели. Показ прекращается по разделу 4"
+              ],
+              [
+                "Подбор партнёров и игр: пользователи",
+                "Актуальные параметры спорта, уровня, возрастной совместимости, географии, доступности, формата/покрытия, активности и функциональных игровых взаимодействий; рассчитанная совместимость и объяснения",
+                "П. 5 ч. 1 ст. 6 только в необходимом объёме выбранной функции",
+                "Пока необходимы для подбора; необязательная история показов и эксперименты имеют режим отдельной аналитики"
+              ],
+              [
+                "Сервисные письма и push: пользователи",
+                "Email, push-токен, платформа устройства, настройки уведомлений, необходимые сведения о событии и статус доставки",
+                "П. 5 ч. 1 ст. 6 для выбранной функции; обязательные сообщения — предусмотренный законом случай по п. 2",
+                "Пока действует выбранный канал и существует цель; неактуальные токены и сведения удаляются по разделу 8"
+              ],
+              [
+                "Необязательная аналитика: только давшие согласие пользователи",
+                "Внутренний идентификатор, вид/время события, объект и минимальные технические параметры, разрешённая история показов и экспериментальные измерения; исчерпывающий перечень — в отдельном согласии",
+                "П. 1 ч. 1 ст. 6: отдельное согласие",
+                "Не более 90 календарных дней с события; при отзыве сбор прекращается, данные удаляются в применимый более короткий срок"
+              ],
+              [
+                "Поддержка и жалобы: заявители и затронутые лица",
+                "Контакт, аккаунт, содержание обращения, относящиеся к нему материалы, результаты проверки и ответа",
+                "П. 5 для договорной поддержки; п. 2 для обязательных ответов; п. 7 для соразмерной защиты прав",
+                "До рассмотрения и исполнения требования; дальнейшее хранение — только при конкретном сохраняющемся основании"
+              ],
+              [
+                "Защита и расследование сбоев: посетители и пользователи",
+                "IP, user-agent, технические идентификаторы, необходимые сведения об ошибках, доступе, блокировках и конкретном инциденте",
+                "П. 5 для безопасности договора, п. 7 для соразмерных законных интересов, п. 2 для обязанностей по закону",
+                "До прекращения цели защиты или расследования; материалы конкретного инцидента выделяются с ограничением доступа и срока"
+              ],
+              [
+                "Доказательства юридических действий: пользователи и заявители",
+                "Версия, время, способ принятия; выбранный объём, условия и ограничения согласия, необходимые ФИО/контакт и технические данные; обращения и подтверждение уничтожения",
+                "П. 2 для законной обязанности подтверждения; п. 7 для конкретной соразмерной защиты прав",
+                "Только на период обоснованной необходимости; подтверждение уничтожения — 3 года по приказу РКН № 179; весь профиль на этом основании не сохраняется"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "4. Видимость и взаимодействие участников",
+          "paragraphs": [
+            "Показ анкеты в поиске, каталоге и на карте, игровых поисков и публичных приглашений осуществляется только по отдельному согласию https://sportsearch.shop/legal/profile-visibility. Пользователь выбирает группы сведений, аудиторию и условия. Круг вошедших пользователей заранее не определён; сам вход не превращает публичную выдачу в предоставление конкретным участникам.",
+            "Email, ФИО из формы согласия, IP, токены, сведения о входе, точные координаты и переписка не включаются в публичную анкету. Точка карты условно обозначает выбранный город или район. Введённые пользователем адрес встречи и маршрут могут указывать точное место; перед публичным размещением следует проверить содержание и аудиторию.",
+            "Условия и запреты пользователя публикуются в предусмотренный законом срок — не позднее трёх рабочих дней после получения согласия или изменения условий. Индивидуальное требование, которое пока невозможно исполнить, удерживает соответствующие сведения скрытыми. Возобновление допускается только в реально исполняемом разрешённом объёме.",
+            "Согласие прекращается в соответствующей части с момента получения требования о прекращении распространения. Изменение настроек и обращение в поддержку прекращают соответствующий доступ в порядке закона. Общий срок уничтожения не разрешает продолжать публичный показ после прекращения согласия. Давность создания аккаунта не заменяет согласия.",
+            "Участники выбранного закрытого чата или игры получают необходимые сведения друг друга для взаимодействия. Использование этих данных вне соответствующей цели требует собственного законного основания. Оператор прекращает подконтрольный ему доступ; он не гарантирует изъятия копий, самостоятельно сохранённых другим лицом, и выполняет применимые обязанности по требованию субъекта."
+          ]
+        },
+        {
+          "title": "5. Рекомендации и аналитика",
+          "paragraphs": [
+            "В Сервисе применяются рекомендательные технологии. Сведения о предпочтениях, источниках и методах использования описаны по адресу https://sportsearch.shop/legal/recommendations. Необходимый подбор по актуальным параметрам отличается от необязательного измерения просмотров, экспериментов и конверсий. Необязательные действия, отчёты и выгрузки выполняются только в объёме отдельного согласия https://sportsearch.shop/legal/analytics; отказ не отключает основной поиск и переписку.",
+            "Оператор оценивает последствия конкретных автоматизированных решений по статье 16 закона № 152-ФЗ. При применимости этой статьи обеспечиваются предусмотренное законом письменное согласие или законное исключение, разъяснение порядка и последствий, возможность возражения и ответ в установленный ею срок — 30 дней. Пользователь вправе оспорить неточные исходные данные и запросить разъяснение.",
+            "Агрегированная статистика рассматривается как неперсональная только при невозможности прямого и косвенного отнесения к человеку с учётом доступной Оператору информации. Восстановимая связь, внутренний идентификатор или замена имени не прекращают режим персональных данных."
+          ]
+        },
+        {
+          "title": "6. Способы обработки и хранилища устройства",
+          "paragraphs": [
+            "Применяются автоматизированная обработка и обработка без средств автоматизации при рассмотрении обращений: сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, использование, предоставление и доступ в законных пределах, блокирование, удаление и уничтожение. Распространение имеет отдельное основание; обезличивание требует действительной процедуры.",
+            "Необходимые cookie и локальное хранилище содержат сеанс, настройки и черновик интерфейса. Сеансовая cookie действует 14 дней, cookie приглашения — 30 дней. Черновик и настройки остаются на устройстве до предусмотренной очистки либо удаления пользователем. Их очистка может завершить сеанс или сбросить настройки. Необязательные аналитические средства используют режим отдельного согласия."
+          ]
+        },
+        {
+          "title": "7. Поставщики, размещение и передача",
+          "paragraphs": [
+            "Серверная инфраструктура, база и пользовательские файлы размещаются в Российской Федерации на Yandex Cloud и Yandex Object Storage. Сервисные письма отправляются через Yandex Cloud Postbox. Российский поставщик — ООО «ЯНДЕКС.ОБЛАКО», ИНН 7704458262, ОГРН 1187746678580, адрес: 119021, г. Москва, ул. Льва Толстого, д. 16, помещ. 528. Он обеспечивает инфраструктурную обработку в объёме предоставляемых услуг: данные базы и файлов для хранения, email и содержание сервисных писем для отправки.",
+            "При выбранном входе через Apple взаимодействие происходит с Sign in with Apple, через Google — с Google Sign-In; используются идентификатор входа и передаваемые выбранным способом сведения аккаунта. Для включённых уведомлений предусмотрены Apple Push Notification service и Firebase Cloud Messaging: им передаются токен устройства и минимальная служебная нагрузка доставки. Такие взаимодействия нельзя считать полностью российской обработкой только из-за размещения основной базы в РФ. Информация поставщиков доступна в политиках Apple https://www.apple.com/legal/privacy/ и Google https://policies.google.com/privacy. Наличие способа входа или доставки не расширяет перечень ресурсов, разрешённых отдельным согласием на распространение.",
+            "Для карт используется API Яндекс Карт — ООО «ЯНДЕКС», ИНН 7736207543, адрес: 119021, г. Москва, ул. Льва Толстого, д. 16. При загрузке карт поставщик получает технические запросы браузера, включая IP, сведения устройства и отображаемой области карты. Определение города по точным координатам выполняется только в выбранной пользователем функции; при использовании внешнего геокодера ему передаётся необходимый запрос. В iOS для выбранного определения места и поиска площадки могут использоваться системные сервисы Apple: CLGeocoder и Maps/MapKit. Им передаются координаты для определения места или текст запроса и параметры поиска площадки; это не означает публикации GPS в анкете. Разрешение устройства не заменяет законного основания и обязанностей Оператора. Сведения о фактическом получателе и основании предоставляются по запросу. Информация Яндекса: https://yandex.ru/legal/confidential/.",
+            "При сборе данных граждан РФ соблюдаются ограничения части 5 статьи 18 закона № 152-ФЗ на использование зарубежных баз для предусмотренных этой нормой действий. Для иностранной передачи Оператор выполняет требования статьи 12, включая получение установленных сведений о получателях, отдельное уведомление Роскомнадзора и применимые ограничения. Наличие согласия не отменяет локализацию и эти обязанности.",
+            "Обработка по поручению оформляется договором с определёнными целями, данными, действиями и обязанностями конфиденциальности и защиты. Когда по части 3 статьи 6 необходимо согласие субъекта и отсутствует предусмотренное законом исключение, оно получается отдельно до передачи; договор с поставщиком его не заменяет. Для самостоятельных операторов определяются отдельные основания и обязанности информирования. Фактический состав получателей, страны, основания и сроки обработки предоставляются по запросу в порядке статьи 14. Данные не продаются и передаются государственным органам только в установленном законом объёме и на законном основании."
+          ]
+        },
+        {
+          "title": "8. Прекращение и уничтожение",
+          "paragraphs": [
+            "При достижении цели, утрате основания или подлежащем удовлетворению требовании Оператор прекращает соответствующую обработку. Для достижения цели или отзыва применяются сроки статьи 21, обычно не более 30 дней в случаях частей 4 и 5, если отсутствуют другое законное основание или допустимое законом исключение. Требование о прекращении обработки исполняется в пределах 10 рабочих дней с допустимым мотивированным продлением не более 5 рабочих дней, с учётом законных исключений. Специальные сроки неправомерной обработки, исправления и распространения имеют приоритет.",
+            "Удаление относится к связанным записям, идентификаторам, объектам файлов, истории необязательных измерений, журналам и резервным копиям в пределах применимых оснований и сроков. Восстановление копии не отменяет ранее исполненное требование: оно применяется повторно до возврата доступа к запрещённым данным.",
+            "Сохраняется только минимальный набор на конкретном самостоятельном основании для исполнения закона, доказательства юридического действия или защиты прав в споре, с ограничением доступа и периода. Общий срок исковой давности не разрешает автоматически сохранять содержимое всего аккаунта. Обязательное хранение сообщений или иных сведений по специальному закону выполняется в предусмотренном им составе и сроках.",
+            "Если уничтожение в срок объективно невозможно, применяется блокирование и исключительный порядок части 6 статьи 21 с установленным ею предельным сроком, а не обычное продление хранения. Уничтожение подтверждается по приказу РКН от 28.10.2022 № 179."
+          ]
+        },
+        {
+          "title": "9. Права и обращения",
+          "paragraphs": [
+            "Человек вправе получить сведения и доступ к своим данным, требовать уточнения, блокирования и уничтожения при наличии оснований, отозвать согласие, потребовать прекращения обработки или распространения, обратиться в Роскомнадзор или суд. Обращение можно направить доступными средствами аккаунта, на support@sportsearch.shop либо по адресу Оператора.",
+            "Следует указать аккаунт, суть требования и контакт для ответа. Для предусмотренного статьёй 14 запроса применяются необходимые реквизиты и подпись; Оператор разъясняет их и использует соразмерную проверку принадлежности аккаунта. Паспортная копия не требуется автоматически для каждого обращения.",
+            "Информация и доступ предоставляются бесплатно в течение 10 рабочих дней с получения запроса с допустимым мотивированным продлением не более 5 рабочих дней. Подтверждённые неточности исправляются в течение 7 рабочих дней. Для других требований действуют специальные законные сроки; отказ должен иметь мотивированное основание.",
+            "Согласие на видимость или аналитику отзывается в настройках либо обращением. Отказ ограничивает только соответствующую необязательную обработку. Если для определённых сведений сохраняется другое законное основание, Оператор сообщает его и объём. Удаление аккаунта не прекращает право получить ответ."
+          ]
+        },
+        {
+          "title": "10. Защита и обновление",
+          "paragraphs": [
+            "Для обеспечения защиты применяются управление доступом, проверка сеансов и прав аккаунта, ограничение передачи данных выбранной аудиторией, учёт юридических действий и процедур удаления. Оператор определяет и поддерживает необходимые организационные и технические меры по статьям 18.1 и 19 закона № 152-ФЗ с учётом состава данных, инфраструктуры и угроз; сведения о реализуемых требованиях предоставляются без раскрытия секретов и уязвимостей.",
+            "При предусмотренном частью 3.1 статьи 21 инциденте Оператор уведомляет Роскомнадзор первоначально в течение 24 часов, а о результатах расследования — в течение 72 часов, принимает необходимые меры ограничения последствий.",
+            "Изменения публикуются с редакцией и датой. Новый текст не заменяет отдельного согласия, когда оно необходимо, и не придаёт прежней обработке законности задним числом."
+          ]
+        }
+      ]
+    },
+    "en": {
+      "title": "NaTrenyu Personal Data Processing Policy",
+      "description": "Revision dated October 5, 2026. Applies from publication.",
+      "sections": [
+        {
+          "title": "1. Operator and scope",
+          "paragraphs": [
+            "The Operator is Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Correspondence address: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email: support@sportsearch.shop.",
+            "This policy covers https://sportsearch.shop, its PWA, the official NaTrenyu iOS application, processing requests from other API clients and related server features, including guest visits, registration, profiles, partner search, games, messaging and requests. It is available free of charge without registration.",
+            "The policy provides information and is not consent. Accepting the Terms does not consent to public profile display, optional analytics or advertising. Separate consents require independent actions.",
+            "The Service is for people aged 18 or older. If a minor's account is discovered, the Operator investigates, restricts access and stops processing lacking lawful grounds. Only necessary information is collected for verification."
+          ]
+        },
+        {
+          "title": "2. Principles, categories and sources",
+          "paragraphs": [
+            "Processing follows Federal Law No. 152-FZ of July 27, 2006 for specified lawful purposes, with necessary data, limited access and retention. Data is corrected, blocked and destroyed where required.",
+            "Subjects include visitors, applicants and registered Users, game and chat participants, support correspondents, complainants and affected individuals. Sources include the individual and their actions, device and browser, selected sign-in method, other participants within the chosen interaction or complaint, and results derived from this information. When information comes from someone else, article 18 duties apply unless a statutory exception exists.",
+            "Ordinary data falls within other personal data. Medical information, beliefs and other special categories are not requested for partner search and should not be included unnecessarily. Receipt requires a separate assessment of grounds. Photographs and videos are profile materials and are not used for biometric identification. Such identification requires separate compliance and is not authorized by this policy."
+          ]
+        },
+        {
+          "title": "3. Purposes, data, grounds and periods",
+          "paragraphs": [
+            "Only data necessary for each purpose is used. Retention ends earlier when the purpose or ground ends. A code or cookie's validity is not the server-record deletion period. Section 8 specifies termination and destruction.",
+            "Cities and districts can be selected manually without precise coordinates. If a User chooses location-based city identification, coordinates are used only to identify the search location. Device permission does not authorize other purposes. Location is not published as the User's real-time whereabouts.",
+            "The Service is free and does not process payment credentials for its own features. Analytics consent does not authorize advertising collection or messages. New advertising features require assessment and necessary grounds before processing."
+          ],
+          "table": {
+            "headers": [
+              "Purpose and subjects",
+              "Data",
+              "Grounds",
+              "Period or termination condition"
+            ],
+            "rows": [
+              [
+                "Accounts, sign-in and sessions: applicants and Users",
+                "Email, account and selected sign-in identifiers, received name/email, verification, codes and sessions; IP and user-agent for necessary sign-in logs",
+                "Clause 5, part 1, article 6: entering and performing a contract at the individual's initiative; proportionate protection also under clause 7",
+                "While necessary for the account and security; codes valid 10 minutes, sessions 14 days. Expired information is deleted when its purpose ends under section 8"
+              ],
+              [
+                "Profiles and selected searches: Users",
+                "Name, age, gender, city, district and preferred districts, sports and levels, format/surface, days/times, radius, search status, added description/photos/videos and material identifiers",
+                "Clause 5 within the selected feature's necessary scope; public display uses separate grounds",
+                "While necessary for selected features and the account remains active; individual fields/materials can be changed or deleted earlier"
+              ],
+              [
+                "Searches, proposals, recurring games and private chats: participants",
+                "Participants, sports, levels, time, facility, slots, responses, statuses, messages, comments, coordination history, cancellation, confirmations, reviews and reports",
+                "Clause 5 for initiated interactions; mandatory processing under applicable law uses clause 2",
+                "Until the relevant interaction or account purpose ends; later retention requires limited data and a separate lawful ground"
+              ],
+              [
+                "Public display: consenting Users",
+                "Only separately selected groups, audience, resources, conditions and restrictions",
+                "Article 10.1 and clause 1, part 1, article 6: separate dissemination consent",
+                "Until withdrawal, changed scope, material/account deletion or end of purpose. Display stops under section 4"
+              ],
+              [
+                "Partner and game selection: Users",
+                "Current sports, level, age compatibility, geography, availability, format/surface, activity and functional game interactions; calculated compatibility and explanations",
+                "Clause 5 only as necessary for the selected feature",
+                "While necessary for selection; optional impression history and experiments use the separate analytics regime"
+              ],
+              [
+                "Service email and push: Users",
+                "Email, device token, platform, notification settings, necessary event information and delivery status",
+                "Clause 5 for selected features; statutory notices use clause 2",
+                "While the selected channel and purpose remain; obsolete tokens and information are deleted under section 8"
+              ],
+              [
+                "Optional analytics: consenting Users only",
+                "Internal identifier, event type/time, object and minimum technical parameters, permitted impression history and experimental measurements; exhaustive list in separate consent",
+                "Clause 1: separate consent",
+                "At most 90 calendar days from an event; collection stops on withdrawal and deletion follows the applicable shorter period"
+              ],
+              [
+                "Support and complaints: correspondents and affected people",
+                "Contact, account, request content, relevant materials, review and response results",
+                "Clause 5 for contractual support; clause 2 for mandatory responses; clause 7 for proportionate protection of rights",
+                "Until the request is resolved and fulfilled; subsequent retention needs a specific surviving ground"
+              ],
+              [
+                "Security and incident investigation: visitors and Users",
+                "IP, user-agent, technical identifiers and necessary failure, access, block and incident information",
+                "Clause 5 for contractual security, clause 7 for proportionate lawful interests, clause 2 for legal duties",
+                "Until the protection or investigation purpose ends; incident materials are separated with limited access and duration"
+              ],
+              [
+                "Evidence of legal actions: Users and correspondents",
+                "Revision, time, method of acceptance; selected scope/conditions, necessary name/contact and technical evidence; requests and destruction records",
+                "Clause 2 for lawful evidentiary duties; clause 7 for specific proportionate protection of rights",
+                "Only for an objectively necessary period; destruction confirmation is retained 3 years under RKN Order No. 179; this does not authorize keeping the full profile"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "4. Visibility and participant interaction",
+          "paragraphs": [
+            "Profiles in search, directories and maps, game searches and public invitations require separate consent at https://sportsearch.shop/legal/profile-visibility. Users select groups, audience and conditions. Signed-in users are not a predetermined circle; sign-in does not turn public listings into provision to specific participants.",
+            "Email, consent-form full name, IP, tokens, sign-in information, precise coordinates and private messages are not in public profiles. Map points nominally identify a chosen city or district. User-entered meeting addresses/routes may identify an exact location and should be checked before public posting.",
+            "Conditions and prohibitions are published within the statutory period, no later than three working days after consent or changed conditions are received. An individual condition that cannot yet be implemented keeps the relevant information hidden. Resuming requires an actually enforceable permitted scope.",
+            "Consent ends in the relevant part when the termination request is received. Settings changes and support requests terminate access under law. A destruction deadline does not authorize continued public display after consent ends. Account age does not substitute for consent.",
+            "Participants of a selected private chat/game receive necessary information for that interaction. Use beyond its purpose needs independent lawful grounds. The Operator stops controlled access and fulfils applicable duties but cannot guarantee retrieval of copies independently saved by another person."
+          ]
+        },
+        {
+          "title": "5. Recommendations and analytics",
+          "paragraphs": [
+            "The Service uses recommendation technologies; preferences, sources and methods are explained at https://sportsearch.shop/legal/recommendations. Necessary selection based on current parameters differs from optional measurements, experiments and conversions. Optional operations, reports and exports require the scope of separate consent at https://sportsearch.shop/legal/analytics. Refusal does not disable core search or messaging.",
+            "The Operator assesses individual automated decisions under article 16. Where applicable, the required written consent or statutory exception, explanations, objections and a response within its 30-day period are provided. Users can challenge inaccurate inputs and request explanations.",
+            "Aggregates are nonpersonal only if direct and indirect attribution to an individual is impossible considering information available to the Operator. Recoverable links, internal identifiers and replacing names do not end personal-data protections."
+          ]
+        },
+        {
+          "title": "6. Operations and device storage",
+          "paragraphs": [
+            "Automated processing and nonautomated handling of requests include collection, recording, systematization, accumulation, storage, correction, retrieval, use, provision and access within lawful limits, blocking, deletion and destruction. Dissemination has separate grounds; anonymization requires an actual procedure.",
+            "Necessary cookies and local storage contain sessions, settings and draft interface state. Session cookies last 14 days and invitation cookies 30 days. Drafts/settings remain until designated cleanup or User deletion. Clearing them may end a session or reset settings. Optional analytics uses separate consent."
+          ]
+        },
+        {
+          "title": "7. Providers, location and transfer",
+          "paragraphs": [
+            "Server infrastructure, databases and User files are located in Russia using Yandex Cloud and Yandex Object Storage. Service email uses Yandex Cloud Postbox. The Russian provider is OOO YANDEX.OBLAKO (ООО «ЯНДЕКС.ОБЛАКО»), INN 7704458262, OGRN 1187746678580, premises 528, 16 Lva Tolstogo Street, Moscow, 119021. Infrastructure processing is limited to provided services: databases/files for storage and email addresses/message content for delivery.",
+            "Selected Apple sign-in uses Sign in with Apple; Google sign-in uses Google Sign-In, supplying the selected method's identifier and necessary account information. Enabled notifications may use Apple Push Notification service or Firebase Cloud Messaging, supplying a device token and minimum delivery payload. These interactions are not wholly Russian processing merely because the main database is in Russia. Provider policies are at https://www.apple.com/legal/privacy/ and https://policies.google.com/privacy. A sign-in or delivery method does not expand resources permitted by separate dissemination consent.",
+            "Maps use Yandex Maps API, OOO YANDEX (ООО «ЯНДЕКС»), INN 7736207543, 16 Lva Tolstogo Street, Moscow, 119021. Loading maps supplies technical browser requests, including IP, device information and the displayed map area. Precise-coordinate city identification only occurs in the User-selected feature; an external geocoder, if used, receives the necessary request. Selected location identification or facility search in iOS may use Apple system services CLGeocoder and Maps/MapKit. These receive coordinates for location identification or the search text and facility-search parameters; this does not publish GPS in a profile. Device permission does not replace lawful grounds or Operator duties. Actual recipient and grounds information is provided on request. Yandex information: https://yandex.ru/legal/confidential/.",
+            "Collection of Russian citizens' data follows part 5, article 18 restrictions on foreign databases for the specified operations. Foreign transfers require article 12 compliance, including prescribed recipient information, separate RKN notification and applicable restrictions. Consent does not waive localization or these duties.",
+            "Delegated processing is governed by a contract specifying purposes, data, operations, confidentiality and protection. Where part 3, article 6 requires subject consent without a statutory exception, consent is obtained separately before transfer; a provider contract does not replace it. Independent operators require separate grounds and notification duties. Actual recipients, countries, grounds and periods are disclosed on request under article 14. Data is not sold and is supplied to public authorities only with lawful grounds and within the lawful scope."
+          ]
+        },
+        {
+          "title": "8. Termination and destruction",
+          "paragraphs": [
+            "When a purpose or ground ends or a valid request requires it, relevant processing stops. Article 21 periods apply to fulfilled purposes/withdrawal, ordinarily at most 30 days under parts 4 and 5 unless another lawful ground or permissible exception exists. Termination requests are fulfilled within 10 working days, with a lawful reasoned extension of at most 5 working days and statutory exceptions. Special periods for unlawful processing, correction and dissemination prevail.",
+            "Deletion covers linked records, identifiers, file objects, optional measurement history, logs and backups within applicable grounds and periods. Restoration does not cancel a fulfilled request: it is reapplied before access to prohibited data returns.",
+            "Only minimum information needed on specific independent grounds for law, proof or a dispute remains, with limited access and time. A general limitation period does not automatically authorize full account retention. Special-law mandatory retention of messages or other information follows its required data and periods.",
+            "Where timely destruction is objectively impossible, blocking and the exceptional procedure and maximum period under part 6, article 21 apply, rather than ordinary extended retention. Destruction is confirmed under RKN Order No. 179 of October 28, 2022."
+          ]
+        },
+        {
+          "title": "9. Rights and requests",
+          "paragraphs": [
+            "Individuals can obtain information and access, request correction/blocking/destruction where justified, withdraw consent, request processing/dissemination termination and complain to RKN or a court. Requests can use account tools, support@sportsearch.shop or the Operator's address.",
+            "Identify the account, request and reply contact. Article 14 requests require its necessary details and signature; the Operator explains them and verifies account ownership proportionately. Passport copies are not automatically required for every request.",
+            "Information/access is free and provided within 10 working days, with a lawful reasoned extension of at most 5 working days. Confirmed inaccuracies are corrected within 7 working days. Other requests follow special statutory periods; refusal must be reasoned.",
+            "Visibility/analytics consent can be withdrawn in settings or by request. Refusal affects only the associated optional processing. The Operator explains any surviving independent ground and scope. Account deletion does not end the right to receive a response."
+          ]
+        },
+        {
+          "title": "10. Protection and updates",
+          "paragraphs": [
+            "Protection includes access management, session/account-right checks, audience restrictions and records of legal actions and deletion procedures. The Operator determines and maintains necessary organizational and technical measures under articles 18.1 and 19 considering data, infrastructure and threats; information on implemented requirements is provided without disclosing secrets or vulnerabilities.",
+            "For an incident under part 3.1, article 21, the Operator gives initial RKN notification within 24 hours and investigation results within 72 hours and takes necessary mitigation measures.",
+            "Changes are published with revision and date. New wording does not replace required separate consent or retrospectively make prior processing lawful."
+          ]
+        }
+      ]
+    }
+  },
+  "profile-visibility": {
+    "ru": {
+      "title": "Согласие на показ анкеты",
+      "description": "Согласие на обработку персональных данных, разрешённых для распространения. Редакция от 5 октября 2026 года.",
+      "sections": [
+        {
+          "title": "1. Кто даёт согласие и кому",
+          "paragraphs": [
+            "Я, пользователь сервиса «НаТреню», чьи фамилия, имя, отчество при наличии и контакт указаны в индивидуальном экземпляре согласия, свободно, своей волей и в своём интересе разрешаю обработку выбранных мной персональных данных для их распространения в соответствии со статьёй 10.1 Федерального закона от 27.07.2006 №152-ФЗ «О персональных данных».",
+            "Оператор: Захаров Матвей Владимирович, ИНН 471803649801. Место жительства: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15. Email: support@sportsearch.shop.",
+            "Согласие оформляется отдельно от Пользовательского соглашения и согласия на аналитику. Фамилия, отчество и контакт из экземпляра не публикуются на его основании. Имя для показа в анкете выбирается отдельно."
+          ]
+        },
+        {
+          "title": "2. Цель и действия",
+          "paragraphs": [
+            "Цель — сделать выбранные мной сведения доступными выбранной аудитории для поиска спортивных партнёров и согласования игр через поиск игроков, карту, каталог спортивных центров и игровые поиски/приглашения сервиса.",
+            "Для этой цели оператор записывает, систематизирует, хранит, уточняет, извлекает и использует выбранные сведения, предоставляет к ним доступ в разрешённом объёме, блокирует и удаляет их из публичного доступа. Обработка осуществляется автоматизированно; обращения могут обрабатываться с участием оператора."
+          ]
+        },
+        {
+          "title": "3. Какие сведения я разрешаю показывать",
+          "paragraphs": [
+            "Категория: иные персональные данные. Форма показывает состав каждой группы. Я выбираю группы для распространения; разрешение относится ко всем прямо перечисленным сведениям выбранной группы, которые имеются у меня в сервисе:",
+            "Для невыбранных групп разрешения нет. Если я хочу исключить отдельные сведения внутри группы или установить индивидуальные условия, я выбираю «Скрыть и задать ограничения» и обращаюсь к оператору. До согласования и фактического исполнения такого ограничения соответствующий публичный показ не производится.",
+            "Это согласие не разрешает распространение точных координат моего текущего местоположения, домашнего адреса, email, идентификаторов входа, IP-адресов, push-токенов и переписки. Условная точка района не является моим фактическим местоположением.",
+            "Сведения о здоровье и иные специальные категории персональных данных по этому согласию не распространяются. Фото и видео используются для показа анкеты; разрешение на биометрическое установление личности по ним этим согласием не предоставляется."
+          ],
+          "bullets": [
+            "Основная карточка: публичный технический идентификатор анкеты, имя для показа, возраст, город, район, предпочитаемые районы игры, виды спорта и спортивный уровень, предпочитаемый формат и покрытие, дни и время доступности, отметка поиска игры, отметка недавней активности, приблизительное расстояние, оценка совместимости и объяснения совпадения параметров.",
+            "Описание: текст описания профиля.",
+            "Фото: аватар и фотографии профиля.",
+            "Видео: видеозаписи профиля.",
+            "Карта: условная точка выбранного города или района.",
+            "Игровые поиски и приглашения: вид спорта, уровень, дата, время, площадка или адрес площадки, маршрут к площадке, комментарий и статус поиска/приглашения."
+          ]
+        },
+        {
+          "title": "4. Где и кому предоставляется доступ",
+          "paragraphs": [
+            "Ресурсы оператора: сайт и PWA https://sportsearch.shop, включая https://sportsearch.shop/discover, https://sportsearch.shop/play/courts и https://sportsearch.shop/play/searches; приложение «НаТреню» для iOS (https://apps.apple.com/app/id6768862885), использующее API https://sportsearch.shop. Иные приложения и ресурсы не получают разрешение на основании одного упоминания в интерфейсе.",
+            "Я выбираю аудиторию: только зарегистрированные пользователи, вошедшие в аккаунт, либо также посетители сервиса без входа. В обоих случаях круг получателей заранее не определён. Доступ предоставляется через информационно-телекоммуникационные сети на перечисленных ресурсах в пределах выбранных групп, аудитории и условий.",
+            "При показе гостям сведения доступны любому посетителю разрешённых ресурсов. Получатели могут находиться в разных странах. Оператор обязан соблюдать мои ограничения и принимать предусмотренные законом меры защиты; неправомерное копирование третьими лицами не является разрешённым использованием моих данных."
+          ]
+        },
+        {
+          "title": "5. Условия и запреты",
+          "paragraphs": [
+            "Выбирая стандартные условия распространения, я устанавливаю в отношении выбранных групп следующие ограничения:",
+            "Для иных условий, запретов, исключений отдельных полей или ограничения срока я могу скрыть анкету и направить обращение на support@sportsearch.shop. Нужно указать сведения и требуемые ограничения. Выбор скрытия прекращает распространение; обращение не считается согласием на обычный полный показ. Возобновление возможно только в фактически исполняемом и отдельно подтверждённом мной объёме.",
+            "Оператор публикует информацию о выбранных условиях и запретах не позднее трёх рабочих дней с момента получения соответствующего согласия. Информация доступна получателям вместе с данными. Ограничения не применяются к обработке в государственных, общественных и иных публичных интересах, прямо определённых законодательством РФ."
+          ],
+          "bullets": [
+            "оператору запрещена передача этих данных неограниченному кругу лиц, кроме предоставления доступа в выбранном объёме на перечисленных ресурсах сервиса;",
+            "лицам, получающим доступ, запрещены последующий сбор, копирование в сторонние базы, передача другим лицам и рекламное профилирование на основе этих данных, кроме самого получения доступа в разрешённом объёме."
+          ]
+        },
+        {
+          "title": "6. Срок, изменение и прекращение",
+          "paragraphs": [
+            "Согласие действует с момента отдельного подтверждения до его отзыва, удаления аккаунта или прекращения цели — в зависимости от того, что наступит раньше. Если индивидуально установлен более короткий срок, применяется он.",
+            "Я могу уменьшить объём, изменить аудиторию или скрыть анкету в настройках. Также я вправе потребовать прекращения распространения полностью или в части, направив на support@sportsearch.shop фамилию, имя, отчество при наличии, контакт и перечень соответствующих данных. Для полного отзыва можно указать «все сведения, разрешённые для распространения».",
+            "Согласие прекращается в соответствующей части с момента поступления требования оператору. Он прекращает распространение и предоставление доступа в этой части. Срок публикации условий из раздела 5 не разрешает продолжать показ после прекращения согласия.",
+            "Отказ и отзыв не лишают меня поиска партнёров, переписки и участия в играх. Предоставление необходимых сведений конкретным участникам инициированных мной сообщений и договорённостей осуществляется на самостоятельных основаниях, описанных в Политике обработки персональных данных.",
+            "Расширение данных, ресурсов, аудитории или допустимой обработки требует отдельного подтверждения нового объёма. Обновление страницы и продолжение использования сервиса сами по себе такого подтверждения не означают."
+          ]
+        },
+        {
+          "title": "7. Подтверждение выбора",
+          "paragraphs": [
+            "Индивидуальный экземпляр включает мои фамилию, имя, отчество при наличии, контакт, выбранные группы и их перечни, аудиторию, условия и запреты, срок, дату и время, точную редакцию текста и способ подтверждения. Оператор сохраняет доказательства выбора и отзыва в пределах обоснованной цели и срока, описанных в Политике обработки персональных данных."
+          ]
+        }
+      ]
+    },
+    "en": {
+      "title": "Consent to Profile Display",
+      "description": "Consent to processing personal data permitted for dissemination in NaTrenyu. Revision dated October 5, 2026.",
+      "sections": [
+        {
+          "title": "1. Subject and Operator",
+          "paragraphs": [
+            "I, the NaTrenyu account holder providing my surname, first name and patronymic where applicable, and the account contact in this form, freely and for my own benefit consent to processing the data I permit for dissemination under article 10.1 of Federal Law No. 152-FZ of July 27, 2006.",
+            "Operator: Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Residence: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email: support@sportsearch.shop.",
+            "This consent is separate from the Terms, processing policy and other consents. Reading a page, registering, silence or continuing to use the Service is not consent. My full name and contact from this form are not published under it; the separately selected profile display name may be shown."
+          ]
+        },
+        {
+          "title": "2. Purpose and operations",
+          "paragraphs": [
+            "The purpose is to make selected information available to other people for sports partner search: displaying my profile in search, maps and facility directories and my game searches and public invitations.",
+            "For this purpose, the Operator records, systematizes, stores, corrects, retrieves and uses the selected data, provides access within the permitted scope and blocks and removes it from public access. Processing is automated; requests may involve the Operator."
+          ]
+        },
+        {
+          "title": "3. Data I select",
+          "paragraphs": [
+            "Category: other personal data. I independently select the groups and audience in the form. Each group lists its full contents; selecting it permits the entire listed group, not unspecified other information.",
+            "Unselected groups are not permitted. To exclude individual fields within a group or set custom conditions, I choose to hide the profile and request restrictions. Corresponding public display does not occur before agreement and actual implementation.",
+            "This consent does not permit real-time precise coordinates, home address, email, sign-in identifiers, IP, push tokens or messages. The map point is not my actual location. Health and other special-category data are not disseminated. Photos/videos are for profile display and do not authorize biometric identification."
+          ],
+          "bullets": [
+            "Base card: public technical identifier, display name, age, city, district and preferred districts, sports and levels, format/surface, available days/times, game-seeking and recent-activity indicators, approximate distance, calculated compatibility and explanations.",
+            "Description: profile description text.",
+            "Photos: avatar and profile photographs.",
+            "Videos: profile videos.",
+            "Map: a nominal city/district point, not GPS or home address.",
+            "Game searches and invitations: sport, level, date/time, facility or facility address, route to it, comment and search status; this does not permit all private-arrangement content."
+          ]
+        },
+        {
+          "title": "4. Resources and audience",
+          "paragraphs": [
+            "Operator resources: website/PWA https://sportsearch.shop, including https://sportsearch.shop/discover, https://sportsearch.shop/play/courts and https://sportsearch.shop/play/searches, and the NaTrenyu iOS application https://apps.apple.com/app/id6768862885 using https://sportsearch.shop API. Mentioning another application or resource does not authorize it.",
+            "I choose signed-in registered Users only or also guests. Both audiences are not predetermined circles. Access uses communication networks on the listed resources within selected groups, audience and conditions.",
+            "Guest display is accessible to any visitor of the permitted resources. Recipients may be in different countries. The Operator must respect restrictions and statutory protection measures; unlawful copying is not permitted use."
+          ]
+        },
+        {
+          "title": "5. Conditions and prohibitions",
+          "paragraphs": [
+            "By choosing standard conditions, I impose these restrictions on selected groups:",
+            "For different conditions, prohibitions, field exclusions or a shorter period, I can hide my profile and contact support@sportsearch.shop identifying the data and restrictions. Hiding stops dissemination; a request is not consent to ordinary full display. Resumption requires an actually enforceable scope separately confirmed by me.",
+            "The Operator publishes selected conditions and prohibitions within three working days after consent is received, making them available to recipients with the data. Restrictions do not apply to processing for state, social or other public interests expressly established by Russian law."
+          ],
+          "bullets": [
+            "The Operator must not transfer the data to an indefinite audience except by access within the selected scope on the listed resources.",
+            "Recipients must not subsequently collect, copy to outside databases, transfer to others or perform advertising profiling using the data, except for access within the permitted scope."
+          ]
+        },
+        {
+          "title": "6. Period, changes and termination",
+          "paragraphs": [
+            "Consent starts with separate confirmation and ends on withdrawal, account deletion or cessation of purpose, whichever is earlier. An individually set shorter period prevails.",
+            "I may reduce scope, change audience or hide the profile in settings. I may also request full or partial termination at support@sportsearch.shop, providing surname, first name, patronymic if applicable, contact and relevant data. A full request may specify all data permitted for dissemination.",
+            "Consent ends in the relevant part when the Operator receives the request. Dissemination and access in that part stop. The conditions-publication period does not authorize continued display after termination.",
+            "Refusal or withdrawal does not remove partner search, chats or games. Necessary information supplied to specific participants of my initiated interactions uses independent grounds in the policy.",
+            "Expanded data, resources, audience or processing needs separate confirmation of the new scope. Updating a page or continued use does not provide it."
+          ]
+        },
+        {
+          "title": "7. Evidence of choice",
+          "paragraphs": [
+            "My individual record includes surname, first name, patronymic if applicable, contact, selected groups and lists, audience, conditions/prohibitions, period, date/time, exact revision and confirmation method. Evidence of choice and withdrawal is kept within the substantiated purpose and period in the policy."
+          ]
+        }
+      ]
+    }
+  },
+  "analytics": {
+    "ru": {
+      "title": "Согласие на аналитику",
+      "description": "Согласие на необязательную аналитику использования сервиса «НаТреню». Редакция от 5 октября 2026 года.",
+      "sections": [
+        {
+          "title": "1. Кто даёт согласие и кому",
+          "paragraphs": [
+            "Я, пользователь аккаунта сервиса «НаТреню», свободно, своей волей и в своём интересе разрешаю Захарову Матвею Владимировичу обработку моих персональных данных для необязательной аналитики использования сервиса.",
+            "Оператор: Захаров Матвей Владимирович, ИНН 471803649801. Место жительства: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15. Email: support@sportsearch.shop.",
+            "Согласие подтверждается отдельным действием через мой аккаунт, независимо от Пользовательского соглашения и согласия на показ анкеты. Вход, просмотр страницы, продолжение использования и отсутствие отказа не означают согласие на аналитику."
+          ]
+        },
+        {
+          "title": "2. Цель",
+          "paragraphs": [
+            "Цель — изучать использование функций, оценивать прохождение шагов от регистрации до первой отмеченной в сервисе игры, выявлять трудности и улучшать интерфейс и функции, в том числе оценивать результативность сервисных рекомендаций и уведомлений.",
+            "Согласие не разрешает рекламу, рекламную рассылку, рекламное профилирование или предоставление данных рекламодателям."
+          ]
+        },
+        {
+          "title": "3. Данные",
+          "paragraphs": [
+            "Категория: иные персональные данные. Для указанной цели разрешаю обрабатывать:",
+            "Имя и email не включаются в журналы и выгрузки необязательной аналитики. Содержание переписки и комментариев, фото, видео, точные координаты, пароли и коды входа также не включаются. Запись сеанса с содержимым экрана не выполняется. Сведения о здоровье, другие специальные категории и биометрические персональные данные по этому согласию не обрабатываются.",
+            "Идентификатор аккаунта и связанные события остаются персональными данными; замена имени идентификатором не означает обезличивание."
+          ],
+          "bullets": [
+            "внутренний идентификатор моего аккаунта;",
+            "дату регистрации и факт завершения заполнения профиля;",
+            "факты открытия приложения, экранов, шагов анкеты и режимов поиска;",
+            "факты просмотра рекомендаций, выбора карточки, создания и принятия предложений, создания поиска и ответа на него, взаимного совпадения, отправки сообщения без содержания, отправки/открытия уведомления и отмеченной в сервисе сыгранной игры;",
+            "дату и время события, тип клиента и язык интерфейса;",
+            "вид и внутренний идентификатор связанного объекта: поиска, игрового предложения, совпадения или уведомления;",
+            "параметры события: экран, номер шага, режим отображения, количество показанных объектов, признак пустого результата, тип действия и источник игрового сценария;",
+            "историю показов рекомендаций: идентификаторы участников, позицию карточки и рассчитанные оценки соответствия;",
+            "идентификатор, вариант, экспериментальную группу сервисного уведомления и факт последующего целевого действия;",
+            "статус и дату согласования или отмеченной в сервисе сыгранной игры для расчёта соответствующих показателей."
+          ]
+        },
+        {
+          "title": "4. Действия и доступ",
+          "paragraphs": [
+            "Разрешены сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, сопоставление, анализ и использование для указанной цели, формирование внутренних отчётов и выгрузок, обезличивание при применении соответствующей процедуры, блокирование, удаление и уничтожение.",
+            "Обработка осуществляется автоматизированно во внутренней системе сервиса; оператор может просматривать и анализировать отчёты. Доступ предоставляется оператору и уполномоченным лицам только в необходимом для этой цели объёме с обязанностью соблюдать конфиденциальность. Данные не распространяются и не продаются.",
+            "Технические обработчики привлекаются в пределах законного основания, соответствующих поручений и сведений из Политики обработки персональных данных. Они не получают права использовать данные для собственных целей или рекламы. Это согласие не подменяет соблюдение требований к трансграничной передаче."
+          ]
+        },
+        {
+          "title": "5. Сроки",
+          "paragraphs": [
+            "Согласие действует с момента отдельного подтверждения до отзыва, удаления аккаунта или прекращения цели — в зависимости от того, что наступит раньше.",
+            "Срок хранения событий необязательной аналитики — 90 календарных дней с даты события. По истечении срока оператор исключает их из аналитической обработки и обеспечивает уничтожение. Порядок очистки, включая технические копии, определяется Политикой обработки персональных данных и процедурами оператора; копии не могут использоваться для продолжения аналитики после прекращения основания.",
+            "При отзыве оператор прекращает сбор новых необязательных событий и аналитическое использование накопленных данных, обеспечивает их уничтожение в установленные законом сроки при отсутствии самостоятельного законного основания. Желание продолжать необязательную продуктовую аналитику самостоятельным основанием не является.",
+            "Сведения аккаунта, сообщений и договорённостей, необходимые для функций, которые я продолжаю использовать, могут сохраняться на самостоятельных основаниях из Политики. После отказа их не используют для необязательной аналитики по этому согласию.",
+            "Необратимо обезличенная статистика, которая больше не позволяет отнести сведения ко мне, может сохраняться после отзыва. Строки с идентификатором аккаунта или восстановимой связью с ним такой статистикой не считаются."
+          ]
+        },
+        {
+          "title": "6. Отказ и отзыв",
+          "paragraphs": [
+            "Я могу не давать согласие либо отозвать его в любое время переключателем аналитики в настройках или письмом на support@sportsearch.shop. В письме следует сообщить о желании прекратить аналитическую обработку и указать аккаунт либо контакт, позволяющий определить, к кому относится обращение. При необходимости оператор может запросить соразмерное подтверждение принадлежности аккаунта.",
+            "Отказ и отзыв не ограничивают создание и использование аккаунта, поиск партнёров, переписку, участие в играх, сервисные уведомления и остальные функции."
+          ]
+        },
+        {
+          "title": "7. Подтверждение и изменение объёма",
+          "paragraphs": [
+            "Оператор сохраняет отдельное подтверждение или отзыв, аккаунт, время, точную редакцию текста и способ выбора. Сроки и основания хранения доказательств правомерности определяются отдельно от сроков аналитических событий.",
+            "Расширение целей, состава данных, получателей или разрешённого использования требует самостоятельного законного основания и, когда основанием выступает согласие, нового положительного выбора до новой обработки. Публикация новой редакции не расширяет ранее полученное согласие."
+          ]
+        }
+      ]
+    },
+    "en": {
+      "title": "Consent to Analytics",
+      "description": "Consent to optional analytics of NaTrenyu use. Revision dated October 5, 2026.",
+      "sections": [
+        {
+          "title": "1. Subject and Operator",
+          "paragraphs": [
+            "I, a NaTrenyu account holder, freely and for my own benefit permit Matvey Vladimirovich Zakharov to process my personal data for optional usage analytics.",
+            "Operator: Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Residence: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email: support@sportsearch.shop.",
+            "Confirmation is a separate account action, independent of accepting the Terms or consenting to profile display. Sign-in, page views, continued use and absence of refusal are not analytics consent."
+          ]
+        },
+        {
+          "title": "2. Purpose",
+          "paragraphs": [
+            "The purpose is to study feature use, measure progress from registration to the first game recorded in the Service, identify difficulties and improve interfaces/features, including effectiveness of service recommendations and notifications.",
+            "This does not permit advertising, advertising messages, advertising profiling or data provision to advertisers."
+          ]
+        },
+        {
+          "title": "3. Data",
+          "paragraphs": [
+            "Category: other personal data. I permit the following for this purpose:",
+            "Names and email are excluded from optional analytics logs and exports. Messages/comments, photos, videos, precise coordinates, passwords and sign-in codes are excluded. Screen-content session recording is not performed. Health, other special categories and biometric data are not processed under this consent.",
+            "Account identifiers and linked events remain personal data; replacing names with identifiers is not anonymization."
+          ],
+          "bullets": [
+            "Internal account identifier.",
+            "Registration date and profile-completion fact.",
+            "App, screen, profile-step and search-mode openings.",
+            "Recommendation views, card selections, proposal creation/acceptance, search creation/responses, mutual matches, message sending without content, notification sending/opening and games recorded as played.",
+            "Event date/time, client type and interface language.",
+            "Type/internal identifier of the related search, proposal, match or notification.",
+            "Event parameters: screen, step number, display mode, object count, empty-result indicator, action type and game-scenario source.",
+            "Recommendation impression history: participant identifiers, card position and calculated compatibility scores.",
+            "Service notification identifier, variant, experiment group and subsequent target action.",
+            "Arrangement status/date or recorded played-game status/date for corresponding metrics."
+          ]
+        },
+        {
+          "title": "4. Operations and access",
+          "paragraphs": [
+            "Permitted operations are collection, recording, systematization, accumulation, storage, correction, retrieval, comparison, analysis/use for this purpose, internal reports/exports, anonymization through an actual procedure, blocking, deletion and destruction.",
+            "Processing is automated within the Service; the Operator may inspect reports. Access is limited to the Operator and authorized people who need it for this purpose and owe confidentiality. Data is not disseminated or sold.",
+            "Technical processors are engaged within lawful grounds, instructions and policy information. They may not use data independently or for advertising. This consent does not replace cross-border-transfer compliance."
+          ]
+        },
+        {
+          "title": "5. Periods",
+          "paragraphs": [
+            "Consent starts on separate confirmation and ends on withdrawal, account deletion or cessation of purpose, whichever is earlier.",
+            "Optional events are retained 90 calendar days from the event. After expiry, the Operator excludes them from analytics and ensures destruction. Cleanup, including technical copies, follows the policy and Operator procedures; copies cannot continue analytics after grounds end.",
+            "Withdrawal stops new optional collection and analytical use of stored data, with destruction within statutory periods absent an independent lawful ground. A wish to continue optional product analytics is not such a ground.",
+            "Account, message and arrangement data necessary for continuing features may remain on policy grounds but is not used for optional analytics after refusal.",
+            "Irreversibly anonymized statistics that can no longer be attributed to me may remain. Rows with an account identifier or recoverable link are not such statistics."
+          ]
+        },
+        {
+          "title": "6. Refusal and withdrawal",
+          "paragraphs": [
+            "I may refuse or withdraw at any time using settings or support@sportsearch.shop. A request should identify the account/contact and desire to stop analytics. Proportionate ownership verification may be requested.",
+            "Refusal and withdrawal do not restrict account use, partner search, chats, games, service notifications or other features."
+          ]
+        },
+        {
+          "title": "7. Confirmation and scope changes",
+          "paragraphs": [
+            "The Operator keeps separate confirmation/withdrawal, account, time, exact text revision and method. Evidence periods and grounds are separate from event retention.",
+            "Expanded purposes, data, recipients or use require independent lawful grounds and, where consent is the ground, a new affirmative choice before processing. Publishing a revision does not expand previously obtained consent."
+          ]
+        }
+      ]
+    }
+  },
+  "recommendations": {
+    "ru": {
+      "title": "Правила применения рекомендательных технологий НаТреню",
+      "description": "Редакция от 5 октября 2026 года. Применяется с опубликования.\n\nНа информационном ресурсе при применении информационных технологий предоставления информации осуществляется сбор, систематизация и анализ сведений, относящихся к предпочтениям пользователей сети «Интернет», находящихся на территории Российской Федерации.",
+      "sections": [
+        {
+          "title": "1. Владелец и назначение",
+          "paragraphs": [
+            "Владелец — Захаров Матвей Владимирович, ИНН 471803649801. Адрес: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15. Email для юридически значимых сообщений: support@sportsearch.shop. Ресурсы: https://sportsearch.shop, PWA и официальное приложение НаТреню для iOS.",
+            "Рекомендации помогают искать партнёров и игры, упорядочивая анкеты по совместимости параметров. Они не проверяют личность, здоровье или надёжность и не гарантируют результат встречи."
+          ]
+        },
+        {
+          "title": "2. Сведения и источники",
+          "paragraphs": [
+            "Из заполненных пользователем профиля и настроек используются спорт, спортивный уровень, возраст, выбранные город и районы, расчётная близость, формат и покрытие, доступные дни и время, статус поиска и применённые фильтры. Из необходимых игровых взаимодействий — выраженный интерес и пропуски, активные пары, блокировки, игровые поиски, приглашения и отклики. Учитываются создание и недавняя активность профиля.",
+            "При отдельном согласии на необязательную аналитику могут использоваться разрешённая история показов и интереса к карточкам, агрегаты нагрузки и экспериментальные измерения результативности. Без такого согласия основной подбор остаётся доступным и не создаёт необязательную историю показов или экспериментальные измерения.",
+            "Источники — данные, введённые самими пользователями, и действия внутри Сервиса. Расстояние определяется по выбранным населённым пунктам и районам и их справочным координатам; оно не показывает точное местонахождение. Частные сообщения, медицинские сведения и биометрическая идентификация не используются для подбора. Платного продвижения анкет нет."
+          ]
+        },
+        {
+          "title": "3. Процессы и методы",
+          "paragraphs": [
+            "Сначала применяются условия активности и заполнения профиля, видимости по отдельному согласию, блокировок и выбранных фильтров. Собственная анкета исключается. Гостевая выдача дополнительно ограничена разрешённой гостевой аудиторией. Сведения каждой карточки редактируются в пределах выбранных групп.",
+            "Далее рассчитывается совместимость видов спорта и уровня, возраста, географии, доступности, формата и покрытия с учётом активности. Оценка объединяет эти факторы, а отдельные причины совпадения помогают объяснить результат. При разрешённых поведенческих данных дополнительное упорядочивание может снижать повторные показы, учитывать выраженный интерес, распределять нагрузку и разнообразить список. Эти действия не заменяют фильтр согласия и не дают права использовать неразрешённые данные.",
+            "Карточки сортируются по полученной оценке и правилам соответствующего режима. Объяснения отражают отдельные причины, а не каждое слагаемое. Изменение актуальных фильтров и параметров может изменить список и порядок. Взаимная пара возникает по отдельным действиям участников, а не является автоматически заключённым договором об игре."
+          ]
+        },
+        {
+          "title": "4. Управление и обращения",
+          "paragraphs": [
+            "Пользователь может изменить профиль, параметры и фильтры, заблокировать участника, управлять видимостью и отказаться от необязательной аналитики. Отказ не отключает весь подбор. Полного отдельного переключателя всех рекомендаций нет; гостевая выдача также использует условия поиска.",
+            "Если исходные сведения неверны или результат нарушает права, можно обратиться на support@sportsearch.shop с указанием аккаунта, режима и примера. Для автоматизированных решений, подпадающих под статью 16 закона № 152-ФЗ, применяются предусмотренные ею основания, разъяснения и порядок возражений."
+          ]
+        },
+        {
+          "title": "5. Ограничения и обновление",
+          "paragraphs": [
+            "Результат зависит от полноты профилей, самооценки уровня, актуальности времени и числа участников. Приблизительное расстояние и справочная точка не подтверждают реальное местонахождение.",
+            "При изменении используемых сведений или существенных методов Владелец обновляет правила и связанные документы. Новая страница не создаёт согласие и не расширяет прежний разрешённый объём. Текст доступен бесплатно без входа на русском языке по адресу https://sportsearch.shop/legal/recommendations."
+          ]
+        }
+      ]
+    },
+    "en": {
+      "title": "NaTrenyu Recommendation Technology Rules",
+      "description": "Revision dated October 5, 2026. Applies from publication.\n\nThe resource uses information-provision technologies that collect, systematize and analyse information relating to preferences of Internet users located in Russia.",
+      "sections": [
+        {
+          "title": "1. Owner and purpose",
+          "paragraphs": [
+            "Owner: Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Address: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email for legally significant messages: support@sportsearch.shop. Resources: https://sportsearch.shop, its PWA and official NaTrenyu iOS application.",
+            "Recommendations help find partners and games by ordering profiles according to parameter compatibility. They do not verify identity, health or reliability or guarantee a meeting's result."
+          ]
+        },
+        {
+          "title": "2. Data and sources",
+          "paragraphs": [
+            "Profile/settings inputs are sports, level, age, selected city/districts, calculated proximity, format/surface, available days/times, search status and filters. Necessary game interactions include expressed interest, skips, active pairs, blocks, searches, invitations and responses. Profile creation and recent activity are considered.",
+            "With separate optional analytics consent, permitted impression/interest history, load aggregates and experimental effectiveness measurements may be used. Without it, core selection remains available and does not create optional impression history or experiments.",
+            "Sources are User-supplied data and Service actions. Distance uses selected towns/districts and reference coordinates, not precise whereabouts. Private message content, medical information and biometric identification are not used. Profiles do not receive paid promotion."
+          ]
+        },
+        {
+          "title": "3. Processes and methods",
+          "paragraphs": [
+            "Activity, profile completion, separately consented visibility, blocks and selected filters apply first. A User's own profile is excluded. Guests only see profiles permitted for guests. Each card is limited to its selected data groups.",
+            "Compatibility combines sports/level, age, geography, availability, format/surface and activity. Individual matching reasons help explain it. Where behavioral data is permitted, additional ordering may reduce repeats, consider interest, distribute load and diversify listings. This does not replace consent filtering or authorize unpermitted data.",
+            "Cards are ordered by the score and relevant mode rules. Explanations cover individual reasons, not every component. Changing current parameters/filters can change the list/order. A mutual pair results from participants' separate actions and does not automatically form a game contract."
+          ]
+        },
+        {
+          "title": "4. Controls and requests",
+          "paragraphs": [
+            "Users can change profiles, parameters/filters, block participants, manage visibility and refuse optional analytics. Refusal does not disable all recommendations. There is no separate switch disabling every recommendation; guest selection also uses search parameters.",
+            "Incorrect inputs or rights-infringing results can be reported to support@sportsearch.shop with account, mode and example. Automated decisions within article 16 of Law No. 152-FZ follow its grounds, explanation and objection procedures."
+          ]
+        },
+        {
+          "title": "5. Limits and updates",
+          "paragraphs": [
+            "Results depend on profile completeness, self-assessed levels, current availability and participant numbers. Approximate distance/reference points do not establish actual location.",
+            "The Owner updates rules and related documents when data or significant methods change. A new page does not create consent or expand prior permission. The Russian rules are freely available without sign-in at https://sportsearch.shop/legal/recommendations."
+          ]
+        }
+      ]
+    }
+  }
+}
