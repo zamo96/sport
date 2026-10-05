@@ -25,7 +25,7 @@ import { CONTENT_MODERATION_VALIDATION_MESSAGE, isPublicTextAllowed } from "@/li
 import {
   ACCEPTED_USER_AGREEMENT_VERSIONS,
   LEGAL_ACCEPTANCE_ERROR,
-  SEPTEMBER_USER_AGREEMENT_VERSION,
+  SEPARATE_USER_AGREEMENT_VERSION,
   USER_AGREEMENT_VERSION
 } from "@/lib/legal-contract";
 import { normalizeSupportedLocale } from "@/lib/locales";
@@ -909,10 +909,10 @@ export type UserEventPayload = z.infer<typeof userEventSchema>;
 export const consentUpdateSchema = z
   .object({
     source: z.enum(["web", "ios", "android"]),
-    // Builds released before 2026-10-01 still send the September edition; it is
+    // Builds released before 2026-10-05 still send the September edition; it is
     // recorded as sent, and those people are asked again once they update the app.
     acceptAgreementVersion: z
-      .enum([USER_AGREEMENT_VERSION, SEPTEMBER_USER_AGREEMENT_VERSION], "Нужно принять актуальную редакцию пользовательского соглашения")
+      .enum([USER_AGREEMENT_VERSION, SEPARATE_USER_AGREEMENT_VERSION], "Нужно принять актуальную редакцию пользовательского соглашения")
       .optional(),
     profile: z
       .object({

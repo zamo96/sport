@@ -1,0 +1,159 @@
+{
+  "language": "en",
+  "title": "NaTrenyu Terms of Use",
+  "description": "Terms of Use for the NaTrenyu service",
+  "version": "2026-09-24",
+  "effectiveDate": "September 24, 2026",
+  "backLabel": "Back to registration",
+  "versionLabel": "Version",
+  "effectiveDateLabel": "Effective date",
+  "operatorLabel": "Operator",
+  "sections": [
+    {
+      "title": "1. General provisions",
+      "paragraphs": [
+        "These Terms of Use govern the relationship between Захаров Матвей Владимирович (the “Operator”) and the person using the НаТреню service through the website, PWA, iOS application, API, or other service interfaces (the “User”).",
+        "These Terms constitute a public offer within the meaning of Articles 435, 437, and 438 of the Civil Code of the Russian Federation. The Terms are accepted by pressing the sign-in or registration button (requesting an email code, signing in with Apple ID or Google) placed next to a link to these Terms together with a statement that pressing it means acceptance. For an existing Account, acceptance of a new version is recorded by a separate action in the service.",
+        "If the User does not agree to these Terms, the User must discontinue registration and must not use service features that require an account."
+      ]
+    },
+    {
+      "title": "2. Definitions",
+      "bullets": [
+        "Service means the НаТреню software suite for finding sports partners, game requests, chats, notifications, and related features.",
+        "Account means the User account created using an email code or Apple ID.",
+        "Profile means information provided by the User in the service, including name, age, city, district, sports, skill level, availability, photos, videos, and other data.",
+        "Content means texts, messages, photos, videos, reviews, requests, responses, and other materials posted by the User.",
+        "Game Request means a game offer or search created by the User to arrange the sport, time, place, and participants."
+      ]
+    },
+    {
+      "title": "3. Scope of the Terms",
+      "paragraphs": [
+        "The Operator provides the User with the technical ability to create a profile, find sports partners, respond to game requests, communicate through chats, receive service notifications, and use other available features.",
+        "The Operator is not an organizer of sporting events, a coach, a medical adviser, an owner of sports facilities, or a party to arrangements between Users unless expressly stated otherwise.",
+        "Users independently agree on the place, time, facility fees, meeting rules, and other terms of playing together."
+      ]
+    },
+    {
+      "title": "4. Registration and account",
+      "bullets": [
+        "Registration is available to persons aged 18 or older. By creating an Account, the User confirms that they are at least 18 years old and have full legal capacity.",
+        "The User must provide a valid email address and must not use another person's Apple ID, email, name, photos, or other data.",
+        "The User is responsible for securing access to their email, Apple ID, device, and application session.",
+        "The Operator may refuse registration or restrict or terminate access if the User violates these Terms, applicable law, third-party rights, or standards of good-faith conduct within the service."
+      ]
+    },
+    {
+      "title": "5. Profile, search, and meetings",
+      "bullets": [
+        "The User independently selects sports, skill level, district, availability, search radius, and other profile settings.",
+        "Recommendation algorithms use profile, activity, geographic, and game-related parameters to select cards, searches, and notifications.",
+        "The User understands that sports involve physical exertion and a risk of injury. Before participating in a game, the User independently assesses their health, fitness level, and facility conditions.",
+        "The Operator does not guarantee the availability of suitable partners or sports facilities, attendance by other Users, or the quality of meetings."
+      ]
+    },
+    {
+      "title": "6. Rules of conduct",
+      "bullets": [
+        "The service has zero tolerance for objectionable, offensive, or unlawful Content, as well as for Users who threaten, harass, demean others, or otherwise abuse service features.",
+        "Threats, insults, discrimination, harassment, spam, fraud, impersonation, and actions that violate the rights of other Users are prohibited.",
+        "Posting unlawful, harmful, pornographic, extremist, defamatory, or rights-infringing Content is prohibited.",
+        "Collecting, publishing, or transmitting other Users' personal data without a lawful basis and their consent is prohibited.",
+        "Interfering with the service, bypassing restrictions, using bots, bulk extraction, scraping, or unauthorized access is prohibited."
+      ]
+    },
+    {
+      "title": "7. Moderation and restrictions",
+      "paragraphs": [
+        "The Operator may review reports, hide, remove, or restrict the distribution of Content, and block Accounts and technical identifiers when necessary to comply with the law, protect Users, prevent abuse, or ensure stable operation of the service.",
+        "A User may report another User's Profile or materials and block that User using the mechanisms available in the service. After blocking, the blocked User's Content is immediately removed from the blocking User's feed, and the Operator is notified for review.",
+        "The Operator reviews reports of objectionable Content and abuse within 24 hours. If a violation is confirmed, the Operator removes or hides the relevant Content and ejects the offending User from the service.",
+        "The Operator may temporarily restrict service features during maintenance, in the event of errors or suspected security violations, or as required by law."
+      ]
+    },
+    {
+      "title": "8. Personal data",
+      "paragraphs": [
+        "The procedure for processing personal data is set out in the separate Privacy Policy: https://sportsearch.shop/legal/privacy.",
+        "Processing necessary to conclude and perform these Terms at the User's request (account, sign-in, Profile, partner matching, chats, game requests, and service notifications) is carried out under clause 5 of Part 1 of Article 6 of Federal Law No. 152-FZ of July 27, 2006, On Personal Data.",
+        "Accepting these Terms is not consent to personal-data processing, to showing the Profile to an indefinite number of people, or to optional analytics. Such consents are given separately, by a separate action of the User, and can be changed or withdrawn at any time in the Profile settings."
+      ]
+    },
+    {
+      "title": "9. Showing the Profile to other users",
+      "paragraphs": [
+        "The Profile is shown in search, on the map, and in the sports-venue catalog only with a separate consent to the processing of personal data permitted for distribution (https://sportsearch.shop/legal/profile-visibility), and only within the data and audience chosen by the User.",
+        "Without such consent the User can still search for partners, message them, and join games; the User's data is received only by the participants the User interacts with. To stop the Profile from being shown, the User changes the Profile visibility settings or sends a request to the Operator's contact email."
+      ]
+    },
+    {
+      "title": "10. Notifications",
+      "paragraphs": [
+        "The service may send verification codes and notifications about matches, game requests, chats, status changes, Account security, and other events necessary for the operation of the service.",
+        "Advertising communications, if introduced, will be sent only with the User's separate consent where such consent is required by law."
+      ]
+    },
+    {
+      "title": "11. Intellectual property",
+      "paragraphs": [
+        "Exclusive rights to the service, interfaces, software code, design, databases, trademarks, and other service elements belong to the Operator or its rights holders.",
+        "By posting Content, the User confirms that they have the rights to it and grants the Operator a non-exclusive, royalty-free license to store, process, reproduce, display, adapt, and make the Content available to other Users to the extent necessary for the operation of the service."
+      ]
+    },
+    {
+      "title": "12. Paid features",
+      "paragraphs": [
+        "If paid features, subscriptions, or premium capabilities become available in the service, their price, payment procedure, duration, renewal terms, and refund conditions will be stated in the service interface, the application store rules, or a separate offer.",
+        "Nothing in these Terms limits consumer rights that cannot be limited under the laws of the Russian Federation."
+      ]
+    },
+    {
+      "title": "13. Liability",
+      "paragraphs": [
+        "The service is provided “as is” to the extent permitted by law. The Operator strives to maintain service availability and correct operation but does not guarantee uninterrupted operation, absence of errors, compatibility with every device, or achievement of any particular sporting result.",
+        "The Operator is not liable for Users' acts or omissions, the accuracy of information they post, the quality of sports facilities, injuries, losses, or disputes arising during in-person meetings unless otherwise expressly required by law.",
+        "Limitations of liability apply only to the extent permitted by mandatory provisions of the laws of the Russian Federation."
+      ]
+    },
+    {
+      "title": "14. Changes to the Terms",
+      "paragraphs": [
+        "The Operator may amend these Terms. A new version will be published in the service together with its version number and effective date.",
+        "If changes materially affect the User's rights or obligations, the Operator may request renewed consent upon the next sign-in, registration, or use of a material feature."
+      ]
+    },
+    {
+      "title": "15. Account deletion and withdrawal of consents",
+      "paragraphs": [
+        "The User may delete their Account, contact the Operator to correct, block, or delete personal data, and withdraw separate consents in the Profile settings or via the Operator's contact email.",
+        "Withdrawing consent to showing the Profile or to analytics does not restrict other service features. The Operator may continue to retain certain information if required by law, security, dispute resolution, or the protection of rights."
+      ]
+    },
+    {
+      "title": "16. Governing law and disputes",
+      "paragraphs": [
+        "These Terms are governed by the laws of the Russian Federation.",
+        "Before commencing court proceedings, the parties will seek to resolve a dispute by sending a written claim to the Operator's contact email. The response period is 30 calendar days unless a different period is established by law.",
+        "Jurisdiction is determined under the laws of the Russian Federation, including mandatory consumer-protection rules where applicable."
+      ]
+    },
+    {
+      "title": "17. Operator details and contacts",
+      "bullets": [
+        "Operator: Захаров Матвей Владимирович",
+        "Taxpayer Identification Number (INN): 471803649801",
+        "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
+        "Contact email: support@sportsearch.shop"
+      ]
+    }
+  ],
+  "operator": {
+    "serviceName": "НаТреню",
+    "legalName": "Захаров Матвей Владимирович",
+    "inn": "ИНН: 471803649801",
+    "ogrn": "",
+    "address": "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
+    "email": "support@sportsearch.shop"
+  }
+}

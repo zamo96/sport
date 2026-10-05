@@ -1,0 +1,45 @@
+{
+  "language": "en",
+  "title": "Consent to analytics",
+  "description": "Consent to optional analytics of app usage",
+  "version": "2026-09-24",
+  "versionLabel": "Version",
+  "operatorLabel": "Operator",
+  "sections": [
+    {
+      "title": "1. Who gives consent and to whom",
+      "paragraphs": [
+        "I, a NaTrenyu user, freely and separately from the Terms of Use, give Захаров Матвей Владимирович, INN 471803649801, address: 187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15, email: support@sportsearch.shop, consent to optional analytics of how I use the app."
+      ]
+    },
+    {
+      "title": "2. What data and why",
+      "paragraphs": [
+        "Purpose: to understand which features are used, find places where people struggle, and improve the app.",
+        "Data: account identifier, screens and steps opened (for example, a profile step or a search tab), actions taken (sending an invitation, responding, creating a search, a played game, opening a notification), event date and time, client type (web, iOS, Android), and technical event parameters. Messages, photos, videos, and precise coordinates are never included. No advertising profiling or session recording is performed."
+      ]
+    },
+    {
+      "title": "3. How it is processed",
+      "paragraphs": [
+        "Actions: collection, recording, systematization, accumulation, storage, retrieval, analysis, use, anonymization, blocking, deletion, and destruction; automated processing in the service's internal system. No external analytics platforms are used. Only the operator can access the reports.",
+        "Events are kept for no more than 90 calendar days from the event."
+      ]
+    },
+    {
+      "title": "4. Term and withdrawal",
+      "paragraphs": [
+        "The consent is valid until withdrawn or the account is deleted. You can withdraw it with the switch in the profile settings or by writing to support@sportsearch.shop. After withdrawal no new events are recorded, and stored ones are destroyed within 30 days.",
+        "Refusing analytics does not restrict any app features."
+      ]
+    }
+  ],
+  "operator": {
+    "serviceName": "НаТреню",
+    "legalName": "Захаров Матвей Владимирович",
+    "inn": "ИНН: 471803649801",
+    "ogrn": "",
+    "address": "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
+    "email": "support@sportsearch.shop"
+  }
+}
