@@ -1758,8 +1758,8 @@ private struct ProfileAccountScreen: View {
                     }
                 }
 
-                if appModel.currentUser?.phone == nil {
-                    // Вход в России — по телефону или VK ID: без номера в аккаунт после выхода не попасть.
+                if appModel.currentUser?.phone == nil && appModel.isSmsSignInAvailable {
+                    // Привязка номера — это SMS с кодом: только когда вход по SMS включён на сервере.
                     Button(L10n.string("Link phone number", "Привязать номер телефона")) {
                         isLinkingPhone = true
                     }
@@ -1783,8 +1783,9 @@ private struct ProfileAccountScreen: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .profileBackSwipe { dismiss() }
+        .task { await appModel.loadSignInOptions() }
         .sheet(isPresented: $isLinkingPhone) {
-            PhoneLinkView(mode: .settings) { isLinkingPhone = false }
+            PhoneLinkView { isLinkingPhone = false }
                 .environmentObject(appModel)
         }
     }

@@ -73,7 +73,7 @@ export function resolveLocalizedAuthError(error: unknown, locale: SupportedLocal
   }
 
   if (error instanceof ZodError && error.issues.some((issue) => issue.path[0] === "country")) {
-    // Email, Apple и Google — для тех, кто не в России (ч. 10 ст. 8 149-ФЗ).
+    // Apple и Google — иностранные сервисы входа, для России недоступны (ч. 10 ст. 8 149-ФЗ).
     return { message: translateServer(locale, "auth.error.russiaPhoneOnly"), status: 400, errorCode: "AUTH_INVALID_REQUEST" };
   }
 

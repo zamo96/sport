@@ -77,8 +77,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var phoneCodeResendAvailableAt: Date?
     /// Кнопка VK ID видна, только когда на сервере задан VK_ID_CLIENT_ID.
     @Published private(set) var isVkIdAvailable = false
-    /// «Позже» на предложении привязать номер — до следующего запуска приложения.
-    @Published private(set) var isPhoneLinkPromptDismissed = false
+    /// SMS sign-in is switched on separately on the server (SMS_SIGN_IN_ENABLED).
+    @Published private(set) var isSmsSignInAvailable = false
     @Published var debugCode: String?
     @Published var authMessage: String?
     @Published var errorMessage: String?
@@ -533,9 +533,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func loadVkIdAvailability() async {
-        guard !isVkIdAvailable, let config = try? await repository.fetchVkIdConfig() else { return }
-        isVkIdAvailable = config.available
+    func loadSignInOptions() async {
+        guard let options = try? await repository.fetchSignInOptions() else { return }
+        isVkIdAvailable = options.vk.available
+        isSmsSignInAvailable = options.sms
     }
 
     /// Вход через VK ID: `authenticate` открывает страницу VK в
@@ -550,7 +551,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard config.available, let clientId = config.clientId, var components = URLComponents(string: config.authorizeUrl) else {
-            errorMessage = L10n.string("VK ID sign-in is not available yet. Use your phone number.", "Вход через VK ID пока недоступен. Войдите по номеру телефона.")
+            errorMessage = L10n.string("VK ID sign-in is not available yet. Sign in with email.", "Вход через VK ID пока недоступен. Войдите по email.")
             return
         }
 
@@ -635,17 +636,6 @@ final class AppModel: ObservableObject {
             if currentUser == nil { repository.logout(pushDeviceToken: nil) }
             present(error: error)
         }
-    }
-
-    /// Предложение привязать номер — после экрана согласия, один раз за запуск.
-    var isPhoneLinkPromptVisible: Bool {
-        guard !isConsentReviewRequired, !isPhoneLinkPromptDismissed, presentedAuthStep == nil,
-              let user = currentUser, user.isOnboardingComplete else { return false }
-        return user.phoneLinkSuggested
-    }
-
-    func dismissPhoneLinkPrompt() {
-        isPhoneLinkPromptDismissed = true
     }
 
     /// Возвращает (debugCode, текст ошибки): экран привязки показывает их сам.
@@ -763,7 +753,6 @@ final class AppModel: ObservableObject {
         authEmail = ""
         authPhone = ""
         authCodeTarget = .email
-        isPhoneLinkPromptDismissed = false
         presentedAuthStep = nil
         pendingNavigationTarget = nil
         pendingChatMatchID = nil

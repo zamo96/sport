@@ -21,7 +21,8 @@ export function phoneAuthFailure(error: unknown, locale: SupportedLocale, phone?
     return fail(issue?.message ?? translateServer(locale, "auth.error.invalidRequest"), 400, "AUTH_INVALID_REQUEST");
   }
   if (error instanceof SmsUnavailableError) {
-    return fail(translateServer(locale, "auth.error.smsUnavailable"), 503, "AUTH_SMS_UNAVAILABLE");
+    const key = error.message === "SMS_SIGN_IN_DISABLED" ? "auth.error.smsDisabled" : "auth.error.smsUnavailable";
+    return fail(translateServer(locale, key), 503, "AUTH_SMS_UNAVAILABLE");
   }
   if (error instanceof VkAuthError) {
     return fail(error.message, 401, "AUTH_VK_FAILED");

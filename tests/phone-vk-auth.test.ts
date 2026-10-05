@@ -30,11 +30,12 @@ vi.mock("@/server/sms", async (importOriginal) => {
 });
 
 import { formatRussianPhone, formatRussianPhoneDigits, normalizeRussianMobile, russianPhoneDigits } from "@/lib/phone";
-import { phoneVerifySchema, verifySchema, vkAuthSchema } from "@/lib/validators";
+import { appleAuthSchema, phoneVerifySchema, verifySchema, vkAuthSchema } from "@/lib/validators";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { consumePhoneCode, issuePhoneCode, linkPhoneToUser, PhoneAuthError, signInWithPhone } from "@/server/phone-auth";
 import { fetchVkProfile, signInWithVk } from "@/server/vk-auth";
-import { isPublicIp } from "@/server/sms";
+import { isPublicIp, isSmsSignInEnabled, SmsUnavailableError } from "@/server/sms";
+import { phoneAuthFailure } from "@/server/phone-auth-http";
 
 const phone = "+79991234567";
 const hash = (code: string) => createHash("sha256").update(`${phone}:${code}`).digest("hex");
@@ -113,12 +114,36 @@ describe("sign-in request validation", () => {
     expect(phoneVerifySchema.safeParse({ phone, code: "12345", userAgreement: agreement }).success).toBe(false);
   });
 
-  it("refuses email sign-in for someone who said they are in Russia", () => {
+  it("allows email sign-in in Russia but refuses Apple and Google there", () => {
     const base = { email: "a@b.ru", code: "123456", userAgreement: agreement };
-    expect(verifySchema.safeParse({ ...base, country: "RU" }).success).toBe(false);
+    // Our own email code is checked by our server: allowed for Russia too.
+    expect(verifySchema.safeParse({ ...base, country: "RU" }).success).toBe(true);
     expect(verifySchema.safeParse({ ...base, country: "OTHER" }).success).toBe(true);
     // Older builds do not send the country and keep working.
     expect(verifySchema.safeParse(base).success).toBe(true);
+    // Apple and Google are foreign sign-in services: not for Russia (149-FZ art. 8 part 10).
+    const apple = { identityToken: "t", userAgreement: agreement };
+    expect(appleAuthSchema.safeParse({ ...apple, country: "RU" }).success).toBe(false);
+    expect(appleAuthSchema.safeParse({ ...apple, country: "OTHER" }).success).toBe(true);
+  });
+
+  it("offers SMS sign-in only when it is switched on", () => {
+    vi.stubEnv("SMSRU_API_ID", "key");
+    expect(isSmsSignInEnabled()).toBe(false);
+    vi.stubEnv("SMS_SIGN_IN_ENABLED", "1");
+    expect(isSmsSignInEnabled()).toBe(true);
+    vi.stubEnv("SMSRU_API_ID", "");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(isSmsSignInEnabled()).toBe(false);
+  });
+
+  it("points to email and VK ID when SMS sign-in is switched off", async () => {
+    const response = phoneAuthFailure(new SmsUnavailableError("SMS_SIGN_IN_DISABLED"), "ru");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: "Вход по SMS сейчас недоступен. Войдите по email или через VK ID.",
+      errorCode: "AUTH_SMS_UNAVAILABLE"
+    });
   });
 
   it("requires PKCE-shaped values for VK ID", () => {

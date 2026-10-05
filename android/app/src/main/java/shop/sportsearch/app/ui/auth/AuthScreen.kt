@@ -679,7 +679,7 @@ private fun EmailStep(
     val activityContext = LocalContext.current
     val focusManager = LocalFocusManager.current
     val cardShape = continuousShape(32.dp)
-    LaunchedEffect(Unit) { appModel.loadVkIdAvailability() }
+    LaunchedEffect(Unit) { appModel.loadSignInOptions() }
 
     Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
         Column(
@@ -699,8 +699,9 @@ private fun EmailStep(
                     .clip(cardShape)
                     .background(Color.White.copy(alpha = 0.92f))
                     .border(1.dp, Color.White.copy(alpha = 0.75f), cardShape)
-                    .padding(horizontal = 32.dp, vertical = 40.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                    .padding(28.dp),
+                // Compact enough that the agreement notice under the last button is on screen without scrolling.
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 Text(
                     L10n.string("Sign in", "Вход в профиль"),
@@ -734,45 +735,9 @@ private fun EmailStep(
                 }
 
                 if (appModel.authCountry == AuthCountry.RUSSIA) {
-                    // 149-FZ art. 8 part 10: an SMS code to a Russian number or VK ID.
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(L10n.string("Phone number", "Номер телефона"), style = AppText.headline, color = AppTheme.ink)
-                        OutlinedTextField(
-                            value = appModel.authPhone,
-                            // Digits only, shown as "999 123-45-67"; "+7" is fixed and a pasted
-                            // number is reduced to its ten digits.
-                            onValueChange = { value -> appModel.authPhone = RussianPhone.digits(value) },
-                            placeholder = { Text("999 123-45-67", fontSize = 22.sp) },
-                            leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
-                            prefix = { Text("+7 ", fontSize = 22.sp, color = AppTheme.ink) },
-                            visualTransformation = RussianPhoneVisualTransformation,
-                            singleLine = true,
-                            // "Done" closes the number pad so the SMS button is not hidden under it.
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            shape = continuousShape(18.dp),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
-                                focusedIndicatorColor = AppTheme.court.copy(alpha = 0.72f),
-                                unfocusedIndicatorColor = Color(0xFFD1D1D6),
-                            ),
-                            modifier = Modifier.fillMaxWidth().height(68.dp),
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(66.dp)
-                            .appShadow(AppTheme.court.copy(alpha = 0.2f), radius = 16.dp, offsetY = 10.dp, shape = continuousShape(18.dp))
-                            .clip(continuousShape(18.dp))
-                            .background(Brush.linearGradient(listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f))))
-                            .clickable { onRequestPhoneCode() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(L10n.string("Get an SMS code", "Получить код по SMS"), style = AppText.title3Bold, color = Color.White)
-                    }
+                    // Email (our server checks the code), VK ID, and SMS once the server switches it on.
+                    // Google is a foreign sign-in service and is not offered here (149-FZ art. 8 part 10).
+                    EmailSignInFields(appModel, onRequestCode, onHaveCode, showWebHint = false)
 
                     if (appModel.isVkIdAvailable) {
                         AuthDividerLabel(L10n.string("or", "или"))
@@ -789,86 +754,77 @@ private fun EmailStep(
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(L10n.string("Sign in with VK ID", "Войти через VK ID"), style = AppText.title3Bold, color = Color.White)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                // The logo from the VK ID SDK's One Tap button; brand colours, not tinted.
+                                Image(painterResource(R.drawable.ic_vkid_logo), contentDescription = null, modifier = Modifier.size(32.dp))
+                                Text(L10n.string("Sign in with VK ID", "Войти с VK ID"), style = AppText.title3Bold, color = Color.White)
+                            }
+                        }
+                    }
+
+                    if (appModel.isSmsSignInAvailable) {
+                        AuthDividerLabel(L10n.string("or", "или"))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(L10n.string("Phone number", "Номер телефона"), style = AppText.headline, color = AppTheme.ink)
+                            OutlinedTextField(
+                                value = appModel.authPhone,
+                                // Digits only, shown as "999 123-45-67"; "+7" is fixed and a pasted
+                                // number is reduced to its ten digits.
+                                onValueChange = { value -> appModel.authPhone = RussianPhone.digits(value) },
+                                placeholder = { Text("999 123-45-67", fontSize = 22.sp) },
+                                leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+                                prefix = { Text("+7 ", fontSize = 22.sp, color = AppTheme.ink) },
+                                visualTransformation = RussianPhoneVisualTransformation,
+                                singleLine = true,
+                                // "Done" closes the number pad so the SMS button is not hidden under it.
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                shape = continuousShape(18.dp),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White,
+                                    focusedIndicatorColor = AppTheme.court.copy(alpha = 0.72f),
+                                    unfocusedIndicatorColor = Color(0xFFD1D1D6),
+                                ),
+                                modifier = Modifier.fillMaxWidth().height(68.dp),
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(66.dp)
+                                .appShadow(AppTheme.court.copy(alpha = 0.2f), radius = 16.dp, offsetY = 10.dp, shape = continuousShape(18.dp))
+                                .clip(continuousShape(18.dp))
+                                .background(Brush.linearGradient(listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f))))
+                                .clickable { onRequestPhoneCode() },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(L10n.string("Get an SMS code", "Получить код по SMS"), style = AppText.title3Bold, color = Color.White)
                         }
                     }
 
                     LegalNotice()
                 } else {
-                // iOS puts Sign in with Apple here. Android has no Apple sign-in,
-                // so Google takes the same slot; hidden when the build has no
-                // Google client ID configured.
-                if (GoogleSignIn.isAvailable) {
-                    GoogleSignInButton(enabled = !appModel.isBusy) {
-                        scope.launch {
-                            appModel.signInWithGoogle(
-                                context = activityContext,
-                                userAgreementAccepted = true,
-                            )
+                    // iOS puts Sign in with Apple here. Android has no Apple sign-in,
+                    // so Google takes the same slot; hidden when the build has no
+                    // Google client ID configured.
+                    if (GoogleSignIn.isAvailable) {
+                        GoogleSignInButton(enabled = !appModel.isBusy) {
+                            scope.launch {
+                                appModel.signInWithGoogle(
+                                    context = activityContext,
+                                    userAgreementAccepted = true,
+                                )
+                            }
                         }
+                        AuthDividerLabel(L10n.string("or sign in with email", "или войти по Email"))
                     }
-                    AuthDividerLabel(L10n.string("or sign in with email", "или войти по Email"))
-                }
 
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Email", style = AppText.headline, color = AppTheme.ink)
-                    OutlinedTextField(
-                        value = appModel.authEmail,
-                        onValueChange = { appModel.authEmail = it },
-                        placeholder = { Text("example@mail.com", fontSize = 22.sp) },
-                        leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        shape = continuousShape(18.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedIndicatorColor = AppTheme.court.copy(alpha = 0.72f),
-                            unfocusedIndicatorColor = Color(0xFFD1D1D6),
-                        ),
-                        modifier = Modifier.fillMaxWidth().height(68.dp),
-                    )
-                }
+                    EmailSignInFields(appModel, onRequestCode, onHaveCode, showWebHint = true)
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(66.dp)
-                        .appShadow(AppTheme.court.copy(alpha = 0.2f), radius = 16.dp, offsetY = 10.dp, shape = continuousShape(18.dp))
-                        .clip(continuousShape(18.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f)),
-                            ),
-                        )
-                        .clickable { onRequestCode() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        L10n.string("Get a code by email", "Получить код по email"),
-                        style = AppText.title3Bold,
-                        color = Color.White,
-                    )
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        L10n.string(
-                            "Use email sign-in if you previously registered on the web.",
-                            "Email-вход нужен, если ты уже регистрировался раньше.",
-                        ),
-                        style = AppText.body,
-                        color = AppTheme.mutedInk,
-                    )
-                    Text(
-                        L10n.string("I already have a code", "У меня уже есть код"),
-                        style = AppText.title3,
-                        color = AppTheme.court,
-                        modifier = Modifier.clickable { onHaveCode() },
-                    )
-                }
-
-                LegalNotice()
+                    LegalNotice()
                 }
 
                 appModel.authMessage?.let { AuthInlineMessage(it, AppTheme.court, Icons.Filled.CheckCircle) }
@@ -883,6 +839,75 @@ private fun EmailStep(
                 onClick = onBack,
             )
         }
+    }
+}
+
+/** Email sign-in: the main method in Russia while SMS is off, and outside Russia next to Google. */
+@Composable
+private fun EmailSignInFields(
+    appModel: AppViewModel,
+    onRequestCode: () -> Unit,
+    onHaveCode: () -> Unit,
+    showWebHint: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Email", style = AppText.headline, color = AppTheme.ink)
+        OutlinedTextField(
+            value = appModel.authEmail,
+            onValueChange = { appModel.authEmail = it },
+            placeholder = { Text("example@mail.com", fontSize = 22.sp) },
+            leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            shape = continuousShape(18.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedIndicatorColor = AppTheme.court.copy(alpha = 0.72f),
+                unfocusedIndicatorColor = Color(0xFFD1D1D6),
+            ),
+            modifier = Modifier.fillMaxWidth().height(68.dp),
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(66.dp)
+            .appShadow(AppTheme.court.copy(alpha = 0.2f), radius = 16.dp, offsetY = 10.dp, shape = continuousShape(18.dp))
+            .clip(continuousShape(18.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF10523B), AppTheme.court.copy(alpha = 0.95f)),
+                ),
+            )
+            .clickable { onRequestCode() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            L10n.string("Get a code by email", "Получить код по email"),
+            style = AppText.title3Bold,
+            color = Color.White,
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (showWebHint) {
+            Text(
+                L10n.string(
+                    "Use email sign-in if you previously registered on the web.",
+                    "Email-вход нужен, если ты уже регистрировался раньше.",
+                ),
+                style = AppText.body,
+                color = AppTheme.mutedInk,
+            )
+        }
+        Text(
+            L10n.string("I already have a code", "У меня уже есть код"),
+            style = AppText.title3,
+            color = AppTheme.court,
+            modifier = Modifier.clickable { onHaveCode() },
+        )
     }
 }
 

@@ -24,6 +24,7 @@ import { type SportLevelValue } from "@/lib/sport-levels";
 import { formatRussianPhone } from "@/lib/phone";
 import { startVkIdSignIn, type VkIdConfig } from "@/lib/vk-id-client";
 import { RussianPhoneInput } from "@/components/auth/russian-phone-input";
+import { VkIdLogo } from "@/components/auth/vk-id-logo";
 import { AvailabilityPicker } from "@/components/forms/availability-picker";
 import { AgeRibbonPicker } from "@/components/forms/age-ribbon-picker";
 import { SportLevelGuideSheet } from "@/components/forms/sport-level-guide-sheet";
@@ -59,7 +60,9 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   // Ten digits after +7: the field accepts digits only.
   const [phone, setPhone] = useState("");
   const [codeTarget, setCodeTarget] = useState<"email" | "phone">("email");
-  const [vkConfig, setVkConfig] = useState<VkIdConfig | null>(null);
+  // What the server offers: SMS sign-in is switched on separately, VK ID needs a client id.
+  const [signInOptions, setSignInOptions] = useState<{ sms: boolean; vk: VkIdConfig } | null>(null);
+  const vkConfig = signInOptions?.vk ?? null;
   const [vkOpening, setVkOpening] = useState(false);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -198,11 +201,13 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
   }
 
   useEffect(() => {
-    if (step !== "email" || country !== "RU" || vkConfig) return;
-    apiFetch<VkIdConfig>("/auth/vk/config")
-      .then(setVkConfig)
-      .catch(() => setVkConfig({ available: false, clientId: null, redirectUri: "", scope: "", authorizeUrl: "" }));
-  }, [step, country, vkConfig]);
+    if (step !== "email" || signInOptions) return;
+    apiFetch<{ sms: boolean; vk: VkIdConfig }>("/auth/options")
+      .then(setSignInOptions)
+      .catch(() =>
+        setSignInOptions({ sms: false, vk: { available: false, clientId: null, redirectUri: "", scope: "", authorizeUrl: "" } })
+      );
+  }, [step, signInOptions]);
 
   async function signInWithVk() {
     if (!vkConfig?.available) {
@@ -228,17 +233,16 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     return () => window.clearInterval(timer);
   }, [step, resendAt]);
 
-  async function requestCode(event: FormEvent) {
+  async function requestCode(event: FormEvent, target: "phone" | "email") {
     event.preventDefault();
-    await sendCode();
+    await sendCode(target);
   }
 
-  async function sendCode() {
+  async function sendCode(target: "phone" | "email") {
     setLoading(true);
     setError(null);
 
     try {
-      const target = country === "RU" ? "phone" : "email";
       const data = await apiFetch<{ debugCode?: string; resendAfterSeconds?: number }>(target === "phone" ? "/auth/phone/request" : "/auth/request-link", {
         method: "POST",
         body: JSON.stringify(
@@ -267,7 +271,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
     setError(null);
 
     try {
-      const credentials = codeTarget === "phone" ? { phone: `+7${phone}` } : { email, country: "OTHER" };
+      const credentials = codeTarget === "phone" ? { phone: `+7${phone}` } : { email, country };
       const data = await apiFetch<{ user: { onboardingCompleted: boolean; showOnMap?: boolean } }>(
         codeTarget === "phone" ? "/auth/phone/verify" : "/auth/verify",
         {
@@ -570,7 +574,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           </div>
 
           {step === "email" ? (
-            <form className="space-y-4" onSubmit={requestCode}>
+            <div className="space-y-4">
               <div>
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.country.label")}</div>
                 <div className="grid grid-cols-2 gap-1 rounded-[20px] border border-white/80 bg-white/60 p-1" role="radiogroup" aria-label={t("auth.country.label")}>
@@ -592,66 +596,67 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
                 </div>
               </div>
 
-              {country === "RU" ? (
-                <>
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.phone.label")}</div>
-                    <RussianPhoneInput value={phone} onChange={setPhone} className="border-white/80 bg-white/78" />
-                  </label>
-                  <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
-                    {loading ? t("auth.phone.sending") : t("auth.phone.getCode")}
-                  </Button>
-                  {vkConfig?.available ? (
-                    // Hidden until VK_ID_CLIENT_ID is set on the server, so there is no dead button.
-                    <>
-                      <div className="flex items-center gap-3 text-xs text-ink/45">
-                        <span className="h-px flex-1 bg-ink/10" />
-                        {t("auth.or")}
-                        <span className="h-px flex-1 bg-ink/10" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={signInWithVk}
-                        disabled={vkOpening}
-                        className="inline-flex min-h-12 w-full items-center justify-center rounded-[24px] bg-[#0077FF] px-4 text-sm font-semibold text-white transition active:scale-[0.985] disabled:opacity-60"
-                      >
-                        {vkOpening ? t("auth.vk.opening") : t("auth.vk.button")}
-                      </button>
-                    </>
-                  ) : null}
-                  <Button type="button" fullWidth variant="ghost" className="min-h-11 rounded-[24px]" onClick={() => router.push("/discover")}>
+              <form className="space-y-4" onSubmit={(event) => void requestCode(event, "email")}>
+                {country === "OTHER" ? (
+                  <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">
+                    {t("auth.email.description")}
+                  </div>
+                ) : null}
+                <label className="block">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.email.label")}</div>
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="input border-white/80 bg-white/78 text-ink placeholder:text-ink/35"
+                    placeholder="player@email.com"
+                  />
+                </label>
+                <div className="flex gap-3">
+                  <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
                     {t("auth.email.later")}
                   </Button>
-                  <LegalNotice />
-                </>
-              ) : (
+                  <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
+                    {loading ? t("auth.email.sending") : t("auth.email.getCode")}
+                  </Button>
+                </div>
+              </form>
+
+              {country === "RU" && vkConfig?.available ? (
+                // Hidden until VK_ID_CLIENT_ID is set on the server, so there is no dead button.
                 <>
-              <div className="rounded-[24px] bg-white/72 p-4 text-sm leading-6 text-ink/68">
-                {t("auth.email.description")}
-              </div>
-              <label className="block">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.email.label")}</div>
-                <input
-                  required
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="input border-white/80 bg-white/78 text-ink placeholder:text-ink/35"
-                  placeholder="player@email.com"
-                />
-              </label>
-              <div className="flex gap-3">
-                <Button type="button" fullWidth variant="ghost" className="min-h-12 rounded-[24px]" onClick={() => router.push("/discover")}>
-                  {t("auth.email.later")}
-                </Button>
-                <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
-                  {loading ? t("auth.email.sending") : t("auth.email.getCode")}
-                </Button>
-              </div>
-              <LegalNotice />
+                  <OrDivider label={t("auth.or")} />
+                  <button
+                    type="button"
+                    onClick={signInWithVk}
+                    disabled={vkOpening}
+                    className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[24px] bg-[#0077FF] px-4 text-sm font-semibold text-white transition active:scale-[0.985] disabled:opacity-60"
+                  >
+                    <VkIdLogo className="h-7 w-7 shrink-0" />
+                    {vkOpening ? t("auth.vk.opening") : t("auth.vk.button")}
+                  </button>
                 </>
-              )}
-            </form>
+              ) : null}
+
+              {country === "RU" && signInOptions?.sms ? (
+                // SMS sign-in is off until SMS_SIGN_IN_ENABLED is set on the server.
+                <>
+                  <OrDivider label={t("auth.or")} />
+                  <form className="space-y-4" onSubmit={(event) => void requestCode(event, "phone")}>
+                    <label className="block">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-ink/60">{t("auth.phone.label")}</div>
+                      <RussianPhoneInput value={phone} onChange={setPhone} className="border-white/80 bg-white/78" />
+                    </label>
+                    <Button type="submit" fullWidth className="min-h-12 rounded-[24px]" disabled={loading}>
+                      {loading ? t("auth.phone.sending") : t("auth.phone.getCode")}
+                    </Button>
+                  </form>
+                </>
+              ) : null}
+
+              <LegalNotice />
+            </div>
           ) : (
             <form className="space-y-4" onSubmit={verify}>
               <div className="rounded-[24px] border border-white/80 bg-white/72 px-4 py-3 text-sm text-ink/72">
@@ -674,7 +679,7 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
               {codeTarget === "phone" ? (
                 <button
                   type="button"
-                  onClick={() => void sendCode()}
+                  onClick={() => void sendCode("phone")}
                   disabled={loading || resendSeconds > 0}
                   className="block w-full text-center text-sm font-semibold text-court disabled:text-ink/45"
                 >
@@ -698,6 +703,16 @@ export function AuthFlow({ activePlayersCount, initialStep = "intro" }: AuthFlow
           {error ? <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
         </Panel>
       ) : null}
+    </div>
+  );
+}
+
+function OrDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 text-xs text-ink/45">
+      <span className="h-px flex-1 bg-ink/10" />
+      {label}
+      <span className="h-px flex-1 bg-ink/10" />
     </div>
   );
 }

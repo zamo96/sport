@@ -7,13 +7,14 @@ import { phoneRequestSchema } from "@/lib/validators";
 import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
 import { issuePhoneCode, PHONE_CODE_RESEND_SECONDS, PHONE_CODE_TTL_MINUTES } from "@/server/phone-auth";
 import { phoneAuthFailure } from "@/server/phone-auth-http";
-import { isSmsDevFallback } from "@/server/sms";
+import { isSmsDevFallback, isSmsSignInEnabled, SmsUnavailableError } from "@/server/sms";
 
 /** Вход для России: код по SMS на российский мобильный номер (ч. 10 ст. 8 149-ФЗ). */
 export async function POST(request: NextRequest) {
   const locale = getServerRequestLocale(request);
   let phone: string | undefined;
   try {
+    if (!isSmsSignInEnabled()) throw new SmsUnavailableError("SMS_SIGN_IN_DISABLED");
     const body = phoneRequestSchema.parse(await request.json());
     phone = body.phone;
     await enforceAuthRateLimit("phone-request", body.phone, request);

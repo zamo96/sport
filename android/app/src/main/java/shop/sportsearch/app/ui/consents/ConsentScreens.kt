@@ -632,12 +632,11 @@ fun ConsentSettingsScreen(appModel: AppViewModel, onBack: () -> Unit) {
 }
 
 /**
- * Port of `struct PhoneLinkView`: links a phone number to the signed-in account.
- * Sign-in in Russia now goes through a phone or VK ID, so without a number the
- * person cannot get back into this account after signing out.
+ * Port of `struct PhoneLinkView`: links a phone number to the signed-in account,
+ * from the account settings — another way back in while SMS sign-in is switched on.
  */
 @Composable
-fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () -> Unit) {
+fun PhoneLinkScreen(appModel: AppViewModel, onFinished: () -> Unit) {
     DismissOnSystemBack(onFinished)
     HideBottomBarWhileVisible(appModel)
     val haptics = rememberAppHaptics()
@@ -753,7 +752,7 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
             }
 
             Text(
-                if (isPrompt) L10n.string("Later", "Позже") else L10n.string("Cancel", "Отмена"),
+                L10n.string("Cancel", "Отмена"),
                 style = AppText.subheadlineSemibold,
                 color = AppTheme.mutedInk,
                 textAlign = TextAlign.Center,

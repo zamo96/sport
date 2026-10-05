@@ -79,7 +79,6 @@ struct DiscoverHintStore {
     enum AuthCodeTarget { case email, phone }
     var authPhone = ""
     var authCodeTarget = AuthCodeTarget.email
-    var isPhoneLinkPromptDismissed = false
     var authMessage: String?
     var debugCode: String?
     var errorMessage: String?

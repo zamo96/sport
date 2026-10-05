@@ -44,6 +44,15 @@ function smsConfig() {
   };
 }
 
+/**
+ * Вход по SMS включается отдельно (SMS_SIGN_IN_ENABLED=1): закон его не требует,
+ * для России хватает email и VK ID, а SMS стоят денег и пока доходят не до всех
+ * операторов. Нужен ещё ключ SMS.ru или локальная разработка без него.
+ */
+export function isSmsSignInEnabled() {
+  return process.env.SMS_SIGN_IN_ENABLED?.trim() === "1" && (Boolean(smsConfig().apiId) || isSmsDevFallback());
+}
+
 /** Без ключа SMS.ru вне production код возвращается в ответе API, как debugCode у email. */
 export function isSmsDevFallback() {
   return !smsConfig().apiId && process.env.NODE_ENV !== "production";

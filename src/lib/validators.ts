@@ -157,19 +157,20 @@ export const mePhoneVerifySchema = z.object({
 const consentReviewSupportSchema = z.boolean().optional();
 
 /**
- * Страна, которую человек выбрал на экране входа. Email, Apple и Google — для
- * тех, кто не в России; для России вход по телефону или через VK ID
- * (ч. 10 ст. 8 149-ФЗ). Старые сборки поле не шлют.
+ * Страна, которую человек выбрал на экране входа. Старые сборки поле не шлют.
+ * Вход по коду на email проверяет наш сервер — это допустимо и для России;
+ * запрещены иностранные сервисы входа, Apple и Google (ч. 10 ст. 8 149-ФЗ).
  */
-const nonRussianSignInCountrySchema = z
-  .enum(["RU", "OTHER"])
-  .optional()
-  .refine((value) => value !== "RU", "Для России вход по номеру телефона или через VK ID");
+const signInCountrySchema = z.enum(["RU", "OTHER"]).optional();
+const nonRussianSignInCountrySchema = signInCountrySchema.refine(
+  (value) => value !== "RU",
+  "Для России вход через Apple и Google недоступен — войдите по email или через VK ID"
+);
 
 export const verifySchema = z.object({
   showOnMap: z.boolean().optional(),
   consentReview: consentReviewSupportSchema,
-  country: nonRussianSignInCountrySchema,
+  country: signInCountrySchema,
   email: z.string().email().transform((value) => value.toLowerCase()),
   code: z.string().length(6),
   userAgreement: userAgreementAcceptanceSchema

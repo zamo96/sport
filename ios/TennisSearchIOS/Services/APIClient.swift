@@ -612,6 +612,10 @@ final class LiveTennisRepository: TennisRepository {
         try await client.request(path: "auth/vk/config")
     }
 
+    func fetchSignInOptions() async throws -> SignInOptions {
+        try await client.request(path: "auth/options")
+    }
+
     func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
         let generation = client.beginAuthenticationAttempt()
         let response: VerifyEnvelope = try await client.request(
@@ -1280,8 +1284,6 @@ private struct VerifyRequest: Encodable {
     let showOnMap: Bool?
     /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
     let consentReview = true
-    /// Email и Apple — для тех, кто не в России; для России — телефон или VK ID.
-    let country = "OTHER"
 }
 
 private struct AppleAuthRequest: Encodable {
@@ -1293,7 +1295,7 @@ private struct AppleAuthRequest: Encodable {
     let showOnMap: Bool?
     /// Эта сборка показывает экран согласий: новый аккаунт создаётся скрытым до ответа.
     let consentReview = true
-    /// Email и Apple — для тех, кто не в России; для России — телефон или VK ID.
+    /// Apple — иностранный сервис входа: показывается только тем, кто не в России.
     let country = "OTHER"
 }
 

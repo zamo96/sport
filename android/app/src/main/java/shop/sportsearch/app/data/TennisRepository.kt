@@ -42,6 +42,7 @@ interface TennisRepository {
 
     /** Sign-in for Russia with VK ID: the app runs PKCE, the server exchanges the code. */
     suspend fun fetchVkIdConfig(): VkIdConfig
+    suspend fun fetchSignInOptions(): SignInOptions
     suspend fun signInWithVk(
         code: String,
         codeVerifier: String,

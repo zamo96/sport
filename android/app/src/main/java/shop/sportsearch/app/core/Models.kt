@@ -196,6 +196,13 @@ enum class AuthCountry(val wire: String) {
 /** Port of `enum AuthCodeTarget`. */
 enum class AuthCodeTarget { EMAIL, PHONE }
 
+/** Port of `struct SignInOptions`: which sign-in methods the server offers, `GET /auth/options`. */
+@Serializable
+data class SignInOptions(
+    val sms: Boolean = false,
+    val vk: VkIdConfig = VkIdConfig(),
+)
+
 /** Port of `struct VkIdConfig`: parameters for the VK ID link from `GET /auth/vk/config`. */
 @Serializable
 data class VkIdConfig(
@@ -383,8 +390,6 @@ data class UserProfile(
     val consents: ConsentState? = null,
     /** Verified phone number for signing in from Russia. */
     val phone: String? = null,
-    /** A Russian account without a phone: suggest linking one while the session is alive. */
-    val phoneLinkSuggested: Boolean = false,
 ) {
     val gender: Gender? get() = Gender.from(genderRaw)
     val locationSource: LocationSource? get() = LocationSource.from(locationSourceRaw)

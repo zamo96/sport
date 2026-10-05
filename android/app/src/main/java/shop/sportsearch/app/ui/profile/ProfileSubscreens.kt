@@ -207,9 +207,10 @@ fun ProfileAccountScreen(
 ) {
     var isLinkingPhone by remember { mutableStateOf(false) }
     if (isLinkingPhone) {
-        PhoneLinkScreen(appModel, isPrompt = false) { isLinkingPhone = false }
+        PhoneLinkScreen(appModel) { isLinkingPhone = false }
         return
     }
+    LaunchedEffect(Unit) { appModel.loadSignInOptions() }
 
     DismissOnSystemBack(onBack)
     HideBottomBarWhileVisible(appModel)
@@ -241,8 +242,8 @@ fun ProfileAccountScreen(
             )
         }
 
-        if (phone == null) {
-            // Sign-in in Russia goes through a phone or VK ID: without a number there is no way back in.
+        if (phone == null && appModel.isSmsSignInAvailable) {
+            // A linked number is another way back in while SMS sign-in is switched on.
             PrimaryActionButton(
                 title = L10n.string("Link phone number", "Привязать номер телефона"),
                 onClick = { isLinkingPhone = true },

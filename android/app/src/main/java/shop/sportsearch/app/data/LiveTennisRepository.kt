@@ -93,8 +93,6 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 showOnMap?.let { put("showOnMap", it) }
                 // This build shows the consent screen: a new account stays hidden until it answers.
                 put("consentReview", true)
-                // Email and Google are for people outside Russia; Russia signs in by phone or VK ID.
-                put("country", "OTHER")
             },
             deserializer = VerifyEnvelope.serializer(),
         )
@@ -117,7 +115,7 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
                 showOnMap?.let { put("showOnMap", it) }
                 // This build shows the consent screen: a new account stays hidden until it answers.
                 put("consentReview", true)
-                // Email and Google are for people outside Russia; Russia signs in by phone or VK ID.
+                // Google is a foreign sign-in service, not offered for Russia.
                 put("country", "OTHER")
             },
             deserializer = VerifyEnvelope.serializer(),
@@ -169,6 +167,9 @@ class LiveTennisRepository(val client: ApiClient) : TennisRepository {
 
     override suspend fun fetchVkIdConfig(): VkIdConfig =
         client.request(path = "auth/vk/config", deserializer = VkIdConfig.serializer())
+
+    override suspend fun fetchSignInOptions(): SignInOptions =
+        client.request(path = "auth/options", deserializer = SignInOptions.serializer())
 
     override suspend fun signInWithVk(
         code: String,

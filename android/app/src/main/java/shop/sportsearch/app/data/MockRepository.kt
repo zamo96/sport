@@ -235,12 +235,14 @@ class MockRepository : TennisRepository {
     override suspend fun verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Boolean?): SessionUser {
         delay(240)
         if (code != "111111") throw ApiException.Server("Неверный код")
-        profile = profile.copy(phone = phone, phoneLinkSuggested = false)
+        profile = profile.copy(phone = phone)
         return SessionUser(id = profile.id, email = profile.email, phone = phone, onboardingCompleted = true)
     }
 
     // VK ID opens a real browser page, which mock mode cannot fake.
     override suspend fun fetchVkIdConfig(): VkIdConfig = VkIdConfig(available = false)
+
+    override suspend fun fetchSignInOptions(): SignInOptions = SignInOptions(sms = true, vk = fetchVkIdConfig())
 
     override suspend fun signInWithVk(
         code: String,
@@ -259,7 +261,7 @@ class MockRepository : TennisRepository {
     override suspend fun verifyPhoneLink(phone: String, code: String): UserProfile {
         delay(240)
         if (code != "111111") throw ApiException.Server("Неверный код")
-        profile = profile.copy(phone = phone, phoneLinkSuggested = false)
+        profile = profile.copy(phone = phone)
         return profile
     }
 

@@ -57,7 +57,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var isBusy by mutableStateOf(false)
     var authEmail by mutableStateOf("")
-    /** Sign-in country: Russia uses a phone or VK ID, everyone else email or Google. */
+    /** Sign-in country: Russia uses email, VK ID or SMS; elsewhere email or Google. */
     var authCountry by mutableStateOf(AuthCountry.suggested(guestDraft.location?.countryCode?.takeIf { it.isNotEmpty() }))
     /** Ten digits after +7; the field accepts digits only. */
     var authPhone by mutableStateOf("")
@@ -68,8 +68,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The VK ID button shows only once the server has VK_ID_CLIENT_ID. */
     var isVkIdAvailable by mutableStateOf(false)
         private set
-    /** «Later» on the phone-link suggestion lasts until the next launch. */
-    var isPhoneLinkPromptDismissed by mutableStateOf(false)
+    /** SMS sign-in is switched on separately on the server (SMS_SIGN_IN_ENABLED). */
+    var isSmsSignInAvailable by mutableStateOf(false)
         private set
     /** PKCE of the VK ID sign-in in flight: only this app knows the verifier. */
     private var pendingVkSignIn: Pair<String, String>? = null
@@ -361,10 +361,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    suspend fun loadVkIdAvailability() {
-        if (isVkIdAvailable) return
-        val config = runCatching { repository.fetchVkIdConfig() }.getOrNull() ?: return
-        isVkIdAvailable = config.available
+    suspend fun loadSignInOptions() {
+        val options = runCatching { repository.fetchSignInOptions() }.getOrNull() ?: return
+        isVkIdAvailable = options.vk.available
+        isSmsSignInAvailable = options.sms
     }
 
     /**
@@ -382,7 +382,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val clientId = config.clientId
         if (!config.available || clientId == null) {
-            errorMessage = L10n.string("VK ID sign-in is not available yet. Use your phone number.", "Вход через VK ID пока недоступен. Войдите по номеру телефона.")
+            errorMessage = L10n.string("VK ID sign-in is not available yet. Sign in with email.", "Вход через VK ID пока недоступен. Войдите по email.")
             return
         }
         val verifier = VkIdPkce.randomString(48)
@@ -420,18 +420,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             isBusy = false
         }
-    }
-
-    /** The phone-link suggestion — after the consent screen, once per launch. */
-    val isPhoneLinkPromptVisible: Boolean
-        get() {
-            val user = currentUser ?: return false
-            return !isConsentReviewRequired && !isPhoneLinkPromptDismissed && presentedAuthStep == null &&
-                user.hasCompletedOnboarding && user.phoneLinkSuggested
-        }
-
-    fun dismissPhoneLinkPrompt() {
-        isPhoneLinkPromptDismissed = true
     }
 
     /** Returns (debugCode, error message): the link screen shows them itself. */
@@ -534,7 +522,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         authEmail = ""
         authPhone = ""
         authCodeTarget = AuthCodeTarget.EMAIL
-        isPhoneLinkPromptDismissed = false
         pendingVkSignIn = null
         presentedAuthStep = null
         pendingNavigationTarget = null

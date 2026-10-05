@@ -425,13 +425,16 @@ actor MockRepository: TennisRepository {
             throw APIError.server("В mock-режиме используй код 111111")
         }
         currentUser.phone = phone
-        currentUser.phoneLinkSuggested = false
         return SessionUser(id: currentUser.id, email: currentUser.email, phone: phone, onboardingCompleted: currentUser.onboardingCompleted)
     }
 
     func fetchVkIdConfig() async throws -> VkIdConfig {
         // В моках VK ID недоступен: вход через браузер не подменить.
         VkIdConfig(available: false, clientId: nil, redirectUri: "", scope: "", authorizeUrl: "")
+    }
+
+    func fetchSignInOptions() async throws -> SignInOptions {
+        SignInOptions(sms: true, vk: try await fetchVkIdConfig())
     }
 
     func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser {
@@ -447,7 +450,6 @@ actor MockRepository: TennisRepository {
             throw APIError.server("В mock-режиме используй код 111111")
         }
         currentUser.phone = phone
-        currentUser.phoneLinkSuggested = false
         return currentUser
     }
 

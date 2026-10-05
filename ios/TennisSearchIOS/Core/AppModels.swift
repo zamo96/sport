@@ -954,6 +954,12 @@ enum AuthCodeTarget {
 }
 
 /// Параметры ссылки на VK ID из `GET /auth/vk/config`.
+/// Which sign-in methods the server offers right now.
+struct SignInOptions: Decodable {
+    let sms: Bool
+    let vk: VkIdConfig
+}
+
 struct VkIdConfig: Decodable {
     let available: Bool
     let clientId: String?
@@ -1309,8 +1315,6 @@ struct UserProfile: Codable, Identifiable {
     var consents: ConsentState?
     /// Подтверждённый номер для входа в России.
     var phone: String?
-    /// Российский аккаунт без номера: предложить привязать его, пока сессия жива.
-    var phoneLinkSuggested: Bool
 
     var isOnboardingComplete: Bool {
         OnboardingRequirements.isComplete(
@@ -1356,8 +1360,7 @@ struct UserProfile: Codable, Identifiable {
         notificationSound: Bool = true,
         localeOverride: String? = nil,
         consents: ConsentState? = nil,
-        phone: String? = nil,
-        phoneLinkSuggested: Bool = false
+        phone: String? = nil
     ) {
         self.id = id
         self.email = email
@@ -1395,7 +1398,6 @@ struct UserProfile: Codable, Identifiable {
         self.localeOverride = localeOverride
         self.consents = consents
         self.phone = phone
-        self.phoneLinkSuggested = phoneLinkSuggested
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1435,7 +1437,6 @@ struct UserProfile: Codable, Identifiable {
         case localeOverride
         case consents
         case phone
-        case phoneLinkSuggested
     }
 
     init(from decoder: Decoder) throws {
@@ -1478,7 +1479,6 @@ struct UserProfile: Codable, Identifiable {
         localeOverride = try container.decodeIfPresent(String.self, forKey: .localeOverride)
         consents = try container.decodeIfPresent(ConsentState.self, forKey: .consents)
         phone = try container.decodeIfPresent(String.self, forKey: .phone)
-        phoneLinkSuggested = try container.decodeIfPresent(Bool.self, forKey: .phoneLinkSuggested) ?? false
     }
 }
 

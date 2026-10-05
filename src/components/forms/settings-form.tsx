@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@prisma/client";
 
@@ -21,6 +21,14 @@ export function SettingsForm({ user }: { user: User }) {
   const { t } = useLocale();
   const [loading, setLoading] = useState(false);
   const [linkedPhone, setLinkedPhone] = useState(user.phone);
+  // Linking a phone needs an SMS; the section shows only when SMS sign-in is on.
+  const [smsSignIn, setSmsSignIn] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ sms: boolean }>("/auth/options")
+      .then((options) => setSmsSignIn(options.sms))
+      .catch(() => setSmsSignIn(false));
+  }, []);
   const [values, setValues] = useState({
     notificationMatches: user.notificationMatches,
     notificationMessages: user.notificationMessages,
@@ -113,6 +121,7 @@ export function SettingsForm({ user }: { user: User }) {
         />
       </Panel>
 
+      {linkedPhone || smsSignIn ? (
       <Panel className="space-y-3">
         <div className="text-sm font-bold text-ink">{t("phoneLink.settingsTitle")}</div>
         {linkedPhone ? (
@@ -124,6 +133,7 @@ export function SettingsForm({ user }: { user: User }) {
           </>
         )}
       </Panel>
+      ) : null}
 
       <ConsentSettingsPanel
         profile={{

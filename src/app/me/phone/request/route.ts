@@ -8,7 +8,7 @@ import { mePhoneRequestSchema } from "@/lib/validators";
 import { enforceAuthRateLimit } from "@/server/auth-rate-limit";
 import { issuePhoneCode, PHONE_CODE_RESEND_SECONDS, PHONE_CODE_TTL_MINUTES, PhoneAuthError } from "@/server/phone-auth";
 import { phoneAuthFailure } from "@/server/phone-auth-http";
-import { isSmsDevFallback } from "@/server/sms";
+import { isSmsDevFallback, isSmsSignInEnabled, SmsUnavailableError } from "@/server/sms";
 
 /** Код для привязки номера к уже открытому аккаунту. */
 export async function POST(request: NextRequest) {
@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
   let phone: string | undefined;
   try {
     const user = await requireSessionUser();
+    if (!isSmsSignInEnabled()) throw new SmsUnavailableError("SMS_SIGN_IN_DISABLED");
     const body = mePhoneRequestSchema.parse(await request.json());
     phone = body.phone;
     const owner = await prisma.user.findUnique({ where: { phone: body.phone }, select: { id: true } });

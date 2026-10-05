@@ -14,6 +14,7 @@ protocol TennisRepository {
     func verifyPhoneCode(phone: String, code: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
     /// Вход для России через VK ID: клиент проходит авторизацию с PKCE, сервер меняет код.
     func fetchVkIdConfig() async throws -> VkIdConfig
+    func fetchSignInOptions() async throws -> SignInOptions
     func signInWithVk(code: String, codeVerifier: String, deviceId: String, state: String, userAgreementVersion: String, showOnMap: Bool?) async throws -> SessionUser
     /// Привязка номера к уже открытому аккаунту.
     func requestPhoneLinkCode(phone: String) async throws -> AuthChallenge

@@ -393,17 +393,9 @@ struct ConsentReviewView: View {
     }
 }
 
-/// Привязка номера к уже открытому аккаунту: вход в России теперь по телефону
-/// или VK ID, и без номера человек не попадёт в свой аккаунт после выхода.
+/// Привязка номера к уже открытому аккаунту, из настроек: ещё один способ входа,
+/// пока на сервере включён вход по SMS.
 struct PhoneLinkView: View {
-    enum Mode {
-        /// После экрана согласия: «Позже» откладывает до следующего запуска.
-        case prompt
-        /// Из настроек аккаунта.
-        case settings
-    }
-
-    let mode: Mode
     var onFinished: () -> Void = {}
 
     @EnvironmentObject private var appModel: AppModel
@@ -496,7 +488,7 @@ struct PhoneLinkView: View {
                             .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
                         }
 
-                        Button(mode == .prompt ? L10n.string("Later", "Позже") : L10n.string("Cancel", "Отмена")) {
+                        Button(L10n.string("Cancel", "Отмена")) {
                             onFinished()
                         }
                         .font(.subheadline.weight(.semibold))
