@@ -369,6 +369,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The city picked in the questionnaire decides the sign-in country. The guess made
+     * at launch came before that choice; without a city it stays as it was.
+     */
+    fun syncAuthCountryWithDraft() {
+        val countryCode = guestDraft.location?.countryCode?.takeIf { it.isNotEmpty() } ?: return
+        authCountry = AuthCountry.suggested(countryCode)
+    }
+
+    /** A city in the questionnaire already tells where the person is. */
+    val isAuthCountryKnownFromDraft: Boolean
+        get() = !guestDraft.location?.countryCode.isNullOrEmpty()
+
     suspend fun loadSignInOptions() {
         val options = runCatching { repository.fetchSignInOptions() }.getOrNull() ?: return
         isVkIdAvailable = options.vk.available

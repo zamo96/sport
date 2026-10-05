@@ -679,7 +679,10 @@ private fun EmailStep(
     val activityContext = LocalContext.current
     val focusManager = LocalFocusManager.current
     val cardShape = continuousShape(32.dp)
-    LaunchedEffect(Unit) { appModel.loadSignInOptions() }
+    LaunchedEffect(Unit) {
+        appModel.syncAuthCountryWithDraft()
+        appModel.loadSignInOptions()
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(AppTheme.pageBackground)) {
         Column(
@@ -726,11 +729,15 @@ private fun EmailStep(
                     color = AppTheme.mutedInk,
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(L10n.string("Where are you?", "Где вы находитесь?"), style = AppText.headline, color = AppTheme.ink)
-                    CountrySelector(selected = appModel.authCountry) {
-                        appModel.authCountry = it
-                        appModel.errorMessage = null
+                // Asked only without a city in the questionnaire: otherwise the person
+                // already said where they are, and the sign-in follows it.
+                if (!appModel.isAuthCountryKnownFromDraft) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(L10n.string("Where are you?", "Где вы находитесь?"), style = AppText.headline, color = AppTheme.ink)
+                        CountrySelector(selected = appModel.authCountry) {
+                            appModel.authCountry = it
+                            appModel.errorMessage = null
+                        }
                     }
                 }
 
