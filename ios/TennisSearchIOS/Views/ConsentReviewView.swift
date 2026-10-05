@@ -408,6 +408,7 @@ struct PhoneLinkView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @State private var phone = ""
+    @State private var isPhoneFocused = false
     @State private var code = ""
     @State private var isCodeSent = false
     @State private var debugCode: String?
@@ -422,80 +423,100 @@ struct PhoneLinkView: View {
     }
 
     var body: some View {
-        ZStack {
-            AppTheme.pageBackground.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.string("Add your phone number", "Добавьте номер телефона"))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
-                    Text(L10n.string(
-                        "Add your phone number to sign in to this account with it.",
-                        "Привяжите номер телефона, чтобы входить по нему в этот аккаунт."
-                    ))
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
+        // A NavigationStack only so the number pad can carry a "Done" button.
+        NavigationStack {
+            ZStack {
+                AppTheme.pageBackground.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(L10n.string("Add your phone number", "Добавьте номер телефона"))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.ink)
+                        Text(L10n.string(
+                            "Add your phone number to sign in to this account with it.",
+                            "Привяжите номер телефона, чтобы входить по нему в этот аккаунт."
+                        ))
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    field(text: $phone, prefix: "+7", prompt: "9991234567", keyboard: .numberPad, content: .telephoneNumber, focus: .phone)
+                        HStack(spacing: 8) {
+                            Text("+7")
+                                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                                .foregroundStyle(AppTheme.ink)
+                            RussianPhoneField(digits: $phone, isFocused: $isPhoneFocused)
+                        }
+                        .padding(.horizontal, 16)
+                        .frame(height: 58)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(isPhoneFocused ? AppTheme.court.opacity(0.7) : Color(.systemGray4), lineWidth: 1)
+                        )
                         .disabled(isCodeSent)
-                        .onChange(of: phone) { value in
-                            let digits = RussianPhone.digits(value)
-                            if digits != value { phone = digits }
+                        .opacity(isCodeSent ? 0.6 : 1)
+
+                        if isCodeSent {
+                            Text(L10n.string("SMS code sent to \(displayedPhone)", "Код отправлен по SMS на \(displayedPhone)"))
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.mutedInk)
+                            if let debugCode {
+                                Text("Debug OTP: \(debugCode)")
+                                    .font(.footnote.monospaced())
+                                    .foregroundStyle(.orange)
+                            }
+                            field(text: $code, prompt: "000000", keyboard: .numberPad, content: .oneTimeCode, focus: .code)
                         }
 
-                    if isCodeSent {
-                        Text(L10n.string("SMS code sent to \(displayedPhone)", "Код отправлен по SMS на \(displayedPhone)"))
-                            .font(.footnote)
-                            .foregroundStyle(AppTheme.mutedInk)
-                        if let debugCode {
-                            Text("Debug OTP: \(debugCode)")
-                                .font(.footnote.monospaced())
-                                .foregroundStyle(.orange)
+                        if let errorText {
+                            Label(errorText, systemImage: "exclamationmark.triangle")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        field(text: $code, prompt: "000000", keyboard: .numberPad, content: .oneTimeCode, focus: .code)
-                    }
 
-                    if let errorText {
-                        Label(errorText, systemImage: "exclamationmark.triangle")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Button {
-                        if isCodeSent { confirm() } else { requestCode() }
-                    } label: {
-                        if isSaving {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text(isCodeSent ? L10n.string("Confirm", "Подтвердить") : L10n.string("Get an SMS code", "Получить код по SMS"))
+                        Button {
+                            if isCodeSent { confirm() } else { requestCode() }
+                        } label: {
+                            if isSaving {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text(isCodeSent ? L10n.string("Confirm", "Подтвердить") : L10n.string("Get an SMS code", "Получить код по SMS"))
+                            }
                         }
-                    }
-                    .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
-                    .disabled(isSaving || (isCodeSent && code.filter(\.isNumber).count != 6))
+                        .buttonStyle(PrimaryActionButtonStyle(tint: AppTheme.ink))
+                        .disabled(isSaving || (isCodeSent && code.filter(\.isNumber).count != 6))
 
-                    if isCodeSent {
-                        Button(L10n.string("Change number", "Изменить номер")) {
-                            isCodeSent = false
-                            code = ""
-                            errorText = nil
+                        if isCodeSent {
+                            Button(L10n.string("Change number", "Изменить номер")) {
+                                isCodeSent = false
+                                code = ""
+                                errorText = nil
+                            }
+                            .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
                         }
-                        .buttonStyle(SecondaryActionButtonStyle(tint: AppTheme.ink))
-                    }
 
-                    Button(mode == .prompt ? L10n.string("Later", "Позже") : L10n.string("Cancel", "Отмена")) {
-                        onFinished()
+                        Button(mode == .prompt ? L10n.string("Later", "Позже") : L10n.string("Cancel", "Отмена")) {
+                            onFinished()
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.mutedInk)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 2)
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.mutedInk)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 2)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 28)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 28)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(L10n.string("Done", "Готово")) { focusedField = nil }
+                        .font(.headline.weight(.bold))
+                }
+            }
         }
         // Как экран согласия: светлый, даже если под ним тёмная тема.
         .environment(\.colorScheme, .light)

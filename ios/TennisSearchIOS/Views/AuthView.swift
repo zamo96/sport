@@ -1328,7 +1328,7 @@ private struct AuthSignInReferenceScreen: View {
     let onBack: () -> Void
 
     @FocusState private var isEmailFocused: Bool
-    @FocusState private var isPhoneFocused: Bool
+    @State private var isPhoneFocused = false
     @State private var isEmailLoginExpanded = false
 
     var body: some View {
@@ -1450,17 +1450,7 @@ private struct AuthSignInReferenceScreen: View {
                 Text("+7")
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
-                // Digits only: "+7" is fixed, a pasted number is reduced to its ten digits.
-                TextField("", text: $phone, prompt: Text("9991234567").foregroundColor(Color(red: 0.72, green: 0.74, blue: 0.78)))
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.ink)
-                    .keyboardType(.numberPad)
-                    .textContentType(.telephoneNumber)
-                    .focused($isPhoneFocused)
-                    .onChange(of: phone) { value in
-                        let digits = RussianPhone.digits(value)
-                        if digits != value { phone = digits }
-                    }
+                RussianPhoneField(digits: $phone, isFocused: $isPhoneFocused)
             }
                 .padding(.horizontal, 18)
                 .frame(height: 68)

@@ -28,6 +28,16 @@ export function russianPhoneDigits(input: string) {
   return digits.slice(0, 10);
 }
 
+/** «999 123-45-67» — как показывать цифры после +7 прямо во время ввода. */
+export function formatRussianPhoneDigits(digits: string) {
+  const d = digits.slice(0, 10);
+  let out = d.slice(0, 3);
+  if (d.length > 3) out += ` ${d.slice(3, 6)}`;
+  if (d.length > 6) out += `-${d.slice(6, 8)}`;
+  if (d.length > 8) out += `-${d.slice(8, 10)}`;
+  return out;
+}
+
 /** +7 999 123-45-67 — для писем, экранов и админки. */
 export function formatRussianPhone(phone: string) {
   const match = /^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/.exec(phone);

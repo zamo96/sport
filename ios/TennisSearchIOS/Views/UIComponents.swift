@@ -3068,3 +3068,123 @@ struct ChatReceiptLabel: View {
         .accessibilityLabel(label)
     }
 }
+
+/// Russian mobile number after a fixed "+7": digits only, shown as "999 123-45-67".
+/// UIKit, because reformatting a SwiftUI TextField while typing drops keystrokes;
+/// here the mask is applied inside the edit itself, so input, paste and the cursor
+/// stay exact. The number pad gets a "Done" bar since it has no return key.
+struct RussianPhoneField: UIViewRepresentable {
+    @Binding var digits: String
+    @Binding var isFocused: Bool
+    var fontSize: CGFloat = 22
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.delegate = context.coordinator
+        field.keyboardType = .numberPad
+        field.textContentType = .telephoneNumber
+        let base = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: fontSize) } ?? base
+        field.font = font
+        field.textColor = UIColor(AppTheme.ink)
+        field.tintColor = UIColor(AppTheme.court)
+        field.attributedPlaceholder = NSAttributedString(
+            string: "999 123-45-67",
+            attributes: [.foregroundColor: UIColor(red: 0.72, green: 0.74, blue: 0.78, alpha: 1), .font: font]
+        )
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
+
+        let bar = UIToolbar()
+        bar.sizeToFit()
+        bar.items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(title: L10n.string("Done", "Готово"), style: .done, target: context.coordinator, action: #selector(Coordinator.done))
+        ]
+        field.inputAccessoryView = bar
+        context.coordinator.field = field
+        return field
+    }
+
+    func updateUIView(_ field: UITextField, context: Context) {
+        context.coordinator.parent = self
+        let formatted = RussianPhone.formattedDigits(digits)
+        if field.text != formatted { field.text = formatted }
+        if isFocused, !field.isFirstResponder {
+            DispatchQueue.main.async { field.becomeFirstResponder() }
+        } else if !isFocused, field.isFirstResponder {
+            DispatchQueue.main.async { field.resignFirstResponder() }
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: RussianPhoneField
+        weak var field: UITextField?
+
+        init(_ parent: RussianPhoneField) { self.parent = parent }
+
+        func textField(_ field: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+            let text = (field.text ?? "") as NSString
+            var edit = range
+            // Backspace right after a separator removes the digit before it.
+            if string.isEmpty, edit.length > 0, !text.substring(with: edit).contains(where: \.isNumber) {
+                var start = edit.location
+                while start > 0, !(text.substring(with: NSRange(location: start - 1, length: 1)).first?.isNumber ?? false) {
+                    start -= 1
+                }
+                guard start > 0 else { return false }
+                edit = NSRange(location: start - 1, length: edit.location + edit.length - (start - 1))
+            }
+            let proposed = text.replacingCharacters(in: edit, with: string)
+            let rawDigits = proposed.filter(\.isNumber)
+            var digitsBeforeCursor = (text.substring(to: edit.location) + string).filter(\.isNumber).count
+            let newDigits = RussianPhone.digits(proposed)
+            if rawDigits.count == 11, newDigits.count == 10, rawDigits.first == "7" || rawDigits.first == "8" {
+                digitsBeforeCursor = max(0, digitsBeforeCursor - 1)
+            }
+            apply(newDigits, to: field, digitsBeforeCursor: min(digitsBeforeCursor, newDigits.count))
+            return false
+        }
+
+        /// Autofill can set the text without asking the delegate.
+        @objc func editingChanged(_ field: UITextField) {
+            let newDigits = RussianPhone.digits(field.text ?? "")
+            if RussianPhone.formattedDigits(newDigits) != field.text {
+                apply(newDigits, to: field, digitsBeforeCursor: newDigits.count)
+            } else if newDigits != parent.digits {
+                parent.digits = newDigits
+            }
+        }
+
+        @objc func done() {
+            field?.resignFirstResponder()
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            if !parent.isFocused { parent.isFocused = true }
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            if parent.isFocused { parent.isFocused = false }
+        }
+
+        private func apply(_ digits: String, to field: UITextField, digitsBeforeCursor: Int) {
+            let formatted = RussianPhone.formattedDigits(digits)
+            field.text = formatted
+            var offset = 0
+            var seen = 0
+            for character in formatted {
+                if seen == digitsBeforeCursor { break }
+                offset += 1
+                if character.isNumber { seen += 1 }
+            }
+            if let position = field.position(from: field.beginningOfDocument, offset: offset) {
+                field.selectedTextRange = field.textRange(from: position, to: position)
+            }
+            if digits != parent.digits { parent.digits = digits }
+        }
+    }
+}

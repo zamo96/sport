@@ -5,6 +5,27 @@ const DEFAULT_DAILY_LIMIT = 100;
 
 export class SmsUnavailableError extends Error {}
 
+/**
+ * SMS.ru checks the sender's IP against fraud and rejects private addresses
+ * (192.168.*, 10.*, …) with error 507, so only a public address is passed on.
+ */
+export function isPublicIp(ip: string | null | undefined) {
+  if (!ip) return false;
+  const value = ip.trim().toLowerCase().replace(/^::ffff:/, "");
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 10 || a === 127 || a === 0) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 169 && b === 254) return false;
+    if (a === 100 && b >= 64 && b <= 127) return false;
+    return true;
+  }
+  if (!value.includes(":")) return false;
+  return !(value === "::1" || value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe80"));
+}
+
 type SmsRuResponse = {
   status?: string;
   status_code?: number;
@@ -64,7 +85,7 @@ export async function sendSms(phone: string, text: string, meta: { ip?: string |
   });
   if (config.from) body.set("from", config.from);
   if (config.test) body.set("test", "1");
-  if (meta.ip) body.set("ip", meta.ip);
+  if (isPublicIp(meta.ip)) body.set("ip", meta.ip!.trim());
 
   let payload: SmsRuResponse;
   try {

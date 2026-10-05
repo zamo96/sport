@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,7 +53,11 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.platform.LocalFocusManager
+import shop.sportsearch.app.ui.components.RussianPhoneVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
@@ -697,10 +702,11 @@ fun PhoneLinkScreen(appModel: AppViewModel, isPrompt: Boolean, onFinished: () ->
             PhoneLinkField(
                 value = phone,
                 onValueChange = { value -> phone = RussianPhone.digits(value) },
-                placeholder = "9991234567",
+                placeholder = "999 123-45-67",
                 keyboardType = KeyboardType.Number,
                 enabled = !isCodeSent,
                 prefix = "+7 ",
+                isPhone = true,
             )
 
             if (isCodeSent) {
@@ -765,15 +771,19 @@ private fun PhoneLinkField(
     keyboardType: KeyboardType,
     enabled: Boolean,
     prefix: String? = null,
+    isPhone: Boolean = false,
 ) {
+    val focusManager = LocalFocusManager.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         placeholder = { Text(placeholder, fontSize = 20.sp) },
         prefix = prefix?.let { { Text(it, fontSize = 20.sp, color = AppTheme.ink) } },
+        visualTransformation = if (isPhone) RussianPhoneVisualTransformation else VisualTransformation.None,
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
         singleLine = true,
         enabled = enabled,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
         shape = continuousShape(16.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.White,

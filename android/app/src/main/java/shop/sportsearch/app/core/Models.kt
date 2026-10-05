@@ -228,6 +228,16 @@ object RussianPhone {
         return digits.take(10)
     }
 
+    /** "999 123-45-67" — how the digits after +7 are shown while typing. */
+    fun formattedDigits(digits: String): String {
+        val d = digits.take(10)
+        val out = StringBuilder(d.take(3))
+        if (d.length > 3) out.append(' ').append(d.substring(3, minOf(6, d.length)))
+        if (d.length > 6) out.append('-').append(d.substring(6, minOf(8, d.length)))
+        if (d.length > 8) out.append('-').append(d.substring(8))
+        return out.toString()
+    }
+
     fun formatted(phone: String): String {
         val d = phone.filter(Char::isDigit)
         if (d.length != 11) return phone

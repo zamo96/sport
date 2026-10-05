@@ -29,11 +29,12 @@ vi.mock("@/server/sms", async (importOriginal) => {
   return { ...original, sendSms: mocks.sendSms };
 });
 
-import { formatRussianPhone, normalizeRussianMobile, russianPhoneDigits } from "@/lib/phone";
+import { formatRussianPhone, formatRussianPhoneDigits, normalizeRussianMobile, russianPhoneDigits } from "@/lib/phone";
 import { phoneVerifySchema, verifySchema, vkAuthSchema } from "@/lib/validators";
 import { buildLatestUserAgreementPayload } from "@/lib/legal-contract";
 import { consumePhoneCode, issuePhoneCode, linkPhoneToUser, PhoneAuthError, signInWithPhone } from "@/server/phone-auth";
 import { fetchVkProfile, signInWithVk } from "@/server/vk-auth";
+import { isPublicIp } from "@/server/sms";
 
 const phone = "+79991234567";
 const hash = (code: string) => createHash("sha256").update(`${phone}:${code}`).digest("hex");
@@ -58,6 +59,31 @@ describe("phone field digits", () => {
     expect(russianPhoneDigits("99912345678")).toBe("9991234567");
     expect(russianPhoneDigits("999a")).toBe("999");
     expect(normalizeRussianMobile(`+7${russianPhoneDigits("8 (999) 123-45-67")}`)).toBe("+79991234567");
+  });
+});
+
+describe("phone field mask", () => {
+  it("shows the digits as 999 123-45-67 while typing, never ending on a separator", () => {
+    expect(formatRussianPhoneDigits("")).toBe("");
+    expect(formatRussianPhoneDigits("999")).toBe("999");
+    expect(formatRussianPhoneDigits("9991")).toBe("999 1");
+    expect(formatRussianPhoneDigits("999123")).toBe("999 123");
+    expect(formatRussianPhoneDigits("9991234")).toBe("999 123-4");
+    expect(formatRussianPhoneDigits("99912345")).toBe("999 123-45");
+    expect(formatRussianPhoneDigits("9991234567")).toBe("999 123-45-67");
+    // Typing one more digit into the formatted text keeps ten digits.
+    expect(russianPhoneDigits(`${formatRussianPhoneDigits("9991234567")}8`)).toBe("9991234567");
+  });
+});
+
+describe("IP passed to SMS.ru", () => {
+  it("passes only public addresses: SMS.ru rejects private ones with error 507", () => {
+    for (const ip of ["192.168.1.10", "10.0.0.5", "172.20.1.1", "127.0.0.1", "::1", "fd00::1", "fe80::1", "100.64.0.1", "::ffff:192.168.0.2", "", null, "unknown"]) {
+      expect(isPublicIp(ip)).toBe(false);
+    }
+    for (const ip of ["77.88.55.88", "5.255.255.70", "::ffff:95.108.213.1", "2a02:6b8::feed:0ff"]) {
+      expect(isPublicIp(ip)).toBe(true);
+    }
   });
 });
 
@@ -116,7 +142,7 @@ describe("SMS codes", () => {
   it("sends exactly the text of the SMS.ru template, with the code last and in a single SMS", async () => {
     const code = await issuePhoneCode(phone);
     const text = mocks.sendSms.mock.calls[0][1] as string;
-    expect(text).toBe(`Никому не сообщайте код. Код для входа в НаТреню: ${code}`);
+    expect(text).toBe(`Код для входа НаТреню: ${code}`);
     // Cyrillic SMS: 70 characters per part.
     expect(text.length).toBeLessThanOrEqual(70);
   });

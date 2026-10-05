@@ -988,6 +988,16 @@ enum RussianPhone {
         return String(digits.prefix(10))
     }
 
+    /// "999 123-45-67" — how the digits after +7 are shown while typing.
+    static func formattedDigits(_ digits: String) -> String {
+        let d = Array(digits.prefix(10))
+        var out = String(d.prefix(3))
+        if d.count > 3 { out += " " + String(d[3..<min(6, d.count)]) }
+        if d.count > 6 { out += "-" + String(d[6..<min(8, d.count)]) }
+        if d.count > 8 { out += "-" + String(d[8..<d.count]) }
+        return out
+    }
+
     /// +7 999 123-45-67
     static func formatted(_ phone: String) -> String {
         let digits = Array(phone.filter(\.isNumber))

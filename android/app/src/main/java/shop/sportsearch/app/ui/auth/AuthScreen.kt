@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -66,7 +67,10 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalFocusManager
+import shop.sportsearch.app.ui.components.RussianPhoneVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -673,6 +677,7 @@ private fun EmailStep(
     val scope = rememberCoroutineScope()
     // Credential Manager draws its account picker over an Activity.
     val activityContext = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val cardShape = continuousShape(32.dp)
     LaunchedEffect(Unit) { appModel.loadVkIdAvailability() }
 
@@ -734,13 +739,17 @@ private fun EmailStep(
                         Text(L10n.string("Phone number", "Номер телефона"), style = AppText.headline, color = AppTheme.ink)
                         OutlinedTextField(
                             value = appModel.authPhone,
-                            // Digits only: "+7" is fixed, a pasted number is reduced to its ten digits.
+                            // Digits only, shown as "999 123-45-67"; "+7" is fixed and a pasted
+                            // number is reduced to its ten digits.
                             onValueChange = { value -> appModel.authPhone = RussianPhone.digits(value) },
-                            placeholder = { Text("9991234567", fontSize = 22.sp) },
+                            placeholder = { Text("999 123-45-67", fontSize = 22.sp) },
                             leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
                             prefix = { Text("+7 ", fontSize = 22.sp, color = AppTheme.ink) },
+                            visualTransformation = RussianPhoneVisualTransformation,
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            // "Done" closes the number pad so the SMS button is not hidden under it.
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                             shape = continuousShape(18.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
