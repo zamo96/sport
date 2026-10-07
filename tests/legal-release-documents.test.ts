@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { getPrivacyPolicyDocument } from "@/lib/legal";
 import { getLegalDocumentRegistryEntry } from "@/server/legal-documents";
 import { LegalDocumentPage } from "@/components/legal/legal-document-page";
+import PrivacyPolicyPage from "@/app/legal/privacy/page";
 
 vi.stubGlobal("React", React);
 
@@ -54,6 +55,8 @@ describe("public legal candidate", () => {
     expect(ruText).toContain("VK ID ООО «ВК»");
     expect(ruText).toContain("сеанс — 180 дней с последней активности");
     expect(ruText).not.toContain("сеанс — 14 дней");
+    expect(ruText).toContain("сеанс прекращается через 180 дней без активности");
+    expect(ruText).not.toContain("cookie действует 14 дней");
     expect(enText).toContain("VK ID service of VK LLC");
     expect(enText).toContain("sessions 180 days from the last activity");
   });
@@ -64,6 +67,14 @@ describe("public legal candidate", () => {
     expect(getLegalDocumentRegistryEntry("privacy", "en", "2026-10-05").hash).toBe("194be92bc55f1931d85d13a47e09fb8298747a061d73fd8f687796ca3c4df4ac");
     expect(getLegalDocumentRegistryEntry("privacy", "ru", "2026-10-05").effectiveDate).toBe("5 октября 2026 года");
     expect(() => getLegalDocumentRegistryEntry("privacy", "ru", "2026-10-06")).toThrow("LEGAL_DOCUMENT_VERSION_NOT_FOUND");
+  });
+
+  it("shows the purposes table on the main privacy page, not only on the versioned one", () => {
+    const html = renderToStaticMarkup(PrivacyPolicyPage({ searchParams: {} }));
+    expect(html).toContain("<table");
+    expect(html).toContain("180 дней с последней активности");
+    const english = renderToStaticMarkup(PrivacyPolicyPage({ searchParams: { lang: "en" } }));
+    expect(english).toContain("VK ID service of VK LLC");
   });
 
   it("includes the mandatory Russian explanation on the separate public recommendation page", () => {

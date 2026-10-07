@@ -309,7 +309,7 @@
           "title": "6. Способы обработки и хранилища устройства",
           "paragraphs": [
             "Применяются автоматизированная обработка и обработка без средств автоматизации при рассмотрении обращений: сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, использование, предоставление и доступ в законных пределах, блокирование, удаление и уничтожение. Распространение имеет отдельное основание; обезличивание требует действительной процедуры.",
-            "Необходимые cookie и локальное хранилище содержат сеанс, настройки и черновик интерфейса. Сеансовая cookie действует 14 дней, cookie приглашения — 30 дней. Черновик и настройки остаются на устройстве до предусмотренной очистки либо удаления пользователем. Их очистка может завершить сеанс или сбросить настройки. Необязательные аналитические средства используют режим отдельного согласия."
+            "Необходимые cookie и локальное хранилище содержат сеанс, настройки и черновик интерфейса. Сеансовая cookie хранится в браузере до 400 дней, но сеанс прекращается через 180 дней без активности; cookie приглашения — 30 дней. Черновик и настройки остаются на устройстве до предусмотренной очистки либо удаления пользователем. Их очистка может завершить сеанс или сбросить настройки. Необязательные аналитические средства используют режим отдельного согласия."
           ]
         },
         {
@@ -471,7 +471,7 @@
           "title": "6. Operations and device storage",
           "paragraphs": [
             "Automated processing and nonautomated handling of requests include collection, recording, systematization, accumulation, storage, correction, retrieval, use, provision and access within lawful limits, blocking, deletion and destruction. Dissemination has separate grounds; anonymization requires an actual procedure.",
-            "Necessary cookies and local storage contain sessions, settings and draft interface state. Session cookies last 14 days and invitation cookies 30 days. Drafts/settings remain until designated cleanup or User deletion. Clearing them may end a session or reset settings. Optional analytics uses separate consent."
+            "Necessary cookies and local storage contain sessions, settings and draft interface state. The session cookie is kept by the browser for up to 400 days, but the session ends after 180 days without activity; invitation cookies last 30 days. Drafts/settings remain until designated cleanup or User deletion. Clearing them may end a session or reset settings. Optional analytics uses separate consent."
           ]
         },
         {
