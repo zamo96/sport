@@ -1,0 +1,173 @@
+{
+  "language": "en",
+  "version": "2026-10-05",
+  "title": "NaTrenyu Personal Data Processing Policy",
+  "description": "Revision dated October 5, 2026. Applies from publication.",
+  "effectiveDate": "October 5, 2026",
+  "sections": [
+    {
+      "title": "1. Operator and scope",
+      "paragraphs": [
+        "The Operator is Matvey Vladimirovich Zakharov (Захаров Матвей Владимирович), INN 471803649801. Correspondence address: apartment 15, 8 Kosmonavtov Street, Syasstroy, Russia, 187420. Email: support@sportsearch.shop.",
+        "This policy covers https://sportsearch.shop, its PWA, the official NaTrenyu iOS application, processing requests from other API clients and related server features, including guest visits, registration, profiles, partner search, games, messaging and requests. It is available free of charge without registration.",
+        "The policy provides information and is not consent. Accepting the Terms does not consent to public profile display, optional analytics or advertising. Separate consents require independent actions.",
+        "The Service is for people aged 18 or older. If a minor's account is discovered, the Operator investigates, restricts access and stops processing lacking lawful grounds. Only necessary information is collected for verification."
+      ]
+    },
+    {
+      "title": "2. Principles, categories and sources",
+      "paragraphs": [
+        "Processing follows Federal Law No. 152-FZ of July 27, 2006 for specified lawful purposes, with necessary data, limited access and retention. Data is corrected, blocked and destroyed where required.",
+        "Subjects include visitors, applicants and registered Users, game and chat participants, support correspondents, complainants and affected individuals. Sources include the individual and their actions, device and browser, selected sign-in method, other participants within the chosen interaction or complaint, and results derived from this information. When information comes from someone else, article 18 duties apply unless a statutory exception exists.",
+        "Ordinary data falls within other personal data. Medical information, beliefs and other special categories are not requested for partner search and should not be included unnecessarily. Receipt requires a separate assessment of grounds. Photographs and videos are profile materials and are not used for biometric identification. Such identification requires separate compliance and is not authorized by this policy."
+      ]
+    },
+    {
+      "title": "3. Purposes, data, grounds and periods",
+      "paragraphs": [
+        "Only data necessary for each purpose is used. Retention ends earlier when the purpose or ground ends. A code or cookie's validity is not the server-record deletion period. Section 8 specifies termination and destruction.",
+        "Cities and districts can be selected manually without precise coordinates. If a User chooses location-based city identification, coordinates are used only to identify the search location. Device permission does not authorize other purposes. Location is not published as the User's real-time whereabouts.",
+        "The Service is free and does not process payment credentials for its own features. Analytics consent does not authorize advertising collection or messages. New advertising features require assessment and necessary grounds before processing."
+      ],
+      "table": {
+        "headers": [
+          "Purpose and subjects",
+          "Data",
+          "Grounds",
+          "Period or termination condition"
+        ],
+        "rows": [
+          [
+            "Accounts, sign-in and sessions: applicants and Users",
+            "Email, account and selected sign-in identifiers, received name/email, verification, codes and sessions; IP and user-agent for necessary sign-in logs",
+            "Clause 5, part 1, article 6: entering and performing a contract at the individual's initiative; proportionate protection also under clause 7",
+            "While necessary for the account and security; codes valid 10 minutes, sessions 14 days. Expired information is deleted when its purpose ends under section 8"
+          ],
+          [
+            "Profiles and selected searches: Users",
+            "Name, age, gender, city, district and preferred districts, sports and levels, format/surface, days/times, radius, search status, added description/photos/videos and material identifiers",
+            "Clause 5 within the selected feature's necessary scope; public display uses separate grounds",
+            "While necessary for selected features and the account remains active; individual fields/materials can be changed or deleted earlier"
+          ],
+          [
+            "Searches, proposals, recurring games and private chats: participants",
+            "Participants, sports, levels, time, facility, slots, responses, statuses, messages, comments, coordination history, cancellation, confirmations, reviews and reports",
+            "Clause 5 for initiated interactions; mandatory processing under applicable law uses clause 2",
+            "Until the relevant interaction or account purpose ends; later retention requires limited data and a separate lawful ground"
+          ],
+          [
+            "Public display: consenting Users",
+            "Only separately selected groups, audience, resources, conditions and restrictions",
+            "Article 10.1 and clause 1, part 1, article 6: separate dissemination consent",
+            "Until withdrawal, changed scope, material/account deletion or end of purpose. Display stops under section 4"
+          ],
+          [
+            "Partner and game selection: Users",
+            "Current sports, level, age compatibility, geography, availability, format/surface, activity and functional game interactions; calculated compatibility and explanations",
+            "Clause 5 only as necessary for the selected feature",
+            "While necessary for selection; optional impression history and experiments use the separate analytics regime"
+          ],
+          [
+            "Service email and push: Users",
+            "Email, device token, platform, notification settings, necessary event information and delivery status",
+            "Clause 5 for selected features; statutory notices use clause 2",
+            "While the selected channel and purpose remain; obsolete tokens and information are deleted under section 8"
+          ],
+          [
+            "Optional analytics: consenting Users only",
+            "Internal identifier, event type/time, object and minimum technical parameters, permitted impression history and experimental measurements; exhaustive list in separate consent",
+            "Clause 1: separate consent",
+            "At most 90 calendar days from an event; collection stops on withdrawal and deletion follows the applicable shorter period"
+          ],
+          [
+            "Support and complaints: correspondents and affected people",
+            "Contact, account, request content, relevant materials, review and response results",
+            "Clause 5 for contractual support; clause 2 for mandatory responses; clause 7 for proportionate protection of rights",
+            "Until the request is resolved and fulfilled; subsequent retention needs a specific surviving ground"
+          ],
+          [
+            "Security and incident investigation: visitors and Users",
+            "IP, user-agent, technical identifiers and necessary failure, access, block and incident information",
+            "Clause 5 for contractual security, clause 7 for proportionate lawful interests, clause 2 for legal duties",
+            "Until the protection or investigation purpose ends; incident materials are separated with limited access and duration"
+          ],
+          [
+            "Evidence of legal actions: Users and correspondents",
+            "Revision, time, method of acceptance; selected scope/conditions, necessary name/contact and technical evidence; requests and destruction records",
+            "Clause 2 for lawful evidentiary duties; clause 7 for specific proportionate protection of rights",
+            "Only for an objectively necessary period; destruction confirmation is retained 3 years under RKN Order No. 179; this does not authorize keeping the full profile"
+          ]
+        ]
+      }
+    },
+    {
+      "title": "4. Visibility and participant interaction",
+      "paragraphs": [
+        "Profiles in search, directories and maps, game searches and public invitations require separate consent at https://sportsearch.shop/legal/profile-visibility. Users select groups, audience and conditions. Signed-in users are not a predetermined circle; sign-in does not turn public listings into provision to specific participants.",
+        "Email, consent-form full name, IP, tokens, sign-in information, precise coordinates and private messages are not in public profiles. Map points nominally identify a chosen city or district. User-entered meeting addresses/routes may identify an exact location and should be checked before public posting.",
+        "Conditions and prohibitions are published within the statutory period, no later than three working days after consent or changed conditions are received. An individual condition that cannot yet be implemented keeps the relevant information hidden. Resuming requires an actually enforceable permitted scope.",
+        "Consent ends in the relevant part when the termination request is received. Settings changes and support requests terminate access under law. A destruction deadline does not authorize continued public display after consent ends. Account age does not substitute for consent.",
+        "Participants of a selected private chat/game receive necessary information for that interaction. Use beyond its purpose needs independent lawful grounds. The Operator stops controlled access and fulfils applicable duties but cannot guarantee retrieval of copies independently saved by another person."
+      ]
+    },
+    {
+      "title": "5. Recommendations and analytics",
+      "paragraphs": [
+        "The Service uses recommendation technologies; preferences, sources and methods are explained at https://sportsearch.shop/legal/recommendations. Necessary selection based on current parameters differs from optional measurements, experiments and conversions. Optional operations, reports and exports require the scope of separate consent at https://sportsearch.shop/legal/analytics. Refusal does not disable core search or messaging.",
+        "The Operator assesses individual automated decisions under article 16. Where applicable, the required written consent or statutory exception, explanations, objections and a response within its 30-day period are provided. Users can challenge inaccurate inputs and request explanations.",
+        "Aggregates are nonpersonal only if direct and indirect attribution to an individual is impossible considering information available to the Operator. Recoverable links, internal identifiers and replacing names do not end personal-data protections."
+      ]
+    },
+    {
+      "title": "6. Operations and device storage",
+      "paragraphs": [
+        "Automated processing and nonautomated handling of requests include collection, recording, systematization, accumulation, storage, correction, retrieval, use, provision and access within lawful limits, blocking, deletion and destruction. Dissemination has separate grounds; anonymization requires an actual procedure.",
+        "Necessary cookies and local storage contain sessions, settings and draft interface state. Session cookies last 14 days and invitation cookies 30 days. Drafts/settings remain until designated cleanup or User deletion. Clearing them may end a session or reset settings. Optional analytics uses separate consent."
+      ]
+    },
+    {
+      "title": "7. Providers, location and transfer",
+      "paragraphs": [
+        "Server infrastructure, databases and User files are located in Russia using Yandex Cloud and Yandex Object Storage. Service email uses Yandex Cloud Postbox. The Russian provider is OOO YANDEX.OBLAKO (ООО «ЯНДЕКС.ОБЛАКО»), INN 7704458262, OGRN 1187746678580, premises 528, 16 Lva Tolstogo Street, Moscow, 119021. Infrastructure processing is limited to provided services: databases/files for storage and email addresses/message content for delivery.",
+        "Selected Apple sign-in uses Sign in with Apple; Google sign-in uses Google Sign-In, supplying the selected method's identifier and necessary account information. Enabled notifications may use Apple Push Notification service or Firebase Cloud Messaging, supplying a device token and minimum delivery payload. These interactions are not wholly Russian processing merely because the main database is in Russia. Provider policies are at https://www.apple.com/legal/privacy/ and https://policies.google.com/privacy. A sign-in or delivery method does not expand resources permitted by separate dissemination consent.",
+        "Maps use Yandex Maps API, OOO YANDEX (ООО «ЯНДЕКС»), INN 7736207543, 16 Lva Tolstogo Street, Moscow, 119021. Loading maps supplies technical browser requests, including IP, device information and the displayed map area. Precise-coordinate city identification only occurs in the User-selected feature; an external geocoder, if used, receives the necessary request. Selected location identification or facility search in iOS may use Apple system services CLGeocoder and Maps/MapKit. These receive coordinates for location identification or the search text and facility-search parameters; this does not publish GPS in a profile. Device permission does not replace lawful grounds or Operator duties. Actual recipient and grounds information is provided on request. Yandex information: https://yandex.ru/legal/confidential/.",
+        "Collection of Russian citizens' data follows part 5, article 18 restrictions on foreign databases for the specified operations. Foreign transfers require article 12 compliance, including prescribed recipient information, separate RKN notification and applicable restrictions. Consent does not waive localization or these duties.",
+        "Delegated processing is governed by a contract specifying purposes, data, operations, confidentiality and protection. Where part 3, article 6 requires subject consent without a statutory exception, consent is obtained separately before transfer; a provider contract does not replace it. Independent operators require separate grounds and notification duties. Actual recipients, countries, grounds and periods are disclosed on request under article 14. Data is not sold and is supplied to public authorities only with lawful grounds and within the lawful scope."
+      ]
+    },
+    {
+      "title": "8. Termination and destruction",
+      "paragraphs": [
+        "When a purpose or ground ends or a valid request requires it, relevant processing stops. Article 21 periods apply to fulfilled purposes/withdrawal, ordinarily at most 30 days under parts 4 and 5 unless another lawful ground or permissible exception exists. Termination requests are fulfilled within 10 working days, with a lawful reasoned extension of at most 5 working days and statutory exceptions. Special periods for unlawful processing, correction and dissemination prevail.",
+        "Deletion covers linked records, identifiers, file objects, optional measurement history, logs and backups within applicable grounds and periods. Restoration does not cancel a fulfilled request: it is reapplied before access to prohibited data returns.",
+        "Only minimum information needed on specific independent grounds for law, proof or a dispute remains, with limited access and time. A general limitation period does not automatically authorize full account retention. Special-law mandatory retention of messages or other information follows its required data and periods.",
+        "Where timely destruction is objectively impossible, blocking and the exceptional procedure and maximum period under part 6, article 21 apply, rather than ordinary extended retention. Destruction is confirmed under RKN Order No. 179 of October 28, 2022."
+      ]
+    },
+    {
+      "title": "9. Rights and requests",
+      "paragraphs": [
+        "Individuals can obtain information and access, request correction/blocking/destruction where justified, withdraw consent, request processing/dissemination termination and complain to RKN or a court. Requests can use account tools, support@sportsearch.shop or the Operator's address.",
+        "Identify the account, request and reply contact. Article 14 requests require its necessary details and signature; the Operator explains them and verifies account ownership proportionately. Passport copies are not automatically required for every request.",
+        "Information/access is free and provided within 10 working days, with a lawful reasoned extension of at most 5 working days. Confirmed inaccuracies are corrected within 7 working days. Other requests follow special statutory periods; refusal must be reasoned.",
+        "Visibility/analytics consent can be withdrawn in settings or by request. Refusal affects only the associated optional processing. The Operator explains any surviving independent ground and scope. Account deletion does not end the right to receive a response."
+      ]
+    },
+    {
+      "title": "10. Protection and updates",
+      "paragraphs": [
+        "Protection includes access management, session/account-right checks, audience restrictions and records of legal actions and deletion procedures. The Operator determines and maintains necessary organizational and technical measures under articles 18.1 and 19 considering data, infrastructure and threats; information on implemented requirements is provided without disclosing secrets or vulnerabilities.",
+        "For an incident under part 3.1, article 21, the Operator gives initial RKN notification within 24 hours and investigation results within 72 hours and takes necessary mitigation measures.",
+        "Changes are published with revision and date. New wording does not replace required separate consent or retrospectively make prior processing lawful."
+      ]
+    }
+  ],
+  "operator": {
+    "serviceName": "НаТреню",
+    "legalName": "Захаров Матвей Владимирович",
+    "inn": "ИНН: 471803649801",
+    "ogrn": "",
+    "address": "187420, Россия, г. Сясьстрой, ул. Космонавтов, д. 8, кв. 15",
+    "email": "support@sportsearch.shop"
+  }
+}

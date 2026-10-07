@@ -20,8 +20,9 @@ export type UserAgreementDocument = {
   backLabel: string; versionLabel: string; effectiveDateLabel: string; operatorLabel: string;
   sections: UserAgreementSection[];
 };
-export const PRIVACY_POLICY_VERSION = "2026-10-05";
-export const PRIVACY_POLICY_EFFECTIVE_DATE = "5 октября 2026 года";
+export const PRIVACY_POLICY_VERSION = "2026-10-07";
+export const PRIVACY_POLICY_EFFECTIVE_DATE = "7 октября 2026 года";
+const PRIVACY_POLICY_EFFECTIVE_DATE_EN = "October 7, 2026";
 export const PRIVACY_POLICY_TITLE = content.privacy.ru.title;
 export const PRIVACY_POLICY_SERVICE_NAME = LEGAL_OPERATOR.serviceName;
 export const RECOMMENDATIONS_VERSION = "2026-10-05";
@@ -36,7 +37,9 @@ function document(key: "terms" | "privacy" | "recommendations", language: LegalL
     ...source, language,
     title: key === "terms" && language === "ru" ? USER_AGREEMENT_TITLE : source.title,
     version: key === "terms" ? USER_AGREEMENT_VERSION : key === "privacy" ? PRIVACY_POLICY_VERSION : RECOMMENDATIONS_VERSION,
-    effectiveDate: language === "ru" ? USER_AGREEMENT_EFFECTIVE_DATE : "October 5, 2026",
+    effectiveDate: key === "privacy"
+      ? (language === "ru" ? PRIVACY_POLICY_EFFECTIVE_DATE : PRIVACY_POLICY_EFFECTIVE_DATE_EN)
+      : (language === "ru" ? USER_AGREEMENT_EFFECTIVE_DATE : "October 5, 2026"),
     backLabel: language === "ru" ? "Назад" : "Back",
     versionLabel: language === "ru" ? "Редакция" : "Revision",
     effectiveDateLabel: language === "ru" ? "Дата редакции" : "Revision date",

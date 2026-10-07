@@ -6,6 +6,8 @@ import archivedProfileEn from "./legal-archive/profile-visibility-2026-09-24-en.
 import archivedAnalyticsRu from "./legal-archive/analytics-2026-09-24-ru.json";
 import archivedAnalyticsEn from "./legal-archive/analytics-2026-09-24-en.json";
 import archivedPrivacyRu from "./legal-archive/privacy-2026-09-24-ru.json";
+import archivedPrivacy1005Ru from "./legal-archive/privacy-2026-10-05-ru.json";
+import archivedPrivacy1005En from "./legal-archive/privacy-2026-10-05-en.json";
 import { getConsentDocument } from "@/lib/legal-consents";
 import { getUserAgreementDocument, getPrivacyPolicyDocument, getRecommendationsDocument, type LegalLanguage, type UserAgreementSection } from "@/lib/legal";
 import { LEGAL_OPERATOR } from "@/lib/legal-contract";
@@ -30,11 +32,15 @@ export function getLegalDocumentRegistryEntry(key: LegalDocumentKey, language: L
     : getConsentDocument(key, language);
   type ArchivedDocument = { language: string; title: string; description?: string; version: string; effectiveDate?: string;
     sections: UserAgreementSection[]; operator: typeof LEGAL_OPERATOR };
-  const archives: Record<LegalDocumentKey, Partial<Record<LegalLanguage, ArchivedDocument>>> = { terms: { ru: archivedTermsRu, en: archivedTermsEn },
-    "profile-visibility": { ru: archivedProfileRu, en: archivedProfileEn },
-    analytics: { ru: archivedAnalyticsRu, en: archivedAnalyticsEn },
-    privacy: { ru: archivedPrivacyRu }, recommendations: {} };
-  const archived = version === "2026-09-24" ? archives[key][language] : undefined;
+  // Earlier revisions, by document and version, exactly as they were served.
+  const archives: Partial<Record<string, Partial<Record<LegalLanguage, ArchivedDocument>>>> = {
+    "terms@2026-09-24": { ru: archivedTermsRu, en: archivedTermsEn },
+    "profile-visibility@2026-09-24": { ru: archivedProfileRu, en: archivedProfileEn },
+    "analytics@2026-09-24": { ru: archivedAnalyticsRu, en: archivedAnalyticsEn },
+    "privacy@2026-09-24": { ru: archivedPrivacyRu },
+    "privacy@2026-10-05": { ru: archivedPrivacy1005Ru, en: archivedPrivacy1005En }
+  };
+  const archived = version && version !== currentDocument.version ? archives[`${key}@${version}`]?.[language] : undefined;
   if (version && currentDocument.version !== version && !archived) throw new Error("LEGAL_DOCUMENT_VERSION_NOT_FOUND");
   const document = archived ?? currentDocument;
   const operator = archived ? archived.operator : LEGAL_OPERATOR;
